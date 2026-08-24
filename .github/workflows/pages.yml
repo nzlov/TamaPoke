@@ -43,7 +43,7 @@ jobs:
         if: steps.sprite-cache.outputs.cache-hit != 'true'
         run: |
           python3 -m pip install Pillow==12.3.0
-          python3 tools/pack_pmd.py
+          python3 tools/pack_pmd.py --workers 10
           python3 tools/make_thumbs.py
 
       - name: Save generated sprite inputs

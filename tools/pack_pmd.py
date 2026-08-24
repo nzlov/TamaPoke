@@ -16,17 +16,20 @@ Acciones: 0 Idle, 1 WalkL, 2 WalkR, 3 Sleep, 4 Eat, 5 Hurt, 6 Attack,
 7 Pose, 8 Hop, 9 Nod, 10 DeepBreath, 11 Sit. Las que falten se omiten.
 
   python3 tools/pack_pmd.py             # el dex entero, normal + shiny
+  python3 tools/pack_pmd.py --workers 10 # diez tareas concurrentes (predeterminado)
   python3 tools/pack_pmd.py kanto       # solo una region (johto, hoenn)
   python3 tools/pack_pmd.py 7 25        # dex concretos
   python3 tools/pack_pmd.py normal 1 4  # solo normales
 
 Necesita Pillow: pip3 install Pillow
 """
+import argparse
 import os
 import struct
 import sys
 import subprocess
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
 
 # Build inputs follow the authoring catalogue; dex.h is now only a stable ABI.
@@ -165,7 +168,15 @@ def pack(dexnum, shiny=False):
 
 
 if __name__ == '__main__':
-    args = sys.argv[1:]
+    parser = argparse.ArgumentParser(description='Empaqueta sprites PMD en formato TPK2')
+    parser.add_argument('--workers', type=int, default=10,
+                        help='tareas concurrentes de descarga/empaquetado (predeterminado: 10)')
+    parser.add_argument('selectors', nargs='*',
+                        help='regiones, numeros del dex o "normal"')
+    options = parser.parse_args()
+    if options.workers < 1:
+        parser.error('--workers debe ser al menos 1')
+    args = options.selectors
     solo_normal = 'normal' in args
     # The whole dex by default, not the old hardcoded 151. A region is easy to
     # ask for on its own, since the fetch is long and most people want Kanto:
@@ -184,13 +195,19 @@ if __name__ == '__main__':
             nums = [d for lo, hi in picked for d in range(lo, hi + 1)]
         else:
             nums = list(range(1, DEX_COUNT + 1))
-    fallos = []
-    for n in nums:
-        for sh in ([False] if solo_normal else [False, True]):
-            try:
-                print(f"#{n:03d}{' shiny' if sh else ''}")
-                pack(n, sh)
-            except Exception as e:
-                print(f"  FALLO: {e}")
-                fallos.append((n, sh))
+    jobs = [(n, sh) for n in nums
+            for sh in ([False] if solo_normal else [False, True])]
+
+    def run_job(job):
+        n, sh = job
+        try:
+            print(f"#{n:03d}{' shiny' if sh else ''}", flush=True)
+            pack(n, sh)
+            return None
+        except Exception as e:
+            print(f"#{n:03d}{' shiny' if sh else ''} FALLO: {e}", flush=True)
+            return n, sh
+
+    with ThreadPoolExecutor(max_workers=options.workers) as executor:
+        fallos = [failed for failed in executor.map(run_job, jobs) if failed]
     print(f"FALLOS: {fallos}" if fallos else "TODOS EMPAQUETADOS")
