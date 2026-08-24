@@ -13,6 +13,10 @@ tools/emu/tamapoke-emu --scale 2 --fast 60
 It compiles `TamaPoke.ino`, `pet.cpp`, `i18n.cpp` and `party.cpp` **unmodified**.
 Only the hardware layer is replaced, so what you see is what the panel draws —
 the same 466×466 RGB565 framebuffer, the same 5×7 font, the same code paths.
+For Chinese, the emulator draws the same 16px GNU Unifont glyphs as the hardware
+from a generated subset in `font_cjk_data.inc`. Regenerate it with
+`gen_cjk_font.py` and Arduino_GFX's `u8g2_font_unifont_h_chinese4.h` when
+translated strings add characters.
 
 ## Why
 
@@ -75,8 +79,8 @@ sips -s format png shot.ppm --out shot.png     # macOS; or use ImageMagick
 | `font.cpp` | the classic 5×7 GFX glyphs, so text metrics match exactly |
 | `genproto.py` | the prototypes the Arduino build normally generates for you |
 
-Everything except `font.cpp` and `genproto.py` is a stub; the game itself is the
-real thing.
+Everything except the generated font data, `font.cpp` and `genproto.py` is a
+stub; the game itself is the real thing.
 
 `sprites` are read straight from `tools/sdcard/mons/`, so animation, shinies and
 Pokédex thumbnails all work if you have generated them (`tools/pack_pmd.py`).

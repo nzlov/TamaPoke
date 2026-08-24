@@ -4,8 +4,8 @@
 
 Lang gLang = LANG_DEFAULT;
 
-// Tabla de cadenas [idioma][id]. Sin acentos ni enes: la fuente bitmap del
-// firmware no los tiene (por eso el espanol ya iba "Esta", "bano", etc.).
+// Tabla de cadenas [idioma][id]. Las seis filas latinas siguen limitadas a
+// ASCII; la fila china se renderiza con la fuente CJK de Arduino_GFX.
 static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
   // ---------------- ES ----------------
   {
@@ -241,7 +241,48 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "%s: %s", "PARALISIA", "QUEIMADURA", "VENENO", "A DORMIR", "CONGELADO", "CONFUSAO",
     "Ganhaste!", "Perdeste...",
     "%s envia %s", "Vai, %s!", "GINASIOS", "MEDALHAS %u/8", "TREINADOR", "VELOCIDADE +%u", "toca: mudar avatar", "%u no total", "NORMAL", "DIFICIL", "ESCOLHIDOS %u/%u", "LUTAR", "BLOQUEADO", "POKEMON", "%s derrotado!", "NOVA MEDALHA!", "VOL %u", "CAIXA %u/%u", "trocar com %s: escolhe", "CAIXA", "TRAZER", "so com um ovo", "COMBATE LAN", "CRIAR", "ENTRAR", "a procurar...", "pronto!", "versao diferente", "criar ou entrar", "rival: %u mons", "o rival saiu", "a esperar pelo rival...", "OUTRA VEZ", "FUGIR", "de que regiao vem o ovo", "%s +%u", "ja nao pode treinar mais", "ESCOLHE A REGIAO", "REFORMAR", "Reformar agora?", "o proximo evolui um dia depois", "evolui um dia depois",
-   "FALTA PACK", },
+    "FALTA PACK",
+  },
+  // ---------------- ZH ----------------
+  {
+    "正在进化！", "好吃！", "很喜欢！", "饿了！", "该洗澡了！",
+    "累坏了...", "有点难过...", "有点胖了...", "是闪光！", "很开心",
+    "谢谢！再见", "离家出走了...", "再见！挥手告别...",
+    "蛋", "传说宝可梦蛋！？", "稀有的蛋！", "点击宝可梦蛋...", "动起来了！", "快孵化了！",
+    "图鉴 %u/%u",
+    "%s%s %u级",
+    "放生%s？", "是", "否",
+    "%u次", "力量 +%u", "新纪录！", "纪录：%u", "快速点击！",
+    "得分：%u", "太开心了！", "+心情",
+    "设置时间", "时", "分", "上滑取消", "语言",
+    "获得奖章！", "太棒了！", "连续%u天！",
+    "连续%u天 纪录%u", "亲密", "树果？？？", "红树果", "蓝树果", "绿树果",
+    "%s 年龄%lu天", "点击名字重命名",
+    "对战", "攻", "防", "速", "重", "训练力量",
+    "奖章 %d/%d", "点击返回",
+    "名字：", "点击返回",
+    "饱食", "心情", "体力", "清洁",
+    "纪录 %u",
+    "成长", "%u级", "%u分钟到%u级", "进化", "最终形态",
+    "可以进化了！", "所有需求达到40",
+    "再升%u级进化", "疏忽：%u",
+    "声音 开", "声音 关",
+    "进化！", "%s有话对你说...", "%s觉得被冷落了...",
+    "要进化吗？", "保持形态", "要告别吗？", "告别", "留在一起",
+    "选择初始伙伴",
+    "没有动画", "请加载到SD卡",
+    "生命", "个体 %u",
+    "菜单", "设置", "关闭", "队伍 %u/6", "- 空 -", "%s加入队伍！", "队伍已满：选择替换", "让它离开",
+    "状态", "训练", "力量", "速度", "防御", "开心时会自然提升",
+    "招式", "- 空 -", "选择招式", "点击槽位更换", "威力 %u", "变化",
+    "%s想学习", "不学习",
+    "%s使用%s", "效果绝佳！", "效果不佳...", "没有效果...",
+    "%s没有命中！", "会心一击！", "%s倒下了！", "伤到了自己！",
+    "%s：%s", "麻痹", "灼伤", "中毒", "睡眠", "冰冻", "混乱",
+    "胜利！", "失败了...",
+    "%s派出了%s", "上吧，%s！", "道馆", "徽章 %u/8", "训练家", "速度 +%u", "点击更换头像", "共获得%u枚", "普通", "困难",
+    "已选 %u/%u", "对战", "未解锁", "宝可梦", "击败%s！", "新徽章！", "音量 %u", "盒子 %u/%u", "与%s交换：选择位置", "盒子", "带回", "仅可在等待蛋时使用", "局域网对战", "创建", "加入", "搜索中...", "准备好了！", "版本不同", "创建或加入", "对手：%u只", "对手已离开", "等待对手...", "再来一次", "逃跑", "选择蛋的地区", "%s +%u", "已无法继续训练", "选择地区", "退役", "现在退役？", "下一只晚一天进化", "晚一天进化", "缺少精灵包",
+  },
 };
 
 // Nombres de medalla en sus tres longitudes [idioma][medalla].
@@ -252,6 +293,7 @@ static const char *const MED_NAME[LANG_COUNT][MED_COUNT] = {
   { "Lv.10", "Lv.25", "Lv.50", "BEERE", "7 SERIE", "BINDUNG", "ENDFORM", "FIT" },
   { "Lv.10", "Lv.25", "Lv.50", "BACCA", "SERIE 7", "LEGAME", "FORMA MAX", "IN FORMA" },
   { "Niv.10", "Niv.25", "Niv.50", "BAGA", "SEQ 7", "LACO", "FORMA MAX", "EM FORMA" },
+  { "10级", "25级", "50级", "树果", "连续7天", "亲密", "最终形态", "状态良好" },
 };
 static const char *const MED_LBL[LANG_COUNT][MED_COUNT] = {
   { "Nv10", "Nv25", "Nv50", "BAYA", "7DIAS", "VINC", "TOPE", "SANO" },
@@ -260,6 +302,7 @@ static const char *const MED_LBL[LANG_COUNT][MED_COUNT] = {
   { "Lv10", "Lv25", "Lv50", "BEERE", "7TAGE", "BND", "END", "FIT" },
   { "Lv10", "Lv25", "Lv50", "BACCA", "7GG", "LEG", "MAX", "FIT" },
   { "Niv10", "Niv25", "Niv50", "BAGA", "7DIAS", "LACO", "MAX", "FIT" },
+  { "10级", "25级", "50级", "树果", "7天", "亲密", "最终", "健康" },
 };
 static const char *const MED_DSC[LANG_COUNT][MED_COUNT] = {
   { "NIVEL 10", "NIVEL 25", "NIVEL 50", "BAYA HALLADA",
@@ -274,6 +317,8 @@ static const char *const MED_DSC[LANG_COUNT][MED_COUNT] = {
     "SERIE 7 GIORNI", "LEGAME MAX", "FORMA FINALE", "IN FORMA" },
   { "NIVEL 10", "NIVEL 25", "NIVEL 50", "BAGA ACHADA",
     "SEQ 7 DIAS", "LACO MAX", "FORMA FINAL", "EM FORMA" },
+  { "达到10级", "达到25级", "达到50级", "找到树果",
+    "连续7天", "亲密度最高", "最终形态", "状态良好" },
 };
 
 const char *T(StrId id) { return STRINGS[gLang][id]; }

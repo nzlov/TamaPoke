@@ -3,6 +3,7 @@
 #include <SDL.h>   // sdl2-config puts the SDL2 dir on the include path
 #include "Arduino.h"
 #include "Arduino_GFX_Library.h"
+#include "input_coords.h"
 #include "Preferences.h"
 #include "pet.h"
 #include "party.h"
@@ -435,6 +436,12 @@ int main(int argc, char **argv) {
 
   bool run = true;
   std::vector<uint32_t> px(PANEL * PANEL);
+  auto updateTouchPosition = [&](int x, int y) {
+    int windowW = 0, windowH = 0;
+    SDL_GetWindowSize(win, &windowW, &windowH);
+    g_touchX = emuPanelCoord(x, windowW, PANEL);
+    g_touchY = emuPanelCoord(y, windowH, PANEL);
+  };
   while (run) {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
@@ -442,13 +449,14 @@ int main(int argc, char **argv) {
       // Every mouse event pulses the touch INT, the way the CST9217 does on the
       // board. The sketch ignores the panel entirely until that fires.
       else if (e.type == SDL_MOUSEBUTTONDOWN) {
-        g_touchX = e.button.x / scale; g_touchY = e.button.y / scale; g_touchDown = true;
+        updateTouchPosition(e.button.x, e.button.y);
+        g_touchDown = true;
         emuFireInterrupt();
       } else if (e.type == SDL_MOUSEBUTTONUP) {
         g_touchDown = false;
         emuFireInterrupt();
       } else if (e.type == SDL_MOUSEMOTION && g_touchDown) {
-        g_touchX = e.motion.x / scale; g_touchY = e.motion.y / scale;
+        updateTouchPosition(e.motion.x, e.motion.y);
         emuFireInterrupt();
       } else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) run = false;
     }

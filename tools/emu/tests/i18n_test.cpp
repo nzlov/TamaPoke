@@ -1,7 +1,7 @@
 // Checks the positional STRINGS table: a language row with too few entries is
 // zero-padded by the compiler with no diagnostic, which silently shifts every
-// string after the gap. Also enforces the ASCII-only rule (the bitmap font has
-// no glyphs for accents).
+// string after the gap. Latin translations stay ASCII; Chinese must be valid
+// UTF-8 for the hardware CJK renderer.
 #include "Arduino.h"
 #include "Preferences.h"
 // linked against the same core as every other suite, so it needs the same
@@ -17,11 +17,40 @@ int FakeSerial::available() { return 0; }
 String FakeSerial::readStringUntil(char) { return String(""); }
 void sfxPlay(uint8_t) {}
 #include "i18n.h"
+#include "font_cjk.h"
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 // STRINGS is file-static, so go through the same accessor the firmware uses.
-static const char *LANG[] = { "ES", "EN", "FR", "DE", "IT", "PT" };
+static const char *LANG[] = { "ES", "EN", "FR", "DE", "IT", "PT", "ZH" };
+
+static bool validUtf8(const unsigned char *s) {
+  while (*s) {
+    if (*s < 0x80) { s++; continue; }
+    int continuation = (*s >= 0xC2 && *s <= 0xDF) ? 1
+                     : (*s >= 0xE0 && *s <= 0xEF) ? 2 : -1;
+    if (continuation < 0) return false;
+    s++;
+    while (continuation--)
+      if ((*s & 0xC0) != 0x80) return false;
+      else s++;
+  }
+  return true;
+}
+
+static std::string formatSpecifiers(const char *s) {
+  std::string out;
+  while (*s) {
+    if (*s++ != '%') continue;
+    if (*s == '%') { s++; continue; }
+    while (*s && strchr("-+ #0.0123456789", *s)) s++;
+    while (*s && strchr("hljztL", *s)) out += *s++;
+    if (*s) out += *s++;
+    out += ',';
+  }
+  return out;
+}
 
 int main() {
   int bad = 0;
@@ -30,8 +59,26 @@ int main() {
       setLang((Lang)l);
       const char *v = T((StrId)s);
       if (!v) { printf("NULL  %s index %d\n", LANG[l], s); bad++; continue; }
-      for (const unsigned char *p = (const unsigned char *)v; *p; p++)
-        if (*p > 0x7F) { printf("NON-ASCII  %s index %d: \"%s\"\n", LANG[l], s, v); bad++; break; }
+      const unsigned char *p = (const unsigned char *)v;
+      if (l == LANG_ZH) {
+        if (!validUtf8(p)) { printf("BAD UTF-8  ZH index %d\n", s); bad++; }
+        const char *scan = v;
+        while (*scan) {
+          uint32_t codepoint = emuNextUtf8(scan);
+          if (!emuCjkGlyph(codepoint)) {
+            printf("MISSING GLYPH  ZH index %d: U+%04X\n", s, (unsigned)codepoint);
+            bad++;
+          }
+        }
+      } else {
+        for (; *p; p++)
+          if (*p > 0x7F) { printf("NON-ASCII  %s index %d: \"%s\"\n", LANG[l], s, v); bad++; break; }
+      }
+      setLang(LANG_EN);
+      if (formatSpecifiers(v) != formatSpecifiers(T((StrId)s))) {
+        printf("FORMAT MISMATCH  %s index %d: \"%s\"\n", LANG[l], s, v);
+        bad++;
+      }
     }
   printf("%s: %d languages x %d strings\n", bad ? "FAIL" : "PASS", LANG_COUNT, STR_COUNT);
   return bad ? 1 : 0;

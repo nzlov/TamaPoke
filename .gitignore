@@ -1,5 +1,6 @@
 # artefactos de compilacion
 build/
+.worktree/
 
 # cacheas y artefactos regenerables del taller
 tools/downloads/

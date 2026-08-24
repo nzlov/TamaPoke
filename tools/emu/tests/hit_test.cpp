@@ -15,6 +15,7 @@
 #include "pet.h"
 #include "party.h"
 #include "battle.h"
+#include "i18n.h"
 #include <cstdio>
 uint32_t g_seed=4; FakeSerial Serial; FakeESP ESP; FakeWire Wire;
 volatile int g_touchX=0,g_touchY=0; volatile bool g_touchDown=false;
@@ -33,6 +34,14 @@ int btlCellIndexAt(int16_t x, int16_t y);
 void partyButtonRects(int *boxTop, int *boxBot, int *closeTop, int *closeBot);
 void uiButtonHeights(int *out, int max, int *n);
 void gymHeaderRects(int *pillTop, int *pillBot, int *rowTop);
+void gymPickerFooterRects(int *rowBottom, int *lanTop, int *lanBottom,
+                          int *dotsTop, int *dotsBottom, int *backTop);
+void moveRowVerticals(int *rowBottom, int *nameTop, int *nameBottom,
+                      int *chipTop, int *chipBottom,
+                      int *metaTop, int *metaBottom);
+void choiceDialogVerticals(int *titleBottom, int *costTop, int *costBottom,
+                           int *button1Top, int *button1Bottom,
+                           int *button2Top, int *button2Bottom);
 int uiSleepButton(int *cx, int *cy);
 void uiEggPillRect(int *x, int *y, int *w, int *h, bool hitArea);
 bool uiButtonDisabled(int i);
@@ -141,6 +150,38 @@ int main(){
     gymHeaderRects(&pt, &pb, &rt);
     ck(pb < rt, "the gym difficulty pill does not sit on the first leader row");
     printf("      pill %d..%d, first row at %d\n", pt, pb, rt);
+  }
+
+  {
+    int rb, lt, lb, dt, db, bt;
+    gymPickerFooterRects(&rb, &lt, &lb, &dt, &db, &bt);
+    ck(rb < lt, "the gym rows leave room for the LAN button");
+    ck(lb < dt, "the LAN button does not overlap the page dots");
+    ck(db < bt, "the page dots do not overlap BACK");
+    printf("      gym footer: rows..%d, LAN %d..%d, dots %d..%d, BACK %d\n",
+           rb, lt, lb, dt, db, bt);
+  }
+
+  {
+    setLang(LANG_ZH);
+    int rb, nt, nb, ct, cb, mt, mb;
+    moveRowVerticals(&rb, &nt, &nb, &ct, &cb, &mt, &mb);
+    ck(nb <= ct, "the move name does not collide with its metadata");
+    ck(ct <= mt && mb <= cb, "the Chinese type label stays inside its chip");
+    ck(cb <= rb, "the move metadata stays inside its row");
+    printf("      move row: name %d..%d, chip %d..%d, meta %d..%d, row..%d\n",
+           nt, nb, ct, cb, mt, mb, rb);
+    setLang(LANG_EN);
+  }
+
+  {
+    int tb, ct, cb, b1t, b1b, b2t, b2b;
+    choiceDialogVerticals(&tb, &ct, &cb, &b1t, &b1b, &b2t, &b2b);
+    ck(tb <= ct, "the retirement explanation starts below its title");
+    ck(cb < b1t, "the retirement explanation does not overlap its first button");
+    ck(b1b < b2t, "the retirement buttons do not overlap");
+    printf("      choice dialog: title..%d, cost %d..%d, buttons %d..%d %d..%d\n",
+           tb, ct, cb, b1t, b1b, b2t, b2b);
   }
 
   // While the pet sleeps only ONE home icon works, and it must be the LIGHT.

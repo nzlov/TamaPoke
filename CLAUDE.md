@@ -13,7 +13,7 @@ Personal, non-commercial fan project. Code MIT; sprites CC BY-NC (PMD SpriteColl
 | `species.h` / `dex.h` | The 151: names, typings, evolution chains, base stats, rarity tiers, favourite berry |
 | `types.h` | Type-effectiveness helpers over the generated 18x18 chart in `dex.h` |
 | `party.cpp/.h` | The 6 retired pets banked by farewell/release (not runaway) |
-| `i18n.cpp/.h` | 6-language string table (ES/EN/FR/DE/IT/PT) |
+| `i18n.cpp/.h` | 7-language string table (ES/EN/FR/DE/IT/PT/ZH) |
 | `audio.cpp/.h` | ES8311 codec over I2S |
 | `rtcbat.cpp/.h` | PCF85063 RTC + AXP2101 battery/PMU/PWR button |
 | `sdmon.cpp/.h` | SD sprite streaming + USB `PUT` file transfer |
@@ -37,13 +37,13 @@ Wrong partition scheme (no FAT) or PSRAM off = it builds and then fails on hardw
 
 ## Hard rules
 
-**No accents, ñ, or non-ASCII in any firmware string.** The bitmap font has no glyphs
-for them. This applies to *all six* languages — French, German, Portuguese and Spanish
-strings in `i18n.cpp` are deliberately written unaccented ("Esta", "bano", "Pokedex").
-Adding a proper "é" silently renders as garbage on the panel.
+**The six Latin translations remain ASCII-only.** French, German, Portuguese and
+Spanish strings in `i18n.cpp` are deliberately written unaccented ("Esta", "bano",
+"Pokedex"). Chinese is the only non-ASCII row and is rendered through Arduino_GFX's
+U8g2 CJK font; do not add other Unicode glyphs without checking that font's coverage.
 
 **Adding a UI string is a two-file, order-sensitive edit.** Append the `StrId` to the
-enum in `i18n.h`, then add the translation at the *same index* in all 6 rows of
+enum in `i18n.h`, then add the translation at the *same index* in all 7 rows of
 `STRINGS[LANG_COUNT][STR_COUNT]` in `i18n.cpp`. The table is positional — a missing
 entry in one language shifts every string after it in that language.
 
@@ -715,7 +715,7 @@ confirm their licence or replace them.
    every ending; tap the title on the player card to set it. The keyboard now
    takes a target (`KB_PET` / `KB_TRAINER`) rather than hardcoding
    `pet.rename()` on commit, so two callers can share it.
-3. **Box 6 -> 18** (3 pages of 6). `S_PARTY_FMT` hardcodes "%u/6" in all six
+3. **Box 6 -> 18** (3 pages of 6). `S_PARTY_FMT` hardcodes "%u/6" in all seven
    languages, the party screen needs paging, and **`Party::begin()` must be
    re-keyed off `sizeof(PartyMon)` first** -- it infers the old record size as
    `stored / PARTY_SLOTS`, right when the stride grows and wrong when the slot
@@ -855,7 +855,7 @@ What changed for 386 species:
 - **Eight places use the literal `151` instead of `DEX_COUNT`** -- `pet.cpp`
   lines ~243, 256, 283, 295, 572, 592 and `pet.h` `isRegistered`/
   `isShinyRegistered`. These are the ones that will bite.
-- `"POKEDEX %u/151"` is hardcoded in all six languages.
+- `"POKEDEX %u/151"` is hardcoded in all seven languages.
 - Sprites on the SD go 40 MB -> ~135 MB. Fine on a card.
 - ~~The blocker is the web installer~~ **solved, and not by making the load
   optional.** The bundle is ONE FILE PER REGION (`web/sprites-<region>.pak`,

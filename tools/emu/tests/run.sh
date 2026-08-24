@@ -37,7 +37,17 @@ bash "$EMU/build.sh" >/dev/null
 # build is the one that decides.
 if command -v arduino-cli >/dev/null; then
   FQBN="esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB"
-  if ! arduino-cli compile --fqbn "$FQBN" "$ROOT" >/dev/null 2>"$OUT_FW"; then
+  # GLUE: Arduino requires the sketch directory and main .ino to have the same
+  # name, while task worktrees deliberately have descriptive directory names.
+  # A source-only mirror keeps that tool rule out of the repository layout.
+  FW_SKETCH="$OUT/TamaPoke"
+  mkdir "$FW_SKETCH"
+  for src in "$ROOT"/*.ino "$ROOT"/*.cpp "$ROOT"/*.h; do
+    ln -s "$src" "$FW_SKETCH/"
+  done
+  LIB_ARGS=()
+  [ -n "${ARDUINO_LIBRARIES:-}" ] && LIB_ARGS=(--libraries "$ARDUINO_LIBRARIES")
+  if ! arduino-cli compile --fqbn "$FQBN" "${LIB_ARGS[@]}" "$FW_SKETCH" >/dev/null 2>"$OUT_FW"; then
     echo "=== THE FIRMWARE DOES NOT COMPILE (the emulator does; that is not the same thing)"
     grep -i error "$OUT_FW" | head -5
     exit 1
@@ -46,7 +56,7 @@ fi
 
 # arrays, not a string: the sprite dir has to reach the compiler still quoted,
 # and passing these through eval silently strips them
-CORE=("$ROOT/gbsynth.cpp" "$ROOT/pet.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp")
+CORE=("$ROOT/gbsynth.cpp" "$ROOT/pet.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp" "$EMU/font_cjk.cpp")
 FLAGS=(-std=c++17 -O1 -w -I"$EMU" -I"$ROOT" -DSPRITE_DIR="\"$ROOT/tools/sdcard/mons\"")
 
 # these drive setup()/loop()/render(), so they need the sketch itself
@@ -55,7 +65,7 @@ needs_sketch() { case "$1" in touch_test|flush_test|joy_test|anim_test|swipe_tes
 # and these are standalone: gbsynth.cpp has no Arduino dependency at all, which
 # is the point of it -- linking the game core in would only demand stubs for
 # symbols the test never calls.
-standalone() { case "$1" in synth_test) return 0;; *) return 1;; esac; }
+standalone() { case "$1" in synth_test|cjk_test) return 0;; *) return 1;; esac; }
 
 # sprite_test drives PmdMon straight off the sprite directory, so it needs the
 # host's SD stubs but none of the sketch
@@ -70,6 +80,7 @@ for src in "$HERE"/*_test.cpp; do
   needs_host "$name" && extra=("$EMU/host_impl.cpp" "$EMU/font.cpp")
   srcs=("${CORE[@]}")
   standalone "$name" && srcs=("$ROOT/gbsynth.cpp")
+  [ "$name" = cjk_test ] && srcs=("$EMU/font_cjk.cpp" "$EMU/font.cpp")
   # every test starts from a clean NVS so one cannot leak state into the next
   rm -f "$OUT/tamapoke.nvs"
   if ! g++ "${FLAGS[@]}" -o "$OUT/$name" "$src" "${srcs[@]}" "${extra[@]}" 2>"$OUT/$name.log"; then

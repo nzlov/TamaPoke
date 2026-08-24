@@ -5,6 +5,7 @@
 // Build twice: with and without -DNO_IRQ, to A/B the emuFireInterrupt() fix.
 #include "Arduino.h"
 #include "Arduino_GFX_Library.h"
+#include "input_coords.h"
 #include "Preferences.h"
 #include "pet.h"
 #include "party.h"
@@ -86,6 +87,17 @@ static void click(int x, int y) {
 void uiButtonAt(int i, int *cx, int *cy, int *half);
 
 int main(int argc, char **argv) {
+  // Niri at 1.5x scale turns the requested 932px SDL window into 621 logical
+  // pixels. Pointer coordinates must use that live extent, not `--scale 2`.
+  if (emuPanelCoord(0, 621, 466) != 0 ||
+      emuPanelCoord(311, 621, 466) != 233 ||
+      emuPanelCoord(620, 621, 466) != 465 ||
+      emuPanelCoord(466, 932, 466) != 233) {
+    printf("FAIL: SDL window coordinates do not map onto the whole panel\n");
+    return 1;
+  }
+  printf("PASS: SDL window coordinates cover the whole panel\n");
+
   if (argc > 1) emuSetTimeScale((uint32_t)atoi(argv[1]));
   printf("--- time scale x%u ---\n", emuTimeScale());
   setup();
