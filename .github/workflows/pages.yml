@@ -32,9 +32,9 @@ jobs:
           path: ~/.arduino15
           key: ${{ runner.os }}-arduino-${{ hashFiles('sketch.yaml') }}
 
-      - name: Cache generated sprite inputs
+      - name: Restore generated sprite inputs
         id: sprite-cache
-        uses: actions/cache@v5
+        uses: actions/cache/restore@v5
         with:
           path: tools/sdcard/mons
           key: ${{ runner.os }}-sprites-${{ hashFiles('tools/pack_pmd.py', 'tools/make_thumbs.py', 'tools/dex_data.py') }}
@@ -45,6 +45,13 @@ jobs:
           python3 -m pip install Pillow==12.3.0
           python3 tools/pack_pmd.py
           python3 tools/make_thumbs.py
+
+      - name: Save generated sprite inputs
+        if: steps.sprite-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: tools/sdcard/mons
+          key: ${{ steps.sprite-cache.outputs.cache-primary-key }}
 
       - name: Build and validate installer assets
         run: bash tools/build_web.sh
