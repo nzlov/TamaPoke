@@ -59,7 +59,8 @@ required_fragments = [
     "document.body.removeAttribute('aria-busy')",
     'id="build-info"', "build-info.json", "info.commit.slice(0, 7)", "info.date",
     "pumpSerial(reader)", "serialWaiters", "Refreshing installed packs…",
-    "Could not refresh installed packs.",
+    "Could not refresh installed packs.", "CRC32_TABLE", "crc32Hex(data)",
+    "failed the catalogue download checksum",
 ]
 for fragment in required_fragments:
     if fragment not in html:
@@ -100,12 +101,22 @@ for command in ('line == "LS"', 'line.startsWith("RM ")', 'line == "FORMAT"'):
         raise SystemExit(f"firmware is missing SD management command {command!r}")
 if 'isPackPath(path)' not in sdmon or 'emptyDirectory("/", false)' not in sdmon:
     raise SystemExit("firmware SD management must restrict deletion and erase all card contents")
+mount = sdmon.split('SD_MMC.begin("/sdcard"', 1)[1].split(';', 1)[0]
+if 'false /* nunca formatea implicitamente */' not in mount:
+    raise SystemExit("firmware must never format the microSD implicitly after a mount failure")
+if 'SDMMC_FREQ_DEFAULT' not in mount:
+    raise SystemExit("firmware must use the reliable default SD_MMC clock for large packs")
+if sdmon.count('serialPackPath(') != 3 or 'String("/packs/") + entry.name()' not in sdmon:
+    raise SystemExit("firmware must normalize INFO and LS entries to protocol pack paths")
 if 'Serial.printf("PACK\\t%s\\t%lu\\t%u\\t%s' not in sdmon:
     raise SystemExit("firmware must report installed package ids and revisions")
 if 'contentReadPackInfo' not in content or 'line == "INFO"' not in firmware or 'FW\\t%s' not in firmware:
     raise SystemExit("firmware must expose package and firmware versions through INFO")
 for reason in ("SD_NOT_READY", "WRITE_FAILED", "READ_TIMEOUT", "PACK_VALIDATION_FAILED",
-               "REPLACE_FAILED", "DELETE_FAILED", "FORMAT_ERASE_FAILED"):
+               "PACK_OPEN_FAILED", "PACK_READ_FAILED", "PACK_HEADER_INVALID",
+               "PACK_ABI_MISMATCH", "PACK_SIZE_MISMATCH", "PACK_CHECKSUM_MISMATCH",
+               "PACK_DIRECTORY_INVALID", "REPLACE_FAILED", "DELETE_FAILED",
+               "FORMAT_ERASE_FAILED"):
     if f'"{reason}"' not in sdmon or reason not in html:
         raise SystemExit(f"installer must expose detailed board error {reason}")
 

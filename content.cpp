@@ -254,38 +254,56 @@ static const SectionRef *findSection(const PackRef &pack, const char *tag) {
   return nullptr;
 }
 
-static bool payloadCrc(Reader &reader, uint32_t offset, uint32_t expected) {
+static ContentPackValidation payloadCrc(Reader &reader, uint32_t offset, uint32_t expected) {
   uint8_t buffer[4096];
-  if (!reader.seek(offset)) return false;
+  if (!reader.seek(offset)) return CONTENT_PACK_READ_FAILED;
   uint32_t crc = 0, position = offset;
   while (position < reader.size) {
     uint32_t take = reader.size - position;
     if (take > sizeof(buffer)) take = sizeof(buffer);
-    if (!reader.read(buffer, take)) return false;
+    if (!reader.read(buffer, take)) return CONTENT_PACK_READ_FAILED;
     crc = crcStep(crc, buffer, take);
     position += take;
   }
-  return crc == expected;
+  return crc == expected ? CONTENT_PACK_VALID : CONTENT_PACK_CHECKSUM_MISMATCH;
+}
+
+static ContentPackValidation validatePackHeader(const char *path, Reader &reader,
+                                                uint8_t common[COMMON_SIZE]) {
+  if (!path || !reader.open(path)) return CONTENT_PACK_OPEN_FAILED;
+  if (reader.size < COMMON_SIZE) return CONTENT_PACK_SIZE_MISMATCH;
+  if (!reader.readAt(0, common, COMMON_SIZE)) return CONTENT_PACK_READ_FAILED;
+  uint8_t kind = common[6];
+  uint16_t headerSize = rd16(common + 24), sectionCount = rd16(common + 26);
+  if (memcmp(common, "TPPK", 4) != 0 || kind < CONTENT_PACK_UI || kind > CONTENT_PACK_MOVE ||
+      sectionCount == 0 || sectionCount > MAX_SECTIONS ||
+      headerSize != COMMON_SIZE + sectionCount * SECTION_SIZE || headerSize > reader.size)
+    return CONTENT_PACK_HEADER_INVALID;
+  if (rd16(common + 4) != CONTENT_PACK_ABI) return CONTENT_PACK_ABI_MISMATCH;
+  if (rd32(common + 8) != reader.size) return CONTENT_PACK_SIZE_MISMATCH;
+  return CONTENT_PACK_VALID;
 }
 
 static bool readPackHeader(const char *path, Reader &reader, uint8_t common[COMMON_SIZE]) {
-  if (!path || !reader.open(path) || !reader.readAt(0, common, COMMON_SIZE)) return false;
-  uint8_t kind = common[6];
-  uint16_t headerSize = rd16(common + 24), sectionCount = rd16(common + 26);
-  return memcmp(common, "TPPK", 4) == 0 && rd16(common + 4) == CONTENT_PACK_ABI &&
-         kind >= CONTENT_PACK_UI && kind <= CONTENT_PACK_MOVE &&
-         rd32(common + 8) == reader.size && sectionCount > 0 && sectionCount <= MAX_SECTIONS &&
-         headerSize == COMMON_SIZE + sectionCount * SECTION_SIZE;
+  return validatePackHeader(path, reader, common) == CONTENT_PACK_VALID;
 }
 
-static bool parsePack(const char *path, PackRef &out) {
+static bool validationFailed(ContentPackValidation result, ContentPackValidation *validation) {
+  if (validation) *validation = result;
+  return false;
+}
+
+static bool parsePack(const char *path, PackRef &out,
+                      ContentPackValidation *validation = nullptr) {
   Reader reader;
   uint8_t common[COMMON_SIZE];
-  if (!readPackHeader(path, reader, common)) return false;
+  ContentPackValidation result = validatePackHeader(path, reader, common);
+  if (result != CONTENT_PACK_VALID) return validationFailed(result, validation);
   uint8_t kind = common[6];
   uint32_t fileSize = rd32(common + 8), expectedCrc = rd32(common + 12);
   uint16_t headerSize = rd16(common + 24), sectionCount = rd16(common + 26);
-  if (!payloadCrc(reader, headerSize, expectedCrc)) return false;
+  result = payloadCrc(reader, headerSize, expectedCrc);
+  if (result != CONTENT_PACK_VALID) return validationFailed(result, validation);
 
   memset(&out, 0, sizeof(out));
   snprintf(out.path, sizeof(out.path), "%s", path);
@@ -296,7 +314,8 @@ static bool parsePack(const char *path, PackRef &out) {
   out.id[20] = 0;
   out.sectionCount = (uint8_t)sectionCount;
   uint8_t raw[MAX_SECTIONS * SECTION_SIZE];
-  if (!reader.readAt(COMMON_SIZE, raw, sectionCount * SECTION_SIZE)) return false;
+  if (!reader.readAt(COMMON_SIZE, raw, sectionCount * SECTION_SIZE))
+    return validationFailed(CONTENT_PACK_READ_FAILED, validation);
   uint32_t lastEnd = headerSize;
   for (uint8_t i = 0; i < sectionCount; i++) {
     const uint8_t *row = raw + i * SECTION_SIZE;
@@ -308,11 +327,13 @@ static bool parsePack(const char *path, PackRef &out) {
     section.count = rd32(row + 12);
     if (section.offset < headerSize || section.offset > fileSize ||
         section.size > fileSize - section.offset ||
-        section.offset < lastEnd) return false;
+        section.offset < lastEnd)
+      return validationFailed(CONTENT_PACK_DIRECTORY_INVALID, validation);
     lastEnd = section.offset + section.size;
   }
   snprintf(out.summary, sizeof(out.summary), "%s kind=%u rev=%lu hash=%08lx",
            out.id, out.kind, (unsigned long)out.revision, (unsigned long)out.mechanicsHash);
+  if (validation) *validation = CONTENT_PACK_VALID;
   return true;
 }
 
@@ -921,9 +942,11 @@ bool contentBegin() {
   return contentReady();
 }
 
-bool contentValidatePackFile(const char *path) {
+ContentPackValidation contentValidatePackFile(const char *path) {
   PackRef parsed;
-  return path && parsePack(path, parsed);
+  ContentPackValidation validation = CONTENT_PACK_OPEN_FAILED;
+  parsePack(path, parsed, &validation);
+  return validation;
 }
 
 bool contentReadPackInfo(const char *path, ContentPackInfo &out) {

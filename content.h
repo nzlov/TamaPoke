@@ -37,6 +37,17 @@ enum ContentPackKind : uint8_t {
   CONTENT_PACK_MOVE = 3,
 };
 
+enum ContentPackValidation : uint8_t {
+  CONTENT_PACK_VALID = 0,
+  CONTENT_PACK_OPEN_FAILED,
+  CONTENT_PACK_READ_FAILED,
+  CONTENT_PACK_HEADER_INVALID,
+  CONTENT_PACK_ABI_MISMATCH,
+  CONTENT_PACK_SIZE_MISMATCH,
+  CONTENT_PACK_CHECKSUM_MISMATCH,
+  CONTENT_PACK_DIRECTORY_INVALID,
+};
+
 struct ContentPackInfo {
   char id[21];
   uint32_t revision;
@@ -66,7 +77,7 @@ enum UiFontFormat : uint8_t {
 // Mount and validate every compatible pack. On desktop builds the first
 // catalogue access lazily calls this against CONTENT_DIR.
 bool contentBegin();
-bool contentValidatePackFile(const char *path);
+ContentPackValidation contentValidatePackFile(const char *path);
 bool contentReadPackInfo(const char *path, ContentPackInfo &out);
 bool contentReady();
 bool contentHasUi();

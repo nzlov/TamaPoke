@@ -2,6 +2,8 @@
 #include "Preferences.h"
 #include "content.h"
 #include <cstdio>
+#include <string>
+#include <vector>
 
 uint32_t g_seed = 1;
 FakeSerial Serial; FakeESP ESP; FakeWire Wire;
@@ -28,10 +30,38 @@ extern "C" int __wrap_fseek(FILE *stream, long offset, int origin) {
 }
 
 int main() {
-  bool ok = contentValidatePackFile(PACK_READER_FIXTURE);
+  bool ok = contentValidatePackFile(PACK_READER_FIXTURE) == CONTENT_PACK_VALID;
   bool sequential = seekCount == 5;
+  FILE *source = fopen(PACK_READER_FIXTURE, "rb");
+  __real_fseek(source, 0, SEEK_END);
+  long size = ftell(source);
+  __real_fseek(source, 0, SEEK_SET);
+  std::vector<uint8_t> raw((size_t)size);
+  bool loaded = size > 64 && __real_fread(raw.data(), 1, raw.size(), source) == raw.size();
+  fclose(source);
+  std::string badPath = std::string(PACK_READER_FIXTURE) + ".bad";
+  auto mutationIs = [&](size_t offset, ContentPackValidation expected) {
+    uint8_t saved = raw[offset];
+    raw[offset] ^= 1;
+    FILE *bad = fopen(badPath.c_str(), "wb");
+    bool written = bad && fwrite(raw.data(), 1, raw.size(), bad) == raw.size();
+    if (bad) fclose(bad);
+    ContentPackValidation actual = written ? contentValidatePackFile(badPath.c_str())
+                                               : CONTENT_PACK_OPEN_FAILED;
+    raw[offset] = saved;
+    return written && actual == expected;
+  };
+  bool precise = loaded &&
+      mutationIs(0, CONTENT_PACK_HEADER_INVALID) &&
+      mutationIs(4, CONTENT_PACK_ABI_MISMATCH) &&
+      mutationIs(8, CONTENT_PACK_SIZE_MISMATCH) &&
+      mutationIs(52, CONTENT_PACK_DIRECTORY_INVALID) &&
+      mutationIs(raw.size() - 1, CONTENT_PACK_CHECKSUM_MISMATCH);
+  remove(badPath.c_str());
   printf("%s  pack validation tolerates short filesystem reads\n", ok ? "PASS" : "FAIL");
   printf("%s  payload CRC uses one sequential filesystem scan\n",
          sequential ? "PASS" : "FAIL");
-  return ok && sequential ? 0 : 1;
+  printf("%s  pack validation reports the failing format stage\n",
+         precise ? "PASS" : "FAIL");
+  return ok && sequential && precise ? 0 : 1;
 }

@@ -282,6 +282,13 @@ const BOARD_ERRORS = {
   READ_TIMEOUT: 'USB transfer stopped before the board received the complete file',
   WRITE_FAILED: 'the microSD write failed; check free space and the card condition',
   PACK_VALIDATION_FAILED: 'the pack is corrupt or incompatible (header, ABI, size or checksum)',
+  PACK_OPEN_FAILED: 'the uploaded pack could not be reopened from the microSD',
+  PACK_READ_FAILED: 'the uploaded pack could not be read back reliably from the microSD',
+  PACK_HEADER_INVALID: 'the uploaded pack header is invalid',
+  PACK_ABI_MISMATCH: 'the uploaded pack ABI is incompatible with this firmware',
+  PACK_SIZE_MISMATCH: 'the uploaded pack size differs from its header',
+  PACK_CHECKSUM_MISMATCH: 'the uploaded bytes do not match the pack payload checksum',
+  PACK_DIRECTORY_INVALID: 'the uploaded pack section directory is invalid',
   BACKUP_FAILED: 'the installed pack could not be backed up before replacement',
   REPLACE_FAILED: 'the validated pack could not replace the installed version',
   UPLOAD_FAILED: 'the board could not complete the upload',
@@ -328,6 +335,20 @@ function reportDeploymentError(context, error) {
 const formatSize = (bytes) => bytes >= 1048576
   ? `${(bytes / 1048576).toFixed(1)} MB`
   : `${Math.ceil(bytes / 1024)} KB`;
+
+const CRC32_TABLE = new Uint32Array(256);
+for (let value = 0; value < CRC32_TABLE.length; value++) {
+  let crc = value;
+  for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xEDB88320 & -(crc & 1));
+  CRC32_TABLE[value] = crc >>> 0;
+}
+
+function crc32Hex(data) {
+  let crc = 0xFFFFFFFF;
+  for (let index = 0; index < data.length; index++)
+    crc = CRC32_TABLE[(crc ^ data[index]) & 0xFF] ^ (crc >>> 8);
+  return ((crc ^ 0xFFFFFFFF) >>> 0).toString(16).padStart(8, '0');
+}
 
 function packageLabel(pkg) {
   return pkg.label || pkg.region || pkg.locales?.join(', ') || pkg.id;
@@ -624,6 +645,8 @@ async function fetchPackage(pkg) {
   const data = new Uint8Array(await response.arrayBuffer());
   if (data.length !== pkg.size)
     throw new Error(`${pkg.file} is incomplete: expected ${pkg.size} bytes, received ${data.length}`);
+  if (!/^[0-9a-f]{8}$/i.test(pkg.crc32) || crc32Hex(data) !== pkg.crc32.toLowerCase())
+    throw new Error(`${pkg.file} failed the catalogue download checksum`);
   return data;
 }
 

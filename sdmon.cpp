@@ -135,7 +135,8 @@ void sdScanRegionArt() {
 
 bool sdBegin() {
   SD_MMC.setPins(SDMMC_CLK, SDMMC_CMD, SDMMC_DATA);
-  sdReady = SD_MMC.begin("/sdcard", true /* modo 1-bit */, true /* formatea si no monta */);
+  sdReady = SD_MMC.begin("/sdcard", true /* modo 1-bit */,
+                         false /* nunca formatea implicitamente */, SDMMC_FREQ_DEFAULT);
   if (sdReady) {
     Serial.printf("SD montada: %llu MB\n", SD_MMC.cardSize() / (1024ULL * 1024ULL));
     SD_MMC.mkdir("/packs");
@@ -166,9 +167,28 @@ static bool isPackPath(String path) {
          path.endsWith(".tregion");
 }
 
+// GLUE: FS entry paths may include the mount point, while the serial protocol owns
+// /packs-relative paths. Remove this normalization if File::path() becomes canonical.
+static String serialPackPath(File &entry) {
+  return String("/packs/") + entry.name();
+}
+
 static void sdSerialError(const char *reason) {
   Serial.print("ERR ");
   Serial.println(reason);
+}
+
+static const char *packValidationError(ContentPackValidation validation) {
+  switch (validation) {
+    case CONTENT_PACK_OPEN_FAILED: return "PACK_OPEN_FAILED";
+    case CONTENT_PACK_READ_FAILED: return "PACK_READ_FAILED";
+    case CONTENT_PACK_HEADER_INVALID: return "PACK_HEADER_INVALID";
+    case CONTENT_PACK_ABI_MISMATCH: return "PACK_ABI_MISMATCH";
+    case CONTENT_PACK_SIZE_MISMATCH: return "PACK_SIZE_MISMATCH";
+    case CONTENT_PACK_CHECKSUM_MISMATCH: return "PACK_CHECKSUM_MISMATCH";
+    case CONTENT_PACK_DIRECTORY_INVALID: return "PACK_DIRECTORY_INVALID";
+    default: return "PACK_VALIDATION_FAILED";
+  }
 }
 
 static bool emptyDirectory(const String &path, bool removeDirectory) {
@@ -193,7 +213,7 @@ void sdSerialPackInfo() {
   if (!dir || !dir.isDirectory()) { sdSerialError("LIST_FAILED"); return; }
   File entry;
   while ((entry = dir.openNextFile())) {
-    String path = entry.path();
+    String path = serialPackPath(entry);
     ContentPackInfo info{};
     if (!entry.isDirectory() && isPackPath(path) && contentReadPackInfo(path.c_str(), info)) {
       Serial.printf("PACK\t%s\t%lu\t%u\t%s\n", info.id, (unsigned long)info.revision,
@@ -241,9 +261,11 @@ bool sdSerialCommand(const String &line) {
     f.close();
     Serial.setTimeout(1000);
     bool valid = failure == nullptr && remaining == 0;
-    if (valid && !contentValidatePackFile(tempPath.c_str())) {
+    ContentPackValidation validation = CONTENT_PACK_VALID;
+    if (valid &&
+        (validation = contentValidatePackFile(tempPath.c_str())) != CONTENT_PACK_VALID) {
       valid = false;
-      failure = "PACK_VALIDATION_FAILED";
+      failure = packValidationError(validation);
     }
     if (valid) {
       String backupPath = path + ".bak";
@@ -273,7 +295,7 @@ bool sdSerialCommand(const String &line) {
     }
     File e;
     while ((e = dir.openNextFile())) {
-      String path = e.path();
+      String path = serialPackPath(e);
       if (!e.isDirectory() && isPackPath(path))
         Serial.printf("%s %u\n", path.c_str(), (uint32_t)e.size());
       e.close();
