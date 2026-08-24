@@ -35,6 +35,7 @@
 #include "rtcbat.h"
 #include "i18n.h"
 #include "audio.h"
+#include <Preferences.h>
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
@@ -358,6 +359,37 @@ char partyBannerName[32] = "";
 
 bool clockOpen = false;       // pantalla de ajuste de hora (deslizar abajo)
 int clockH = 12, clockM = 0;  // hora en edicion
+uint8_t userBrightness = 7;   // brillo normal 1..10; el reposo aun puede atenuarlo
+#define BRIGHT_TRACK_X 156
+#define BRIGHT_TRACK_Y 283
+#define BRIGHT_TRACK_W 154
+#define BRIGHT_HIT_X 132
+#define BRIGHT_HIT_Y 250
+#define BRIGHT_HIT_W 204
+#define BRIGHT_HIT_H 44
+
+void loadUserBrightness() {
+  Preferences prefs;
+  prefs.begin("tamapoke", true);
+  userBrightness = prefs.getUChar("bright", 7);
+  prefs.end();
+  if (userBrightness < 1 || userBrightness > 10) userBrightness = 7;
+}
+
+void setUserBrightness(uint8_t level, bool persist) {
+  userBrightness = level < 1 ? 1 : level > 10 ? 10 : level;
+  if (!persist) return;
+  Preferences prefs;
+  prefs.begin("tamapoke", false);
+  prefs.putUChar("bright", userBrightness);
+  prefs.end();
+}
+
+uint8_t brightnessLevelAt(int16_t x) {
+  if (x < BRIGHT_TRACK_X) x = BRIGHT_TRACK_X;
+  if (x > BRIGHT_TRACK_X + BRIGHT_TRACK_W) x = BRIGHT_TRACK_X + BRIGHT_TRACK_W;
+  return 1 + ((x - BRIGHT_TRACK_X) * 9 + BRIGHT_TRACK_W / 2) / BRIGHT_TRACK_W;
+}
 
 // escena de bano: espuma sobre el bicho y limpieza al reventar
 uint32_t bathUntil = 0;
@@ -874,6 +906,7 @@ void setup() {
 
   pet.begin();
   party.begin();
+  loadUserBrightness();
   loadLang();
   gfx->setPackFont(contentHasUi());
   thumbs.load();
@@ -1021,8 +1054,13 @@ void updateBrightness(uint32_t now) {
   }
   uint32_t idle = now - lastInteract;
   dimStage = (idle > 300000) ? 2 : (idle > 90000) ? 1 : 0;
-  uint8_t target = pet.sleeping ? 25 : (usbPresent() ? 180 : 145);
-  if (dimStage == 1) target = pet.sleeping ? 10 : 60;
+  // El nivel 7 conserva los valores historicos: 180 con USB, 145 con bateria.
+  uint8_t target = 15 + ((usbPresent() ? 235 : 185) * userBrightness + 5) / 10;
+  if (pet.sleeping && target > 25) target = 25;
+  if (dimStage == 1) {
+    uint8_t dimTarget = pet.sleeping ? 10 : 60;
+    if (target > dimTarget) target = dimTarget;
+  }
   else if (dimStage == 2) target = 8;
   if (screenOff) target = 0;
   static uint8_t current = 255;
@@ -1309,6 +1347,7 @@ bool inPetZone(int16_t x, int16_t y) {
 // el toque se resuelve al LEVANTAR el dedo para distinguir tap de deslizar
 void handleTouch() {
   static uint32_t lastPoll = 0;
+  static bool brightnessDrag = false;
   if (millis() - lastPoll < 20) return;  // 50 Hz le sobra a un dedo
   lastPoll = millis();
   // solo tocamos el bus si el chip aviso por INT o si el dedo sigue abajo (hay
@@ -1339,11 +1378,18 @@ void handleTouch() {
     if (screenOff) pet.setScreenOff(false);        // waking the screen wakes it
     screenOff = false;
     lastInteract = millis();
+    brightnessDrag = clockOpen && !swallowGesture &&
+                     x >= BRIGHT_HIT_X && x <= BRIGHT_HIT_X + BRIGHT_HIT_W &&
+                     y >= BRIGHT_HIT_Y && y <= BRIGHT_HIT_Y + BRIGHT_HIT_H;
+    if (brightnessDrag) setUserBrightness(brightnessLevelAt(x), false);
   } else if (pressed) {  // sigue apoyado
     tXl = x;
     tYl = y;
+    if (brightnessDrag) {
+      setUserBrightness(brightnessLevelAt(x), false);
+    }
     // pulsacion larga sin moverse sobre el bicho -> dialogo de soltar
-    if (!holdFired && !swallowGesture && !galleryOpen && !cardOpen && !kbOpen && !clockOpen && millis() - tStart > 3000 &&
+    else if (!holdFired && !swallowGesture && !galleryOpen && !cardOpen && !kbOpen && !clockOpen && millis() - tStart > 3000 &&
         abs(tXl - tX0) < 30 && abs(tYl - tY0) < 30 && inPetZone(tX0, tY0) &&
         !pet.isEgg() && !confirmUntil && !pet.ceremony) {
       confirmUntil = millis() + 10000;
@@ -1353,7 +1399,10 @@ void handleTouch() {
     lastInteract = millis();
     int dx = tXl - tX0, dy = tYl - tY0;
     uint32_t dt = millis() - tStart;
-    if (!holdFired && !swallowGesture) {
+    if (brightnessDrag) {
+      setUserBrightness(brightnessLevelAt(tXl), true);
+      brightnessDrag = false;
+    } else if (!holdFired && !swallowGesture) {
       if (abs(dx) > 80 && abs(dy) < 70 && dt < 800) onSwipe(dx > 0 ? 1 : -1);
       else if (abs(dy) > 80 && abs(dx) < 70 && dt < 800) onSwipeV(dy > 0 ? 1 : -1);
       else if (dt < 1500 && abs(dx) < 40 && abs(dy) < 40) onTap(tX0, tY0);
@@ -2882,6 +2931,8 @@ void drawClockBtn(int x, int y, const char *l) {
 #define VOL_MINUS_X 146
 #define VOL_PLUS_X 276
 #define VOL_BTN_W 48
+static_assert(BRIGHT_HIT_Y + BRIGHT_HIT_H < LANG_PILL_Y,
+              "brightness and volume touch targets must not overlap");
 
 void renderClock() {
   gfx->fillScreen(RGB565_BLACK);
@@ -2907,6 +2958,21 @@ void renderClock() {
   gfx->print(T(S_HOUR));
   gfx->setCursor(uiCenterIn(T(S_MIN), 252, 124), 256);
   gfx->print(T(S_MIN));
+
+  // brillo normal: arrastrable; los soles evitan sumar otra cadena localizada
+  gfx->fillCircle(138, BRIGHT_TRACK_Y, 3, UI_BAR_WARN);
+  gfx->drawLine(132, BRIGHT_TRACK_Y, 144, BRIGHT_TRACK_Y, UI_BAR_WARN);
+  gfx->drawLine(138, BRIGHT_TRACK_Y - 6, 138, BRIGHT_TRACK_Y + 6, UI_BAR_WARN);
+  gfx->fillCircle(328, BRIGHT_TRACK_Y, 5, UI_BAR_WARN);
+  gfx->drawLine(319, BRIGHT_TRACK_Y, 337, BRIGHT_TRACK_Y, UI_BAR_WARN);
+  gfx->drawLine(328, BRIGHT_TRACK_Y - 9, 328, BRIGHT_TRACK_Y + 9, UI_BAR_WARN);
+  gfx->fillRoundRect(BRIGHT_TRACK_X, BRIGHT_TRACK_Y - 3, BRIGHT_TRACK_W, 6, 3, UI_TRACK);
+  int brightX = BRIGHT_TRACK_X + BRIGHT_TRACK_W * (userBrightness - 1) / 9;
+  if (brightX > BRIGHT_TRACK_X)
+    gfx->fillRoundRect(BRIGHT_TRACK_X, BRIGHT_TRACK_Y - 3,
+                       brightX - BRIGHT_TRACK_X, 6, 3, UI_BAR_WARN);
+  gfx->fillCircle(brightX, BRIGHT_TRACK_Y, 7, UI_WHITE);
+  gfx->drawCircle(brightX, BRIGHT_TRACK_Y, 7, UI_INK);
 
   // interruptor de sonido (izquierda de la fila de idioma)
   bool snd = audioEnabled();
@@ -2980,6 +3046,11 @@ void clockTap(int16_t x, int16_t y) {
     else if (x >= 170 && x < 228) clockH = (clockH + 1) % 24;
     else if (x >= 252 && x < 310) clockM = (clockM + 59) % 60;
     else if (x >= 318 && x < 376) clockM = (clockM + 1) % 60;
+    return;
+  }
+  if (x >= BRIGHT_HIT_X && x <= BRIGHT_HIT_X + BRIGHT_HIT_W &&
+      y >= BRIGHT_HIT_Y && y <= BRIGHT_HIT_Y + BRIGHT_HIT_H) {
+    setUserBrightness(brightnessLevelAt(x), true);
     return;
   }
   if (y >= LANG_PILL_Y && y <= LANG_PILL_Y + LANG_PILL_H) {
