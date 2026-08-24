@@ -95,6 +95,10 @@ for src in "$HERE"/*_test.cpp; do
   elif [ "$name" = corrupt_test ]; then
     python3 "$HERE/make_corrupt_fixture.py" "$ROOT/web/packs" "$OUT/corrupt-packs"
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/corrupt-packs\"")
+  elif [ "$name" = pack_reader_test ]; then
+    python3 "$HERE/make_pack_fixture.py" "$OUT/reader-test.tregion"
+    test_flags+=(-DPACK_READER_FIXTURE="\"$OUT/reader-test.tregion\"")
+    extra+=(-Wl,--wrap=fread)
   fi
   # every test starts from a clean NVS so one cannot leak state into the next
   rm -f "$OUT/tamapoke.nvs"

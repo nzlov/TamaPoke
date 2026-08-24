@@ -88,6 +88,8 @@ void sdScanRegionArt() {
     if (regionPackAvailable(region)) gRegionArt |= (uint16_t)(1u << region);
 }
 bool sdSerialCommand(const String &) { return false; }
+// GLUE: INFO is a hardware provisioning command; remove when the emulator models that protocol.
+void sdSerialPackInfo() {}
 
 // --- RTC / battery / PMU ---
 static uint32_t g_epoch = 0;

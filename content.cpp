@@ -177,11 +177,21 @@ struct Reader {
     if (!file || offset > size || length > size - offset) return false;
 #if defined(ESP32)
     if (!file.seek(offset)) return false;
-    return file.read((uint8_t *)out, length) == length;
 #else
     if (fseek(file, (long)offset, SEEK_SET) != 0) return false;
-    return fread(out, 1, length, file) == length;
 #endif
+    uint8_t *cursor = (uint8_t *)out;
+    while (length > 0) {
+#if defined(ESP32)
+      size_t count = file.read(cursor, length);
+#else
+      size_t count = fread(cursor, 1, length, file);
+#endif
+      if (count == 0) return false;
+      cursor += count;
+      length -= count;
+    }
+    return true;
   }
 
   void close() {
