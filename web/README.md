@@ -7,8 +7,11 @@ over HTTPS or `http://localhost`.
 ## Runtime packages
 
 `packs/index.json` is the install catalogue. The page builds its language and
-region choices from this file, resolves `requires` dependencies, and never keeps
-a hardcoded region or language list.
+region choices from this file and never keeps a hardcoded region or language
+list. Any catalogue package can be selected independently. Before transfer, the
+page checks each selected package's `requires` entries against both the target's
+installed package IDs and the current selection. It names missing dependencies
+and lets the user cancel or explicitly force deployment without them.
 
 - `.tui` — language strings, layout metrics and its bitmap/OpenType font payload.
 - `.tmove` — moves, localized names/descriptions, learnsets/TMs and type chart.
@@ -18,7 +21,20 @@ a hardcoded region or language list.
 The firmware validates the common ABI and payload CRC before accepting an
 upload. Data is written to a `.part` file first; a valid replacement is renamed
 into `/packs` only after the complete transfer. Restart after deployment so the
-boot catalogue can be rebuilt.
+boot catalogue can be rebuilt. The page shows an overall byte percentage while
+deploying and reports the active file and phase. Firmware errors include a stable
+reason code so failures such as a missing card, write timeout, invalid pack,
+failed replacement or insufficient writable storage are distinguishable.
+
+After connecting through Web Serial, the SD card management area lists the
+resource packs currently deployed in `/packs`, allows individual packs to be
+deleted, and can erase all microSD contents. Delete and format operations require
+confirmation; restart the board afterward before deploying or playing. Current
+firmware reports each installed pack ID and revision through `INFO`, so the page
+shows target and web-catalogue revisions side by side. The same response exposes
+the target firmware version, which is displayed next to the version from
+`manifest.json`. Older firmware automatically falls back to the size-only `LS`
+listing.
 
 ## Contents
 
@@ -62,8 +78,8 @@ End-user flow:
 1. Install or update the firmware. This runtime-pack migration intentionally
    resets saves from older firmware; later same-schema updates preserve the save
    when “Erase device” stays unchecked.
-2. Choose UI languages and regions; move and regional dependencies are selected
-   automatically.
+2. Choose any catalogue packs. If the target and current selection do not satisfy
+   `requires`, cancel or explicitly force the deployment.
 3. Connect the running board and deploy the selected packs.
 4. Restart the board.
 

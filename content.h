@@ -37,6 +37,11 @@ enum ContentPackKind : uint8_t {
   CONTENT_PACK_MOVE = 3,
 };
 
+struct ContentPackInfo {
+  char id[21];
+  uint32_t revision;
+};
+
 struct UiLocaleInfo {
   char locale[16];
   char shortLabel[8];
@@ -62,6 +67,7 @@ enum UiFontFormat : uint8_t {
 // catalogue access lazily calls this against CONTENT_DIR.
 bool contentBegin();
 bool contentValidatePackFile(const char *path);
+bool contentReadPackInfo(const char *path, ContentPackInfo &out);
 bool contentReady();
 bool contentHasUi();
 bool contentHasPets();

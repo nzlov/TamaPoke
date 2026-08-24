@@ -20,6 +20,7 @@
            background:#fff; cursor:pointer; }
   button:hover { background:var(--bg); }
   button:disabled { opacity:.5; cursor:default; }
+  button.danger { color:var(--bad); border-color:var(--bad); }
   esp-web-install-button { display:inline-block; }
   esp-web-install-button[install-unsupported] { display:none; }
   .unsupported { display:none; color:var(--bad); font-weight:500; }
@@ -31,11 +32,20 @@
           border:1px solid var(--track); border-radius:9px; }
   .pack input { margin-top:.3rem; }
   .pack small { display:block; color:#6b6b76; }
+  .installed-pack { align-items:center; justify-content:space-between; }
+  .installed-pack button { padding:.25rem .65rem; font-size:.85rem; }
+  .version-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:.5rem;
+                  margin:.75rem 0; }
+  .version-grid span { border:1px solid var(--track); border-radius:8px; padding:.45rem .65rem; }
+  .version-grid strong { display:block; }
   #catalog-error { color:var(--bad); }
   #log { font-family: ui-monospace, monospace; font-size:.85rem; background:#1b1b25; color:#d8dcf0;
          border-radius:10px; padding:.75rem 1rem; margin-top:1rem; max-height:220px; overflow:auto; white-space:pre-wrap; display:none; }
+  .progress-status { display:none; justify-content:space-between; gap:1rem; margin-top:.75rem; font-size:.9rem; }
   .bar { height:10px; background:var(--track); border-radius:5px; overflow:hidden; margin-top:.75rem; display:none; }
   .bar > div { height:100%; width:0; background:var(--ok); transition: width .15s; }
+  #deploy-error { display:none; color:var(--bad); background:#fff0ed; border-left:4px solid var(--bad);
+                  border-radius:6px; padding:.6rem .75rem; font-size:.9rem; }
   code { background:#0001; padding:.1em .4em; border-radius:5px; }
   a { color:var(--accent); }
   .note { font-size:.9rem; color:#6b6b76; }
@@ -69,6 +79,10 @@
   <div class="step">
     <p>Plug the board in via USB and press install. Pick the port and wait.
        Takes about a minute. No drivers needed on any OS.</p>
+    <div class="version-grid">
+      <span>Web firmware package<strong id="web-firmware-version">Loading…</strong></span>
+      <span>Connected target firmware<strong id="target-firmware-version">Connect the board</strong></span>
+    </div>
     <esp-web-install-button manifest="manifest.json">
       <button slot="activate">⚡ Install TamaPoke</button>
       <span slot="unsupported">Browser not supported (use Chrome/Edge).</span>
@@ -91,8 +105,9 @@
        available packs; adding a language or region does not require editing this page.</p>
     <p class="note">UI packs provide language, fonts, strings and layout. The move pack
        provides moves and descriptions. Region packs provide species, sprites,
-       descriptions, trainers, regional battles and badges. Required dependencies are
-       selected automatically.</p>
+       descriptions, trainers, regional battles and badges. Any catalogue pack can be
+       deployed independently; missing dependencies are shown before transfer, with an
+       explicit option to force deployment.</p>
     <p class="note">⏱️ Region packs are large and travel over USB serial. A 40 MB region
        can take 10–15 minutes. Leave the tab open and restart the board after deployment.</p>
     <p class="note">Close the step-1 install tab first (only one program can use
@@ -106,8 +121,24 @@
     <p class="note">Have a custom pack? <label style="cursor:pointer;text-decoration:underline">select
        <code>.tui</code>, <code>.tmove</code> or <code>.tregion</code> files
        <input id="files" type="file" accept=".tui,.tmove,.tregion" multiple disabled hidden></label>.</p>
-    <div class="bar" id="bar"><div></div></div>
+    <div class="progress-status" id="progress-status">
+      <span id="progress-label">Preparing deployment…</span>
+      <strong id="progress-percent">0%</strong>
+    </div>
+    <div class="bar" id="bar" role="progressbar" aria-label="Deployment progress"
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div></div></div>
+    <p id="deploy-error" role="alert"></p>
     <pre id="log"></pre>
+
+    <h3>SD card management</h3>
+    <p class="note">List or remove deployed resource packs and compare their target
+       revision with the current web catalogue. Formatting erases every file on the
+       microSD; restart the board after deleting packs or formatting.</p>
+    <div class="row">
+      <button id="refresh-packs" disabled>↻ Refresh installed packs</button>
+      <button id="format-sd" class="danger" disabled>Format microSD</button>
+    </div>
+    <div id="installed-packs" class="pack-list"><span class="note">Connect the board to inspect the microSD.</span></div>
   </div>
 
   <h2>How to play</h2>
@@ -132,7 +163,7 @@ const supported = 'serial' in navigator;
 if (!supported) { document.getElementById('unsupported').style.display='block';
   document.getElementById('connect').disabled = true; }
 
-let port, reader, writer, lineBuf = '';
+let port, reader, writer, lineBuf = '', serialBusy = false;
 
 async function readLine(timeoutMs = 6000) {
   const deadline = Date.now() + timeoutMs;
@@ -146,24 +177,90 @@ async function readLine(timeoutMs = 6000) {
   }
 }
 
-async function waitFor(token, timeoutMs = 6000) {
+async function waitFor(token, timeoutMs = 6000, action = token) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const l = await readLine(deadline - Date.now());
-    if (l === null) return false;
+    if (l === null) break;
     if (l === token) return true;
-    if (l === 'ERR') return false;
+    if (isBoardError(l)) throw boardError(l);
   }
-  return false;
+  throw new Error(`board timed out while ${action}`);
 }
 
 const enc = new TextEncoder();
-let packages = [], packageById = new Map();
+let packages = [], packageById = new Map(), packageByFile = new Map();
+let installedPackIds = new Set(), installedPacksKnown = false;
+let webFirmwareVersion = null, targetFirmwareVersion = null, deviceInfoSupported = null;
 const catalogEl = document.getElementById('catalog');
 const catalogError = document.getElementById('catalog-error');
 const deployButton = document.getElementById('deploy');
+const refreshPacksButton = document.getElementById('refresh-packs');
+const formatButton = document.getElementById('format-sd');
+const installedPacksEl = document.getElementById('installed-packs');
 const bar = document.getElementById('bar');
 const fill = bar.firstElementChild;
+const progressStatus = document.getElementById('progress-status');
+const progressLabel = document.getElementById('progress-label');
+const progressPercent = document.getElementById('progress-percent');
+const deployError = document.getElementById('deploy-error');
+const webFirmwareVersionEl = document.getElementById('web-firmware-version');
+const targetFirmwareVersionEl = document.getElementById('target-firmware-version');
+
+// GLUE: firmware keeps stable language-neutral codes while this page owns user-facing copy.
+// Remove this map if the serial protocol ever provides structured display messages.
+const BOARD_ERRORS = {
+  SD_NOT_READY: 'the microSD is missing or could not be mounted',
+  INVALID_REQUEST: 'the board did not understand the upload request',
+  INVALID_PACK_PATH: 'the resource-pack filename or destination is invalid',
+  INVALID_PACK_SIZE: 'the resource pack is empty or larger than 256 MB',
+  TEMP_CLEANUP_FAILED: 'the board could not remove an interrupted upload',
+  OPEN_FAILED: 'the board could not create the temporary file on the microSD',
+  READ_TIMEOUT: 'USB transfer stopped before the board received the complete file',
+  WRITE_FAILED: 'the microSD write failed; check free space and the card condition',
+  PACK_VALIDATION_FAILED: 'the pack is corrupt or incompatible (header, ABI, size or checksum)',
+  BACKUP_FAILED: 'the installed pack could not be backed up before replacement',
+  REPLACE_FAILED: 'the validated pack could not replace the installed version',
+  UPLOAD_FAILED: 'the board could not complete the upload',
+  LIST_FAILED: 'the board could not open the /packs directory',
+  PACK_NOT_FOUND: 'the selected pack no longer exists on the microSD',
+  DELETE_FAILED: 'the board could not delete the selected pack',
+  FORMAT_ERASE_FAILED: 'one or more files could not be erased from the microSD',
+  FORMAT_INIT_FAILED: 'the card was erased but the /packs directory could not be recreated',
+};
+
+function isBoardError(line) {
+  return line === 'ERR' || line.startsWith('ERR ');
+}
+
+function boardError(line) {
+  const code = line.slice(3).trim();
+  return new Error(code ? `${BOARD_ERRORS[code] || `board error: ${code}`} (${code})`
+                        : 'the board rejected the request');
+}
+
+function setProgress(done, total, label) {
+  const percent = total > 0 ? Math.max(0, Math.min(100, Math.floor(done / total * 100))) : 0;
+  progressStatus.style.display = 'flex';
+  bar.style.display = 'block';
+  progressLabel.textContent = label;
+  progressPercent.textContent = `${percent}%`;
+  fill.style.width = `${percent}%`;
+  bar.setAttribute('aria-valuenow', String(percent));
+}
+
+function beginDeployment(label) {
+  deployError.textContent = '';
+  deployError.style.display = 'none';
+  setProgress(0, 1, label);
+}
+
+function reportDeploymentError(context, error) {
+  const message = `${context}: ${error.message}`;
+  deployError.textContent = message;
+  deployError.style.display = 'block';
+  log(message);
+}
 
 const formatSize = (bytes) => bytes >= 1048576
   ? `${(bytes / 1048576).toFixed(1)} MB`
@@ -173,36 +270,34 @@ function packageLabel(pkg) {
   return pkg.label || pkg.region || pkg.locales?.join(', ') || pkg.id;
 }
 
+function renderFirmwareVersions() {
+  webFirmwareVersionEl.textContent = webFirmwareVersion || 'Unavailable';
+  targetFirmwareVersionEl.textContent = targetFirmwareVersion
+    ? `${targetFirmwareVersion}${webFirmwareVersion
+        ? (targetFirmwareVersion === webFirmwareVersion ? ' · matches web' : ' · differs from web')
+        : ''}`
+    : (writer ? 'Unavailable (older firmware)' : 'Connect the board');
+}
+
 function checkedIds() {
   return new Set([...document.querySelectorAll('[data-pack-id]:checked')]
     .map(input => input.dataset.packId));
 }
 
-function applyDependencies() {
+function updateSelection() {
   const selected = checkedIds();
-  const add = (id) => {
-    if (selected.has(id)) return;
-    selected.add(id);
-    for (const dependency of packageById.get(id)?.requires || []) add(dependency);
-  };
-  for (const id of [...selected]) add(id);
-  for (const input of document.querySelectorAll('[data-pack-id]')) {
-    if (selected.has(input.dataset.packId)) input.checked = true;
-  }
   const chosen = [...selected].map(id => packageById.get(id)).filter(Boolean);
-  const ready = chosen.some(pkg => pkg.kind === 'ui') &&
-                chosen.some(pkg => pkg.kind === 'move') &&
-                chosen.some(pkg => pkg.kind === 'region');
-  deployButton.disabled = !writer || !ready;
+  deployButton.disabled = serialBusy || !writer || chosen.length === 0;
   const total = chosen.reduce((sum, pkg) => sum + pkg.size, 0);
-  deployButton.textContent = ready
+  deployButton.textContent = chosen.length
     ? `⬇️ Deploy ${chosen.length} packs (${formatSize(total)})`
-    : 'Select UI, move and region packs';
+    : 'Select one or more packs';
 }
 
 function renderCatalog(index) {
   packages = index.packages || [];
   packageById = new Map(packages.map(pkg => [pkg.id, pkg]));
+  packageByFile = new Map(packages.map(pkg => [pkg.file, pkg]));
   catalogEl.textContent = '';
   const groups = [
     ['ui', 'UI and languages'],
@@ -225,14 +320,13 @@ function renderCatalog(index) {
       input.type = 'checkbox';
       input.dataset.packId = pkg.id;
       input.checked = kind === 'move' || Boolean(pkg.default) || (kind === 'region' && index === 0);
-      if (kind === 'move') input.disabled = true;
-      input.onchange = applyDependencies;
+      input.onchange = updateSelection;
       const text = document.createElement('span');
       const name = document.createElement('strong');
       name.textContent = packageLabel(pkg);
       const detail = document.createElement('small');
       const locales = pkg.locales?.length ? ` · ${pkg.locales.join(', ')}` : '';
-      detail.textContent = `${pkg.id} · ${formatSize(pkg.size)}${locales}`;
+      detail.textContent = `${pkg.id} · web revision ${pkg.revision} · ${formatSize(pkg.size)}${locales}`;
       text.append(name, detail);
       label.append(input, text);
       list.append(label);
@@ -240,7 +334,7 @@ function renderCatalog(index) {
     section.append(heading, list);
     catalogEl.append(section);
   }
-  applyDependencies();
+  updateSelection();
 }
 
 async function loadCatalog() {
@@ -256,15 +350,144 @@ async function loadCatalog() {
   }
 }
 
+async function loadFirmwareVersion() {
+  try {
+    const response = await fetch('manifest.json', { cache: 'no-cache' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    webFirmwareVersion = (await response.json()).version || null;
+  } catch (error) {
+    log(`Firmware manifest unavailable: ${error.message}`);
+  }
+  renderFirmwareVersions();
+}
+
 async function sendOne(name, data, progress) {
   await writer.write(enc.encode(`PUT packs/${name} ${data.length}\n`));
-  if (!await waitFor('OK')) return false;
+  await waitFor('OK', 6000, `accepting ${name}`);
   for (let offset = 0; offset < data.length; offset += 2048) {
     await writer.write(data.slice(offset, offset + 2048));
-    if (!await waitFor('#')) return false;
+    await waitFor('#', 6000, `writing ${name} at byte ${offset}`);
     progress?.(Math.min(offset + 2048, data.length));
   }
-  return await waitFor('DONE', 30000);
+  await waitFor('DONE', 30000, `validating ${name}`);
+}
+
+async function runCommand(command, timeoutMs = 10000) {
+  await writer.write(enc.encode(`${command}\n`));
+  const lines = [], deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const line = await readLine(deadline - Date.now());
+    if (line === null) break;
+    if (line === 'DONE') return lines;
+    if (isBoardError(line)) throw boardError(line);
+    lines.push(line);
+  }
+  throw new Error('board response timed out');
+}
+
+function setSdManagementBusy(busy) {
+  serialBusy = busy;
+  refreshPacksButton.disabled = busy || !writer;
+  formatButton.disabled = busy || !writer;
+  document.getElementById('files').disabled = busy || !writer;
+  for (const button of installedPacksEl.querySelectorAll('button')) button.disabled = busy;
+  updateSelection();
+}
+
+function parseInstalledPack(line) {
+  const detailed = line.match(/^PACK\t([^\t]+)\t(\d+)\t(\d+)\t(.+)$/);
+  if (detailed) {
+    const name = detailed[4].split('/').pop();
+    return /\.(tui|tmove|tregion)$/.test(name)
+      ? { id: detailed[1], revision: Number(detailed[2]), size: Number(detailed[3]), name }
+      : null;
+  }
+  const legacy = line.match(/^(.*) (\d+)$/);
+  if (!legacy) return null;
+  const name = legacy[1].split('/').pop();
+  return /\.(tui|tmove|tregion)$/.test(name)
+    ? { id: packageByFile.get(name)?.id, revision: null, size: Number(legacy[2]), name }
+    : null;
+}
+
+async function queryInstalledPacks() {
+  if (deviceInfoSupported !== false) {
+    try {
+      const lines = await runCommand('INFO', 3000);
+      deviceInfoSupported = true;
+      const firmware = lines.find(line => line.startsWith('FW\t'));
+      targetFirmwareVersion = firmware ? firmware.slice(3) : null;
+      renderFirmwareVersions();
+      return lines.map(parseInstalledPack).filter(Boolean);
+    } catch (error) {
+      if (!error.message.includes('timed out')) throw error;
+      deviceInfoSupported = false;
+      targetFirmwareVersion = null;
+      renderFirmwareVersions();
+      log('Target firmware does not support version details; using the legacy pack list.');
+    }
+  }
+  return (await runCommand('LS')).map(parseInstalledPack).filter(Boolean);
+}
+
+async function refreshInstalledPacks() {
+  if (!writer) return;
+  setSdManagementBusy(true);
+  try {
+    const rows = await queryInstalledPacks();
+    installedPackIds = new Set(rows.map(pack => pack.id || packageByFile.get(pack.name)?.id)
+      .filter(Boolean));
+    installedPacksKnown = true;
+    installedPacksEl.textContent = '';
+    if (!rows.length) {
+      const empty = document.createElement('span');
+      empty.className = 'note';
+      empty.textContent = 'No resource packs are deployed.';
+      installedPacksEl.append(empty);
+    }
+    for (const pack of rows) {
+      const row = document.createElement('div');
+      row.className = 'pack installed-pack';
+      const text = document.createElement('span');
+      const name = document.createElement('strong');
+      name.textContent = pack.name;
+      const size = document.createElement('small');
+      const webPack = packageById.get(pack.id) || packageByFile.get(pack.name);
+      const targetRevision = pack.revision === null ? 'target revision unavailable'
+        : `target revision ${pack.revision}`;
+      const webRevision = webPack ? `web revision ${webPack.revision}` : 'not in web catalogue';
+      const match = webPack && pack.revision !== null
+        ? (pack.revision === webPack.revision ? ' · versions match' : ' · versions differ') : '';
+      size.textContent = `${formatSize(pack.size)} · ${targetRevision} · ${webRevision}${match}`;
+      text.append(name, size);
+      const remove = document.createElement('button');
+      remove.className = 'danger';
+      remove.textContent = 'Delete';
+      remove.onclick = () => deleteInstalledPack(pack.name);
+      row.append(text, remove);
+      installedPacksEl.append(row);
+    }
+  } catch (error) {
+    installedPacksKnown = false;
+    installedPacksEl.textContent = '';
+    log(`Could not list installed packs: ${error.message}`);
+  } finally {
+    setSdManagementBusy(false);
+  }
+}
+
+async function deleteInstalledPack(name) {
+  if (!confirm(`Delete ${name} from the microSD?`)) return;
+  setSdManagementBusy(true);
+  try {
+    await runCommand(`RM packs/${name}`);
+    log(`Deleted ${name}. Restart the board before playing.`);
+    await refreshInstalledPacks();
+  } catch (error) {
+    log(`Delete failed: ${error.message}`);
+  } finally {
+    setSdManagementBusy(false);
+  }
 }
 
 function deploymentOrder() {
@@ -276,7 +499,6 @@ function deploymentOrder() {
     const pkg = packageById.get(id);
     if (!pkg) throw new Error(`missing dependency ${id}`);
     for (const dependency of pkg.requires || []) {
-      selected.add(dependency);
       visit(dependency);
     }
     visiting.delete(id);
@@ -286,11 +508,45 @@ function deploymentOrder() {
   return ordered;
 }
 
+function confirmDependencyOverride(selected) {
+  if (!installedPacksKnown) {
+    const forced = confirm(
+      'The board\'s installed packs could not be verified.\n\n' +
+      'Press OK to force deployment without checking dependencies, or Cancel to stop.'
+    );
+    log(forced ? 'Force deployment approved without dependency verification.'
+               : 'Deployment cancelled because dependencies could not be verified.');
+    return forced;
+  }
+  const available = new Set([...installedPackIds, ...selected.map(pkg => pkg.id)]);
+  const missing = new Map();
+  for (const pkg of selected) {
+    for (const dependency of pkg.requires || []) {
+      if (available.has(dependency)) continue;
+      if (!missing.has(dependency)) missing.set(dependency, []);
+      missing.get(dependency).push(pkg.id);
+    }
+  }
+  if (!missing.size) return true;
+  const details = [...missing].map(([dependency, requiredBy]) => {
+    const label = packageLabel(packageById.get(dependency) || { id: dependency });
+    return `• ${label} (${dependency}), required by ${requiredBy.join(', ')}`;
+  }).join('\n');
+  const forced = confirm(
+    `The target is missing ${missing.size} required pack${missing.size === 1 ? '' : 's'}:\n\n` +
+    `${details}\n\nPress OK to force deployment and ignore dependencies, or Cancel to stop.`
+  );
+  log(forced ? `Force deployment approved; ignoring missing dependencies: ${[...missing.keys()].join(', ')}.`
+             : 'Deployment cancelled because required packs are missing.');
+  return forced;
+}
+
 async function fetchPackage(pkg) {
   const response = await fetch(`packs/${encodeURIComponent(pkg.file)}`);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`server returned HTTP ${response.status} for ${pkg.file}`);
   const data = new Uint8Array(await response.arrayBuffer());
-  if (data.length !== pkg.size) throw new Error(`expected ${pkg.size} bytes, got ${data.length}`);
+  if (data.length !== pkg.size)
+    throw new Error(`${pkg.file} is incomplete: expected ${pkg.size} bytes, received ${data.length}`);
   return data;
 }
 
@@ -304,59 +560,106 @@ document.getElementById('connect').onclick = async () => {
     log('Connected. Choose packs, then deploy.');
     document.getElementById('files').disabled = false;
     document.getElementById('connect').disabled = true;
-    applyDependencies();
+    updateSelection();
+    await refreshInstalledPacks();
   } catch (e) { log('Could not connect: ' + e.message); }
 };
 
 deployButton.onclick = async () => {
   if (!writer) { log('Connect the board first.'); return; }
-  deployButton.disabled = true;
-  bar.style.display = 'block';
-  fill.style.width = '0%';
+  setSdManagementBusy(true);
+  beginDeployment('Preparing selected packs…');
+  let phase = 'preparing the deployment';
   try {
     const selected = deploymentOrder();
+    if (!confirmDependencyOverride(selected)) {
+      setProgress(0, 1, 'Deployment cancelled.');
+      return;
+    }
     const total = selected.reduce((sum, pkg) => sum + pkg.size, 0);
     let completed = 0;
-    for (const pkg of selected) {
+    for (let index = 0; index < selected.length; index++) {
+      const pkg = selected[index];
+      phase = `downloading ${pkg.file}`;
+      setProgress(completed, total, `Downloading ${packageLabel(pkg)} (${index + 1}/${selected.length})…`);
       log(`Downloading ${packageLabel(pkg)} (${formatSize(pkg.size)})…`);
       const data = await fetchPackage(pkg);
+      phase = `sending ${pkg.file} to the microSD`;
+      const label = `Sending ${pkg.file} (${index + 1}/${selected.length})…`;
+      setProgress(completed, total, label);
       log(`Sending ${pkg.file}…`);
-      const ok = await sendOne(pkg.file, data, sent => {
-        fill.style.width = `${(completed + sent) / total * 100}%`;
+      await sendOne(pkg.file, data, sent => {
+        const transferred = completed + sent;
+        setProgress(transferred === total ? total * .999 : transferred, total, label);
       });
-      if (!ok) throw new Error(`board rejected ${pkg.file}`);
       completed += pkg.size;
-      fill.style.width = `${completed / total * 100}%`;
+      setProgress(completed, total, `Installed ${pkg.file}`);
       log(`Installed ${pkg.id}.`);
     }
+    phase = 'finishing the deployment';
+    setProgress(total, total, 'All selected packs installed. Restart the board.');
     log('All selected packs installed. Restart the board.');
+    await refreshInstalledPacks();
   } catch (error) {
-    log(`Deployment failed: ${error.message}`);
+    reportDeploymentError(`Deployment failed while ${phase}`, error);
   } finally {
-    applyDependencies();
+    setSdManagementBusy(false);
   }
 };
 
 document.getElementById('files').onchange = async (ev) => {
   const files = [...ev.target.files];
   if (!writer) { log('Connect the board first.'); return; }
-  bar.style.display = 'block';
+  setSdManagementBusy(true);
+  beginDeployment('Preparing custom packs…');
   let completed = 0;
   const total = files.reduce((sum, file) => sum + file.size, 0);
-  for (const file of files) {
-    log(`Sending custom pack ${file.name}…`);
-    const data = new Uint8Array(await file.arrayBuffer());
-    if (!await sendOne(file.name, data, sent => {
-      fill.style.width = `${(completed + sent) / total * 100}%`;
-    })) {
-      log(`Board rejected ${file.name}.`);
-      return;
+  let phase = 'preparing custom packs';
+  try {
+    for (let index = 0; index < files.length; index++) {
+      const file = files[index];
+      phase = `reading ${file.name}`;
+      const label = `Sending ${file.name} (${index + 1}/${files.length})…`;
+      setProgress(completed, total, `Reading ${file.name} (${index + 1}/${files.length})…`);
+      log(`Sending custom pack ${file.name}…`);
+      const data = new Uint8Array(await file.arrayBuffer());
+      phase = `sending ${file.name} to the microSD`;
+      setProgress(completed, total, label);
+      await sendOne(file.name, data, sent => {
+        const transferred = completed + sent;
+        setProgress(transferred === total ? total * .999 : transferred, total, label);
+      });
+      completed += file.size;
+      setProgress(completed, total, `Installed ${file.name}`);
     }
-    completed += file.size;
+    phase = 'finishing custom-pack deployment';
+    setProgress(total, total, 'All custom packs installed. Restart the board.');
+    log('Custom packs installed. Restart the board.');
+    await refreshInstalledPacks();
+  } catch (error) {
+    reportDeploymentError(`Custom-pack deployment failed while ${phase}`, error);
+  } finally {
+    setSdManagementBusy(false);
   }
-  log('Custom packs installed. Restart the board.');
 };
 
+refreshPacksButton.onclick = refreshInstalledPacks;
+
+formatButton.onclick = async () => {
+  if (!confirm('Format the microSD? This permanently erases every file on the card.')) return;
+  setSdManagementBusy(true);
+  try {
+    await runCommand('FORMAT', 120000);
+    log('microSD formatted. Restart the board before deploying or playing.');
+    await refreshInstalledPacks();
+  } catch (error) {
+    log(`Format failed: ${error.message}`);
+  } finally {
+    setSdManagementBusy(false);
+  }
+};
+
+loadFirmwareVersion();
 loadCatalog();
 </script>
 </body>

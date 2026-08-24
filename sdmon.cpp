@@ -152,71 +152,154 @@ bool sdBegin() {
 // Protocolo de carga por USB (para llenar la SD sin sacarla de la placa):
 //   PUT <ruta> <bytes>\n  + datos crudos   -> "OK" ... "DONE"
 //   LS\n                                   -> listado de /packs
+//   INFO\n                                 -> firmware + id/revision/tamano/ruta
+//   RM <ruta>\n                            -> borra un paquete de /packs
+//   FORMAT\n                              -> vacia la tarjeta y recrea /packs
 // Usar con tools/send_sd.py
 // ---------------------------------------------------------------------------
+
+static bool isPackPath(String path) {
+  if (!path.startsWith("/")) path = "/" + path;
+  if (!path.startsWith("/packs/") || path.substring(7).indexOf('/') >= 0 ||
+      path.indexOf("..") >= 0) return false;
+  return path.endsWith(".tui") || path.endsWith(".tmove") ||
+         path.endsWith(".tregion");
+}
+
+static void sdSerialError(const char *reason) {
+  Serial.print("ERR ");
+  Serial.println(reason);
+}
+
+static bool emptyDirectory(const String &path, bool removeDirectory) {
+  bool ok = true;
+  while (ok) {
+    File dir = SD_MMC.open(path);
+    if (!dir || !dir.isDirectory()) return false;
+    File entry = dir.openNextFile();
+    if (!entry) { dir.close(); break; }
+    String child = entry.path();
+    bool directory = entry.isDirectory();
+    entry.close();
+    dir.close();
+    ok = directory ? emptyDirectory(child, true) : SD_MMC.remove(child);
+  }
+  return ok && (!removeDirectory || SD_MMC.rmdir(path));
+}
+
+void sdSerialPackInfo() {
+  if (!sdReady) { sdSerialError("SD_NOT_READY"); return; }
+  File dir = SD_MMC.open("/packs");
+  if (!dir || !dir.isDirectory()) { sdSerialError("LIST_FAILED"); return; }
+  File entry;
+  while ((entry = dir.openNextFile())) {
+    String path = entry.path();
+    ContentPackInfo info{};
+    if (!entry.isDirectory() && isPackPath(path) && contentReadPackInfo(path.c_str(), info)) {
+      Serial.printf("PACK\t%s\t%lu\t%u\t%s\n", info.id, (unsigned long)info.revision,
+                    (uint32_t)entry.size(), path.c_str());
+    }
+    entry.close();
+  }
+  dir.close();
+  Serial.println("DONE");
+}
 
 bool sdSerialCommand(const String &line) {
   if (line.startsWith("PUT ")) {
     int sp = line.lastIndexOf(' ');
-    if (sp < 5) { Serial.println("ERR"); return true; }
+    if (sp < 5) { sdSerialError("INVALID_REQUEST"); return true; }
     String path = line.substring(4, sp);
     uint32_t size = line.substring(sp + 1).toInt();
     if (!path.startsWith("/")) path = "/" + path;
-    bool packPath = path.startsWith("/packs/") &&
-                    (path.endsWith(".tui") || path.endsWith(".tmove") ||
-                     path.endsWith(".tregion"));
-    if (!sdReady || path.indexOf("..") >= 0 || !packPath ||
-        size == 0 || size > 256UL * 1024 * 1024) {
-      Serial.println("ERR");
-      return true;
+    if (!sdReady) { sdSerialError("SD_NOT_READY"); return true; }
+    if (!isPackPath(path)) { sdSerialError("INVALID_PACK_PATH"); return true; }
+    if (size == 0 || size > 256UL * 1024 * 1024) {
+      sdSerialError("INVALID_PACK_SIZE"); return true;
     }
     String tempPath = path + ".part";
-    SD_MMC.remove(tempPath);
+    if (SD_MMC.exists(tempPath) && !SD_MMC.remove(tempPath)) {
+      sdSerialError("TEMP_CLEANUP_FAILED"); return true;
+    }
     File f = SD_MMC.open(tempPath, FILE_WRITE);
     if (!f) {
-      Serial.println("ERR");
-      return true;
+      sdSerialError("OPEN_FAILED"); return true;
     }
     Serial.println("OK");
     static uint8_t buf[2048];
     uint32_t remaining = size;
+    const char *failure = nullptr;
     Serial.setTimeout(5000);
     while (remaining > 0) {
       size_t want = remaining > sizeof(buf) ? sizeof(buf) : remaining;
       size_t n = Serial.readBytes(buf, want);
-      if (n == 0) break;  // timeout
-      if (f.write(buf, n) != n) break;
+      if (n == 0) { failure = "READ_TIMEOUT"; break; }
+      if (f.write(buf, n) != n) { failure = "WRITE_FAILED"; break; }
       remaining -= n;
       Serial.println("#");  // ack: listo para el siguiente bloque
     }
     f.close();
     Serial.setTimeout(1000);
-    bool valid = remaining == 0 && contentValidatePackFile(tempPath.c_str());
+    bool valid = failure == nullptr && remaining == 0;
+    if (valid && !contentValidatePackFile(tempPath.c_str())) {
+      valid = false;
+      failure = "PACK_VALIDATION_FAILED";
+    }
     if (valid) {
       String backupPath = path + ".bak";
       SD_MMC.remove(backupPath);
       bool hadOld = SD_MMC.exists(path);
-      if (hadOld && !SD_MMC.rename(path, backupPath)) valid = false;
+      if (hadOld && !SD_MMC.rename(path, backupPath)) {
+        valid = false;
+        failure = "BACKUP_FAILED";
+      }
       if (valid && !SD_MMC.rename(tempPath, path)) {
         if (hadOld) SD_MMC.rename(backupPath, path);
         valid = false;
+        failure = "REPLACE_FAILED";
       }
       if (valid) SD_MMC.remove(backupPath);
     }
     if (!valid) SD_MMC.remove(tempPath);
     sdDirty = valid;
-    Serial.println(valid ? "DONE" : "ERR");
+    if (valid) Serial.println("DONE");
+    else sdSerialError(failure ? failure : "UPLOAD_FAILED");
     return true;
   } else if (line == "LS") {
+    if (!sdReady) { sdSerialError("SD_NOT_READY"); return true; }
     File dir = SD_MMC.open("/packs");
-    if (dir) {
-      File e;
-      while ((e = dir.openNextFile())) {
-        Serial.printf("%s %u\n", e.name(), (uint32_t)e.size());
-        e.close();
-      }
-      dir.close();
+    if (!dir || !dir.isDirectory()) {
+      sdSerialError("LIST_FAILED"); return true;
     }
+    File e;
+    while ((e = dir.openNextFile())) {
+      String path = e.path();
+      if (!e.isDirectory() && isPackPath(path))
+        Serial.printf("%s %u\n", path.c_str(), (uint32_t)e.size());
+      e.close();
+    }
+    dir.close();
+    Serial.println("DONE");
+    return true;
+  } else if (line.startsWith("RM ")) {
+    String path = line.substring(3);
+    if (!path.startsWith("/")) path = "/" + path;
+    if (!sdReady) { sdSerialError("SD_NOT_READY"); return true; }
+    if (!isPackPath(path)) { sdSerialError("INVALID_PACK_PATH"); return true; }
+    if (!SD_MMC.exists(path)) { sdSerialError("PACK_NOT_FOUND"); return true; }
+    if (!SD_MMC.remove(path)) { sdSerialError("DELETE_FAILED"); return true; }
+    sdDirty = true;
+    Serial.println("DONE");
+    return true;
+  } else if (line == "FORMAT") {
+    if (!sdReady) { sdSerialError("SD_NOT_READY"); return true; }
+    if (!emptyDirectory("/", false)) {
+      sdSerialError("FORMAT_ERASE_FAILED"); return true;
+    }
+    if (!SD_MMC.mkdir("/packs")) {
+      sdSerialError("FORMAT_INIT_FAILED"); return true;
+    }
+    sdDirty = true;
     Serial.println("DONE");
     return true;
   }

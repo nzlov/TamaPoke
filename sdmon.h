@@ -45,6 +45,7 @@ extern SdThumbs thumbs;
 
 bool sdBegin();                 // monta la SD (SDMMC 1-bit), true si hay tarjeta
 void sdScanRegionArt();         // narrows gRegionArt to the packs actually present
-bool sdSerialCommand(const String &line);  // PUT/LS por USB; true si la maneja
+bool sdSerialCommand(const String &line);  // PUT/LS/RM/FORMAT por USB; true si la maneja
+void sdSerialPackInfo();        // PACK records + DONE for the INFO serial command
 extern bool sdReady;
 extern bool sdDirty;  // true tras recibir archivos: recargar sprite

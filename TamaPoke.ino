@@ -1039,6 +1039,11 @@ void handleSerial() {
   String line = Serial.readStringUntil('\n');
   line.trim();
   if (line.length() == 0) return;
+  if (line == "INFO") {
+    Serial.printf("FW\t%s\n", FW_VERSION);
+    sdSerialPackInfo();
+    return;
+  }
   if (sdSerialCommand(line)) return;
 
   if (line == "HATCH") {

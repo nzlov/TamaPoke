@@ -249,17 +249,23 @@ static bool payloadCrc(Reader &reader, uint32_t offset, uint32_t expected) {
   return crc == expected;
 }
 
+static bool readPackHeader(const char *path, Reader &reader, uint8_t common[COMMON_SIZE]) {
+  if (!path || !reader.open(path) || !reader.readAt(0, common, COMMON_SIZE)) return false;
+  uint8_t kind = common[6];
+  uint16_t headerSize = rd16(common + 24), sectionCount = rd16(common + 26);
+  return memcmp(common, "TPPK", 4) == 0 && rd16(common + 4) == CONTENT_PACK_ABI &&
+         kind >= CONTENT_PACK_UI && kind <= CONTENT_PACK_MOVE &&
+         rd32(common + 8) == reader.size && sectionCount > 0 && sectionCount <= MAX_SECTIONS &&
+         headerSize == COMMON_SIZE + sectionCount * SECTION_SIZE;
+}
+
 static bool parsePack(const char *path, PackRef &out) {
   Reader reader;
   uint8_t common[COMMON_SIZE];
-  if (!reader.open(path) || !reader.readAt(0, common, sizeof(common))) return false;
-  if (memcmp(common, "TPPK", 4) != 0 || rd16(common + 4) != CONTENT_PACK_ABI) return false;
+  if (!readPackHeader(path, reader, common)) return false;
   uint8_t kind = common[6];
   uint32_t fileSize = rd32(common + 8), expectedCrc = rd32(common + 12);
   uint16_t headerSize = rd16(common + 24), sectionCount = rd16(common + 26);
-  if (kind < CONTENT_PACK_UI || kind > CONTENT_PACK_MOVE || fileSize != reader.size ||
-      sectionCount == 0 || sectionCount > MAX_SECTIONS ||
-      headerSize != COMMON_SIZE + sectionCount * SECTION_SIZE) return false;
   if (!payloadCrc(reader, headerSize, expectedCrc)) return false;
 
   memset(&out, 0, sizeof(out));
@@ -899,6 +905,16 @@ bool contentBegin() {
 bool contentValidatePackFile(const char *path) {
   PackRef parsed;
   return path && parsePack(path, parsed);
+}
+
+bool contentReadPackInfo(const char *path, ContentPackInfo &out) {
+  Reader reader;
+  uint8_t common[COMMON_SIZE];
+  if (!readPackHeader(path, reader, common)) return false;
+  memcpy(out.id, common + 28, 20);
+  out.id[20] = 0;
+  out.revision = rd32(common + 16);
+  return out.id[0] != 0;
 }
 
 bool contentReady() {

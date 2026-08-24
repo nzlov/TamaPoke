@@ -28,7 +28,7 @@ def wait_line(ser, expect, timeout=10):
         print(f"  placa: {line}")
         if line == expect:
             return True
-        if line == 'ERR':
+        if line == 'ERR' or line.startswith('ERR '):
             return False
     return False
 
@@ -78,12 +78,14 @@ def main():
                 ser.write(chunk)
                 # espera el ack '#' del bloque
                 ack = ''
-                while ack not in ('#', 'ERR'):
+                while ack != '#' and ack != 'ERR' and not ack.startswith('ERR '):
                     ack = ser.readline().decode(errors='replace').strip()
                     if ack == '':
                         ok = False
                         break
-                if not ok or ack == 'ERR':
+                if ack == 'ERR' or ack.startswith('ERR '):
+                    print(f"  placa: {ack}")
+                if not ok or ack == 'ERR' or ack.startswith('ERR '):
                     ok = False
                     break
         if ok and wait_line(ser, 'DONE', 30):
