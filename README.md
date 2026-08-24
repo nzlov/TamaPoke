@@ -1,5 +1,7 @@
 # TamaPoke
 
+English | [简体中文](README.zh-CN.md)
+
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://dylanpdao.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
@@ -28,6 +30,48 @@ and complete them all (shinies included).
 > CC BY-NC-SA. See **[License](#license)** and **Credits**.
 
 🔴 **3D-printed Pokéball case + print profiles → [on MakerWorld](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)** · flash it in your browser → **[web installer](https://dylanpdao.github.io/TamaPoke/web/)**
+
+## Latest release and package split
+
+The current release covers Kanto, Johto, Hoenn and Sinnoh: **493 species and
+their shiny forms**, with a complete Simplified Chinese UI, names and
+descriptions. The recommended installation path is the **[web
+installer](https://dylanpdao.github.io/TamaPoke/web/)**: flash the firmware,
+then deploy the selected languages and regions to the microSD. Arduino IDE is
+not required.
+
+Language, move and regional content now lives in independently deployable
+runtime packages. Install only the languages and regions you need, and update
+content without recompiling the firmware:
+
+| Package | Contents | Required |
+|---|---|---|
+| UI (`.tui`) | UI strings, layout metrics and fonts; Simplified Chinese is `ui-zh-CN.tui` | At least one |
+| Moves (`.tmove`) | Move mechanics, learnsets, type chart, names and descriptions | Yes |
+| Region (`.tregion`) | Species data, names and descriptions, animated/shiny sprites, thumbnails, trainers, gyms and badges | At least one |
+
+The installer reads `web/packs/index.json` and checks each selection's
+dependencies against both the packages already on the device and those selected
+for this deployment. If anything is missing, it names the dependency and lets
+you cancel or explicitly force the partial deployment. Regions absent from the
+card remain locked and out of the egg pool. At boot the firmware validates each
+package's ABI and CRC. Missing required packages open the built-in USB recovery
+screen instead of an incomplete Pokédex, and an interrupted upload cannot
+replace a working package.
+
+After connecting, the installer also lists deployed package IDs and revisions,
+can delete an individual package, and can format the microSD. Delete and format
+operations require confirmation; restart the device after changing the card.
+
+> **Upgrade note:** the first migration to runtime packages clears saves made by
+> older firmware. For later same-schema updates, leave **Erase device** unchecked
+> to preserve the current save; flashing does not delete packages on the microSD.
+> Region packages are large (a 40 MB package normally takes 10–15 minutes over
+> USB serial). Restart the device after deployment.
+
+For package generation and validation, see [Generate and load the data packs
+yourself](#generate-and-load-the-data-packs-yourself) and [Runtime data
+packs](#runtime-data-packs).
 
 ## Screens
 
