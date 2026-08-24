@@ -136,7 +136,7 @@ void sdScanRegionArt() {
 bool sdBegin() {
   SD_MMC.setPins(SDMMC_CLK, SDMMC_CMD, SDMMC_DATA);
   sdReady = SD_MMC.begin("/sdcard", true /* modo 1-bit */,
-                         false /* nunca formatea implicitamente */, SDMMC_FREQ_DEFAULT);
+                         false /* nunca formatea implicitamente */);
   if (sdReady) {
     Serial.printf("SD montada: %llu MB\n", SD_MMC.cardSize() / (1024ULL * 1024ULL));
     SD_MMC.mkdir("/packs");
@@ -258,14 +258,21 @@ bool sdSerialCommand(const String &line) {
       remaining -= n;
       Serial.println("#");  // ack: listo para el siguiente bloque
     }
+    f.flush();
     f.close();
     Serial.setTimeout(1000);
     bool valid = failure == nullptr && remaining == 0;
     ContentPackValidation validation = CONTENT_PACK_VALID;
-    if (valid &&
-        (validation = contentValidatePackFile(tempPath.c_str())) != CONTENT_PACK_VALID) {
-      valid = false;
-      failure = packValidationError(validation);
+    if (valid) {
+      for (uint8_t attempt = 0; attempt < 4; attempt++) {
+        validation = contentValidatePackFile(tempPath.c_str());
+        if (validation != CONTENT_PACK_OPEN_FAILED) break;
+        delay(50);
+      }
+      if (validation != CONTENT_PACK_VALID) {
+        valid = false;
+        failure = packValidationError(validation);
+      }
     }
     if (valid) {
       String backupPath = path + ".bak";

@@ -101,13 +101,26 @@ for command in ('line == "LS"', 'line.startsWith("RM ")', 'line == "FORMAT"'):
         raise SystemExit(f"firmware is missing SD management command {command!r}")
 if 'isPackPath(path)' not in sdmon or 'emptyDirectory("/", false)' not in sdmon:
     raise SystemExit("firmware SD management must restrict deletion and erase all card contents")
+if sdmon.count('SD_MMC.begin(') != 1:
+    raise SystemExit("firmware must have exactly one audited microSD mount path")
 mount = sdmon.split('SD_MMC.begin("/sdcard"', 1)[1].split(';', 1)[0]
 if 'false /* nunca formatea implicitamente */' not in mount:
     raise SystemExit("firmware must never format the microSD implicitly after a mount failure")
-if 'SDMMC_FREQ_DEFAULT' not in mount:
-    raise SystemExit("firmware must use the reliable default SD_MMC clock for large packs")
+if 'SDMMC_FREQ_DEFAULT' in mount:
+    raise SystemExit("firmware must not force the reduced SD_MMC clock")
 if sdmon.count('serialPackPath(') != 3 or 'String("/packs/") + entry.name()' not in sdmon:
     raise SystemExit("firmware must normalize INFO and LS entries to protocol pack paths")
+upload_handler = sdmon.split('if (line.startsWith("PUT ")) {', 1)[1].split(
+    '} else if (line == "LS")', 1)[0]
+if 'f.flush();' not in upload_handler or 'f.close();' not in upload_handler:
+    raise SystemExit("firmware must sync and close an uploaded pack before validation")
+if upload_handler.index('f.flush();') > upload_handler.index('f.close();'):
+    raise SystemExit("firmware must sync an uploaded pack before closing and reopening it")
+for fragment in ('validation != CONTENT_PACK_OPEN_FAILED', 'attempt < 4', 'delay(50)'):
+    if fragment not in upload_handler:
+        raise SystemExit("firmware must retry only transient uploaded-pack reopen failures")
+if "waitFor('DONE', 120000" not in html:
+    raise SystemExit("installer must allow enough time to sync and validate large packs")
 if 'Serial.printf("PACK\\t%s\\t%lu\\t%u\\t%s' not in sdmon:
     raise SystemExit("firmware must report installed package ids and revisions")
 if 'contentReadPackInfo' not in content or 'line == "INFO"' not in firmware or 'FW\\t%s' not in firmware:

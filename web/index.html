@@ -466,7 +466,7 @@ async function sendOne(name, data, progress) {
     await waitFor('#', 6000, `writing ${name} at byte ${offset}`);
     progress?.(Math.min(offset + 2048, data.length));
   }
-  await waitFor('DONE', 30000, `validating ${name}`);
+  await waitFor('DONE', 120000, `validating ${name}`);
 }
 
 async function runCommand(command, timeoutMs = 10000) {
