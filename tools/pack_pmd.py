@@ -36,7 +36,8 @@ DEX_COUNT = max(row[0] for row in DEX)
 
 OUT = os.path.join(os.path.dirname(__file__), 'sdcard', 'mons')
 CACHE = os.path.join(os.path.dirname(__file__), 'pmd_cache')
-BASE = 'https://raw.githubusercontent.com/PMDCollab/SpriteCollab/master/sprite'
+PMD_REVISION = '1408504143965ec1ea9c5adc78e39db5a5f43360'
+BASE = f'https://raw.githubusercontent.com/PMDCollab/SpriteCollab/{PMD_REVISION}/sprite'
 SLOW = 1.4          # el ritmo original de PMD se siente rapido en el tamagotchi
 MIN_MS = 70
 ALPHA_T = 128
@@ -125,7 +126,9 @@ def pack(dexnum, shiny=False):
         data = bytearray()
         for i in range(nf):
             fr = im.crop((i * fw, r * fh, (i + 1) * fw, (r + 1) * fh))
-            for px in fr.getdata():
+            pixels = (fr.get_flattened_data()
+                      if hasattr(fr, 'get_flattened_data') else fr.getdata())
+            for px in pixels:
                 if px[3] < ALPHA_T:
                     data.append(0xFF)
                     continue

@@ -1,18 +1,36 @@
 #!/bin/bash
-# Regenera web/firmware/tamapoke.bin (firmware combinado) para el instalador web.
+# Regenera el firmware y los paquetes para el instalador web.
 # Uso: bash tools/build_web.sh
-set -e
+set -eu
 cd "$(dirname "$0")/.."
-FQBN="esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB"
+ROOT="$PWD"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+# GLUE: Arduino requires the sketch directory and main .ino to share a name,
+# while task worktrees deliberately use descriptive directory names. The mirror
+# can disappear when Arduino removes that naming constraint.
+SKETCH="$WORK/TamaPoke"
+mkdir "$SKETCH"
+for src in "$ROOT"/*.ino "$ROOT"/*.cpp "$ROOT"/*.h; do
+  ln -s "$src" "$SKETCH/"
+done
+for dir in src freetype third_party; do
+  [ ! -d "$ROOT/$dir" ] || ln -s "$ROOT/$dir" "$SKETCH/$dir"
+done
+ln -s "$ROOT/sketch.yaml" "$SKETCH/sketch.yaml"
+
+B="$WORK/arduino-build"
 
 echo "Compilando..."
-arduino-cli compile --fqbn "$FQBN" --export-binaries .
+arduino-cli compile --profile esp32s3 --build-path "$B" "$SKETCH"
 
-B=build/esp32.esp32.esp32s3
 echo "Fusionando binarios..."
 # esptool is not on PATH; the Arduino core ships one and that is the version
 # that matches the build we just made.
-ESPTOOL="$(ls ~/Library/Arduino15/packages/esp32/tools/esptool_py/*/esptool 2>/dev/null | head -1)"
+ARDUINO_DATA="$(arduino-cli config get directories.data)"
+ESPTOOL="$(find "$ARDUINO_DATA/internal" "$ARDUINO_DATA/packages/esp32/tools/esptool_py" \
+  -type f -name esptool -perm -u+x 2>/dev/null | sort -V | tail -1)"
 [ -z "$ESPTOOL" ] && ESPTOOL="$(command -v esptool.py || command -v esptool)"
 [ -z "$ESPTOOL" ] && { echo "no esptool found"; exit 1; }
 
@@ -23,6 +41,7 @@ ESPTOOL="$(ls ~/Library/Arduino15/packages/esp32/tools/esptool_py/*/esptool 2>/d
 # new_install_prompt_erase:false does not prevent it (that flag only governs the
 # extra full-chip erase prompt). Shipping the parts at their own offsets leaves
 # 0x9000..0xE000 alone, exactly as arduino-cli's USB upload always has.
+mkdir -p web/firmware
 cp "$B/TamaPoke.ino.bootloader.bin" web/firmware/bootloader.bin
 cp "$B/TamaPoke.ino.partitions.bin" web/firmware/partitions.bin
 cp "$B/boot_app0.bin"               web/firmware/boot_app0.bin

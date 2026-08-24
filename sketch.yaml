@@ -1,0 +1,12 @@
+profiles:
+  esp32s3:
+    fqbn: esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB
+    platforms:
+      - platform: esp32:esp32 (3.3.11)
+        platform_index_url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+    libraries:
+      - GFX Library for Arduino (1.6.7)
+      - SensorLib (0.4.1)
+      - XPowersLib (0.3.3)
+
+default_profile: esp32s3

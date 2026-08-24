@@ -28,6 +28,10 @@ boot catalogue can be rebuilt.
 - `packs/index.json` — generated package catalogue.
 - `packs/*.tui`, `packs/*.tmove`, `packs/*.tregion` — generated deployable data.
 
+The files under `firmware/` and `packs/` are generated outputs and are not
+tracked by Git. The GitHub Pages workflow rebuilds them from the pinned Arduino
+profile and PMD SpriteCollab revision before deployment.
+
 Regional packs are generated directly from the per-species TPK2/TPTH sources;
 there is no regional intermediate bundle.
 
