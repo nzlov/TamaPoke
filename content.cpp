@@ -173,13 +173,17 @@ struct Reader {
     return true;
   }
 
-  bool readAt(uint32_t offset, void *out, size_t length) {
-    if (!file || offset > size || length > size - offset) return false;
+  bool seek(uint32_t offset) {
+    if (!file || offset > size) return false;
 #if defined(ESP32)
-    if (!file.seek(offset)) return false;
+    return file.seek(offset);
 #else
-    if (fseek(file, (long)offset, SEEK_SET) != 0) return false;
+    return fseek(file, (long)offset, SEEK_SET) == 0;
 #endif
+  }
+
+  bool read(void *out, size_t length) {
+    if (!file) return false;
     uint8_t *cursor = (uint8_t *)out;
     while (length > 0) {
 #if defined(ESP32)
@@ -192,6 +196,10 @@ struct Reader {
       length -= count;
     }
     return true;
+  }
+
+  bool readAt(uint32_t offset, void *out, size_t length) {
+    return offset <= size && length <= size - offset && seek(offset) && read(out, length);
   }
 
   void close() {
@@ -248,11 +256,12 @@ static const SectionRef *findSection(const PackRef &pack, const char *tag) {
 
 static bool payloadCrc(Reader &reader, uint32_t offset, uint32_t expected) {
   uint8_t buffer[4096];
+  if (!reader.seek(offset)) return false;
   uint32_t crc = 0, position = offset;
   while (position < reader.size) {
     uint32_t take = reader.size - position;
     if (take > sizeof(buffer)) take = sizeof(buffer);
-    if (!reader.readAt(position, buffer, take)) return false;
+    if (!reader.read(buffer, take)) return false;
     crc = crcStep(crc, buffer, take);
     position += take;
   }

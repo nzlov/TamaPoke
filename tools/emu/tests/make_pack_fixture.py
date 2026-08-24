@@ -7,7 +7,8 @@ import sys
 from pathlib import Path
 
 
-payload = bytes(range(256)) * 8
+# Large enough to cross several of the firmware reader's 4 KiB CRC chunks.
+payload = bytes(range(256)) * 80
 common = struct.Struct("<4sHBBIIIIHH20s")
 section = struct.Struct("<4sIII")
 header_size = common.size + section.size

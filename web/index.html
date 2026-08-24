@@ -188,18 +188,54 @@ const supported = 'serial' in navigator;
 if (!supported) { document.getElementById('unsupported').style.display='block';
   document.getElementById('connect').disabled = true; }
 
-let port, reader, writer, lineBuf = '', serialBusy = false;
+let port, reader, writer, serialBusy = false;
+let serialLines = [], serialWaiters = [];
+
+function receiveSerialLine(line) {
+  const waiter = serialWaiters.shift();
+  if (!waiter) {
+    serialLines.push(line);
+    return;
+  }
+  clearTimeout(waiter.timer);
+  waiter.resolve(line);
+}
+
+async function pumpSerial(activeReader) {
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    while (true) {
+      const { value, done } = await activeReader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      for (let newline; (newline = buffer.indexOf('\n')) >= 0;) {
+        receiveSerialLine(buffer.slice(0, newline).trim());
+        buffer = buffer.slice(newline + 1);
+      }
+    }
+  } catch (error) {
+    log(`Serial receive stopped: ${error.message}`);
+  } finally {
+    for (const waiter of serialWaiters.splice(0)) {
+      clearTimeout(waiter.timer);
+      waiter.resolve(null);
+    }
+  }
+}
 
 async function readLine(timeoutMs = 6000) {
-  const deadline = Date.now() + timeoutMs;
-  while (true) {
-    const nl = lineBuf.indexOf('\n');
-    if (nl >= 0) { const l = lineBuf.slice(0, nl).trim(); lineBuf = lineBuf.slice(nl + 1); return l; }
-    if (Date.now() > deadline) return null;
-    const { value, done } = await reader.read();
-    if (done) return null;
-    lineBuf += new TextDecoder().decode(value);
-  }
+  if (serialLines.length) return serialLines.shift();
+  if (timeoutMs <= 0) return null;
+  return new Promise(resolve => {
+    const waiter = { resolve, timer: 0 };
+    waiter.timer = setTimeout(() => {
+      const index = serialWaiters.indexOf(waiter);
+      if (index >= 0) serialWaiters.splice(index, 1);
+      resolve(null);
+    }, timeoutMs);
+    serialWaiters.push(waiter);
+  });
 }
 
 async function waitFor(token, timeoutMs = 6000, action = token) {
@@ -473,6 +509,7 @@ async function queryInstalledPacks() {
 async function refreshInstalledPacks() {
   if (!writer) return;
   setSdManagementBusy(true);
+  installedPacksEl.innerHTML = '<span class="note">Refreshing installed packs…</span>';
   try {
     const rows = await queryInstalledPacks();
     installedPackIds = new Set(rows.map(pack => pack.id || packageByFile.get(pack.name)?.id)
@@ -509,7 +546,7 @@ async function refreshInstalledPacks() {
     }
   } catch (error) {
     installedPacksKnown = false;
-    installedPacksEl.textContent = '';
+    installedPacksEl.innerHTML = '<span class="note">Could not refresh installed packs.</span>';
     log(`Could not list installed packs: ${error.message}`);
   } finally {
     setSdManagementBusy(false);
@@ -596,7 +633,8 @@ document.getElementById('connect').onclick = async () => {
     await port.open({ baudRate: 115200 });
     reader = port.readable.getReader();
     writer = port.writable.getWriter();
-    lineBuf = '';
+    serialLines = [];
+    pumpSerial(reader);
     log('Connected. Choose packs, then deploy.');
     document.getElementById('files').disabled = false;
     document.getElementById('connect').disabled = true;

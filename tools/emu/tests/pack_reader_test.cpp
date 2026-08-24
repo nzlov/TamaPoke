@@ -20,8 +20,18 @@ extern "C" size_t __wrap_fread(void *buffer, size_t size, size_t count, FILE *st
   return __real_fread(buffer, size, count, stream);
 }
 
+static int seekCount = 0;
+extern "C" int __real_fseek(FILE *, long, int);
+extern "C" int __wrap_fseek(FILE *stream, long offset, int origin) {
+  seekCount++;
+  return __real_fseek(stream, offset, origin);
+}
+
 int main() {
   bool ok = contentValidatePackFile(PACK_READER_FIXTURE);
+  bool sequential = seekCount == 5;
   printf("%s  pack validation tolerates short filesystem reads\n", ok ? "PASS" : "FAIL");
-  return ok ? 0 : 1;
+  printf("%s  payload CRC uses one sequential filesystem scan\n",
+         sequential ? "PASS" : "FAIL");
+  return ok && sequential ? 0 : 1;
 }

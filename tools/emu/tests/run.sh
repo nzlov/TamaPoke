@@ -98,7 +98,7 @@ for src in "$HERE"/*_test.cpp; do
   elif [ "$name" = pack_reader_test ]; then
     python3 "$HERE/make_pack_fixture.py" "$OUT/reader-test.tregion"
     test_flags+=(-DPACK_READER_FIXTURE="\"$OUT/reader-test.tregion\"")
-    extra+=(-Wl,--wrap=fread)
+    extra+=(-Wl,--wrap=fread -Wl,--wrap=fseek)
   fi
   # every test starts from a clean NVS so one cannot leak state into the next
   rm -f "$OUT/tamapoke.nvs"

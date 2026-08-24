@@ -58,6 +58,8 @@ required_fragments = [
     "formatOverlay.hidden = true", "document.body.setAttribute('aria-busy', 'true')",
     "document.body.removeAttribute('aria-busy')",
     'id="build-info"', "build-info.json", "info.commit.slice(0, 7)", "info.date",
+    "pumpSerial(reader)", "serialWaiters", "Refreshing installed packs…",
+    "Could not refresh installed packs.",
 ]
 for fragment in required_fragments:
     if fragment not in html:
@@ -88,6 +90,10 @@ for fragment in ('BUILD_COMMIT: ${{ github.sha }}', '--format=%cs',
 for obsolete in ("data-region=", "parsePak(", "sprites-${region}", "mons/"):
     if obsolete in html:
         raise SystemExit(f"installer still contains obsolete sprite deployment: {obsolete}")
+
+read_line = html.split("async function readLine", 1)[1].split("async function waitFor", 1)[0]
+if "reader.read()" in read_line or "setTimeout" not in read_line:
+    raise SystemExit("serial line timeouts must not block directly on reader.read()")
 
 for command in ('line == "LS"', 'line.startsWith("RM ")', 'line == "FORMAT"'):
     if command not in sdmon:
