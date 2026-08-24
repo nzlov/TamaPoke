@@ -8,6 +8,7 @@
 #include "pet.h"
 #include "party.h"
 #include "battle.h"
+#include "i18n.h"
 #include <chrono>
 #include <string>
 #include <deque>
@@ -136,13 +137,13 @@ void nvsSave(const char *path) {
 }
 
 // the sketch
-void emuSetSpriteDir(const char *);
 void startBattle(int16_t dex, uint8_t lvl);
 extern Combatant btlYou, btlFoe;
 extern uint32_t btlLungeUntil[2], btlHitUntil[2];
 extern uint8_t btlMenu;
 void startTrainerBattle(uint8_t idx, bool hard);
 void onTap(int16_t x, int16_t y);   // the first-boot shots tap their way in
+void refreshUiFont();
 extern bool gymOpen, playerOpen;
 extern bool galleryDirty;
 extern uint8_t galleryRegion;
@@ -175,6 +176,9 @@ extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyOpen, partyPick, trainOpen, movePickOpen;
 extern uint8_t cardPage;
+extern int16_t galleryDetail;
+extern bool moveInfoOpen;
+extern uint8_t movePickSlot;
 
 #define PANEL 466
 
@@ -198,8 +202,15 @@ static void writePPM(const char *path) {
   printf("wrote %s\n", path);
 }
 
-static int shotMode(const char *screen, const char *out, int lvl, int iv, int dex) {
+static int shotMode(const char *screen, const char *out, int lvl, int iv, int dex,
+                    const char *locale) {
   setup();
+  if (locale) {
+    int8_t selected = uiFindLocale(locale);
+    if (selected < 0) { fprintf(stderr, "unknown installed locale: %s\n", locale); return 1; }
+    setLang((Lang)selected);
+    refreshUiFont();
+  }
   for (int i = 0; i < 4; i++) loop();          // let the sketch settle
   bool firstBoot = !strcmp(screen, "starter") || !strcmp(screen, "starterj") ||
                    !strcmp(screen, "region");
@@ -246,10 +257,15 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     galleryRegion = 1;
     for (int d = 1; d <= 200; d++) pet.dbgHatchAs(d, false);
   }
+  else if (!strcmp(screen, "dexdetail")) {
+    galleryOpen = true;
+    galleryDetail = dex;
+  }
   else if (!strcmp(screen, "clock"))   clockOpen = true;
   else if (!strcmp(screen, "menu"))    menuOpen = true;
   else if (!strcmp(screen, "train"))   trainOpen = true;
   else if (!strcmp(screen, "moves"))   { cardOpen = true; cardPage = 2; }
+  else if (!strcmp(screen, "moveinfo")) { movePickSlot = 0; moveInfoOpen = true; }
   else if (!strcmp(screen, "movepick")) { movePickOpen = true; }
   else if (!strcmp(screen, "battle2")) { startBattle(9, 50); }
   else if (!strcmp(screen, "btlmenu")) { startTrainerBattle(3, false); }
@@ -396,6 +412,7 @@ int main(int argc, char **argv) {
   g_argv = argv;
   const char *save = "tamapoke.nvs";
   const char *shot = nullptr, *shotOut = "shot.ppm";
+  const char *locale = nullptr;
   const char *wav = nullptr, *demo = nullptr;
   int shotLvl = 0, shotIv = -1, shotDex = 6;
   for (int i = 1; i < argc; i++) {
@@ -406,15 +423,15 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[i], "--demo") && i + 1 < argc) demo = argv[++i];
     else if (!strcmp(argv[i], "--shot") && i + 1 < argc) shot = argv[++i];
     else if (!strcmp(argv[i], "--out") && i + 1 < argc) shotOut = argv[++i];
+    else if (!strcmp(argv[i], "--lang") && i + 1 < argc) locale = argv[++i];
     else if (!strcmp(argv[i], "--lvl") && i + 1 < argc) shotLvl = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--iv") && i + 1 < argc) shotIv = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--dex") && i + 1 < argc) shotDex = atoi(argv[++i]);
-    else if (!strcmp(argv[i], "--sprites") && i + 1 < argc) emuSetSpriteDir(argv[++i]);
     else if (!strcmp(argv[i], "--wipe")) { remove(save); }
   }
   // Audio preview: no SDL, no board -- just a file you can listen to.
   if (wav) return wavMain(wav, demo);
-  if (shot) return shotMode(shot, shotOut, shotLvl, shotIv, shotDex);   // headless: no SDL at all
+  if (shot) return shotMode(shot, shotOut, shotLvl, shotIv, shotDex, locale);  // headless: no SDL
   g_crashFile = std::string(save) + ".crash";
   crashRestore();     // a simulated panic left its breadcrumb here
   nvsLoad(save);
@@ -433,6 +450,11 @@ int main(int argc, char **argv) {
          emuTimeScale());
 
   setup();
+  if (locale) {
+    int8_t selected = uiFindLocale(locale);
+    if (selected >= 0) { setLang((Lang)selected); refreshUiFont(); }
+    else fprintf(stderr, "unknown installed locale: %s\n", locale);
+  }
 
   bool run = true;
   std::vector<uint32_t> px(PANEL * PANEL);

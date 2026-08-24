@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Genera /mons/thumbs.bin: miniaturas 40x40 de todo el dex para la galeria.
+"""Genera la entrada thumbs.bin para los paquetes regionales.
 
 Se derivan del frame frontal (Idle, frame 0) de los sprites PMD ya empaquetados
 (tools/sdcard/mons/pNNN.bin, formato TPK2) -> miniaturas legales (CC BY-NC), mismo
@@ -15,11 +15,11 @@ estilo que la pantalla principal. Formato TPTH (little-endian):
 import os
 import struct
 
-# Kept in step with dex.h rather than hardcoded: a thumbs.bin sized for 151 in a
-# 386-species build leaves the Johto and Hoenn galleries showing dex numbers.
-import re as _re
-_dexh = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'dex.h')).read()
-DEX_COUNT = int(_re.search(r'#define DEX_COUNT (\d+)', _dexh).group(1))
+# Build inputs follow the authoring catalogue; dex.h is now only a stable ABI.
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from dex_data import DEX
+DEX_COUNT = max(row[0] for row in DEX)
 
 
 DIR = os.path.join(os.path.dirname(__file__), 'sdcard', 'mons')

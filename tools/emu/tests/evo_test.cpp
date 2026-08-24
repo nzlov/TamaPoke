@@ -22,24 +22,25 @@ String FakeSerial::readStringUntil(char) { return String(""); }
 void sfxPlay(uint8_t) {}
 
 static void show(Pet &p, const char *when) {
-  printf("%-22s %-11s L%-3u :", when, DEX_TBL[p.speciesId].name, p.level());
+  printf("%-22s %-11s L%-3u :", when, dexEntry(p.speciesId).name, p.level());
   for (int i = 0; i < MOVE_SLOTS; i++)
-    printf(" %s", p.moves[i] ? MOVE_TBL[p.moves[i]].name : "-");
+    printf(" %s", p.moves[i] ? moveEntry(p.moves[i]).name : "-");
   printf("\n");
 }
 
 // what the species could learn by this level but does not know
 static void pending(Pet &p) {
-  uint8_t n = learnCount(p.speciesId), miss = 0;
+  uint16_t n = learnCount(p.speciesId);
+  uint8_t miss = 0;
   char buf[240];
   buf[0] = 0;
-  for (uint8_t i = 0; i < n; i++) {
+  for (uint16_t i = 0; i < n; i++) {
     uint8_t at = learnLevel(p.speciesId, i);
     if (at == 0 || at > p.level()) continue;      // TMs are on-demand, skip
-    uint8_t mv = learnMove(p.speciesId, i);
+    MoveId mv = learnMove(p.speciesId, i);
     if (p.knowsMove(mv)) continue;
     miss++;
-    snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), " %s@%u", MOVE_TBL[mv].name, at);
+    snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), " %s@%u", moveEntry(mv).name, at);
   }
   if (miss) printf("%-22s   MISSED level-up moves:%s\n", "", buf);
 }
@@ -60,8 +61,8 @@ int main() {
     p.checkLearnGates();
     while (p.hasLearnOffer()) {          // accept every offer into the last slot
       printf("%-22s   OFFER %s -> replacing %s\n", "",
-             MOVE_TBL[p.learnOffer()].name,
-             p.moves[MOVE_SLOTS-1] ? MOVE_TBL[p.moves[MOVE_SLOTS-1]].name : "-");
+             moveEntry(p.learnOffer()).name,
+             p.moves[MOVE_SLOTS-1] ? moveEntry(p.moves[MOVE_SLOTS-1]).name : "-");
       p.acceptLearn(MOVE_SLOTS - 1);
     }
     char when[40];
@@ -69,5 +70,17 @@ int main() {
     show(p, when);
     pending(p);
   }
-  return 0;
+
+  Pet branch;
+  branch.dbgHatchAs(133, false);
+  branch.ageMinutes = 29UL * MINUTES_PER_LEVEL;
+  branch.fullness = branch.joy = branch.energy = branch.hygiene = 100;
+  bool ready = branch.canEvolveNow();
+  branch.evolve();
+  bool validBranch = false;
+  for (uint8_t i = 0; i < evolutionCount(133); i++)
+    if (branch.speciesId == evolutionTarget(133, i)) validBranch = true;
+  printf("%s  branching evolution selects a target supplied by the pack\n",
+         ready && validBranch ? "PASS" : "FAIL");
+  return ready && validBranch ? 0 : 1;
 }

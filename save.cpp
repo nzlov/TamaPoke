@@ -7,7 +7,8 @@
 // it to the backup; save_test fails if a key exists in NVS and not in this list.
 const SaveField SAVE_FIELDS[] = {
   // the creature
-  { "init", SK_BOOL },  { "full", SK_U8 },    { "joy", SK_U8 },
+  { "savev", SK_U16 }, { "init", SK_BOOL },  { "full", SK_U8 },
+  { "joy", SK_U8 },
   { "ene", SK_U8 },     { "hyg", SK_U8 },     { "poop", SK_U8 },
   { "wgt", SK_U8 },     { "age", SK_U32 },    { "dexn", SK_I16 },
   { "eggT2", SK_I16 },  { "crack", SK_U8 },   { "mist", SK_U8 },
@@ -33,7 +34,7 @@ const SaveField SAVE_FIELDS[] = {
   // the banked creatures
   { "party", SK_BYTES }, { "box", SK_BYTES },
   // settings, so a restored device plays the way it did
-  { "lang", SK_U8 },    { "snd", SK_BOOL },   { "vol", SK_U8 },
+  { "locale", SK_STR }, { "snd", SK_BOOL },   { "vol", SK_U8 },
 };
 const uint16_t SAVE_FIELD_COUNT = sizeof(SAVE_FIELDS) / sizeof(SAVE_FIELDS[0]);
 

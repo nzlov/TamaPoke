@@ -1,13 +1,17 @@
 # Assets de TamaPoke — de dónde salen los sprites
 
 Los sprites NO se editan a mano ni se guardan aquí: se **descargan de sus
-fuentes y se empaquetan** con los scripts de `tools/`. Esta carpeta es solo
-documentación del flujo (antes contenía una propuesta de importación por PNG
-que quedó obsoleta).
+fuentes y se empaquetan** con los scripts de `tools/`. Esta carpeta es
+principalmente documentación del flujo. La excepción es
+`fonts/NotoSansCJKsc-Medium-subset.otf`: es la entrada OpenType del paquete
+chino `.tui`, no una fuente incorporada al firmware. Se regenera con
+`tools/subset_ui_font.py`; `fonts/OFL-NotoSansCJK.txt` conserva su licencia.
 
 ## El flujo real
 
-Dos formatos conviven en la microSD (`/mons/`), ambos derivados de PMD SpriteCollab:
+Los archivos TPK2/TPTH son entradas intermedias derivadas de PMD SpriteCollab.
+No se copian sueltos a la microSD: `gen_data_packs.py` los incorpora al paquete
+regional `.tregion` correspondiente.
 
 | Formato | Script | Fuente | Qué es |
 |---|---|---|---|
@@ -15,9 +19,17 @@ Dos formatos conviven en la microSD (`/mons/`), ambos derivados de PMD SpriteCol
 | **TPTH** `thumbs.bin` | `make_thumbs.py` | (deriva de los TPK2) | Miniaturas 40×40 de la galería |
 
 ```bash
-python3 tools/pack_pmd.py     # los 151 + shiny -> tools/sdcard/mons/p[s]NNN.bin
+python3 tools/pack_pmd.py     # el catalogo actual + shiny -> tools/sdcard/mons/p[s]NNN.bin
 python3 tools/make_thumbs.py  # -> tools/sdcard/mons/thumbs.bin
-python3 tools/send_sd.py      # envia todo a la SD de la placa por USB
+python3 tools/gen_data_packs.py # lee las entradas directamente y genera web/packs/*.tregion
+python3 tools/send_sd.py      # envia paquetes validados a /packs por USB
+```
+
+Para actualizar el subconjunto chino después de añadir textos localizados:
+
+```bash
+python3 tools/subset_ui_font.py /ruta/NotoSansCJK-Medium.ttc \
+  tools/assets/fonts/NotoSansCJKsc-Medium-subset.otf --font-number 2
 ```
 
 (`s` = variante shiny. `pack_pmd.py` acepta números de Pokédex sueltos,
@@ -25,11 +37,9 @@ p. ej. `python3 tools/pack_pmd.py 7 25`.)
 
 ## Formatos binarios
 
-Definidos en las cabeceras de cada empaquetador y parseados en `sdmon.cpp`:
+Definidos en las cabeceras de cada empaquetador; el firmware los lee dentro de
+las secciones del paquete regional:
 
-- **TPK1** (`SdMon`): `"TPK1"`, `u16 w,h,frames,frameMs`, `u16 palCount`,
-  `u16 pal[]` (RGB565), `u8 data[frames*w*h]` (índice de paleta, `0xFF`
-  transparente).
 - **TPK2** (`PmdMon`): `"TPK2"`, `u8 nActs`, `u16 palCount`, `u16 pal[]`, y por
   acción `u8 id,w,h,nFrames` + `u16 ms[nFrames]` + `u8 data[w*h*nFrames]`.
 - **TPTH** (`SdThumbs`): `"TPTH"`, `u16 count`, `u32 offset[count]`, y por
@@ -41,8 +51,9 @@ romper nada.
 ## Caché de descargas
 
 `pack_pmd.py` cachea los PNG originales de SpriteCollab en `tools/pmd_cache/`
-(ignorado por git, regenerable). Los `.bin` finales sí se versionan en
-`tools/sdcard/mons/` como respaldo.
+(ignorado por git, regenerable). Los `.bin` intermedios quedan en
+`tools/sdcard/mons/`; los artefactos desplegables son los paquetes de
+`web/packs/`.
 
 > Ver [CREDITS.md](../../CREDITS.md) sobre la procedencia y los términos de los
 > sprites. Son de terceros: no redistribuir con fines comerciales.

@@ -20,7 +20,7 @@ void combatantFromPet(Combatant &c, const Pet &p) {
        p.spaStat(), p.spdStat(), p.speStat());
   for (int i = 0; i < MOVE_SLOTS; i++) c.moves[i] = p.moves[i];
   c.shiny = p.shiny;
-  const char *nm = p.nick[0] ? p.nick : DEX_TBL[p.speciesId].name;
+  const char *nm = p.nick[0] ? p.nick : dexEntry(p.speciesId).name;
   snprintf(c.name, sizeof(c.name), "%s", nm);
 }
 
@@ -29,7 +29,7 @@ void combatantFromParty(Combatant &c, const PartyMon &m) {
        party.spaOf(m), party.spdOf(m), party.speOf(m));
   for (int i = 0; i < MOVE_SLOTS; i++) c.moves[i] = m.moves[i];
   c.shiny = m.shiny != 0;
-  const char *nm = m.nick[0] ? m.nick : DEX_TBL[m.dex].name;
+  const char *nm = m.nick[0] ? m.nick : dexEntry(m.dex).name;
   snprintf(c.name, sizeof(c.name), "%s", nm);
 }
 
@@ -58,10 +58,10 @@ static uint16_t effStat(const Combatant &c, uint8_t idx) {
 // ---------- damage ----------
 
 // roll is 217..255, the series' damage spread, passed in so tests can pin it.
-uint16_t battleDamage(const Combatant &atk, const Combatant &def, uint8_t mv,
+uint16_t battleDamage(const Combatant &atk, const Combatant &def, MoveId mv,
                       bool crit, uint8_t roll) {
-  if (!mv || mv >= MOVE_COUNT) return 0;
-  const MoveEntry &m = MOVE_TBL[mv];
+  if (!mv || mv >= moveCount()) return 0;
+  const MoveEntry &m = moveEntry(mv);
   if (m.cat == MC_STATUS) return 0;
 
   if (m.effect == EF_FIXED_LVL) return atk.level ? atk.level : 1;
@@ -89,12 +89,12 @@ uint16_t battleDamage(const Combatant &atk, const Combatant &def, uint8_t mv,
 
 // ---------- turn order ----------
 
-bool battleMovesFirst(const Combatant &a, uint8_t ma,
-                      const Combatant &b, uint8_t mb) {
-  int pa = (ma && ma < MOVE_COUNT && MOVE_TBL[ma].effect == EF_PRIORITY)
-               ? MOVE_TBL[ma].param : 0;
-  int pb = (mb && mb < MOVE_COUNT && MOVE_TBL[mb].effect == EF_PRIORITY)
-               ? MOVE_TBL[mb].param : 0;
+bool battleMovesFirst(const Combatant &a, MoveId ma,
+                      const Combatant &b, MoveId mb) {
+  int pa = (ma && ma < moveCount() && moveEntry(ma).effect == EF_PRIORITY)
+               ? moveEntry(ma).param : 0;
+  int pb = (mb && mb < moveCount() && moveEntry(mb).effect == EF_PRIORITY)
+               ? moveEntry(mb).param : 0;
   if (pa != pb) return pa > pb;
   uint16_t sa = effStat(a, SI_SPE), sb = effStat(b, SI_SPE);
   if (sa != sb) return sa > sb;
@@ -121,7 +121,7 @@ static void heal(Combatant &c, uint16_t amount) {
   c.hp = v > c.maxHp ? c.maxHp : (uint16_t)v;
 }
 
-void battleAct(Combatant &atk, Combatant &def, uint8_t mv, TurnLog &log) {
+void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log) {
   log = TurnLog();
   log.move = mv;
   if (atk.fainted() || def.fainted()) { log.skipped = true; return; }
@@ -152,14 +152,14 @@ void battleAct(Combatant &atk, Combatant &def, uint8_t mv, TurnLog &log) {
 
   // a wound-up EF_CHARGE move fires this turn instead of whatever was picked
   if (atk.charging) { mv = atk.charging; atk.charging = 0; }
-  else if (mv && mv < MOVE_COUNT && MOVE_TBL[mv].effect == EF_CHARGE) {
+  else if (mv && mv < moveCount() && moveEntry(mv).effect == EF_CHARGE) {
     atk.charging = mv;
     log.charged = true;
     return;
   }
 
-  if (!mv || mv >= MOVE_COUNT) { log.skipped = true; return; }
-  const MoveEntry &m = MOVE_TBL[mv];
+  if (!mv || mv >= moveCount()) { log.skipped = true; return; }
+  const MoveEntry &m = moveEntry(mv);
   log.move = mv;
 
   // --- accuracy. acc 0 means it cannot miss (SWIFT, and every status move)
@@ -243,18 +243,19 @@ void battleEndTurn(Combatant &c, TurnLog &log) {
 
 // ---------- move choice ----------
 
-uint8_t aiChooseMove(const Combatant &self, const Combatant &foe, bool smart) {
-  uint8_t legal[MOVE_SLOTS], n = 0;
+MoveId aiChooseMove(const Combatant &self, const Combatant &foe, bool smart) {
+  MoveId legal[MOVE_SLOTS];
+  uint8_t n = 0;
   for (int i = 0; i < MOVE_SLOTS; i++)
-    if (self.moves[i] && self.moves[i] < MOVE_COUNT) legal[n++] = self.moves[i];
+    if (self.moves[i] && self.moves[i] < moveCount()) legal[n++] = self.moves[i];
   if (!n) return 0;
   if (!smart) return legal[random(n)];
 
   int16_t bestScore = -32768;
-  uint8_t best = legal[0];
+  MoveId best = legal[0];
   for (uint8_t i = 0; i < n; i++) {
-    uint8_t mv = legal[i];
-    const MoveEntry &m = MOVE_TBL[mv];
+    MoveId mv = legal[i];
+    const MoveEntry &m = moveEntry(mv);
     int32_t sc;
     if (m.cat == MC_STATUS) {
       // A status move costs a whole turn, so it has to buy more than chip

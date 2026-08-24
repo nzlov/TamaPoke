@@ -35,13 +35,15 @@ int main(){
   render();
   ck(pet.awaitingStarter(), "a brand new save asks for a starter");
 
-  // --- the canonical trio, pinned. Reordering REGIONS[].starters would change
+  // --- the canonical trio, pinned. Reordering pack starters would change
   // the first screen anyone sees, and nothing else would notice.
-  const int16_t want[3][3] = { {1,4,7}, {152,155,158}, {252,255,258} };
-  for (uint8_t r = 0; r < 3; r++) {
+  const int16_t want[4][3] = {
+    {1,4,7}, {152,155,158}, {252,255,258}, {387,390,393},
+  };
+  for (uint8_t r = 0; r < 4; r++) {
     bool ok = starterCountShown(r) == 3;
     for (uint8_t i = 0; i < 3; i++) if (starterOf(r,i) != want[r][i]) ok = false;
-    char m[64]; snprintf(m,sizeof(m),"%s offers its canonical three", REGIONS[r].name);
+    char m[64]; snprintf(m,sizeof(m),"%s offers its canonical three", regionInfo(r).name);
     ck(ok, m);
   }
 
@@ -51,20 +53,20 @@ int main(){
     for (uint8_t r = 0; r < 3; r++)
       for (uint8_t i = 0; i < starterCountShown(r); i++) {
         int16_t d = starterOf(r,i);
-        if (d < REGIONS[r].lo || d > REGIONS[r].hi) ok = false;
+        if (d < regionInfo(r).lo || d > regionInfo(r).hi) ok = false;
       }
     ck(ok, "and each sits inside its own region's range");
   }
 
   // --- Kanto's egg pool is NOT trimmed to what the screen shows. This is the
   // one that fails if somebody "tidies" dex.h to match the choice screen.
-  ck(REGIONS[0].starterCount > starterCountShown(0),
+  ck(regionInfo(0).starterCount > starterCountShown(0),
      "Kanto's egg pool still holds more than the three on screen");
   {
     bool pika=false, eevee=false;
-    for (uint8_t i=0;i<REGIONS[0].starterCount;i++){
-      if (REGIONS[0].starters[i]==25) pika=true;
-      if (REGIONS[0].starters[i]==133) eevee=true;
+    for (uint8_t i=0;i<regionInfo(0).starterCount;i++){
+      if (regionInfo(0).starters[i]==25) pika=true;
+      if (regionInfo(0).starters[i]==133) eevee=true;
     }
     ck(pika && eevee, "Pikachu and Eevee are still reachable as a first egg");
   }
@@ -80,7 +82,7 @@ int main(){
   ck(pet.eggPeek() == 155, "and it is the one that was tapped, from that region");
 
   // the egg really is Johto's, which is the whole point of choosing first
-  ck(pet.eggPeek() >= REGIONS[1].lo && pet.eggPeek() <= REGIONS[1].hi,
+  ck(pet.eggPeek() >= regionInfo(1).lo && pet.eggPeek() <= regionInfo(1).hi,
      "the waiting egg belongs to the region that was picked");
 
   // --- and it survives a reload: region is persisted, the flow is not repeated

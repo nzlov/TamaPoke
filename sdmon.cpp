@@ -1,6 +1,7 @@
 #include "sdmon.h"
 #include "pin_config.h"
-#include "pet.h"   // gRegionArt, REGIONS -- the mask this narrows
+#include "pet.h"
+#include "content.h"
 #include <FS.h>
 #include <SD_MMC.h>
 
@@ -8,33 +9,42 @@ bool sdReady = false;
 bool sdDirty = false;
 SdThumbs thumbs;
 
+static void recoverPackUploads() {
+  String partials[32], backups[32];
+  uint8_t partialCount = 0, backupCount = 0;
+  File dir = SD_MMC.open("/packs");
+  if (!dir || !dir.isDirectory()) return;
+  File entry;
+  while ((entry = dir.openNextFile())) {
+    if (!entry.isDirectory()) {
+      String path = entry.path();
+      if (path.endsWith(".part") && partialCount < 32) partials[partialCount++] = path;
+      else if (path.endsWith(".bak") && backupCount < 32) backups[backupCount++] = path;
+    }
+    entry.close();
+  }
+  dir.close();
+  for (uint8_t i = 0; i < partialCount; i++) SD_MMC.remove(partials[i]);
+  for (uint8_t i = 0; i < backupCount; i++) {
+    String finalPath = backups[i].substring(0, backups[i].length() - 4);
+    if (SD_MMC.exists(finalPath)) SD_MMC.remove(backups[i]);
+    else SD_MMC.rename(backups[i], finalPath);
+  }
+}
+
 bool PmdMon::load(int16_t dexNum, bool shiny) {
   // int16_t, NOT uint8_t. The dex reached 386 and this did not follow, so
   // everything from 256 up wrapped into Kanto: MARSHTOMP (258) opened
-  // p002.bin and drew an IVYSAUR. Same trap that caught DexEntry::evolvesTo
-  // and TrainerMon::dex when the expansion landed.
-  if (dexNum < 1 || dexNum > 999) return false;
+  // p002.bin and drew an IVYSAUR. Evolution and trainer species IDs were hit by
+  // the same width bug when the catalogue expanded.
+  if (!dexValid(dexNum)) return false;
   unload();
-  if (!sdReady) return false;
-
-  char path[28];
-  snprintf(path, sizeof(path), "/mons/p%s%03u.bin", shiny ? "s" : "", (unsigned)dexNum);
-  File f = SD_MMC.open(path, FILE_READ);
-  if (!f && shiny) {  // sin shiny PMD: usa el normal
-    snprintf(path, sizeof(path), "/mons/p%03u.bin", (unsigned)dexNum);
-    f = SD_MMC.open(path, FILE_READ);
-  }
-  if (!f) return false;
-
-  uint32_t size = f.size();
-  if (size < 7 || size > 3UL * 1024 * 1024) { f.close(); return false; }
-  blob = (uint8_t *)ps_malloc(size);
-  if (!blob || f.read(blob, size) != size || memcmp(blob, "TPK2", 4) != 0) {
+  uint32_t size = 0;
+  if (!contentLoadSprite((SpeciesId)dexNum, shiny, &blob, &size) ||
+      size < 7 || size > 3UL * 1024 * 1024 || memcmp(blob, "TPK2", 4) != 0) {
     if (blob) { free(blob); blob = nullptr; }
-    f.close();
     return false;
   }
-  f.close();
 
   dex = dexNum;                  // what is actually in here, for the tests
   uint8_t nActs = blob[4];
@@ -75,7 +85,7 @@ bool PmdMon::load(int16_t dexNum, bool shiny) {
     a.base = base;
   }
   loaded = true;
-  Serial.printf("cargado %s (%u KB)\n", path, size / 1024);
+  Serial.printf("sprite #%u cargado del pack (%u KB)\n", (unsigned)dexNum, size / 1024);
   return true;
 }
 
@@ -92,21 +102,12 @@ void PmdMon::unload() {
 }
 
 bool SdThumbs::load() {
-  if (!sdReady) return false;
-  File f = SD_MMC.open("/mons/thumbs.bin", FILE_READ);
-  if (!f) {
-    Serial.println("sin thumbs.bin (galeria sin miniaturas)");
-    return false;
-  }
-  uint32_t size = f.size();
-  data = (uint8_t *)ps_malloc(size);
-  if (!data || f.read(data, size) != size || memcmp(data, "TPTH", 4) != 0) {
-    Serial.println("thumbs.bin invalido");
+  uint32_t size = 0;
+  if (!contentLoadThumbs(&data, &size) || size < 6 || memcmp(data, "TPTH", 4) != 0) {
+    Serial.println("miniaturas ausentes o invalidas");
     if (data) { free(data); data = nullptr; }
-    f.close();
     return false;
   }
-  f.close();
   memcpy(&count, data + 4, 2);
   loaded = true;
   Serial.printf("miniaturas cargadas: %u (%u KB)\n", count, size / 1024);
@@ -120,31 +121,14 @@ const uint8_t *SdThumbs::get(int16_t dex) const {
   return data + off;
 }
 
-// Which regions actually have their sprite pack on the card.
-//
-// Three probes per region, not one: the realistic failure is a half-finished
-// copy of a 100 MB pack, and a single probe would call that region present.
-// Start, middle and end, so a copy that stopped partway fails the check.
-//
-// This NARROWS gRegionArt, which starts as everything. A board with no SD is
-// therefore untouched and keeps today's behaviour, which is the documented
-// requirement -- an empty game would be a worse answer than a graceful one.
 void sdScanRegionArt() {
-  if (!sdReady) return;                 // no card: leave every region enabled
   uint16_t mask = 0;
-  for (uint8_t r = 0; r < REGION_COUNT; r++) {
-    if (r == REGION_ALL) continue;      // derived from the others, never probed
-    const RegionInfo &rg = REGIONS[r];
-    const int16_t probe[3] = { rg.lo, (int16_t)((rg.lo + rg.hi) / 2), rg.hi };
-    bool all = true;
-    for (int i = 0; i < 3 && all; i++) {
-      char path[28];
-      snprintf(path, sizeof(path), "/mons/p%03u.bin", (unsigned)probe[i]);
-      File f = SD_MMC.open(path, FILE_READ);
-      if (!f) all = false; else f.close();
-    }
-    if (all) mask |= (uint16_t)(1u << r);
-    Serial.printf("art: %-6s %s\n", rg.name, all ? "si" : "NO (falta el pack)");
+  for (uint8_t r = 0; r < regionCount(); r++) {
+    if (r == regionAll()) continue;
+    const RegionInfo &rg = regionInfo(r);
+    bool available = regionPackAvailable(r);
+    if (available) mask |= (uint16_t)(1u << r);
+    Serial.printf("pack: %-8s %s\n", rg.name, available ? "si" : "NO");
   }
   gRegionArt = mask;
 }
@@ -154,105 +138,41 @@ bool sdBegin() {
   sdReady = SD_MMC.begin("/sdcard", true /* modo 1-bit */, true /* formatea si no monta */);
   if (sdReady) {
     Serial.printf("SD montada: %llu MB\n", SD_MMC.cardSize() / (1024ULL * 1024ULL));
-    SD_MMC.mkdir("/mons");
+    SD_MMC.mkdir("/packs");
+    recoverPackUploads();
+    contentBegin();
     sdScanRegionArt();
   } else {
-    Serial.println("SD no detectada (el juego usa los sprites de flash)");
+    Serial.println("SD no detectada (modo de recuperacion)");
   }
   return sdReady;
-}
-
-bool SdMon::load(int16_t dexNum, bool shiny) {
-  if (dexNum < 1 || dexNum > 999) return false;
-  unload();
-  if (!sdReady) return false;
-
-  char path[24];
-  snprintf(path, sizeof(path), "/mons/%s%03u.bin", shiny ? "s" : "", (unsigned)dexNum);
-  File f = SD_MMC.open(path, FILE_READ);
-  if (!f && shiny) {  // sin variante shiny: usa la normal
-    snprintf(path, sizeof(path), "/mons/%03u.bin", (unsigned)dexNum);
-    f = SD_MMC.open(path, FILE_READ);
-  }
-  if (!f) {
-    Serial.printf("no existe %s\n", path);
-    return false;
-  }
-
-  char magic[4];
-  uint16_t header[4];
-  if (f.read((uint8_t *)magic, 4) != 4 || memcmp(magic, "TPK1", 4) != 0 ||
-      f.read((uint8_t *)header, 8) != 8) {
-    f.close();
-    return false;
-  }
-  w = header[0];
-  h = header[1];
-  frames = header[2];
-  frameMs = header[3];
-  // acota dimensiones: evita size desbordado o absurdo con archivo corrupto
-  if (f.read((uint8_t *)&palCount, 2) != 2 || palCount > 256 ||
-      w == 0 || w > 256 || h == 0 || h > 256 || frames == 0 || frames > 64) {
-    f.close();
-    return false;
-  }
-  if (f.read((uint8_t *)pal, palCount * 2) != palCount * 2) {
-    f.close();
-    return false;
-  }
-
-  uint32_t size = (uint32_t)w * h * frames;
-  data = (uint8_t *)ps_malloc(size);
-  if (!data) {
-    Serial.println("sin PSRAM para el sprite");
-    f.close();
-    return false;
-  }
-  uint32_t got = f.read(data, size);
-  f.close();
-  if (got != size) {
-    Serial.printf("%s truncado (%u de %u)\n", path, got, size);
-    unload();
-    return false;
-  }
-
-  // zoom entero para que el bicho mida ~200 px de alto en pantalla
-  scale = 200 / h;
-  if (scale < 2) scale = 2;
-  if (scale > 5) scale = 5;
-
-  Serial.printf("cargado %s: %ux%u x%u frames @%ums, escala %u\n",
-                path, w, h, frames, frameMs, scale);
-  loaded = true;
-  return true;
-}
-
-void SdMon::unload() {
-  if (data) {
-    free(data);
-    data = nullptr;
-  }
-  loaded = false;
 }
 
 // ---------------------------------------------------------------------------
 // Protocolo de carga por USB (para llenar la SD sin sacarla de la placa):
 //   PUT <ruta> <bytes>\n  + datos crudos   -> "OK" ... "DONE"
-//   LS\n                                   -> listado de /mons
+//   LS\n                                   -> listado de /packs
 // Usar con tools/send_sd.py
 // ---------------------------------------------------------------------------
 
 bool sdSerialCommand(const String &line) {
   if (line.startsWith("PUT ")) {
     int sp = line.lastIndexOf(' ');
+    if (sp < 5) { Serial.println("ERR"); return true; }
     String path = line.substring(4, sp);
     uint32_t size = line.substring(sp + 1).toInt();
-    if (!sdReady || size == 0 || size > 4 * 1024 * 1024) {
+    if (!path.startsWith("/")) path = "/" + path;
+    bool packPath = path.startsWith("/packs/") &&
+                    (path.endsWith(".tui") || path.endsWith(".tmove") ||
+                     path.endsWith(".tregion"));
+    if (!sdReady || path.indexOf("..") >= 0 || !packPath ||
+        size == 0 || size > 256UL * 1024 * 1024) {
       Serial.println("ERR");
       return true;
     }
-    if (!path.startsWith("/")) path = "/" + path;
-    File f = SD_MMC.open(path, FILE_WRITE);
+    String tempPath = path + ".part";
+    SD_MMC.remove(tempPath);
+    File f = SD_MMC.open(tempPath, FILE_WRITE);
     if (!f) {
       Serial.println("ERR");
       return true;
@@ -265,17 +185,30 @@ bool sdSerialCommand(const String &line) {
       size_t want = remaining > sizeof(buf) ? sizeof(buf) : remaining;
       size_t n = Serial.readBytes(buf, want);
       if (n == 0) break;  // timeout
-      f.write(buf, n);
+      if (f.write(buf, n) != n) break;
       remaining -= n;
       Serial.println("#");  // ack: listo para el siguiente bloque
     }
     f.close();
     Serial.setTimeout(1000);
-    sdDirty = (remaining == 0);
-    Serial.println(remaining == 0 ? "DONE" : "ERR");
+    bool valid = remaining == 0 && contentValidatePackFile(tempPath.c_str());
+    if (valid) {
+      String backupPath = path + ".bak";
+      SD_MMC.remove(backupPath);
+      bool hadOld = SD_MMC.exists(path);
+      if (hadOld && !SD_MMC.rename(path, backupPath)) valid = false;
+      if (valid && !SD_MMC.rename(tempPath, path)) {
+        if (hadOld) SD_MMC.rename(backupPath, path);
+        valid = false;
+      }
+      if (valid) SD_MMC.remove(backupPath);
+    }
+    if (!valid) SD_MMC.remove(tempPath);
+    sdDirty = valid;
+    Serial.println(valid ? "DONE" : "ERR");
     return true;
   } else if (line == "LS") {
-    File dir = SD_MMC.open("/mons");
+    File dir = SD_MMC.open("/packs");
     if (dir) {
       File e;
       while ((e = dir.openNextFile())) {

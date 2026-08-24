@@ -163,7 +163,7 @@ int main(){
   }
 
   {
-    setLang(LANG_ZH);
+    setLang((Lang)uiFindLocale("zh-CN"));
     int rb, nt, nb, ct, cb, mt, mb;
     moveRowVerticals(&rb, &nt, &nb, &ct, &cb, &mt, &mb);
     ck(nb <= ct, "the move name does not collide with its metadata");
@@ -171,7 +171,7 @@ int main(){
     ck(cb <= rb, "the move metadata stays inside its row");
     printf("      move row: name %d..%d, chip %d..%d, meta %d..%d, row..%d\n",
            nt, nb, ct, cb, mt, mb, rb);
-    setLang(LANG_EN);
+    setLang((Lang)uiFindLocale("en-US"));
   }
 
   {
@@ -249,7 +249,7 @@ int main(){
     //
     // These offsets used to be 8 px, which is INSIDE the hit area (EGGREG_PAD
     // is 16), so every "near miss" was a direct hit that cycled the region.
-    // The region assertion passed only because 12 taps over REGION_COUNT 4
+    // The region assertion passed only because 12 taps over regionCount() 4
     // came full circle back to the start; Sinnoh made it 5 and the coincidence
     // died. It never once exercised the guard band it claims to protect --
     // CLAUDE.md trap 3, a test proving the arithmetic rather than the firmware.

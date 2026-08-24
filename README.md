@@ -10,7 +10,7 @@
 
 A gen-1-Pokémon-inspired tamagotchi for the
 **Waveshare ESP32-S3-Touch-AMOLED-1.75** (round 466×466 AMOLED, CO5300 driver
-over QSPI, CST9217 touch over I2C). Raise any of the 386, evolve it, train it
+over QSPI, CST9217 touch over I2C). Raise any installed species, evolve it, train it
 and complete them all (shinies included).
 
 > ### 🙏 This is a fork of [**socquique/TamaPoke**](https://github.com/socquique/TamaPoke) by **Quique Tortosa**
@@ -93,7 +93,7 @@ way. Same reasoning that makes Hoenn Emerald throughout.
 
 ## Status
 
-Running on hardware. Implemented: 386 species + shinies animated from microSD, full
+Running on hardware. Implemented: 493 species + shinies animated from regional packs, full
 life cycle (egg by rarity → evolution → farewell/release/runaway, each gated
 behind a decision dialog), bred-Pokédex with gallery, battle stats (IVs +
 training), retention hooks (streak / bond / medals / name), biome + real-time
@@ -102,7 +102,7 @@ progression, battery (AXP2101) and PWR button, anti-burn-in dimming,
 **sound (ES8311)**, **7 UI languages (English default)**, **starter choice on
 first run**, and a one-click **web installer**.
 
-Pending: wild encounters / battle (designed, not implemented), 3D case, soak
+Pending: wild encounters, 3D case, soak
 test. See **Roadmap**.
 
 ## Game manual (the actual numbers)
@@ -170,21 +170,20 @@ While **awake**, per minute:
 - A daily **streak** and high **bond** push rare/legendary odds higher.
 - A clean **goodbye blesses** the next egg; a **run-away curses** it (forces Common).
 - Within a tier it favors species whose **evolution line you haven't finished** (so
-  all 386 are completable).
+  every species in installed region packs is completable).
 - **Shiny:** base **1 / 48** (→ **1 / 24** right after a goodbye), improved by
   streak/bond down to a best of **1 / 8**. Tracked separately in the dex.
 - Every hatch rolls unique **IVs** (see below) — no two are identical.
 
 ### Evolution
 
-**Cross-generation evolutions are linked.** When the dex reached 386 the targets
-arrived but nothing connected them, so six Kanto species could not evolve into
-creatures that were sitting right there in the Pokedex: GOLBAT -> CROBAT,
-ONIX -> STEELIX, CHANSEY -> BLISSEY, SEADRA -> KINGDRA, SCYTHER -> SCIZOR and
-PORYGON -> PORYGON2. Those six now evolve (friendship pairs at 25, trade pairs
-at 40), and the six targets stopped hatching straight from eggs -- rarity is
-derived from being somebody's evolution, so they became evolution-only the way
-every other evolved form already was.
+**Cross-generation and branching evolutions come from region packs.** Targets
+such as CROBAT, STEELIX, BLISSEY, KINGDRA, SCIZOR and PORYGON2 stay linked even
+though they live outside their source species' region. All branching lines in
+the installed 493-species catalogue are represented, including Gloom,
+Poliwhirl, Slowpoke, Eevee, Tyrogue, Wurmple, Kirlia, Nincada, Snorunt,
+Clamperl and Burmy. Every target is evolution-only rather than also hatching
+straight from an egg.
 
 `gen_dex_data.py --link` is the rule rather than a one-off edit: it fills in any
 evolution whose target has since joined the table, and only ever touches rows
@@ -196,7 +195,7 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 - **Never automatic** — a button appears and **you tap to witness it** (with a
   flicker between the old and new form). Each **slip-up delays it by 1 level**.
 - You can **decline** ("keep form"); it re-offers at the next level.
-- *Eevee* branches toward whichever evolution you're still missing.
+- Branching species prefer an installed evolution you're still missing.
 
 ### Your party
 - A **farewell** or a **release** doesn't end the relationship any more — the creature
@@ -206,7 +205,7 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
   neglected pet come back on the team would remove it.
 - With a full party you're taken straight to the party screen to pick who the
   newcomer replaces — or to let it go. Nothing is ever overwritten silently.
-- *(Gym battles, which is what the party is for: on the roadmap.)*
+- Gym and linked battles build their selectable team from the live pet and party.
 
 ### The three endings (you choose & witness each — none auto-fire)
 - 💛 **Farewell** — when it's a **final form** that has lived **3 days**. A button
@@ -230,8 +229,8 @@ After any ending, a **new egg** appears.
   horizontally to page within it, so nothing is more than ten pages from the front.
 - **Region:** the pill under a waiting egg picks which generation it comes from —
   **Kanto / Johto / Hoenn / Sinnoh / All**. A first egg gives that region's starter.
-  A region whose **sprite pack is not on the card** shows as locked and is kept
-  out of the egg pool, so a partial sprite install is a supported state.
+  A region whose **region pack is not on the card** shows as locked and is kept
+  out of the egg pool. A partial data-pack install is a supported state.
 
 ### Battle stats & IVs
 Every pet rolls four **IVs** (individual values, 0–31) at hatch — ATK / DEF / SPD /
@@ -347,8 +346,8 @@ what rate-limits rematching. A fully trained creature is told so.
 
 | Library | Author | Use |
 |---|---|---|
-| GFX Library for Arduino (`Arduino_GFX`) 1.6.4+ | moononournation | CO5300 over QSPI + framebuffer in PSRAM + CJK font |
-| U8g2 2.36.19 | olikraus | Enables Arduino_GFX UTF-8 font rendering (tested version) |
+| GFX Library for Arduino (`Arduino_GFX`) 1.6.4+ | moononournation | CO5300 over QSPI + framebuffer in PSRAM |
+| FreeType 2.14.3 (minimal vendored build) | FreeType Project / Espressif component | hinted OpenType rendering from UI packs |
 | SensorLib | Lewis He | CST9217 touch + PCF85063 RTC |
 | XPowersLib | Lewis He | AXP2101 PMU (battery, brightness, PWR button) |
 | ESP_I2S (bundled in the ESP32 core) | Espressif | I2S to the ES8311 codec |
@@ -377,7 +376,7 @@ the hardware. Click to touch, drag to swipe, type serial commands in the
 terminal, and `--fast 60` runs a whole 3-day life in about an hour.
 
 ```bash
-brew install sdl2          # Debian: apt install libsdl2-dev
+brew install sdl2 freetype # Debian: apt install libsdl2-dev libfreetype-dev
 bash tools/emu/build.sh
 tools/emu/tamapoke-emu --scale 2 --fast 60
 ```
@@ -388,32 +387,41 @@ timing, DMA tearing, PSRAM or audio — those still need the board.
 
 ### Easiest install: the web installer
 
-`web/index.html` flashes the firmware (ESP Web Tools) and pushes the sprites to
-the SD over Web Serial, no Arduino needed. Serve it over HTTPS or `localhost`
+`web/index.html` flashes the firmware (ESP Web Tools) and deploys UI, move and
+region packs to the SD over Web Serial, no Arduino needed. Serve it over HTTPS or `localhost`
 (secure context) and open it in **Chrome/Edge**. See [`web/README.md`](web/README.md).
 
-### Generate and load the sprites yourself
+This runtime-pack migration intentionally resets saves created by older firmware.
+Unknown save schemas are cleared instead of being interpreted as the new runtime
+catalogue layout.
+
+### Generate and load the data packs yourself
 
 All sprites come from **[PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)**
-(CC BY-NC). You can regenerate the whole set and load it onto your board with the
-pipeline below — the firmware accepts files over USB (PUT protocol with per-block
-ACK), so you don't have to remove the card (it formats the SD to FAT if needed).
+(CC BY-NC). `gen_data_packs.py` reads the generated per-species TPK2/TPTH files
+directly and combines them with UI, species, move, description, trainer, battle
+and badge data. No regional intermediate bundle is created.
 
 ```bash
-python3 tools/pack_pmd.py       # fetch + pack PMD sprites: 386 + shiny -> tools/sdcard/mons/p[s]NNN.bin
+python3 tools/pack_pmd.py       # fetch + pack the current catalogue + shiny inputs
 python3 tools/make_thumbs.py    # Pokédex thumbnails (from the PMD sprites) -> thumbs.bin
-python3 tools/send_sd.py        # send tools/sdcard/mons/* to the board's SD over USB
+python3 tools/gen_data_packs.py # web/packs/*.tui, *.tmove, *.tregion + index.json
+python3 tools/check_data_packs.py
 ```
 
-To make the **one-click web-installer bundle** instead of sending over USB:
+The checked-in Chinese font subset already covers every string, species, move,
+type and regional description in the catalogue. When localized content gains
+characters, rebuild it from Noto Sans CJK SC Medium with FontTools before
+regenerating the packs:
 
 ```bash
-python3 tools/pack_bundle.py    # bundle tools/sdcard/mons/* into web/sprites.pak
+python3 tools/subset_ui_font.py /path/to/NotoSansCJK-Medium.ttc \
+  tools/assets/fonts/NotoSansCJKsc-Medium-subset.otf --font-number 2
 ```
 
-Then load it from the web installer's **"Load sprites"** button (or `send_sd.py`
-above). `pack_pmd.py` also takes individual dex numbers, e.g. `pack_pmd.py 7 25`.
-(~40 MB total, all PMD. Versioned under `tools/sdcard/`.)
+Then deploy the selected packs from the Web installer. The firmware only accepts
+validated pack files under `/packs`; interrupted uploads use a temporary file and
+cannot overwrite a working pack.
 
 ## How to play
 
@@ -480,31 +488,32 @@ witness it), each opening a two-option dialog:
   was punished where a board switched *off* was not. `night_test` runs ten
   simulated hours and fails if that ever comes back.
 
-## Sprites: PMD SpriteCollab everywhere
+## Runtime data packs
 
-- **PMD SpriteCollab** (everything — main screen, stat card, minigame **and the
-  Pokédex grid + detail view**): behaviour sprites — `tools/pack_pmd.py` packs
-  actions (Idle, Walk L/R, Sleep, Eat, Hurt, Attack, Pose, Nod, DeepBreath) into
-  the multi-action **TPK2** format (`/mons/pNNN.bin`). The engine in `TamaPoke.ino`
-  makes the creature wander, gesture, curl up to sleep, chew and wince. Anchored by
-  the feet (lowest content row), not the canvas. The Pokédex thumbnails
-  (`thumbs.bin`, TPTH) are derived from these by `tools/make_thumbs.py`.
-- **In-house workshop** (`tools/sprites.py`): 9 primitive-drawn sprites as a
-  no-SD fallback + the UI icons. Generates `species.h`. Preview in
-  `tools/sheet.png`, emit with `python3 tools/sprites.py emit`.
+- **UI (`.tui`)** — one installed language per pack: strings, layout metrics
+  and either a compact bitmap face or a hinted OpenType subset with package-defined
+  pixel sizes. The language list is discovered at boot.
+- **Moves (`.tmove`)** — stable move IDs, mechanics, learnsets/TMs, type chart,
+  names and localized descriptions.
+- **Regions (`.tregion`)** — species records, localized names and descriptions,
+  PMD sprites, thumbnails, region metadata, trainers, regional battle configuration
+  and badges.
 
-`sdmon.h/.cpp` loads the PMD sprites into PSRAM (`PmdMon` for TPK2) plus the
-thumbnails (`SdThumbs`). `SdMon` (TPK1) remains as a dormant legacy fallback only.
+Sprites are read lazily from the region pack into PSRAM. OpenType faces and their
+bounded glyph cache also live in PSRAM; neither fonts nor sprites are embedded in
+the firmware. There is no embedded or
+loose-file pet-sprite fallback; missing required packs lead to the small built-in
+USB recovery screen instead of starting with incomplete catalogue data.
 
 ## Pokédex and species data
 
-`tools/dex_data.py` is the **single source**: name, slug, type (accent colour +
+`tools/dex_data.py` is the source for name, slug, type (accent colour +
 background biome), evolution line with gen-1 levels, rarities and starters.
 `tools/dex_stats.py` has the base stats and `tools/dex_types.py` the typings and
 type chart (both from PokéAPI). Note these are **current** values, not Gen 1 ones —
-Pidgeot has 101 Speed here, not the 91 it had in Red/Blue. `gen_dex.py` emits
-`dex.h` (the `DEX_TBL[152]` table). The pet's identity is its Pokédex number
-(persisted in NVS).
+Pidgeot has 101 Speed here, not the 91 it had in Red/Blue. The generator emits
+these records into region packs; `dex.h` contains only the stable runtime ABI and
+limits. The pet's identity is its Pokédex number (persisted in NVS).
 
 - **Evolution** gen-1 style (levels 16/36/…; stones ≈30, trade ≈40; Eevee
   branches to whichever evolution you're missing). Each slip-up delays it 1
@@ -513,7 +522,7 @@ Pidgeot has 101 Speed here, not the 91 it had in Red/Blue. `gen_dex.py` emits
 ## Types
 
 Every species carries its real **typing** (one or two of the 18 types) and the game
-ships the full **18×18 effectiveness chart** — `dex.h` holds both, generated from
+ships the full **18×18 effectiveness chart** in the move pack, generated from
 `tools/dex_types.py`.
 
 The chart is the **current (Gen 6+) one, not Gen 1's**, which is a deliberate call:
@@ -598,13 +607,13 @@ bars at zero for 1 h). Each bred species is recorded in the **bred Pokédex**
 (normal and shiny separately).
 
 The egg rolls rarity over the ~79 base forms (47 common / 27 rare / 5 legendary),
-**biased towards the lines you're missing** (all 386 are completable), blessed by
+**biased towards the lines you're missing** (installed regions are completable), blessed by
 a farewell and punished by a runaway. Legendaries only with 25+ registered.
 **Shiny** 1/48 (better with streak/bond/farewell).
 
-**Languages:** the UI ships in 7 languages — English (default), Spanish, French,
-German, Italian, Portuguese and Simplified Chinese — switchable from the
-settings screen (swipe down).
+**Languages:** the supplied pack set includes English (default), Spanish, French,
+German, Italian, Portuguese and Simplified Chinese. The firmware does not hardcode
+that list: only installed `.tui` packs appear in settings.
 
 ## Backgrounds: biome + real time
 
@@ -617,19 +626,21 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
 - `TamaPoke.ino` — init, game loop, render of every screen, gestures, serial console, audio
 - `pet.h` / `pet.cpp` — pet state and logic (stats, evolution, life cycle, streak/bond/medals, NVS)
 - `party.h` / `party.cpp` — the 6 retired pets kept from farewells and releases
-- `sdmon.h` / `sdmon.cpp` — TPK1 (animated) and TPK2 (PMD) sprites + thumbnails, and file reception over USB (PUT/LS)
+- `content.h` / `content.cpp` — pack ABI, CRC validation, catalogues, descriptions and lazy assets
+- `sdmon.h` / `sdmon.cpp` — packed TPK2 sprites + thumbnails and atomic pack reception over USB
 - `rtcbat.h` / `rtcbat.cpp` — PCF85063 RTC + AXP2101 PMU (battery, brightness, PWR button)
 - `audio.h` / `audio.cpp` — ES8311 + I2S + Game-Boy-style tone synth (non-blocking task)
-- `i18n.h` / `i18n.cpp` — the 7-language string tables
-- `dex.h` — GENERATED (`gen_dex.py`): the 386 table
-- `species.h` — GENERATED (`sprites.py`): fallback sprites, UI icons, colours
+- `i18n.h` / `i18n.cpp` — dynamic installed-language selection and string IDs
+- `dex.h` / `moves.h` — stable firmware ABI; catalogue records live on the SD
+- `ui_art.h` — generated core UI icons/colours; pet sprites only exist in region packs
 - `pin_config.h` — the board's official pins
-- `tools/` — pipeline: `dex_data.py` (data), `dex_stats.py`, `dex_types.py`, `gen_dex.py`,
-  `sprites.py` (workshop), `pack_pmd.py` / `make_thumbs.py`
-  (packers), `pack_bundle.py` (web bundle), `send_sd.py` (SD upload), `touch_log.py`
+- `tools/` — pipeline: `dex_data.py` (data), `dex_stats.py`, `dex_types.py`,
+  `sprites.py` (workshop), `pack_pmd.py` / `make_thumbs.py`,
+  `gen_data_packs.py`, validators and `touch_log.py`
 - `tools/emu/` — desktop emulator (real firmware + stubbed hardware, SDL)
-- `tools/sdcard/mons/` — the generated .bin files (animated, shiny, PMD, thumbnails)
-- `web/` — the browser installer (ESP Web Tools + Web Serial sprite loader)
+- `tools/sdcard/mons/` — generated sprite inputs (animated, shiny, PMD, thumbnails)
+- `web/packs/` — deployable UI, move and region packs plus their dynamic catalogue
+- `web/` — the browser installer (ESP Web Tools + catalogue-driven Web Serial deployment)
 
 ## Serial console (115200, debug)
 
@@ -642,7 +653,7 @@ runaway-ready state) · `WIPE` (factory reset → new game) · `BEEP` (audio tes
 `REG` (Pokédex) · `EGGS` (simulate 20 eggs) · `GAL` (gallery) · `CAREDAY` ·
 `PARTY` / `PARTY <dex>` / `PARTY CLEAR` (inspect and fill the party) ·
 `TIME <epoch>` / `RTCSET <epoch>` · `HEALTH` (uptime + heap for the soak test) ·
-`LS` / `PUT` (SD files).
+`LS` / `PUT` (validated `/packs` files).
 
 To test fast: lower `PET_TICK_MS`, `MINUTES_PER_LEVEL` and `FAREWELL_AGE_MIN` in `pet.h`.
 

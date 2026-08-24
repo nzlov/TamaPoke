@@ -6,8 +6,8 @@ Cada entrada: (num, slug, nombre_pantalla, tipo, evoluciona_a, nivel)
 - nombre_pantalla: ASCII en mayusculas (la fuente GFX no tiene acentos)
 - tipo: clave de TYPE_ACCENTS (color del nombre en la UI)
 - evoluciona_a: numero de dex (0 = forma final); niveles gen 1 reales,
-  piedras ~30 y por intercambio ~40 convertidos a nivel. Eevee (133) se
-  ramifica en el codigo del juego (134/135/136 al azar).
+  piedras ~30 y por intercambio ~40 convertidos a nivel. Las ramas adicionales
+  se declaran en EVOLUTION_BRANCHES y viajan en los paquetes regionales.
 """
 
 TYPE_ACCENTS = {
@@ -555,5 +555,21 @@ RARE = {58, 77, 83, 88, 95, 106, 107, 108, 111, 113, 114, 115, 122, 123, 124, 12
 LEGENDARY = {144, 145, 146, 150, 151,
         # generated:
         243, 244, 245, 249, 250, 251, 377, 378, 379, 380, 381, 382, 383, 384, 385, 386, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493}
+
+# Full target lists for branching evolution lines. The first target remains in
+# DEX for authoring compatibility; pack generation replaces it with this list.
+EVOLUTION_BRANCHES = {
+    44: [45, 182],
+    61: [62, 186],
+    79: [80, 199],
+    133: [134, 135, 136, 196, 197, 470, 471],
+    236: [106, 107, 237],
+    265: [266, 268],
+    281: [282, 475],
+    290: [291, 292],
+    361: [362, 478],
+    366: [367, 368],
+    412: [413, 414],
+}
 
 SLUGS = {n: s for n, s, *_ in DEX}

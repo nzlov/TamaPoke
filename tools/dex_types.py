@@ -13,11 +13,11 @@ Fairy also earns its place: Dragonite has the highest Attack in the dex, and
 under pre-Gen-6 rules Dragon is resisted only by Steel. Dragon -> Fairy is 0x,
 which hands the player a real answer to the strongest thing they can hatch.
 
-Consumed by gen_dex.py, which emits dex.h.
+Consumed by gen_data_packs.py, which emits the move and regional packs.
 """
 
 # Order matters: it is the index order of the effectiveness matrix and of the
-# PkType enum in dex.h.
+# stable PkType ABI in dex.h.
 TYPE_ORDER = [
     'normal', 'fire', 'water', 'electric', 'grass', 'ice', 'fighting',
     'poison', 'ground', 'flying', 'psychic', 'bug', 'rock', 'ghost',

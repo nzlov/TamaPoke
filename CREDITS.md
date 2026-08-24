@@ -25,8 +25,9 @@ This project is not affiliated with or endorsed by any of those companies.
 | Resource | Source | Use in the project |
 |---|---|---|
 | **All sprites** (idle, walk, sleep, eat, hurt, attack…) | [PMD Sprite Collaboration (PMDCollab/SpriteCollab)](https://github.com/PMDCollab/SpriteCollab) | Mystery-Dungeon-style animated sprites used everywhere: main screen, stat card, minigame, and the Pokédex grid + detail view |
-| **Base stats and learnsets** | [PokéAPI](https://pokeapi.co) | Real stats and level-up moves for all 386 |
-| **Gym badges** (all three regions) | [SteGriff/pokemon-badges](https://github.com/SteGriff/pokemon-badges) | `badges.h`, via `tools/gen_badges.py` — Stephen Griffiths 2011, **CC BY 3.0**, traced from Bulbapedia |
+| **Base stats and learnsets** | [PokéAPI](https://pokeapi.co) | Real stats and level-up moves for the current 493-species catalogue |
+| **Simplified-Chinese species and move names** | [42arch/pokemon-dataset-zh](https://github.com/42arch/pokemon-dataset-zh) | Pack authoring data in `tools/name_locales.json`, emitted as localized-name sections in region and move packs — © 2024 42arch, **MIT**; the source dataset credits 52Poké Wiki |
+| **Gym badges** | [SteGriff/pokemon-badges](https://github.com/SteGriff/pokemon-badges) | Pack authoring data in `tools/region_data.json`, emitted into regional packs — Stephen Griffiths 2011, **CC BY 3.0**, traced from Bulbapedia |
 | **Gym leader teams** (Johto, Hoenn) | [pret/pokecrystal](https://github.com/pret/pokecrystal), [pret/pokeemerald](https://github.com/pret/pokeemerald) | Verified against the games' own trainer tables by `tools/verify_rosters.py` — no art is taken, only the team data |
 
 The **SpriteCollab** sprites are the work of its community of artists under their
@@ -52,6 +53,8 @@ Huge thanks to that whole community for an enormous amount of work.
 | Board and pinout | [Waveshare ESP32-S3-Touch-AMOLED-1.75](https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.75) |
 | Web installer | [ESP Web Tools](https://esphome.github.io/esp-web-tools/) (Nabu Casa) |
 | 5x7 bitmap font in `tools/emu/font.cpp` | [Adafruit_GFX](https://github.com/adafruit/Adafruit-GFX-Library) © 2012 Adafruit Industries, BSD licence |
+| Runtime OpenType engine | [FreeType](https://freetype.org/) 2.14.3, FreeType Project License; ESP32 port structure follows the official [Espressif component](https://components.espressif.com/components/espressif/freetype) |
+| Chinese UI-pack font | [Noto Sans CJK SC Medium](https://github.com/notofonts/noto-cjk), Google / Adobe, SIL Open Font License 1.1 |
 
 TamaPoke's own code (firmware and tools) is original work by Quique Tortosa and
 the contributors to this fork, MIT licensed. It contains no decompiled or
@@ -92,8 +95,8 @@ replace them if that cannot be answered.
 league badges, Kanto through Unova, traced from Bulbapedia. Stephen Griffiths,
 2011, **CC BY 3.0** (attribution required, commercial use permitted).
 
-`svg/Kanto.svg` holds the eight badges, and `tools/gen_badges.py` renders it
-with `rsvg-convert`, isolates each and packs them into `badges.h` at 32x32.
+The rendered 32x32 palettes and indices are kept in `tools/region_data.json` and
+`tools/gen_data_packs.py` places them in the corresponding `.tregion` file.
 
 **CC BY requires this attribution to travel with anything built from it** --
 firmware binaries included, not just the source.

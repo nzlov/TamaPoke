@@ -38,8 +38,8 @@ static void mk(Combatant &c, int16_t dex, uint8_t lvl) {
 }
 
 static uint8_t findMove(const char *name) {
-  for (uint8_t i = 1; i < MOVE_COUNT; i++)
-    if (!strcmp(MOVE_TBL[i].name, name)) return i;
+  for (uint8_t i = 1; i < moveCount(); i++)
+    if (!strcmp(moveEntry(i).name, name)) return i;
   return 0;
 }
 

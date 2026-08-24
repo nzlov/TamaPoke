@@ -3,16 +3,15 @@
 
     python3 tools/gen_dex_data.py --check      # compare against the hand data
     python3 tools/gen_dex_data.py --link       # link evolutions whose target now exists
-    python3 tools/gen_dex_data.py --emit 386   # write the new dex_data/dex_types
+    python3 tools/gen_dex_data.py --emit 493   # write the new dex_data/dex_types
 
-dex_data.py and dex_types.py were hand-written for the 151. Extending them to
-386 by hand is 235 entries of name, typing, evolution target and level -- so
-this derives them instead.
+dex_data.py and dex_types.py were hand-written for the 151. Extending them by
+hand means hundreds of names, typings, evolution targets and levels, so this
+derives them instead.
 
-**--check is the point of this script.** It regenerates 1..151 and diffs against
-what was hand-written. If the derivation reproduces the entries a human made,
-the same derivation can be trusted for 152..386; if it does not, the differences
-have to be understood before anything is emitted. Run it first, always.
+**--check is the point of this script.** It regenerates the committed catalogue
+and diffs against its authoring data. Accepted Gen-1 differences are explicit;
+everything else, including branch targets, must match before anything is emitted.
 
 Responses are cached under tools/pokeapi_cache/ alongside fetch_pokeapi.py's,
 so a refetch is free.
@@ -97,9 +96,13 @@ def display_name(num, slug):
     return s
 
 
-def walk_chain(node, out, nonbase):
-    """Flatten an evolution chain into {from_num: (to_num, level)}."""
+def walk_chain(node, out, branches, nonbase):
+    """Flatten a chain into primary evolutions plus every direct branch."""
     src = int(node['species']['url'].rstrip('/').split('/')[-1])
+    direct = [int(nxt['species']['url'].rstrip('/').split('/')[-1])
+              for nxt in node['evolves_to']]
+    if len(direct) > 1:
+        branches[src] = direct
     for nxt in node['evolves_to']:
         dst = int(nxt['species']['url'].rstrip('/').split('/')[-1])
         nonbase.add(dst)
@@ -118,15 +121,15 @@ def walk_chain(node, out, nonbase):
                 break
         if lvl is None:
             lvl = -1                   # anything exotic: treat it as a stone
-        # Only the FIRST branch is recorded: the firmware's evolvesTo is a
-        # single number. Eevee is special-cased in the game code already.
+        # DEX keeps its original primary target for authoring compatibility;
+        # the complete direct target list is emitted as EVOLUTION_BRANCHES.
         if src not in out:
             out[src] = (dst, lvl)
-        walk_chain(nxt, out, nonbase)
+        walk_chain(nxt, out, branches, nonbase)
 
 
 def build(limit):
-    evo, nonbase = {}, set()
+    evo, branches, nonbase = {}, {}, set()
     seen_chains = set()
     rows, types, legend, capture = [], {}, set(), {}
     for n in range(1, limit + 1):
@@ -135,7 +138,7 @@ def build(limit):
         cu = sp['evolution_chain']['url']
         if cu not in seen_chains:
             seen_chains.add(cu)
-            walk_chain(get(cu)['chain'], evo, nonbase)
+            walk_chain(get(cu)['chain'], evo, branches, nonbase)
         t = [x['type']['name'] for x in sorted(pk['types'], key=lambda x: x['slot'])]
         types[n] = (t[0], t[1] if len(t) > 1 else None)
         if sp.get('is_legendary') or sp.get('is_mythical'):
@@ -156,24 +159,28 @@ def build(limit):
             to, lvl = 0, 0             # evolves into a generation we do not have
         key = slug.replace('-', '')
         dex.append((n, key, display_name(n, slug), ACCENT[t0], to, lvl))
-    return dex, types, legend, capture
+    installed_branches = {
+        source: [target for target in targets if target <= limit]
+        for source, targets in branches.items()
+        if source <= limit and len([target for target in targets if target <= limit]) > 1
+    }
+    return dex, types, legend, capture, installed_branches
 
 
 def check(limit=None):
     """Regenerate and diff against what is committed.
 
     Called with no limit it covers the WHOLE committed table, which is the
-    guarantee that matters when a generation is added: every entry below the
-    old DEX_COUNT must come back byte-identical, because people have Pokedex
-    bits and banked creatures riding on those numbers. Gen 1 is hand-written
-    and its accepted differences live in KNOWN; everything above 151 was
-    generated and must match exactly.
+    guarantee that matters when a generation is added: every committed entry
+    must come back byte-identical. Gen 1 is hand-written and its accepted
+    differences live in KNOWN; everything above 151 was generated and must
+    match exactly.
     """
-    from dex_data import DEX, TYPE_ACCENTS, LEGENDARY
+    from dex_data import DEX, TYPE_ACCENTS, LEGENDARY, EVOLUTION_BRANCHES
     if limit is None:
         limit = max(d[0] for d in DEX)
     from dex_types import TYPES
-    dex, types, legend, _ = build(limit)
+    dex, types, legend, _, branches = build(limit)
     hand = {d[0]: d for d in DEX}
     bad = 0
     for e in dex:
@@ -196,6 +203,15 @@ def check(limit=None):
     miss = legend ^ set(LEGENDARY)
     if miss:
         print('  legendary set differs: %s' % sorted(miss))
+        bad += 1
+    committed_branches = {
+        source: [target for target in targets if target <= limit]
+        for source, targets in EVOLUTION_BRANCHES.items()
+        if source <= limit and len([target for target in targets if target <= limit]) > 1
+    }
+    if branches != committed_branches:
+        print('  evolution branches differ: generated %r hand %r'
+              % (branches, committed_branches))
         bad += 1
     for a in set(ACCENT.values()):
         if a not in TYPE_ACCENTS:
@@ -227,8 +243,8 @@ def link(limit=None):
 
     This is additive by construction: it only ever touches rows whose committed
     value is 0, so it cannot retune an evolution somebody already has, and no
-    save stores evolution data at all. Rarity follows automatically, because
-    gen_dex.py derives R_EVO from being somebody's target.
+    save stores evolution data at all. Rarity follows automatically when
+    gen_data_packs.py derives R_EVO from every target.
 
     Re-run it after every expansion. Sinnoh brings ELECTIVIRE, MAGMORTAR,
     RHYPERIOR and more, all waiting on exactly this.
@@ -236,7 +252,7 @@ def link(limit=None):
     from dex_data import DEX
     if limit is None:
         limit = max(d[0] for d in DEX)
-    gen, _, _, _ = build(limit)
+    gen, _, _, _, _ = build(limit)
     generated = {e[0]: e for e in gen}
     dd = os.path.join(HERE, 'dex_data.py')
     src = open(dd, encoding='utf-8').read()
@@ -260,7 +276,7 @@ def link(limit=None):
 
     if done:
         open(dd, 'w', encoding='utf-8').write(src)
-    print('%d evolution%s linked. Re-run gen_dex.py to rebuild dex.h.'
+    print('%d evolution%s linked. Re-run gen_data_packs.py to rebuild packs.'
           % (done, '' if done == 1 else 's'))
     return done
 
@@ -272,8 +288,12 @@ def emit(limit):
     are not internally consistent (see STONE_LEVEL), and every one of them is
     already live in somebody's Pokedex -- so they are copied through untouched
     and only the new range is inserted before the closing bracket."""
-    dex, types, legend, capture = build(limit)
-    evolves_to = {e[4] for e in dex if e[4]}
+    dex, types, legend, capture, branches = build(limit)
+    evolves_to = {
+        target
+        for e in dex
+        for target in branches.get(e[0], [e[4]] if e[4] else [])
+    }
     base = {e[0] for e in dex if e[0] not in evolves_to}
 
     dd = os.path.join(HERE, 'dex_data.py')
@@ -336,6 +356,17 @@ def emit(limit):
 
     src = replace_set(src, 'RARE', newR)
     src = replace_set(src, 'LEGENDARY', newL)
+
+    # Branches belong to the authoring data rather than firmware conditionals.
+    # Rebuild the complete installed subset on every expansion.
+    branch_rows = ''.join('    %d: [%s],\n' %
+                          (source, ', '.join(str(target) for target in targets))
+                          for source, targets in sorted(branches.items()))
+    branch_block = 'EVOLUTION_BRANCHES = {\n' + branch_rows + '}\n'
+    src, replaced = re.subn(r'EVOLUTION_BRANCHES = \{\n.*?\n\}\n',
+                            branch_block, src, count=1, flags=re.S)
+    if replaced != 1:
+        raise SystemExit('dex_data.py: cannot find EVOLUTION_BRANCHES')
     open(dd, 'w', encoding='utf-8').write(src)
 
     # --- typings

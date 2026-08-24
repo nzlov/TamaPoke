@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Taller de sprites de TamaPoke.
+"""Taller de arte UI integrado de TamaPoke.
 
 Los sprites 32x32 se CONSTRUYEN con primitivas (elipses con sombreado
 automatico en el borde inferior-derecho, contorno automatico de silueta)
@@ -7,7 +7,7 @@ y detalles a pixel (ojos, boca, manchas). El script valida, renderiza un
 contact-sheet PNG para revision visual, y emite los arrays C y JS:
 
   python3 tools/sprites.py        # valida + renderiza tools/sheet.png
-  python3 tools/sprites.py emit   # regenera species.h y emitted_sprites.js
+  python3 tools/sprites.py emit   # regenera ui_art.h y emitted_sprites.js
 """
 from PIL import Image, ImageDraw
 
@@ -476,6 +476,17 @@ def icon_clean():
     return g.rows()
 
 
+def icon_train():
+    return [
+        "................", "................", "................",
+        ".kk..........kk.", ".kNk........kNk.", "kNNk........kNNk",
+        "kNNkkkkkkkkkkNNk", "kNNkMMMMMMMMkNNk", "kNNkMMMMMMMMkNNk",
+        "kNNkkkkkkkkkkNNk", "kNNk........kNNk", ".kNk........kNk.",
+        ".kk..........kk.", "................", "................",
+        "................",
+    ]
+
+
 SPRITES = {
     "CHARMANDER": charmander(),
     "CHARMELEON": charmeleon(),
@@ -490,6 +501,7 @@ SPRITES = {
     "ICON_PLAY": icon_play(),
     "ICON_LIGHT": icon_light(),
     "ICON_CLEAN": icon_clean(),
+    "ICON_TRAIN": icon_train(),
     "ICON_BERRY_B": icon_berry_blue(),
     "ICON_BERRY_G": icon_berry_green(),
     "ICON_CANDY": icon_candy(),
@@ -497,6 +509,11 @@ SPRITES = {
     "POOP": poop(),
     "HEART": heart(),
 }
+
+UI_SPRITE_NAMES = (
+    "ICON_FOOD", "ICON_PLAY", "ICON_LIGHT", "ICON_CLEAN", "ICON_TRAIN",
+    "ICON_BERRY_B", "ICON_BERRY_G", "ICON_CANDY", "EGG", "POOP", "HEART",
+)
 
 # anclas (ojos 3x4 / boca) y color de cuerpo para las expresiones superpuestas
 ANCHORS = {
@@ -583,7 +600,7 @@ UI_COLORS = {
 }
 
 
-def emit_c(path="species.h"):
+def emit_c(path="ui_art.h"):
     out = []
     out.append("#pragma once\n#include <stdint.h>\n\n")
     out.append("// GENERADO por tools/sprites.py - edita alli y ejecuta:\n")
@@ -591,48 +608,17 @@ def emit_c(path="species.h"):
     out.append(f"#define SPRITE_W {W}\n#define SPRITE_H {H}\n\n")
     for name, hexcol in UI_COLORS.items():
         out.append(f"#define {name} 0x{rgb565(hexcol):04X}  // {hexcol}\n")
-    out.append("\nenum ElementType : uint8_t { TYPE_FUEGO, TYPE_PLANTA, TYPE_AGUA };\n\n")
-    ids = list(SPECIES_META)
-    out.append("enum : int8_t {\n")
-    for i, name in enumerate(ids):
-        out.append(f"  SP_{name}{' = 0' if i == 0 else ''},\n")
-    out.append("  NUM_SPECIES\n};\n\n")
-    out.append(
-        "struct Species {\n"
-        "  const char *name;\n"
-        "  ElementType type;\n"
-        "  const char *const *sprite;\n"
-        "  uint8_t scale;\n"
-        "  int8_t evolvesTo;\n"
-        "  uint8_t evolveLevel;\n"
-        "  uint8_t eyeRow, eyeColL, eyeColR;  // anclas para expresiones (ojos 3x4)\n"
-        "  uint8_t mouthRow, mouthCol;\n"
-        "  uint16_t bodyColor;  // para borrar ojos/boca al expresar\n"
-        "  uint16_t accent;     // color UI del tipo\n"
-        "};\n\n")
     out.append("// caracter de sprite -> RGB565\n")
     out.append("static inline uint16_t spriteColor(char ch) {\n  switch (ch) {\n")
     for ch, hexcol in PALETTE.items():
         out.append(f"    case '{ch}': return 0x{rgb565(hexcol):04X};  // {hexcol}\n")
     out.append("    default: return 0;\n  }\n}\n\n")
-    for name, rows in SPRITES.items():
+    for name in UI_SPRITE_NAMES:
+        rows = SPRITES[name]
         out.append(f"static const char* const SPR_{name}[{len(rows)}] = {{  // {len(rows)}x{len(rows)}\n")
         for row in rows:
             out.append(f'  "{row}",\n')
         out.append("};\n\n")
-    out.append("static const Species SPECIES[NUM_SPECIES] = {\n")
-    for name in ids:
-        typ, evo, lvl, scale = SPECIES_META[name]
-        a = ANCHORS[name]
-        body = rgb565(PALETTE[a['body']])
-        acc = rgb565(ACCENT[typ])
-        out.append(
-            f'  {{ "{name}", {typ}, SPR_{name}, {scale}, {evo}, {lvl}, '
-            f"{a['eyeRow']}, {a['eyeL']}, {a['eyeR']}, {a['mouthRow']}, {a['mouthCol']}, "
-            f"0x{body:04X}, 0x{acc:04X} }},\n")
-    out.append("};\n\n")
-    out.append("static const int8_t STARTERS[] = { SP_CHARMANDER, SP_BULBASAUR, SP_SQUIRTLE };\n")
-    out.append("#define NUM_STARTERS 3\n")
     open(path, 'w').write(''.join(out))
     print(f"guardado {path}")
 

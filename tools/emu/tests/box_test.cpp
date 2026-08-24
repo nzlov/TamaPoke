@@ -1,6 +1,6 @@
 // The box is a separate NVS key on purpose. This checks the swap is a real
-// exchange in both directions, that it persists, and -- most importantly --
-// that a save written before the box existed still loads its party intact.
+// exchange in both directions, that it persists, and that an absent box key is
+// treated as empty without affecting a current-format party.
 #include "Arduino.h"
 #include "Preferences.h"
 #include "pet.h"
@@ -18,7 +18,7 @@ static PartyMon mk(int dex,int lvl){ PartyMon m; m.dex=dex; m.level=lvl;
   m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20; return m; }
 
 int main(){
-  // a save from BEFORE the box existed: party key only, no box key
+  // Current-format party key with no box key.
   { Preferences seed; seed.begin("tamapoke", false);
     PartyMon old[PARTY_SLOTS];
     for (int i=0;i<PARTY_SLOTS;i++) old[i]=mk(1+i*20, 30+i);
@@ -27,7 +27,7 @@ int main(){
   Party p; p.begin();
   bool kept = true;
   for (int i=0;i<PARTY_SLOTS;i++) if (p.slots[i].dex != 1+i*20) kept=false;
-  ck(kept, "a pre-box save keeps its whole party");
+  ck(kept, "an absent box key leaves the party intact");
   ck(p.boxCount()==0, "and comes up with an empty box, not garbage");
 
   // deposit: party slot 0 <-> empty box slot 0

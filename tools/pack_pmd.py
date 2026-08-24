@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Empaquetador de sprites PMD (SpriteCollab) para la pantalla principal.
+"""Genera entradas TPK2 para los paquetes regionales desde PMD SpriteCollab.
 
-Genera /mons/pNNN.bin (y psNNN.bin shiny) en formato TPK2 multi-accion:
+Genera tools/sdcard/mons/pNNN.bin (y psNNN.bin shiny) en formato TPK2:
 
   char[4] "TPK2"
   u8  nActs
@@ -29,10 +29,10 @@ import subprocess
 import xml.etree.ElementTree as ET
 from PIL import Image
 
-# Kept in step with dex.h rather than hardcoded, the same way gen_moves.py is.
-import re as _re
-_dexh = open(os.path.join(os.path.dirname(__file__), '..', 'dex.h')).read()
-DEX_COUNT = int(_re.search(r'#define DEX_COUNT (\d+)', _dexh).group(1))
+# Build inputs follow the authoring catalogue; dex.h is now only a stable ABI.
+sys.path.insert(0, os.path.dirname(__file__))
+from dex_data import DEX
+DEX_COUNT = max(row[0] for row in DEX)
 
 OUT = os.path.join(os.path.dirname(__file__), 'sdcard', 'mons')
 CACHE = os.path.join(os.path.dirname(__file__), 'pmd_cache')

@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <Preferences.h>
+#include "moves.h"
 
 // The party: pets that finished their life and were kept, rather than being
 // dissolved into a single Pokedex bit like every previous ending did.
@@ -9,11 +10,7 @@
 // A runaway does not: it is the game's one punishing outcome, and letting a
 // neglected pet come back as a team member would take the sting out of it.
 #define PARTY_SLOTS 6
-// The box: storage beyond the six that fight. Deliberately a SEPARATE NVS key
-// rather than a bigger party blob -- growing that blob would change its stride
-// and the length-based migration in begin() cannot tell a stride change from a
-// slot-count change, so an existing party would be read back misaligned. A new
-// key is purely additive and cannot corrupt anything.
+// The box: storage beyond the six that fight, kept under a separate NVS key.
 #define BOX_SLOTS 18
 #define MOVE_SLOTS 4    // the same four every trainer gets in the real games
 
@@ -28,10 +25,8 @@ struct PartyMon {
   uint8_t shiny = 0;
   char nick[12] = "";
   // Frozen with everything else: the moves you chose while it was alive are
-  // what it fights with forever. 0 = empty slot (MOVE_TBL[0] is the "-" filler).
-  // Appended at the END of the struct on purpose -- Party::begin() migrates
-  // older, shorter blobs by length, and that only works if nothing moved.
-  uint8_t moves[MOVE_SLOTS] = { 0, 0, 0, 0 };
+  // what it fights with forever. 0 = empty slot (moveEntry(0) is the "-" filler).
+  MoveId moves[MOVE_SLOTS] = { 0, 0, 0, 0 };
 
   bool empty() const { return dex < 1; }
 };

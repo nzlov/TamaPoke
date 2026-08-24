@@ -184,9 +184,9 @@ int main(){
     LinkMon junk{};
     junk.dex=9999; junk.level=250; junk.maxHp=0; junk.moves[0]=250;
     Combatant c; linkMonTo(c,junk);
-    ck(c.dex>=1 && c.dex<=DEX_COUNT, "a nonsense dex is clamped into the table");
+    ck(c.dex>=1 && c.dex<=dexCount(), "a nonsense dex is clamped into the table");
     ck(c.level>=1 && c.level<=MAX_LEVEL, "so is a nonsense level");
-    ck(c.moves[0]<MOVE_COUNT, "and a nonsense move index");
+    ck(c.moves[0]<moveCount(), "and a nonsense move index");
     ck(c.maxHp>=1 && c.hp==c.maxHp, "a creature always has at least 1 HP");
 
     LinkMon neg{}; neg.dex=-5; neg.level=0; neg.maxHp=10;

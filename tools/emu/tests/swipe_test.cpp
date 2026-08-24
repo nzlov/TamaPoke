@@ -30,7 +30,7 @@ void pickDefault(uint8_t);
 uint8_t squadCap(uint8_t, bool);
 // Asked of the firmware, not recomputed here: a test that keeps its own copy of
 // RPICK_PER_PAGE proves the transcription, which is how hit_test spent years
-// passing on 12 % REGION_COUNT == 0.
+// passing on 12 % regionCount() == 0.
 extern uint8_t rpickPage;
 uint8_t rpickRegions(uint8_t mode);
 uint8_t rpickPageCount(uint8_t mode);
@@ -54,7 +54,7 @@ static void check(const char *name, bool *open, uint8_t *page){
   if (*page != 1) { printf("FAIL  %-10s did not advance a page (page=%u)\n", name, *page); bad++; return; }
   printf("PASS  %-10s pages on a horizontal swipe\n", name);
 }
-uint8_t learnableFor(int16_t dex, uint8_t lvl, uint8_t *out, uint8_t max);
+uint8_t learnableFor(int16_t dex, uint8_t lvl, MoveId *out, uint8_t max);
 
 int main(){
   setup();
@@ -86,30 +86,30 @@ int main(){
   else printf("PASS  %-10s pages on a horizontal swipe\n", "gallery");
   {
     // walk every region to its last page and tick off what it can show
-    static bool seen[DEX_COUNT + 1] = { false };
-    int regions = REGION_COUNT - 1;
+    static bool seen[CONTENT_MAX_SPECIES + 1] = { false };
+    int regions = regionCount() - 1;
     for (int r = 0; r < regions; r++) {
       galleryRegion = (uint8_t)r;
       galleryPage = 0;
-      int lo = REGIONS[r].lo, hi = REGIONS[r].hi;
+      int lo = regionInfo(r).lo, hi = regionInfo(r).hi;
       int pages = (hi - lo + 1 + 15) / 16;
       for (int p = 0; p < pages; p++) {
         for (int i = 0; i < 16; i++) {
           int d = lo + p * 16 + i;
-          if (d <= hi && d <= DEX_COUNT) seen[d] = true;
+          if (d <= hi && d <= dexCount()) seen[d] = true;
         }
         onSwipe(-1);
       }
       if (galleryPage != pages - 1) {
         printf("FAIL  gallery    %s stops at page %d of %d\n",
-               REGIONS[r].name, galleryPage + 1, pages);
+               regionInfo(r).name, galleryPage + 1, pages);
         bad++;
       }
     }
     int missing = 0;
-    for (int d = 1; d <= DEX_COUNT; d++) if (!seen[d]) missing++;
+    for (int d = 1; d <= dexCount(); d++) if (!seen[d]) missing++;
     if (missing) { printf("FAIL  gallery    %d species are unreachable\n", missing); bad++; }
-    else printf("PASS  %-10s every one of the %d species is reachable\n", "gallery", DEX_COUNT);
+    else printf("PASS  %-10s every one of the %d species is reachable\n", "gallery", dexCount());
     // and a vertical swipe really does move between regions
     galleryRegion = 0; galleryDetail = 0;
     onSwipeV(1);
@@ -123,17 +123,18 @@ int main(){
   clearAll(); gymOpen=true; gymPick=false; gymRegion=0; gymPage=0;
   {
     bool ok = true;
-    for (int r = 1; r <= GYM_REGIONS; r++) {
+    const uint8_t regions = regionAll();
+    for (int r = 1; r <= regions; r++) {
       onSwipeV(1);
-      if (gymRegion != r % GYM_REGIONS || !gymOpen) ok = false;
+      if (gymRegion != r % regions || !gymOpen) ok = false;
     }
     if (!ok) { printf("FAIL  gyms       vertical swipe does not cycle the ladders\n"); bad++; }
-    else printf("PASS  %-10s cycles all %d ladders on a vertical swipe\n", "gyms", GYM_REGIONS);
-    for (int r = 0; r < GYM_REGIONS; r++) {
+    else printf("PASS  %-10s cycles all %u ladders on a vertical swipe\n", "gyms", regions);
+    for (int r = 0; r < regions; r++) {
       gymRegion = (uint8_t)r; gymPage = 0; gymOpen = true;
       onSwipe(-1);
       if (gymPage != 1 || !gymOpen) {
-        printf("FAIL  gyms       %s does not page\n", TRAINER_SETS[r].region); bad++;
+        printf("FAIL  gyms       %s does not page\n", regionInfo(r).name); bad++;
       }
     }
     if (!bad) printf("PASS  %-10s every ladder still pages horizontally\n", "gyms");
@@ -208,7 +209,7 @@ int main(){
     gymOpen = true; gymPick = true; rpickPage = 0;
     uint8_t nreg  = rpickRegions(rpickModeNow());
     uint8_t pages = rpickPageCount(rpickModeNow());
-    if (nreg != GYM_REGIONS) { printf("FAIL  gympick    lists %u regions, not GYM_REGIONS=%d\n", nreg, (int)GYM_REGIONS); bad++; }
+    if (nreg != regionAll()) { printf("FAIL  gympick    lists %u regions, not installed regions=%u\n", nreg, regionAll()); bad++; }
     else printf("PASS  %-10s lists every ladder (%u)\n", "gympick", nreg);
     if (pages < 2) { printf("FAIL  gympick    %u regions but only %u page -- the last ladder is unreachable\n", nreg, pages); bad++; }
     else printf("PASS  %-10s needs %u pages and says so\n", "gympick", pages);
@@ -234,25 +235,25 @@ int main(){
 
     // Cycle the pill all the way round twice. The invariant is that it never
     // RESTS on a locked region -- not that it returns any particular index.
-    // REGION_ALL stays selectable while any one pack is present, since the
+    // regionAll() stays selectable while any one pack is present, since the
     // mixed pool is then simply that region's creatures, so asserting a fixed
     // answer here just encoded my own wrong guess about ALL.
     {
       uint8_t r = 0; int landedLocked = 0; uint16_t visited = 0;
-      for (int i = 0; i < REGION_COUNT * 2; i++) {
+      for (int i = 0; i < regionCount() * 2; i++) {
         r = nextAvailableRegion(r);
         if (!regionAvailable(r)) landedLocked++;
         visited |= (uint16_t)(1u << r);
       }
       int nvisited = 0;
-      for (uint8_t b2 = 0; b2 < REGION_COUNT; b2++) if (visited & (1u << b2)) nvisited++;
+      for (uint8_t b2 = 0; b2 < regionCount(); b2++) if (visited & (1u << b2)) nvisited++;
       // BOTH halves matter. "never rests on a locked region" is vacuously true
       // when nothing is locked, so on its own it survives the gate being
       // deleted -- it did exactly that when this was negative-checked. The
       // second half is the one with teeth: with only KANTO present the pill
       // must reach FEWER regions than exist.
       if (landedLocked) { printf("FAIL  gating     the pill landed on a locked region %d times\n", landedLocked); bad++; }
-      else if (nvisited >= REGION_COUNT) { printf("FAIL  gating     the pill reached all %d regions with 3 packs missing\n", (int)REGION_COUNT); bad++; }
+      else if (nvisited >= regionCount()) { printf("FAIL  gating     the pill reached all %d regions with 3 packs missing\n", (int)regionCount()); bad++; }
       else printf("PASS  %-10s the pill skips locked regions and reaches only %d\n", "gating", nvisited);
     }
 
@@ -277,18 +278,18 @@ int main(){
   // PICKER has to actually ask it. It once kept its own copy of the check,
   // which IS the bug, so this drives the screen's own list, not the rule.
   {
-    uint8_t l[64];
-    uint8_t n = learnableFor(5, 22, l, sizeof(l));    // a Charmeleon at 22
+    MoveId l[64];
+    uint8_t n = learnableFor(5, 22, l, sizeof(l) / sizeof(l[0]));    // a Charmeleon at 22
     bool blast = false, ember = false;
     for (uint8_t i = 0; i < n; i++) {
-      if (!strcmp(MOVE_TBL[l[i]].name, "FIRE BLAST")) blast = true;
-      if (!strcmp(MOVE_TBL[l[i]].name, "EMBER")) ember = true;
+      if (!strcmp(moveEntry(l[i]).name, "FIRE BLAST")) blast = true;
+      if (!strcmp(moveEntry(l[i]).name, "EMBER")) ember = true;
     }
     if (blast) { printf("FAIL  picker     offers a level 22 Charmeleon FIRE BLAST\n"); bad++; }
     else printf("PASS  picker     no FIRE BLAST for a level 22 Charmeleon\n");
     if (!ember) { printf("FAIL  picker     lost the moves it really knows\n"); bad++; }
     else printf("PASS  picker     still offers what it really knows\n");
-    if (learnableFor(5, 40, l, sizeof(l)) <= n) {
+    if (learnableFor(5, 40, l, sizeof(l) / sizeof(l[0])) <= n) {
       printf("FAIL  picker     TMs never arrive at all\n"); bad++;
     } else printf("PASS  picker     and the TMs arrive once it is built\n");
   }

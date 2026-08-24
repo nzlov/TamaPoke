@@ -3,9 +3,17 @@
 #include "dex.h"
 #include "moves.h"
 #include "audio.h"
+#include "save.h"
 
 void Pet::begin() {
   prefs.begin("tamapoke", false);
+  uint16_t storedVersion = prefs.getUShort("savev", 0);
+  if (storedVersion != SAVE_STATE_VERSION) {
+    if (prefs.isKey("init") || prefs.isKey("savev"))
+      Serial.printf("save schema %u unsupported; resetting\n", storedVersion);
+    prefs.clear();
+    prefs.putUShort("savev", SAVE_STATE_VERSION);
+  }
   // Zeroed BEFORE the branch below, not inside load(): getBytes() leaves its
   // destination untouched when the key is missing, and the fresh-install path
   // returns without ever calling load(). Without this a begin() after a factory
@@ -16,7 +24,7 @@ void Pet::begin() {
   memset(badgesHardX, 0, sizeof(badgesHardX));
   memset(dexReg, 0, sizeof(dexReg));
   memset(dexShinyReg, 0, sizeof(dexShinyReg));
-  for (int i = 0; i < REGION_COUNT; i++) eggByRegion[i] = 0;
+  for (int i = 0; i < regionCount(); i++) eggByRegion[i] = 0;
   if (!prefs.getBool("init", false)) {
     prefs.putBool("init", true);
     newEgg();
@@ -32,9 +40,9 @@ void Pet::newEgg() {
   weight = 0;
   speciesId = -1;
   prevSpeciesId = -1;
-  for (int i = 0; i < REGION_COUNT; i++) eggByRegion[i] = 0;
+  for (int i = 0; i < regionCount(); i++) eggByRegion[i] = 0;
   eggTarget = pickEggSpecies();  // especie oculta segun rareza y pokedex
-  eggByRegion[region % REGION_COUNT] = eggTarget;
+  eggByRegion[region % regionCount()] = eggTarget;
   starterPick = (registeredCount() == 0);  // primera partida: el jugador elige inicial
   // sorteo shiny: 1/48 base, mejor con despedida y con racha/vinculo altos
   int shinyBase = (lastEnd == CER_FAREWELL ? 24 : 48) - careBonus();
@@ -296,54 +304,51 @@ void Pet::defTick(bool resting) {
   if (trDef < trMaxDef()) trDef++;
 }
 
-// quedan miembros sin registrar en la linea evolutiva de esta base?
-bool Pet::lineHasUnregistered(int16_t base) const {
-  int16_t cur = base;
-  for (int guard = 0; cur >= 1 && cur <= DEX_COUNT && guard < 6; guard++) {
-    if (!isRegistered(cur)) return true;
-    if (cur == DEX_EEVEE) {
-      for (int16_t b = 134; b <= 136; b++)
-        if (!isRegistered(b)) return true;
-      return false;
-    }
-    cur = DEX_TBL[cur].evolvesTo;
+static bool branchHasUnregistered(const Pet &pet, SpeciesId species, uint8_t depth) {
+  if (!pet.isRegistered(species)) return true;
+  if (depth >= CONTENT_MAX_EVOLUTIONS) return false;
+  for (uint8_t i = 0; i < evolutionCount(species); i++) {
+    SpeciesId target = evolutionTarget(species, i);
+    if (dexValid(target) && branchHasUnregistered(pet, target, depth + 1)) return true;
   }
   return false;
 }
 
+// quedan miembros sin registrar en la linea evolutiva de esta base?
+bool Pet::lineHasUnregistered(int16_t base) const {
+  return dexValid(base) && branchHasUnregistered(*this, (SpeciesId)base, 0);
+}
+
 uint8_t Pet::eggRarity() const {
-  return (eggTarget >= 1 && eggTarget <= DEX_COUNT) ? DEX_TBL[eggTarget].rarity : R_COMUN;
+  return (eggTarget >= 1 && eggTarget <= dexCount()) ? dexEntry(eggTarget).rarity : R_COMUN;
 }
 
 // elige la especie del huevo: tirada de rareza (mejorada por una despedida
 // completa, castigada por una escapada) y sesgo hacia lineas incompletas
-// Room for the candidate list. A whole rarity tier of a 386-species dex is far
-// more than the 80 the Kanto-only build needed.
-#define CAND_MAX 260
 
 uint16_t gRegionArt = 0xFFFF;   // everything, until the SD narrows it
 
 bool regionAvailable(uint8_t r) {
-  if (r >= REGION_COUNT) return false;
-  if (r == REGION_ALL) {                       // the mixed pool: any pack will do
-    for (uint8_t i = 0; i < REGION_COUNT; i++)
-      if (i != REGION_ALL && (gRegionArt & (uint16_t)(1u << i))) return true;
+  if (r >= regionCount()) return false;
+  if (r == regionAll()) {                       // the mixed pool: any pack will do
+    for (uint8_t i = 0; i < regionCount(); i++)
+      if (i != regionAll() && (gRegionArt & (uint16_t)(1u << i))) return true;
     return false;
   }
   return (gRegionArt & (uint16_t)(1u << r)) != 0;
 }
 
 uint8_t regionOfDex(int16_t d) {
-  for (uint8_t i = 0; i < REGION_COUNT; i++) {
-    if (i == REGION_ALL) continue;
-    if (d >= REGIONS[i].lo && d <= REGIONS[i].hi) return i;
+  for (uint8_t i = 0; i < regionCount(); i++) {
+    if (i == regionAll()) continue;
+    if (d >= regionInfo(i).lo && d <= regionInfo(i).hi) return i;
   }
-  return REGION_ALL;
+  return regionAll();
 }
 
 uint8_t nextAvailableRegion(uint8_t from) {
-  for (uint8_t i = 1; i <= REGION_COUNT; i++) {
-    uint8_t r = (uint8_t)((from + i) % REGION_COUNT);
+  for (uint8_t i = 1; i <= regionCount(); i++) {
+    uint8_t r = (uint8_t)((from + i) % regionCount());
     if (regionAvailable(r)) return r;
   }
   return from;                      // nothing available anywhere: stay put
@@ -355,14 +360,30 @@ uint8_t nextAvailableRegion(uint8_t from) {
 // only the roll falls through to somewhere playable.
 static uint8_t eggRegionFallback(uint8_t want) {
   if (regionAvailable(want)) return want;
-  for (uint8_t i = 0; i < REGION_COUNT; i++)
-    if (i != REGION_ALL && regionAvailable(i)) return i;
+  for (uint8_t i = 0; i < regionCount(); i++)
+    if (i != regionAll() && regionAvailable(i)) return i;
   return want;                      // no art anywhere: behave as we always did
 }
 
+// Reservoir sampling keeps selection uniform without a firmware-sized species
+// array or a hard cap on how many candidates a future region pack may contain.
+static int16_t pickRegionSpecies(const RegionInfo &rg, uint8_t tier,
+                                 bool incompleteOnly, const Pet &pet) {
+  int16_t selected = 0;
+  uint16_t seen = 0;
+  for (int16_t d = rg.lo; d <= rg.hi; d++) {
+    if (dexEntry(d).rarity != tier) continue;
+    if (incompleteOnly && !pet.lineHasUnregistered(d)) continue;
+    if (!regionAvailable(regionOfDex(d))) continue;
+    seen++;
+    if (random(seen) == 0) selected = d;
+  }
+  return selected;
+}
+
 int16_t Pet::pickEggSpecies() {
-  const uint8_t use = eggRegionFallback(region % REGION_COUNT);
-  const RegionInfo &rg = REGIONS[use];
+  const uint8_t use = eggRegionFallback(region % regionCount());
+  const RegionInfo &rg = regionInfo(use);
   // primera partida: inicial clasico -- del region elegida, so a Johto run
   // starts with a Johto starter rather than a Kanto one
   if (registeredCount() == 0) {
@@ -383,17 +404,8 @@ int16_t Pet::pickEggSpecies() {
   // si la pokedex del tier esta completa, vale cualquiera del tier
   for (int pass = 0; pass < 2; pass++) {
     for (int t = tier; t >= R_COMUN; t--) {
-      int16_t cand[CAND_MAX];
-      int n = 0;
-      for (int16_t d = rg.lo; d <= rg.hi && n < CAND_MAX; d++) {
-        if (DEX_TBL[d].rarity != t) continue;
-        if (pass == 0 && !lineHasUnregistered(d)) continue;
-        // ALL spans every region, so filter per species: a missing Sinnoh pack
-        // must not put a Sinnoh creature in a mixed egg.
-        if (!regionAvailable(regionOfDex(d))) continue;
-        cand[n++] = d;
-      }
-      if (n > 0) return cand[random(n)];
+      int16_t selected = pickRegionSpecies(rg, (uint8_t)t, pass == 0, *this);
+      if (selected) return selected;
     }
   }
   return rg.starters[random(rg.starterCount)];  // inalcanzable, por si acaso
@@ -403,13 +415,10 @@ int16_t Pet::pickEggSpecies() {
 // region while an egg is waiting: the rarity they were granted is kept and only
 // the region changes, so switching cannot be farmed for a legendary.
 int16_t Pet::rollInRegion(uint8_t r, uint8_t tier) {
-  const RegionInfo &rg = REGIONS[eggRegionFallback(r % REGION_COUNT)];
+  const RegionInfo &rg = regionInfo(eggRegionFallback(r % regionCount()));
   for (int t = tier; t >= R_COMUN; t--) {
-    int16_t cand[CAND_MAX];
-    int n = 0;
-    for (int16_t d = rg.lo; d <= rg.hi && n < CAND_MAX; d++)
-      if (DEX_TBL[d].rarity == t && regionAvailable(regionOfDex(d))) cand[n++] = d;
-    if (n) return cand[random(n)];
+    int16_t selected = pickRegionSpecies(rg, (uint8_t)t, false, *this);
+    if (selected) return selected;
   }
   return rg.starters[0];      // a region with nothing in it cannot happen
 }
@@ -427,7 +436,7 @@ int16_t Pet::rollInRegion(uint8_t r, uint8_t tier) {
 //
 // A hatched creature is untouched -- this only ever moves an egg.
 void Pet::setRegion(uint8_t r) {
-  r %= REGION_COUNT;
+  r %= regionCount();
   // The sprite pack is a real gate, not a hint: without it the region is not
   // selectable at all. The chooser still SHOWS it, greyed and with a reason --
   // hiding it outright is how Johto and Hoenn once came to look absent when
@@ -437,7 +446,7 @@ void Pet::setRegion(uint8_t r) {
   uint8_t old = region;
   region = r;
   if (isEgg() && eggTarget >= 1) {
-    if (old < REGION_COUNT) eggByRegion[old] = eggTarget;
+    if (old < regionCount()) eggByRegion[old] = eggTarget;
     int16_t known = eggByRegion[r];
     eggTarget = known >= 1 ? known : rollInRegion(r, eggRarity());
     eggByRegion[r] = eggTarget;
@@ -446,7 +455,7 @@ void Pet::setRegion(uint8_t r) {
 }
 
 void Pet::registerSpecies(int16_t dex) {
-  if (dex < 1 || dex > DEX_COUNT) return;
+  if (dex < 1 || dex > dexCount()) return;
   dexReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
   if (shiny) dexShinyReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
 }
@@ -497,7 +506,7 @@ void Pet::checkMedals() {
   if (berryKnown) medals |= MED_BERRY;
   if (streak >= 7) medals |= MED_STREAK7;
   if (bond >= 100) medals |= MED_BOND;
-  if (DEX_TBL[speciesId].evolvesTo == 0) medals |= MED_FINAL;
+  if (!evolutionAvailable(speciesId)) medals |= MED_FINAL;
   if (weight == 0 && level() >= 5 && careMistakes == 0) medals |= MED_FIT;
   uint16_t gained = medals & ~before;
   if (gained) {
@@ -525,27 +534,27 @@ static uint16_t calcStat(uint8_t base, uint8_t iv, uint8_t lvl, uint8_t tr) {
 }
 
 uint16_t Pet::atkStat() const {
-  return isEgg() ? 0 : calcStat(DEX_TBL[speciesId].bAtk, ivAtk, level(), trAtk);
+  return isEgg() ? 0 : calcStat(dexEntry(speciesId).bAtk, ivAtk, level(), trAtk);
 }
 uint16_t Pet::defStat() const {
-  return isEgg() ? 0 : calcStat(DEX_TBL[speciesId].bDef, ivDef, level(), trDef);
+  return isEgg() ? 0 : calcStat(dexEntry(speciesId).bDef, ivDef, level(), trDef);
 }
 uint16_t Pet::speStat() const {
-  return isEgg() ? 0 : calcStat(DEX_TBL[speciesId].bSpe, ivSpe, level(), trSpe);
+  return isEgg() ? 0 : calcStat(dexEntry(speciesId).bSpe, ivSpe, level(), trSpe);
 }
 // la vitalidad no se entrena (no hay nada que la suba), asi que lleva un +10
 // fijo en lugar del entrenamiento, igual que el +Nivel+10 del HP en los juegos
 uint16_t Pet::vitStat() const {
-  return isEgg() ? 0 : calcStat(DEX_TBL[speciesId].bHp, ivHp, level(), 10);
+  return isEgg() ? 0 : calcStat(dexEntry(speciesId).bHp, ivHp, level(), 10);
 }
 // Special reuses the physical IV and training against the species' special base
 // stat, which is what keeps Alakazam (50 Atk / 135 SpA) a real attacker without
-// adding IVs or migrating saves.
+// adding more persisted IV fields.
 uint16_t Pet::spaStat() const {
-  return isEgg() ? 0 : calcStat(DEX_TBL[speciesId].bSpA, ivAtk, level(), trAtk);
+  return isEgg() ? 0 : calcStat(dexEntry(speciesId).bSpA, ivAtk, level(), trAtk);
 }
 uint16_t Pet::spdStat() const {
-  return isEgg() ? 0 : calcStat(DEX_TBL[speciesId].bSpD, ivDef, level(), trDef);
+  return isEgg() ? 0 : calcStat(dexEntry(speciesId).bSpD, ivDef, level(), trDef);
 }
 
 // ---------- moves ----------
@@ -557,7 +566,7 @@ uint8_t Pet::moveCount() const {
   return n;
 }
 
-bool Pet::knowsMove(uint8_t mv) const {
+bool Pet::knowsMove(MoveId mv) const {
   if (!mv) return false;
   for (int i = 0; i < MOVE_SLOTS; i++)
     if (moves[i] == mv) return true;
@@ -594,19 +603,20 @@ static uint8_t tmLevelFor(const MoveEntry &m) {
 
 // THE single answer, used by relearnFromLevel(), by the STAB fallback and by
 // the move picker in the sketch. Three call sites once had three opinions.
-uint8_t moveUnlockLevel(int16_t dex, uint8_t idx) {
+uint8_t moveUnlockLevel(SpeciesId dex, uint16_t idx) {
   uint8_t at = learnLevel(dex, idx);
-  if (at > 0) return at;                 // a real level-up move
-  uint8_t mv = learnMove(dex, idx);
-  if (!mv || mv >= MOVE_COUNT) return 255;
-  return tmLevelFor(MOVE_TBL[mv]);       // a TM: no natural level, so the gate
+  if (learnMethod(dex, idx) == LM_LEVEL_UP) return at;
+  MoveId mv = learnMove(dex, idx);
+  if (!mv || mv >= ::moveCount()) return 255;
+  return tmLevelFor(moveEntry(mv));       // a TM: no natural level, so the gate
 }
 
 void Pet::relearnFromLevel() {
   for (int i = 0; i < MOVE_SLOTS; i++) moves[i] = 0;
   if (isEgg()) return;
-  const DexEntry &d = DEX_TBL[speciesId];
-  uint8_t lvl = level(), n = learnCount(speciesId);
+  const DexEntry &d = dexEntry(speciesId);
+  uint8_t lvl = level();
+  uint16_t n = learnCount(speciesId);
   int16_t score[MOVE_SLOTS] = { 0, 0, 0, 0 };
   // Two passes. Level-up moves (level >= 1) are what a creature grows into, so
   // they fill the set first; TMs (level 0, no gate) only top up the slots left
@@ -614,13 +624,13 @@ void Pet::relearnFromLevel() {
   // because every TM is legal at level 1.
   for (int pass = 0; pass < 2; pass++) {
   bool tmPass = (pass == 1);
-  for (uint8_t i = 0; i < n; i++) {
+  for (uint16_t i = 0; i < n; i++) {
     uint8_t at = learnLevel(speciesId, i);
     if (at > lvl) continue;
-    if (tmPass != (at == 0)) continue;
-    uint8_t mv = learnMove(speciesId, i);
-    if (!mv || mv >= MOVE_COUNT || knowsMove(mv)) continue;
-    const MoveEntry &m = MOVE_TBL[mv];
+    if (tmPass != (learnMethod(speciesId, i) != LM_LEVEL_UP)) continue;
+    MoveId mv = learnMove(speciesId, i);
+    if (!mv || mv >= ::moveCount() || knowsMove(mv)) continue;
+    const MoveEntry &m = moveEntry(mv);
     // A TM carries no level requirement in the data, which is true of the games
     // but wrong here: with only one or two level-up moves early on, the spare
     // slots were filled with the strongest TMs in the table and a NEWBORN opened
@@ -658,23 +668,23 @@ void Pet::relearnFromLevel() {
   // gives way to the best same-type attack the species can actually learn.
   for (int i = 0; i < MOVE_SLOTS; i++) {
     if (!moves[i]) continue;
-    const MoveEntry &m = MOVE_TBL[moves[i]];
+    const MoveEntry &m = moveEntry(moves[i]);
     if (m.cat != MC_STATUS && (m.type == d.type1 || m.type == d.type2)) return;
   }
-  uint8_t best = 0;
+  MoveId best = 0;
   int16_t bestSc = 0;
-  for (uint8_t i = 0; i < n; i++) {
+  for (uint16_t i = 0; i < n; i++) {
     uint8_t at = learnLevel(speciesId, i);
     if (at > lvl) continue;
-    uint8_t mv = learnMove(speciesId, i);
-    if (!mv || mv >= MOVE_COUNT) continue;
-    const MoveEntry &m = MOVE_TBL[mv];
+    MoveId mv = learnMove(speciesId, i);
+    if (!mv || mv >= ::moveCount()) continue;
+    const MoveEntry &m = moveEntry(mv);
     if (m.cat == MC_STATUS || (m.type != d.type1 && m.type != d.type2)) continue;
     // The same TM gate as above. This fallback used to ignore it, which is how
     // a level 1 Squirtle ended up holding SURF: it had no Water move, so the
     // guarantee reached past every check and handed it the best one in the
     // table. A creature with no STAB it can legally use simply has none yet.
-    if (at == 0 && lvl < tmLevelFor(m)) continue;
+    if (learnMethod(speciesId, i) != LM_LEVEL_UP && lvl < tmLevelFor(m)) continue;
     int16_t sc = (int16_t)m.power;
     if (m.effect == EF_RECHARGE) sc -= 35;
     if (m.effect == EF_RECOIL) sc -= 20;
@@ -690,17 +700,18 @@ void Pet::checkLearnGates() {
   if (isEgg() || ceremony != CER_NONE) return;
   uint8_t lvl = level();
   if (lvl <= lastLearnLevel) return;
-  uint8_t n = learnCount(speciesId);
-  for (uint8_t i = 0; i < n; i++) {
+  uint16_t n = learnCount(speciesId);
+  for (uint16_t i = 0; i < n; i++) {
     uint8_t at = learnLevel(speciesId, i);
-    if (at == 0 || at <= lastLearnLevel || at > lvl) continue;  // 0 = TM, no gate
-    uint8_t mv = learnMove(speciesId, i);
-    if (!mv || mv >= MOVE_COUNT || knowsMove(mv)) continue;
+    if (learnMethod(speciesId, i) != LM_LEVEL_UP ||
+        at <= lastLearnLevel || at > lvl) continue;
+    MoveId mv = learnMove(speciesId, i);
+    if (!mv || mv >= ::moveCount() || knowsMove(mv)) continue;
     int freeSlot = -1;
     for (int s = 0; s < MOVE_SLOTS; s++)
       if (!moves[s]) { freeSlot = s; break; }
     if (freeSlot >= 0) { moves[freeSlot] = mv; continue; }
-    if (learnQCount >= sizeof(learnQueue)) continue;
+    if (learnQCount >= sizeof(learnQueue) / sizeof(learnQueue[0])) continue;
     bool dup = false;
     for (uint8_t q = 0; q < learnQCount; q++)
       if (learnQueue[q] == mv) dup = true;
@@ -710,7 +721,7 @@ void Pet::checkLearnGates() {
   pendingSave = true;
 }
 
-static void popLearn(uint8_t *q, uint8_t &n) {
+static void popLearn(MoveId *q, uint8_t &n) {
   if (!n) return;
   for (uint8_t i = 0; i + 1 < n; i++) q[i] = q[i + 1];
   q[--n] = 0;
@@ -728,12 +739,14 @@ void Pet::declineLearn() {
   save();
 }
 
-uint8_t Pet::pendingLearnables(uint8_t *out, uint8_t max) const {
+uint8_t Pet::pendingLearnables(MoveId *out, uint8_t max) const {
   if (isEgg() || !out || !max) return 0;
-  uint8_t lvl = level(), n = learnCount(speciesId), w = 0;
-  for (uint8_t i = 0; i < n && w < max; i++) {
-    if (learnLevel(speciesId, i) > lvl) break;
-    uint8_t mv = learnMove(speciesId, i);
+  uint8_t lvl = level(), w = 0;
+  uint16_t n = learnCount(speciesId);
+  for (uint16_t i = 0; i < n && w < max; i++) {
+    if (learnMethod(speciesId, i) == LM_LEVEL_UP && learnLevel(speciesId, i) > lvl) continue;
+    if (moveUnlockLevel(speciesId, i) > lvl) continue;
+    MoveId mv = learnMove(speciesId, i);
     if (knowsMove(mv)) continue;
     bool dup = false;                     // do not offer the same move twice
     for (uint8_t j = 0; j < w; j++)
@@ -752,16 +765,6 @@ uint8_t Pet::rollIV(int bonus) const {
   return (uint8_t)(v > 31 ? 31 : v);
 }
 
-// Guardados con el sistema viejo de genes (90-110%): se convierten al rango de
-// IV que se sortea hoy (8-31) para que nadie salga perdiendo con la
-// actualizacion. gene 0 = mascota anterior incluso a los genes.
-uint8_t Pet::ivFromGene(uint8_t gene) const {
-  if (gene == 0) return rollIV(0);
-  if (gene < 90) gene = 90;
-  if (gene > 110) gene = 110;
-  return 8 + (uint8_t)(((uint16_t)(gene - 90) * 23) / 20);
-}
-
 void Pet::rollIVs() {
   int bonus = careBonus();
   ivAtk = rollIV(bonus);
@@ -769,7 +772,7 @@ void Pet::rollIVs() {
   ivSpe = rollIV(bonus);
   ivHp = rollIV(bonus);
   // los legendarios nacen con 3 de 4 IV perfectos, como en los juegos
-  if (speciesId >= 1 && speciesId <= DEX_COUNT && DEX_TBL[speciesId].rarity == R_LEGENDARIO) {
+  if (speciesId >= 1 && speciesId <= dexCount() && dexEntry(speciesId).rarity == R_LEGENDARIO) {
     uint8_t *p[4] = { &ivAtk, &ivDef, &ivSpe, &ivHp };
     for (int k = 3; k > 0; k--) {  // baraja para elegir cuales 3
       int j = random(k + 1);
@@ -789,7 +792,7 @@ void Pet::rollIVs() {
 
 uint16_t Pet::registeredCount() const {
   uint16_t n = 0;
-  for (int i = 1; i <= DEX_COUNT; i++)
+  for (int i = 1; i <= dexCount(); i++)
     if (isRegistered(i)) n++;
   return n;
 }
@@ -799,7 +802,7 @@ uint16_t Pet::registeredCount() const {
 bool Pet::canFarewellNow() const {
   if (frozen) return false;     // a companion cannot be lost; that is the point
   return !isEgg() && !sleeping && ceremony == CER_NONE &&
-         DEX_TBL[speciesId].evolvesTo == 0 && ageMinutes >= FAREWELL_AGE_MIN;
+         !evolutionAvailable(speciesId) && ageMinutes >= FAREWELL_AGE_MIN;
 }
 
 // abandono total durante 1h: lista para escaparse. La dispara el usuario con el
@@ -894,8 +897,8 @@ void Pet::hatch() {
 bool Pet::canEvolveNow() const {
   if (frozen) return false;     // frozen at the form it was banked in
   if (isEgg() || sleeping || ceremony != CER_NONE) return false;
-  const DexEntry &d = DEX_TBL[speciesId];
-  if (d.evolvesTo == 0) return false;
+  const DexEntry &d = dexEntry(speciesId);
+  if (!evolutionAvailable(speciesId)) return false;
   // evoPen is the day owed for retiring the PREVIOUS creature early. It rides
   // on the same threshold careMistakes already moves, so there is one rule for
   // "this creature evolves later" rather than two that can disagree.
@@ -905,17 +908,19 @@ bool Pet::canEvolveNow() const {
 
 void Pet::evolve() {
   if (!canEvolveNow()) return;
-  const DexEntry &d = DEX_TBL[speciesId];
   prevSpeciesId = speciesId;
-  int16_t next = d.evolvesTo;
-  if (speciesId == DEX_EEVEE) {
-    // rama de Eevee: prefiere la evolucion que falte en la pokedex
-    int16_t opts[3];
-    int n = 0;
-    for (int16_t b = 134; b <= 136; b++)
-      if (!isRegistered(b)) opts[n++] = b;
-    next = n > 0 ? opts[random(n)] : (int16_t)(134 + random(3));
+  SpeciesId options[CONTENT_MAX_EVOLUTIONS];
+  uint8_t optionCount = 0;
+  for (uint8_t i = 0; i < evolutionCount(speciesId); i++) {
+    SpeciesId target = evolutionTarget(speciesId, i);
+    if (dexValid(target) && !isRegistered(target)) options[optionCount++] = target;
   }
+  if (!optionCount)
+    for (uint8_t i = 0; i < evolutionCount(speciesId); i++) {
+      SpeciesId target = evolutionTarget(speciesId, i);
+      if (dexValid(target)) options[optionCount++] = target;
+    }
+  SpeciesId next = options[random(optionCount)];
   speciesId = next;
   registerSpecies(speciesId);
   checkLearnGates();   // the new form may gate a move at this very level
@@ -1227,20 +1232,10 @@ void Pet::load() {
   hygiene = prefs.getUChar("hyg", 100);
   poops = prefs.getUChar("poop", 0);
   weight = prefs.getUChar("wgt", 0);
-  if (prefs.isKey("ivat")) {
-    ivAtk = prefs.getUChar("ivat", 16);
-    ivDef = prefs.getUChar("ivdf", 16);
-    ivSpe = prefs.getUChar("ivsp", 16);
-    ivHp = prefs.getUChar("ivhp", 16);
-  } else {
-    // migracion desde los genes (90-110%) a IV (8-31) conservando la calidad
-    // relativa: quien tenia un gen top mantiene un IV top. El IV de vitalidad
-    // no existia, se tira ahora.
-    ivAtk = ivFromGene(prefs.getUChar("gatk", 0));
-    ivDef = ivFromGene(prefs.getUChar("gdef", 0));
-    ivSpe = ivFromGene(prefs.getUChar("gspe", 0));
-    ivHp = rollIV(0);
-  }
+  ivAtk = prefs.getUChar("ivat", 16);
+  ivDef = prefs.getUChar("ivdf", 16);
+  ivSpe = prefs.getUChar("ivsp", 16);
+  ivHp = prefs.getUChar("ivhp", 16);
   trAtk = prefs.getUChar("tatk", 0);
   trDef = prefs.getUChar("tdef", 0);
   trSpe = prefs.getUChar("tspe", 0);
@@ -1257,17 +1252,8 @@ void Pet::load() {
   retirePending = prefs.getBool("rtpn", false);
   prefs.getBytes("dexsh", dexShinyReg, sizeof(dexShinyReg));
   ageMinutes = prefs.getUInt("age", 0);
-  if (prefs.isKey("dexn")) {
-    speciesId = prefs.getShort("dexn", -1);
-    eggTarget = prefs.getShort("eggT2", 4);
-  } else {
-    // migracion desde la version con indices de flash (0-8)
-    static const uint8_t OLD2DEX[9] = { 4, 5, 6, 1, 2, 3, 7, 8, 9 };
-    int8_t old = prefs.getChar("spec", -1);
-    speciesId = (old >= 0 && old < 9) ? OLD2DEX[old] : -1;
-    int8_t oldT = prefs.getChar("eggT", 0);
-    eggTarget = (oldT >= 0 && oldT < 9) ? OLD2DEX[oldT] : 4;
-  }
+  speciesId = prefs.getShort("dexn", -1);
+  eggTarget = prefs.getShort("eggT2", 4);
   eggTaps = prefs.getUChar("crack", 0);
   careMistakes = prefs.getUChar("mist", 0);
   sleeping = prefs.getBool("sleep", false);
@@ -1284,37 +1270,24 @@ void Pet::load() {
   strHi = prefs.getUShort("shi", 0);
   spdHi = prefs.getUShort("qhi", 0);
   prefs.getString("nick", nick, sizeof(nick));
-  // Moves load last: relearnFromLevel() needs speciesId and ageMinutes, both of
-  // which are read above. A save from before moves existed has no "mvs" key and
-  // leaves the array zeroed, so an established pet is handed the moveset it
-  // should already have rather than walking into a battle knowing nothing.
-  prefs.getBytes("mvs", moves, sizeof(moves));
+  if (prefs.getBytesLength("mvs") == sizeof(moves)) {
+    prefs.getBytes("mvs", moves, sizeof(moves));
+  }
   for (int i = 0; i < MOVE_SLOTS; i++)
-    if (moves[i] >= MOVE_COUNT) moves[i] = 0;   // never index MOVE_TBL with junk
+    if (moves[i] >= ::moveCount()) moves[i] = 0;
   lastLearnLevel = prefs.getUChar("mvlv", 0);
   frozen = prefs.getBool("froz", false);
   avatar = prefs.getUChar("avtr", 0);
-  // Absent on a Kanto-only save, which leaves both arrays zeroed -- exactly
-  // "no Johto or Hoenn badges yet".
   prefs.getBytes("badgX", badgesX, sizeof(badgesX));
   prefs.getBytes("badhX", badgesHardX, sizeof(badgesHardX));
-  region = prefs.getUChar("reg", REGION_ALL);
-  if (region >= REGION_COUNT) region = REGION_ALL;
-  // A save from the Kanto-only build has neither key; getBytes leaves the
-  // array at its zeroed initialiser, which is exactly "nothing remembered".
+  region = prefs.getUChar("reg", regionAll());
+  if (region >= regionCount()) region = regionAll();
   prefs.getBytes("eggR", eggByRegion, sizeof(eggByRegion));
   prefs.getString("tnam", trainerName, sizeof(trainerName));
-  if (avatar >= AVATAR_COUNT) avatar = 0;   // a save from when there were four
+  if (avatar >= AVATAR_COUNT) avatar = 0;
   badges = prefs.getUShort("badg", 0);
   badgesHard = prefs.getUShort("badh", 0);
-  if (!isEgg() && moveCount() == 0 && lastLearnLevel == 0) {
-    // save from before moves existed: hand it the set it should already have
-    // rather than a queue of every gate it ever passed
-    relearnFromLevel();
-    lastLearnLevel = level();
-  }
   learnQCount = 0;      // rebuilt from lastLearnLevel by the next tick
   checkLearnGates();
-  // siembra: la mascota actual cuenta como criada (guardados antiguos)
   if (speciesId >= 1) registerSpecies(speciesId);
 }

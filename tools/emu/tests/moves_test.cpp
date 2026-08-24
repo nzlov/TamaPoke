@@ -1,6 +1,5 @@
-// Move storage: learnset population, save/load round-trip, backfill of a save
-// made before moves existed, and the party blob migration. Asserts against the
-// real Pet/Party rather than restating their rules.
+// Move storage and learnset population. Asserts against the real Pet/Party
+// rather than restating their rules.
 #include "Arduino.h"
 #include "Preferences.h"
 #include "pet.h"
@@ -28,10 +27,10 @@ static void ck(bool ok, const char *what) {
   printf("%s  %s\n", ok ? "PASS" : "FAIL", what);
   if (!ok) bad++;
 }
-static void dump(const char *tag, const uint8_t *mv) {
+static void dump(const char *tag, const MoveId *mv) {
   printf("     %s:", tag);
   for (int i = 0; i < MOVE_SLOTS; i++)
-    printf(" %s", mv[i] ? MOVE_TBL[mv[i]].name : "-");
+    printf(" %s", mv[i] ? moveEntry(mv[i]).name : "-");
   printf("\n");
 }
 
@@ -45,12 +44,12 @@ int main() {
   ck(p.moveCount() == 4, "L100 Charizard knows 4 moves");
   bool distinct = true, valid = true;
   for (int i = 0; i < MOVE_SLOTS; i++) {
-    if (p.moves[i] >= MOVE_COUNT) valid = false;
+    if (p.moves[i] >= moveCount()) valid = false;
     for (int j = i + 1; j < MOVE_SLOTS; j++)
       if (p.moves[i] && p.moves[i] == p.moves[j]) distinct = false;
   }
   ck(distinct, "no duplicate moves");
-  ck(valid, "every move is a valid MOVE_TBL index");
+  ck(valid, "every move is a valid runtime move ID");
 
   // --- a freshly hatched pet knows fewer, and never more than it should
   Pet baby;
@@ -82,56 +81,27 @@ int main() {
     int atk = 0, stab = 0;
     for (int i = 0; i < MOVE_SLOTS; i++) {
       if (!q.moves[i]) continue;
-      const MoveEntry &m = MOVE_TBL[q.moves[i]];
+      const MoveEntry &m = moveEntry(q.moves[i]);
       if (m.cat != MC_STATUS) atk++;
-      if (m.type == DEX_TBL[dex].type1 || m.type == DEX_TBL[dex].type2) stab++;
+      if (m.type == dexEntry(dex).type1 || m.type == dexEntry(dex).type2) stab++;
     }
-    printf("     %-11s atk=%d stab=%d :", DEX_TBL[dex].name, atk, stab);
+    printf("     %-11s atk=%d stab=%d :", dexEntry(dex).name, atk, stab);
     for (int i = 0; i < MOVE_SLOTS; i++)
-      printf(" %s", q.moves[i] ? MOVE_TBL[q.moves[i]].name : "-");
+      printf(" %s", q.moves[i] ? moveEntry(q.moves[i]).name : "-");
     printf("\n");
-    if (atk < 3) { printf("FAIL  %s has fewer than 3 attacks\n", DEX_TBL[dex].name); bad++; }
-    if (stab < 1) { printf("FAIL  %s has no same-type move\n", DEX_TBL[dex].name); bad++; }
+    if (atk < 3) { printf("FAIL  %s has fewer than 3 attacks\n", dexEntry(dex).name); bad++; }
+    if (stab < 1) { printf("FAIL  %s has no same-type move\n", dexEntry(dex).name); bad++; }
   }
   ck(true, "default sets are attack-led with STAB (see above)");
 
   // --- learn candidates are offered, and never ones already known
-  uint8_t cand[8];
+  MoveId cand[8];
   uint8_t n = p.pendingLearnables(cand, 8);
   bool alreadyKnown = false;
   for (uint8_t i = 0; i < n; i++)
     if (p.knowsMove(cand[i])) alreadyKnown = true;
   printf("     L100 learnables not yet known: %u\n", n);
   ck(!alreadyKnown, "pendingLearnables never offers a known move");
-
-  // --- party migration: a blob written in the OLD layout (no moves[]) must
-  // survive, with slots still aligned. This is the case that silently
-  // corrupted the party if migrated by a plain getBytes().
-  const size_t oldStride = sizeof(PartyMon) - MOVE_SLOTS;
-  uint8_t legacy[PARTY_SLOTS * (sizeof(PartyMon))];
-  for (int i = 0; i < PARTY_SLOTS; i++) {
-    PartyMon m;
-    m.dex = 1 + i * 20;                // 1, 21, 41, 61, 81, 101
-    m.level = 40 + i;
-    m.ivAtk = m.ivDef = m.ivSpe = m.ivHp = 20;
-    snprintf(m.nick, sizeof(m.nick), "OLD%d", i);
-    memcpy(legacy + i * oldStride, &m, oldStride);   // old records, old stride
-  }
-  Preferences seed;
-  seed.begin("tamapoke", false);
-  seed.putBytes("party", legacy, PARTY_SLOTS * oldStride);
-  seed.end();
-
-  Party pty;
-  pty.begin();
-  bool aligned = true;
-  for (int i = 0; i < PARTY_SLOTS; i++) {
-    if (pty.slots[i].dex != 1 + i * 20 || pty.slots[i].level != 40 + i) aligned = false;
-    printf("     slot %d: dex=%d lvl=%u nick=%s\n",
-           i, pty.slots[i].dex, pty.slots[i].level, pty.slots[i].nick);
-  }
-  ck(aligned, "legacy party blob migrates with slots still aligned");
-  ck(pty.count() == PARTY_SLOTS, "all 6 legacy members survive");
 
   // The MOVE PICKER had its own gate and so its own opinion: it checked
   // learnLevel() alone, and a TM is stored as level 0, so a level 22 Charmeleon
@@ -140,7 +110,7 @@ int main() {
   // fix never reached. moveUnlockLevel() is the single answer now.
   {
     int zero = 0, tooEarly = 0;
-    for (int16_t d = 1; d <= DEX_COUNT; d++)
+    for (int16_t d = 1; d <= dexCount(); d++)
       for (uint8_t i = 0; i < learnCount(d); i++) {
         uint8_t at = moveUnlockLevel(d, i);
         if (at == 0) zero++;
@@ -152,12 +122,12 @@ int main() {
     const int16_t CHARMELEON = 5;
     bool early = false, late = false, ember1 = false, flame34 = false;
     for (uint8_t i = 0; i < learnCount(CHARMELEON); i++) {
-      uint8_t mv = learnMove(CHARMELEON, i);
-      if (mv >= MOVE_COUNT) continue;
+      MoveId mv = learnMove(CHARMELEON, i);
+      if (mv >= moveCount()) continue;
       uint8_t at = moveUnlockLevel(CHARMELEON, i);
-      if (!strcmp(MOVE_TBL[mv].name, "FIRE BLAST")) { early = at <= 22; late = at >= 40; }
-      if (!strcmp(MOVE_TBL[mv].name, "EMBER")) ember1 = (at == 1);
-      if (!strcmp(MOVE_TBL[mv].name, "FLAMETHROWER")) flame34 = (at == 34);
+      if (!strcmp(moveEntry(mv).name, "FIRE BLAST")) { early = at <= 22; late = at >= 40; }
+      if (!strcmp(moveEntry(mv).name, "EMBER")) ember1 = (at == 1);
+      if (!strcmp(moveEntry(mv).name, "FLAMETHROWER")) flame34 = (at == 34);
     }
     ck(!early, "a level 22 Charmeleon is NOT offered FIRE BLAST");
     ck(late, "it waits for the TM level like every other TM");

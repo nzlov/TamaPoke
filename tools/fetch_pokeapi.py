@@ -39,7 +39,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, 'pokeapi_cache')
 API = 'https://pokeapi.co/api/v2/pokemon/%d'
 # Derived from dex_data.py rather than written here, so a hardcoded number
-# cannot fall behind the table again. gen_moves.py had its own DEX_COUNT = 151
+# cannot fall behind the table again. The old header generator had its own 151
 # once and emitted a Kanto-sized LEARN_OFS against a dex that had grown, which
 # would have read off the end of the array for every species past 151.
 def _dex_count():

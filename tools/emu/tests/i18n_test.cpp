@@ -1,7 +1,7 @@
 // Checks the positional STRINGS table: a language row with too few entries is
 // zero-padded by the compiler with no diagnostic, which silently shifts every
-// string after the gap. Latin translations stay ASCII; Chinese must be valid
-// UTF-8 for the hardware CJK renderer.
+// string after the gap. Every pack must be valid UTF-8 and provide every glyph
+// its strings require.
 #include "Arduino.h"
 #include "Preferences.h"
 // linked against the same core as every other suite, so it needs the same
@@ -17,13 +17,11 @@ int FakeSerial::available() { return 0; }
 String FakeSerial::readStringUntil(char) { return String(""); }
 void sfxPlay(uint8_t) {}
 #include "i18n.h"
-#include "font_cjk.h"
+#include "font_engine.h"
 #include <cstdio>
 #include <cstring>
 #include <string>
-
-// STRINGS is file-static, so go through the same accessor the firmware uses.
-static const char *LANG[] = { "ES", "EN", "FR", "DE", "IT", "PT", "ZH" };
+#include <vector>
 
 static bool validUtf8(const unsigned char *s) {
   while (*s) {
@@ -37,6 +35,18 @@ static bool validUtf8(const unsigned char *s) {
       else s++;
   }
   return true;
+}
+
+static uint32_t nextUtf8(const char *&at) {
+  uint8_t first = (uint8_t)*at++;
+  if (first < 0x80) return first;
+  uint32_t value;
+  uint8_t remaining;
+  if ((first & 0xE0) == 0xC0) { value = first & 0x1F; remaining = 1; }
+  else if ((first & 0xF0) == 0xE0) { value = first & 0x0F; remaining = 2; }
+  else return '?';
+  while (remaining--) value = (value << 6) | ((uint8_t)*at++ & 0x3F);
+  return value;
 }
 
 static std::string formatSpecifiers(const char *s) {
@@ -54,32 +64,49 @@ static std::string formatSpecifiers(const char *s) {
 
 int main() {
   int bad = 0;
-  for (int l = 0; l < LANG_COUNT; l++)
+  const int8_t english = uiFindLocale("en-US");
+  if (english < 0) { printf("FAIL: en-US pack missing\n"); return 1; }
+  std::vector<std::string> englishFormats(STR_COUNT);
+  setLang((Lang)english);
+  for (int s = 0; s < STR_COUNT; s++) englishFormats[s] = formatSpecifiers(T((StrId)s));
+
+  for (int l = 0; l < langCount(); l++) {
+    setLang((Lang)l);
+    bool vectorFont = uiFontFormat() == UI_FONT_OPENTYPE;
+    uint8_t *fontData = nullptr;
+    uint32_t fontSize = 0;
+    if (vectorFont && (!uiFontLoadData(&fontData, &fontSize) ||
+                       !runtimeFontBegin(fontData, fontSize, uiFontFaceIndex()))) {
+      printf("FONT LOAD FAILED  %s\n", langCode((Lang)l));
+      bad++;
+      vectorFont = false;
+    } else if (!vectorFont) {
+      runtimeFontEnd();
+    }
     for (int s = 0; s < STR_COUNT; s++) {
-      setLang((Lang)l);
       const char *v = T((StrId)s);
-      if (!v) { printf("NULL  %s index %d\n", LANG[l], s); bad++; continue; }
+      const char *code = langCode((Lang)l);
+      if (!v) { printf("NULL  %s index %d\n", code, s); bad++; continue; }
       const unsigned char *p = (const unsigned char *)v;
-      if (l == LANG_ZH) {
-        if (!validUtf8(p)) { printf("BAD UTF-8  ZH index %d\n", s); bad++; }
-        const char *scan = v;
-        while (*scan) {
-          uint32_t codepoint = emuNextUtf8(scan);
-          if (!emuCjkGlyph(codepoint)) {
-            printf("MISSING GLYPH  ZH index %d: U+%04X\n", s, (unsigned)codepoint);
-            bad++;
-          }
+      if (!validUtf8(p)) { printf("BAD UTF-8  %s index %d\n", code, s); bad++; }
+      const char *scan = v;
+      while (*scan) {
+        uint32_t codepoint = nextUtf8(scan);
+        bool glyphPresent = vectorFont
+            ? runtimeFontGlyph(codepoint, uiFontPixelSize(1)) != nullptr
+            : uiFontGlyph(codepoint) != nullptr;
+        if (!glyphPresent) {
+          printf("MISSING GLYPH  %s index %d: U+%04X\n", code, s, (unsigned)codepoint);
+          bad++;
         }
-      } else {
-        for (; *p; p++)
-          if (*p > 0x7F) { printf("NON-ASCII  %s index %d: \"%s\"\n", LANG[l], s, v); bad++; break; }
       }
-      setLang(LANG_EN);
-      if (formatSpecifiers(v) != formatSpecifiers(T((StrId)s))) {
-        printf("FORMAT MISMATCH  %s index %d: \"%s\"\n", LANG[l], s, v);
+      if (formatSpecifiers(v) != englishFormats[s]) {
+        printf("FORMAT MISMATCH  %s index %d: \"%s\"\n", code, s, v);
         bad++;
       }
     }
-  printf("%s: %d languages x %d strings\n", bad ? "FAIL" : "PASS", LANG_COUNT, STR_COUNT);
+  }
+  runtimeFontEnd();
+  printf("%s: %u languages x %d strings\n", bad ? "FAIL" : "PASS", langCount(), STR_COUNT);
   return bad ? 1 : 0;
 }

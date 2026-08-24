@@ -1,50 +1,23 @@
-// Host versions of the three hardware modules. The sprite loader is the real
-// TPK2/TPTH parser, just reading from a directory instead of the SD card.
+// Host versions of the three hardware modules. Content still comes from the
+// same generated packs used by the device.
 #include "Arduino.h"
 #include "sdmon.h"
 #include "rtcbat.h"
 #include "audio.h"
 #include "linknow.h"
+#include "content.h"
+#include "pet.h"
 #include <cstdio>
-#include <string>
-
-// Baked in by build.sh from the repo location; --sprites <dir> overrides it.
-#ifndef SPRITE_DIR
-#define SPRITE_DIR "../sdcard/mons"
-#endif
-static std::string g_spriteDir = SPRITE_DIR;
-void emuSetSpriteDir(const char *d) { g_spriteDir = d; }
 
 bool sdReady = true;
 bool sdDirty = false;
 SdThumbs thumbs;
 
-static uint8_t *slurp(const std::string &path, uint32_t *size) {
-  FILE *f = fopen(path.c_str(), "rb");
-  if (!f) return nullptr;
-  fseek(f, 0, SEEK_END);
-  long n = ftell(f);
-  fseek(f, 0, SEEK_SET);
-  if (n <= 0) { fclose(f); return nullptr; }
-  uint8_t *b = (uint8_t *)malloc(n);
-  if (!b || fread(b, 1, n, f) != (size_t)n) { free(b); fclose(f); return nullptr; }
-  fclose(f);
-  *size = (uint32_t)n;
-  return b;
-}
-
 bool PmdMon::load(int16_t dexNum, bool shiny) {
-  if (dexNum < 1 || dexNum > 999) return false;
+  if (!dexValid(dexNum)) return false;
   unload();
-  char name[16];
-  snprintf(name, sizeof(name), "p%s%03u.bin", shiny ? "s" : "", (unsigned)dexNum);
   uint32_t size = 0;
-  blob = slurp(g_spriteDir + "/" + name, &size);
-  if (!blob) {
-    snprintf(name, sizeof(name), "p%03u.bin", (unsigned)dexNum);
-    blob = slurp(g_spriteDir + "/" + name, &size);
-  }
-  if (!blob) return false;
+  if (!contentLoadSprite((SpeciesId)dexNum, shiny, &blob, &size)) return false;
   if (size < 7 || memcmp(blob, "TPK2", 4) != 0) { unload(); return false; }
 
   uint8_t nActs = blob[4];
@@ -88,7 +61,7 @@ void PmdMon::unload() {
 
 bool SdThumbs::load() {
   uint32_t size = 0;
-  data = slurp(g_spriteDir + "/thumbs.bin", &size);
+  contentLoadThumbs(&data, &size);
   if (!data) { Serial.println("emu: no thumbs.bin"); return false; }
   if (memcmp(data, "TPTH", 4) != 0) { free(data); data = nullptr; return false; }
   memcpy(&count, data + 4, 2);
@@ -104,11 +77,15 @@ const uint8_t *SdThumbs::get(int16_t dex) const {
   return data + off;
 }
 
-bool SdMon::load(int16_t, bool) { return false; }   // legacy TPK1 path unused
-void SdMon::unload() { if (data) { free(data); data = nullptr; } loaded = false; }
 bool sdBegin() {
-  Serial.printf("emu: sprites from %s\n", g_spriteDir.c_str());
+  contentBegin();
+  sdScanRegionArt();
   return true;
+}
+void sdScanRegionArt() {
+  gRegionArt = 0;
+  for (uint8_t region = 0; region < regionAll(); region++)
+    if (regionPackAvailable(region)) gRegionArt |= (uint16_t)(1u << region);
 }
 bool sdSerialCommand(const String &) { return false; }
 

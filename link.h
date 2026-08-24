@@ -32,7 +32,7 @@
 // whole handshake without a radio, and a deliberately lossy transport exercises
 // all of the above. Only the radio itself is unverifiable here.
 
-#define LINK_PROTO 2        // bump on ANY wire change; a mismatch is refused
+#define LINK_PROTO 3        // bump on ANY wire change; a mismatch is refused
 #define LINK_MAX_PAYLOAD 200
 #define LINK_NAME_LEN 12
 
@@ -89,7 +89,7 @@ struct LinkMon {
   uint8_t level;
   uint16_t maxHp;
   uint16_t base[SI_COUNT];
-  uint8_t moves[MOVE_SLOTS];
+  MoveId moves[MOVE_SLOTS];
   uint8_t shiny;
   char name[LINK_NAME_LEN];
 };
@@ -103,7 +103,7 @@ struct LinkMon {
 struct LinkResult {
   uint16_t hostHp, guestHp;
   uint8_t hostAil, guestAil;
-  uint8_t hostMove, guestMove;
+  MoveId hostMove, guestMove;
   uint16_t hostDmg, guestDmg;
   uint8_t hostIdx, guestIdx;   // which squad member is out on each side
   uint8_t flags;               // bit0 crit, bit1 super, bit2 a faint happened
@@ -182,4 +182,4 @@ uint16_t linkBuildTag();
 // whatever actually arrived over the air.
 void linkMonFrom(LinkMon &out, const Combatant &c);
 void linkMonTo(Combatant &out, const LinkMon &m);
-uint8_t linkSafeMove(uint8_t m);      // 0 unless it is a real move
+MoveId linkSafeMove(MoveId m);        // 0 unless it is a real move

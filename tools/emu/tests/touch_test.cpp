@@ -34,7 +34,7 @@ String FakeSerial::readStringUntil(char) { return String(""); }
 void setup();
 void loop();
 extern Pet pet;   // defined in the sketch
-extern bool trainOpen, sackOpen, gameOpen, menuOpen, cardOpen, movePickOpen, spdOpen;
+extern bool trainOpen, sackOpen, gameOpen, menuOpen, cardOpen, moveInfoOpen, movePickOpen, spdOpen;
 extern uint8_t movePickSlot, movePickPage;
 extern bool battleOpen, btlOver, btlWon;
 extern Combatant btlYou, btlFoe;
@@ -54,7 +54,7 @@ extern uint8_t pickPage;
 #define PICK_Y(i) (86 + ((i) / 2) * 80)
 #define BTL_CELL_X(i) (69 + ((i) % 2) * 168)
 #define BTL_CELL_Y(i) (286 + ((i) / 2) * 52)
-uint8_t learnableList(uint8_t *out, uint8_t max);
+uint8_t learnableList(MoveId *out, uint8_t max);
 #define MOVE_PICK_PER_PAGE 5
 #define MOVE_PICK_Y(i) (76 + (i) * 58)
 extern uint8_t cardPage;
@@ -191,17 +191,20 @@ int main(int argc, char **argv) {
 
   // ---- moves card page -> picker -> slot actually changes, with no duplicates
   cardPage = 2;
-  uint8_t before = pet.moves[1];
+  MoveId before = pet.moves[1];
   click(233, 154);                       // slot 1 == MOVE_ROW_Y(1)
-  if (!movePickOpen) { printf("FAIL: tapping a move slot did not open the picker\n"); return 1; }
-  printf("PASS: tapping a move slot opens the picker\n");
+  if (!moveInfoOpen) { printf("FAIL: tapping a move slot did not show its description\n"); return 1; }
+  printf("PASS: tapping a move slot opens its description\n");
+  click(233, 346);                       // explicit CHANGE button
+  if (!movePickOpen) { printf("FAIL: CHANGE did not open the picker\n"); return 1; }
+  printf("PASS: CHANGE opens the picker\n");
 
   click(233, 100);                       // first row of the picker
   if (movePickOpen) { printf("FAIL: picking a move left the picker open\n"); return 1; }
   if (pet.moves[1] == before) { printf("FAIL: slot 1 did not change\n"); return 1; }
   printf("PASS: picking a move replaces the slot (%s -> %s)\n",
-         before ? MOVE_TBL[before].name : "-",
-         pet.moves[1] ? MOVE_TBL[pet.moves[1]].name : "-");
+         before ? moveEntry(before).name : "-",
+         pet.moves[1] ? moveEntry(pet.moves[1]).name : "-");
 
   // the swap must never leave the same move in two slots
   bool dupe = false;
@@ -211,17 +214,18 @@ int main(int argc, char **argv) {
   if (dupe) {
     printf("FAIL: a move ended up in two slots\n");
     for (int i = 0; i < MOVE_SLOTS; i++)
-      printf("      slot %d: %s\n", i, pet.moves[i] ? MOVE_TBL[pet.moves[i]].name : "-");
+      printf("      slot %d: %s\n", i, pet.moves[i] ? moveEntry(pet.moves[i]).name : "-");
     return 1;
   }
   printf("PASS: no duplicate move after the swap\n");
 
   // picking a move the pet already knows should TRADE slots, not clone it
-  uint8_t s0 = pet.moves[0], s2 = pet.moves[2];
+  MoveId s0 = pet.moves[0], s2 = pet.moves[2];
   cardPage = 2;
   click(233, 212);                       // slot 2
-  uint8_t all[64];
-  uint8_t n = learnableList(all, sizeof(all));
+  click(233, 346);                       // description -> CHANGE
+  MoveId all[64];
+  uint8_t n = learnableList(all, sizeof(all) / sizeof(all[0]));
   int page = -1, row = -1;
   for (uint8_t i = 0; i < n; i++)
     if (all[i] == s0) { page = i / MOVE_PICK_PER_PAGE; row = i % MOVE_PICK_PER_PAGE; }
@@ -231,8 +235,8 @@ int main(int argc, char **argv) {
     bool ok = (pet.moves[2] == s0 && pet.moves[0] == s2);
     printf("%s: picking a known move trades the two slots (0=%s 2=%s)\n",
            ok ? "PASS" : "FAIL",
-           pet.moves[0] ? MOVE_TBL[pet.moves[0]].name : "-",
-           pet.moves[2] ? MOVE_TBL[pet.moves[2]].name : "-");
+           pet.moves[0] ? moveEntry(pet.moves[0]).name : "-",
+           pet.moves[2] ? moveEntry(pet.moves[2]).name : "-");
     if (!ok) return 1;
   }
   // ---- level-up learn prompt: accept into a slot, and decline.
@@ -246,27 +250,27 @@ int main(int argc, char **argv) {
   if (!pet.hasLearnOffer()) { printf("FAIL: no learn offer was queued\n"); return 1; }
   printf("PASS: crossing gates with a full moveset queues an offer\n");
 
-  uint8_t offered = pet.learnOffer(), was2 = pet.moves[2];
+  MoveId offered = pet.learnOffer(), was2 = pet.moves[2];
   click(233, 104 + 2 * 56 + 10);          // LEARN_ROW_Y(2)
   if (pet.moves[2] != offered) {
     printf("FAIL: accepting did not put %s in slot 2 (got %s)\n",
-           MOVE_TBL[offered].name, pet.moves[2] ? MOVE_TBL[pet.moves[2]].name : "-");
+           moveEntry(offered).name, pet.moves[2] ? moveEntry(pet.moves[2]).name : "-");
     return 1;
   }
   printf("PASS: accepting replaces the chosen slot (%s -> %s)\n",
-         was2 ? MOVE_TBL[was2].name : "-", MOVE_TBL[offered].name);
+         was2 ? moveEntry(was2).name : "-", moveEntry(offered).name);
 
   if (pet.hasLearnOffer()) {
-    uint8_t before[MOVE_SLOTS];
+    MoveId before[MOVE_SLOTS];
     for (int i = 0; i < MOVE_SLOTS; i++) before[i] = pet.moves[i];
-    uint8_t skipped = pet.learnOffer();
+    MoveId skipped = pet.learnOffer();
     click(233, 334 + 20);                 // LEARN_SKIP_Y
     bool same = true;
     for (int i = 0; i < MOVE_SLOTS; i++) if (pet.moves[i] != before[i]) same = false;
     if (!same || pet.knowsMove(skipped)) {
       printf("FAIL: declining changed the moveset\n"); return 1;
     }
-    printf("PASS: declining %s leaves the moveset untouched\n", MOVE_TBL[skipped].name);
+    printf("PASS: declining %s leaves the moveset untouched\n", moveEntry(skipped).name);
   }
   // ---- battle: drive a whole fight through the real tap handler
   while (pet.hasLearnOffer()) pet.declineLearn();

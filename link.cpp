@@ -24,7 +24,7 @@ uint16_t linkBuildTag() {
   // all of them can narrate the same fight even if they differ elsewhere.
   uint32_t h = 2166136261u;
   const uint16_t bits[] = {
-    (uint16_t)MOVE_COUNT, (uint16_t)DEX_COUNT, (uint16_t)MOVE_SLOTS,
+    (uint16_t)moveCount(), (uint16_t)dexCount(), (uint16_t)MOVE_SLOTS,
     (uint16_t)TRAINER_TEAM_MAX, (uint16_t)sizeof(LinkMon),
     (uint16_t)sizeof(LinkResult), (uint16_t)SI_COUNT,
   };
@@ -32,7 +32,7 @@ uint16_t linkBuildTag() {
   return (uint16_t)(h ^ (h >> 16));
 }
 
-uint8_t linkSafeMove(uint8_t m) { return m < MOVE_COUNT ? m : 0; }
+MoveId linkSafeMove(MoveId m) { return moveValid(m) ? m : MOVE_NONE; }
 
 void linkMonFrom(LinkMon &out, const Combatant &c) {
   memset(&out, 0, sizeof(out));
@@ -45,13 +45,13 @@ void linkMonFrom(LinkMon &out, const Combatant &c) {
   snprintf(out.name, sizeof(out.name), "%s", c.name);
 }
 
-// Everything here is untrusted. A creature off the air indexes DEX_TBL and
-// MOVE_TBL and looks up sprites, so a stray byte from a mismatched build --
+// Everything here is untrusted. A creature off the air indexes runtime species
+// and move catalogues and looks up sprites, so a mismatched packet --
 // or from nothing in particular, since this is a broadcast -- would be an
 // out-of-bounds read rather than merely a strange-looking opponent.
 void linkMonTo(Combatant &out, const LinkMon &m) {
   out = Combatant();
-  out.dex = (m.dex >= 1 && m.dex <= DEX_COUNT) ? m.dex : 1;
+  out.dex = (m.dex >= 1 && m.dex <= dexCount()) ? m.dex : 1;
   out.level = m.level < 1 ? 1 : (m.level > MAX_LEVEL ? MAX_LEVEL : m.level);
   out.maxHp = m.maxHp ? m.maxHp : 1;
   out.hp = out.maxHp;

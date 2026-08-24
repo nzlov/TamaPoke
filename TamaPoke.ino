@@ -12,16 +12,14 @@
 
 #include <Arduino.h>
 #include <Wire.h>
-#if defined(ESP32)
-#include <U8g2lib.h>
-#endif
 #include "Arduino_GFX_Library.h"
 #include "TouchDrvCSTXXX.hpp"
 #include "pin_config.h"
-#include "species.h"
+#include "ui_art.h"
 #include "dex.h"
 #include "types.h"
 #include "moves.h"
+#include "font_engine.h"
 #include "battle.h"
 #include "trainers.h"
 #include "link.h"
@@ -47,73 +45,97 @@ Arduino_DataBus *bus = new Arduino_ESP32QSPI(
 Arduino_CO5300 *panel = new Arduino_CO5300(
   bus, LCD_RESET, 0 /*rotation*/, LCD_WIDTH, LCD_HEIGHT, 6, 0, 0, 0);
 
-// GLUE: Arduino_GFX's CJK font uses a baseline cursor while the existing UI
-// uses a top-left cursor. This keeps that difference at the display boundary;
-// it can disappear if Arduino_GFX gains top-origin UTF-8 text metrics.
 class TamaCanvas : public Arduino_Canvas {
 public:
   using Arduino_Canvas::Arduino_Canvas;
   using Arduino_Canvas::print;
 
-  static uint8_t cjkScale(uint8_t requested) {
-    // GNU Unifont is 16px high. Map the old 7px GFX sizes to its nearest
-    // integer scale so labels keep their existing layout while gaining detail.
-    uint8_t scale = (requested * 7 + 8) / 16;
+  static uint8_t packScale(uint8_t requested) {
+    uint8_t height = uiFontLineHeight();
+    uint8_t design = uiFontDesignHeight();
+    uint8_t scale = (requested * design + height / 2) / height;
     return scale ? scale : 1;
   }
 
   void setTextSize(uint8_t size) {
     textScale = size ? size : 1;
-    Arduino_Canvas::setTextSize(chineseMode ? cjkScale(textScale) : textScale);
+    Arduino_Canvas::setTextSize(fontActive && !fontVector ? packScale(textScale) : textScale);
   }
 
   void setCursor(int16_t x, int16_t y) {
-    Arduino_Canvas::setCursor(x, y + (chineseMode ? 14 * cjkScale(textScale) : 0));
+    Arduino_Canvas::setCursor(x, y);
   }
 
-  void setChineseMode(bool enabled) {
-    chineseMode = enabled;
-#if defined(ESP32)
-    setUTF8Print(enabled);
-    if (enabled) setFont(u8g2_font_unifont_h_chinese4);
-    else setFont((const GFXfont *)nullptr);
-#else
-    setCjkFont(enabled);
-#endif
-    Arduino_Canvas::setTextSize(chineseMode ? cjkScale(textScale) : textScale);
+  void setTextColor(uint16_t color) {
+    fontColor = color;
+    Arduino_Canvas::setTextColor(color);
   }
 
-#if defined(ESP32)
+  uint8_t textLineHeight() const {
+    return fontVector ? uiFontPixelSize(textScale) + 2
+                      : uiFontLineHeight() * packScale(textScale);
+  }
+
+  void setPackFont(bool enabled) {
+    uint8_t *fontData = nullptr;
+    uint32_t fontSize = 0;
+    fontVector = enabled && uiFontFormat() == UI_FONT_OPENTYPE &&
+                 uiFontLoadData(&fontData, &fontSize) &&
+                 runtimeFontBegin(fontData, fontSize, uiFontFaceIndex());
+    if (!fontVector) runtimeFontEnd();
+    fontActive = enabled && (uiFontFormat() == UI_FONT_BITMAP || fontVector);
+    Arduino_Canvas::setTextSize(fontActive && !fontVector ? packScale(textScale) : textScale);
+  }
+
   size_t print(const char *text) {
-    if (!chineseMode || !text) return Arduino_Canvas::print(text);
-    int16_t startX = getCursorX(), startY = getCursorY();
-    size_t written = Arduino_Canvas::print(text);
-    int16_t endX = getCursorX(), endY = getCursorY();
-    // GLUE: GNU Unifont has no weight variants in Arduino_GFX. A one-pixel
-    // second pass gives the AMOLED UI a medium weight; remove it if the font
-    // source is replaced by a native medium/bold bitmap.
-    Arduino_Canvas::setCursor(startX + 1, startY);
-    Arduino_Canvas::print(text);
-    Arduino_Canvas::setCursor(endX, endY);
-    return written;
+    if (!fontActive || !text) {
+      Arduino_Canvas::print(text);
+      return text ? strlen(text) : 0;
+    }
+    const char *at = text;
+    while (*at) {
+      uint32_t codepoint = nextUtf8(at);
+      if (codepoint == '\n') {
+        int16_t lineHeight = fontVector ? uiFontPixelSize(textScale) + 2
+                                        : uiFontLineHeight() * packScale(textScale);
+        Arduino_Canvas::setCursor(0, getCursorY() + lineHeight);
+      } else {
+        if (fontVector) drawVectorGlyph(codepoint); else drawPackGlyph(codepoint);
+      }
+    }
+    return (size_t)(at - text);
   }
-#endif
 
   int16_t textWidth(const char *text) {
     if (!text) return 0;
-#if defined(ESP32)
-    if (chineseMode) {
-      int16_t x1, y1;
-      uint16_t w, h;
-      getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
-      return (int16_t)(w ? w + 1 : 0);
+    if (fontActive) {
+      const char *at = text;
+      if (fontVector) {
+        uint8_t pixelSize = uiFontPixelSize(textScale);
+        int16_t cursor = 0, minX = 0, maxX = 0;
+        while (*at) {
+          uint32_t codepoint = nextUtf8(at);
+          const RuntimeFontGlyph *glyph = runtimeFontGlyph(codepoint, pixelSize);
+          if (!glyph) glyph = runtimeFontGlyph('?', pixelSize);
+          if (!glyph) continue;
+          int16_t left = cursor + glyph->left;
+          int16_t right = left + glyph->width;
+          if (left < minX) minX = left;
+          if (right > maxX) maxX = right;
+          cursor += glyph->advance;
+        }
+        if (cursor > maxX) maxX = cursor;
+        return maxX - minX;
+      }
+      uint8_t scale = packScale(textScale);
+      int16_t width = 0;
+      while (*at) {
+        const UiFontGlyph *glyph = uiFontGlyph(nextUtf8(at));
+        if (!glyph) glyph = uiFontGlyph('?');
+        if (glyph) width += glyph->advance * scale;
+      }
+      return width;
     }
-#else
-    if (chineseMode) {
-      int16_t w = (int16_t)emuCjkTextWidth(text, cjkScale(textScale));
-      return w ? w + 1 : 0;
-    }
-#endif
     size_t glyphs = 0;
     for (const unsigned char *p = (const unsigned char *)text; *p; p++)
       if ((*p & 0xC0) != 0x80) glyphs++;
@@ -121,12 +143,112 @@ public:
   }
 
 private:
+  static uint16_t blend565(uint16_t background, uint16_t foreground, uint8_t alpha) {
+    if (!alpha) return background;
+    if (alpha >= 15) return foreground;
+    uint16_t red = ((((background >> 11) & 0x1F) * (15 - alpha) +
+                     ((foreground >> 11) & 0x1F) * alpha + 7) / 15) << 11;
+    uint16_t green = ((((background >> 5) & 0x3F) * (15 - alpha) +
+                       ((foreground >> 5) & 0x3F) * alpha + 7) / 15) << 5;
+    uint16_t blue = (((background & 0x1F) * (15 - alpha) +
+                      (foreground & 0x1F) * alpha + 7) / 15);
+    return red | green | blue;
+  }
+
+  static uint16_t blend565x8(uint16_t background, uint16_t foreground, uint8_t alpha) {
+    if (!alpha) return background;
+    if (alpha == 255) return foreground;
+    uint16_t red = ((((background >> 11) & 0x1F) * (255 - alpha) +
+                     ((foreground >> 11) & 0x1F) * alpha + 127) / 255) << 11;
+    uint16_t green = ((((background >> 5) & 0x3F) * (255 - alpha) +
+                       ((foreground >> 5) & 0x3F) * alpha + 127) / 255) << 5;
+    uint16_t blue = (((background & 0x1F) * (255 - alpha) +
+                      (foreground & 0x1F) * alpha + 127) / 255);
+    return red | green | blue;
+  }
+
+  static uint32_t nextUtf8(const char *&at) {
+    uint8_t first = (uint8_t)*at++;
+    if (first < 0x80) return first;
+    uint32_t value;
+    uint8_t remaining;
+    if ((first & 0xE0) == 0xC0) { value = first & 0x1F; remaining = 1; }
+    else if ((first & 0xF0) == 0xE0) { value = first & 0x0F; remaining = 2; }
+    else if ((first & 0xF8) == 0xF0) { value = first & 0x07; remaining = 3; }
+    else return '?';
+    while (remaining--) {
+      uint8_t next = (uint8_t)*at;
+      if ((next & 0xC0) != 0x80) return '?';
+      at++;
+      value = (value << 6) | (next & 0x3F);
+    }
+    return value;
+  }
+
+  void drawPackGlyph(uint32_t codepoint) {
+    const UiFontGlyph *glyph = uiFontGlyph(codepoint);
+    if (!glyph) glyph = uiFontGlyph('?');
+    if (!glyph) return;
+    uint8_t scale = packScale(textScale);
+    int16_t x = getCursorX() + glyph->xOffset * scale;
+    int16_t y = getCursorY();
+    uint16_t *framebuffer = getFramebuffer();
+    int16_t canvasWidth = width(), canvasHeight = height();
+    for (uint8_t row = 0; row < glyph->height && row < 16; row++) {
+      for (uint8_t col = 0; col < glyph->width && col < 16; col++) {
+        uint16_t pixel = (uint16_t)row * 16u + col;
+        uint8_t packed = glyph->alpha4[pixel >> 1];
+        uint8_t alpha = (pixel & 1) ? packed >> 4 : packed & 0x0F;
+        if (!alpha) continue;
+        for (uint8_t dy = 0; dy < scale; dy++) {
+          int16_t py = y + row * scale + dy;
+          if (py < 0 || py >= canvasHeight) continue;
+          for (uint8_t dx = 0; dx < scale; dx++) {
+            int16_t px = x + col * scale + dx;
+            if (px < 0 || px >= canvasWidth) continue;
+            uint16_t &destination = framebuffer[(size_t)py * canvasWidth + px];
+            destination = blend565(destination, fontColor, alpha);
+          }
+        }
+      }
+    }
+    Arduino_Canvas::setCursor(getCursorX() + glyph->advance * scale, getCursorY());
+  }
+
+  void drawVectorGlyph(uint32_t codepoint) {
+    uint8_t pixelSize = uiFontPixelSize(textScale);
+    const RuntimeFontGlyph *glyph = runtimeFontGlyph(codepoint, pixelSize);
+    if (!glyph) glyph = runtimeFontGlyph('?', pixelSize);
+    if (!glyph) return;
+    int16_t x = getCursorX() + glyph->left;
+    int16_t y = getCursorY() + pixelSize - glyph->top;
+    uint16_t *framebuffer = getFramebuffer();
+    int16_t canvasWidth = width(), canvasHeight = height();
+    for (uint16_t row = 0; row < glyph->height; row++) {
+      int16_t py = y + row;
+      if (py < 0 || py >= canvasHeight) continue;
+      for (uint16_t col = 0; col < glyph->width; col++) {
+        int16_t px = x + col;
+        if (px < 0 || px >= canvasWidth) continue;
+        uint8_t alpha = glyph->alpha[(uint32_t)row * glyph->width + col];
+        if (!alpha) continue;
+        uint16_t &destination = framebuffer[(size_t)py * canvasWidth + px];
+        destination = blend565x8(destination, fontColor, alpha);
+      }
+    }
+    Arduino_Canvas::setCursor(getCursorX() + glyph->advance, getCursorY());
+  }
+
   uint8_t textScale = 1;
-  bool chineseMode = false;
+  uint16_t fontColor = RGB565_WHITE;
+  bool fontActive = false;
+  bool fontVector = false;
 };
 
 // Framebuffer completo en PSRAM: dibujamos todo y hacemos flush() (sin parpadeo)
 TamaCanvas *gfx = new TamaCanvas(LCD_WIDTH, LCD_HEIGHT, panel);
+
+void refreshUiFont() { gfx->setPackFont(contentHasUi()); }
 
 static int16_t uiCenterX(const char *text, int16_t center = LCD_WIDTH / 2) {
   return center - gfx->textWidth(text) / 2;
@@ -143,8 +265,7 @@ static int16_t uiRightX(const char *text, int16_t right) {
 TouchDrvCST92xx touch;
 Pet pet;
 
-// sprite animado de la SD para la especie actual (si existe el archivo)
-SdMon mon;          // sprite B/N (respaldo y minijuego si no hay PMD)
+// Sprite data is resolved only through the installed region pack.
 PmdMon pmd;         // sprite PMD multi-accion (pantalla principal)
 PmdMon evoPmd;      // forma anterior, solo durante el parpadeo de evolucion
 int16_t monFor = -2;
@@ -170,9 +291,9 @@ bool galleryDirty = false;
 // pages within it, so nothing is ever more than ten pages from the front.
 // ALL is deliberately not offered here -- it is the thing being replaced.
 #define GAL_PER_PAGE 16
-#define GAL_REGIONS (REGION_COUNT - 1)          // the real regions, not ALL
-#define GAL_LO (REGIONS[galleryRegion % GAL_REGIONS].lo)
-#define GAL_HI (REGIONS[galleryRegion % GAL_REGIONS].hi)
+#define GAL_REGIONS (regionCount() - 1)          // the real regions, not ALL
+#define GAL_LO (regionInfo(galleryRegion % GAL_REGIONS).lo)
+#define GAL_HI (regionInfo(galleryRegion % GAL_REGIONS).hi)
 #define GAL_SPAN (GAL_HI - GAL_LO + 1)
 #define GAL_PAGES ((GAL_SPAN + GAL_PER_PAGE - 1) / GAL_PER_PAGE)
 uint8_t galleryRegion = 0;
@@ -229,7 +350,7 @@ uint8_t boxSwapFrom = 0;   // party slot + 1, armed from the party side
 uint8_t boxSel = 0;        // box slot + 1, armed from the box side
 #define BOX_PER_PAGE 6
 uint32_t partyBannerUntil = 0;   // "<name> joined the party!"
-char partyBannerName[14] = "";
+char partyBannerName[32] = "";
 #define PARTY_CELL_W 150
 #define PARTY_CELL_H 70
 #define PARTY_GRID_X 78
@@ -276,9 +397,12 @@ bool trainOpen = false;
 // a level-up "you learned a move" prompt would almost never fire -- the moveset
 // is edited on demand instead.
 bool movePickOpen = false;
+bool moveInfoOpen = false;
 uint8_t movePickSlot = 0;   // which of the 4 slots is being replaced
 uint8_t movePickParty = 0;  // 0 = the live pet, else the party slot + 1
 uint8_t movePickPage = 0;
+void renderMoveInfo();
+int drawWrappedText(const char *text, int x, int y, int width, uint8_t maxLines);
 #define MOVE_ROW_Y(i) (96 + (i) * 58)
 #define MOVE_ROW_H 50
 #define MOVE_NAME_TOP 6
@@ -375,7 +499,7 @@ static int eggRegionTap(int16_t x, int16_t y);
 static void drawBtlBack();
 static void btlLinkPoll();   // defined with the battle code, called from render()
 static void btlSwitchTo(uint8_t i);
-static void btlResolve(uint8_t yourMove);
+static void btlResolve(MoveId yourMove);
 // The peer's whole team, kept live. A trainer's replacements are built fresh
 // from TRAINERS[] because they only ever arrive once; a linked opponent can
 // switch OUT and back IN, so its creatures have to remember how battered they
@@ -418,8 +542,6 @@ uint8_t btlMyAct = 0;        // host: our own action, latched until theirs lands
 
 uint8_t gymRegion = 0;
 uint8_t btlRegion = 0;
-#define TRAINERS (TRAINER_SETS[gymRegion % GYM_REGIONS].list)
-#define BTL_TRAINERS (TRAINER_SETS[btlRegion % GYM_REGIONS].list)
 bool gShowAllAvatars = false;  // emulator screenshot aid, never set on hardware
 bool btlPetIn = false;       // was the live pet in the squad?
 uint8_t btlTrainGain = 0;    // what the win trained, for the win screen
@@ -461,8 +583,8 @@ bool playerOpen = false;
 // one page, and the page you are on IS the region -- no extra control needed,
 // and horizontal paging already works everywhere else.
 uint8_t playerPage = 0;
-#define PLAYER_PAGES (GYM_REGIONS + 1)
-#define playerBadgeRegion (playerPage % GYM_REGIONS)
+#define PLAYER_PAGES (regionAll() + 1)
+#define playerBadgeRegion (regionAll() ? playerPage % regionAll() : 0)
 uint8_t gymPage = 0;
 #define GYM_ROWS 5
 #define GYM_ROW_Y(i) (110 + (i) * 50)
@@ -498,7 +620,18 @@ int8_t btlSwapWho = -1;        // 0 = your side, 1 = the foe's, -1 = nothing due
 uint8_t btlMenu = 0;
 #define BTL_LUNGE_MS 260
 #define BTL_HIT_MS 420
-char btlMsg[6][40];
+char btlMsg[6][96];
+
+static const char *displaySpeciesName(SpeciesId dex, const char *nickname) {
+  return nickname && nickname[0] ? nickname : speciesName(dex);
+}
+
+static const char *displayCombatantName(const Combatant &combatant) {
+  const char *fallback = dexEntry(combatant.dex).name;
+  return combatant.name[0] && strcmp(combatant.name, fallback) != 0
+      ? combatant.name
+      : speciesName(combatant.dex);
+}
 uint8_t btlMsgCount = 0;   // queued lines; a tap shows the next
 #define BTL_CELL_W 160
 #define BTL_CELL_H 44
@@ -559,12 +692,6 @@ static inline bool btlCellHit(int i, int16_t x, int16_t y) {
 #define TRAIN_ROW_GAP 8
 #define TRAIN_ROW_Y(i) (TRAIN_Y + 54 + (i) * (TRAIN_ROW_H + TRAIN_ROW_GAP))
 
-// las 9 especies con sprite propio en flash (respaldo sin SD): dex -> indice
-int flashIdxForDex(int16_t dex) {
-  static const int8_t IDX[10] = { -1, 3, 4, 5, 0, 1, 2, 6, 7, 8 };
-  return (dex >= 1 && dex <= 9) ? IDX[dex] : -1;
-}
-
 #define CX 233  // centro de la pantalla redonda
 #define CY 233
 #define PET_CY 202  // centro vertical del sprite
@@ -618,12 +745,12 @@ bool wasPressed = false;
 // reordering that array cannot silently change the first screen anyone sees.
 #define STARTER_SHOWN 3
 int16_t starterOf(uint8_t region, uint8_t i) {
-  const RegionInfo &rg = REGIONS[region % REGION_COUNT];
+  const RegionInfo &rg = regionInfo(region % regionCount());
   if (i >= rg.starterCount) i = 0;
   return rg.starters[i];
 }
 uint8_t starterCountShown(uint8_t region) {
-  uint8_t n = REGIONS[region % REGION_COUNT].starterCount;
+  uint8_t n = regionInfo(region % regionCount()).starterCount;
   return n < STARTER_SHOWN ? n : STARTER_SHOWN;
 }
 
@@ -665,6 +792,34 @@ uint32_t choiceUntil = 0;   // se cierra solo a este millis
 int16_t tX0, tY0, tXl, tYl; // gesto en curso (inicio y ultima posicion)
 uint32_t tStart = 0;
 bool holdFired = false;
+bool recoveryMode = false;
+
+void renderRecovery() {
+  gfx->setPackFont(false);
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillCircle(CX, CY, 231, 0xF77C);
+  gfx->setTextColor(0x2946);
+  gfx->setTextSize(3);
+  gfx->setCursor(CX - 117, 72);
+  gfx->print("DATA PACKS");
+  gfx->setCursor(CX - 72, 98);
+  gfx->print("REQUIRED");
+  gfx->setTextSize(2);
+  gfx->setCursor(CX - 96, 160);
+  gfx->print(sdReady ? "USB INSTALL READY" : "INSERT MICROSD");
+  gfx->setCursor(CX - 102, 204);
+  gfx->print("Use Web Installer");
+  gfx->setCursor(CX - 108, 232);
+  gfx->print("to deploy packs.");
+  gfx->setTextSize(1);
+  char status[40];
+  snprintf(status, sizeof(status), "VALID PACKS: %u", contentPackCount());
+  gfx->setCursor(CX - 54, 292);
+  gfx->print(status);
+  gfx->setCursor(CX - 84, 326);
+  gfx->print("Restart after install");
+  gfx->flush();
+}
 
 void setup() {
   Serial.setRxBufferSize(8192);  // la transferencia a SD llega en bloques de 2 KB
@@ -675,7 +830,7 @@ void setup() {
   Serial.setTxTimeoutMs(0);
   Serial.printf("TamaPoke fw v%s\n", FW_VERSION);
   bootReport();   // why the last run ended, and what it was doing
-  loadLang();  // idioma guardado (ES por defecto)
+  sdBegin();
   Wire.begin(IIC_SDA, IIC_SCL);
   // CST9217 (tactil), AXP2101 (PMU) y PCF85063 (RTC) comparten este bus I2C.
   // Red de seguridad para PMU/RTC (SensorLib NO respeta este timeout en el
@@ -691,7 +846,7 @@ void setup() {
   // QSPI a 80MHz (por defecto 40): el flush del framebuffer es el cuello de
   // botella del fps (~56ms a 40MHz). Si el panel mostrara basura, bajar a 40M.
   if (!gfx->begin(80000000)) Serial.println("gfx->begin() fallo");
-  gfx->setChineseMode(gLang == LANG_ZH);
+  gfx->setPackFont(contentHasUi());
   panel->setBrightness(180);
 
   touch.setPins(TP_RESET, TP_INT);
@@ -710,9 +865,17 @@ void setup() {
   pinMode(TP_INT, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(TP_INT), touchIsr, FALLING);
 
-  party.begin();
+  if (!contentReady()) {
+    recoveryMode = true;
+    lastInteract = millis();
+    renderRecovery();
+    return;
+  }
+
   pet.begin();
-  sdBegin();
+  party.begin();
+  loadLang();
+  gfx->setPackFont(contentHasUi());
   thumbs.load();
 
   // reloj real: aplica el tiempo que estuvo apagado
@@ -738,18 +901,25 @@ void ensureMon() {
   sdDirty = false;
   monFor = pet.speciesId;
   monShinyFor = pet.shiny;
-  mon.unload();
   pmd.unload();
   beh.x = beh.targetX = 233;
   beh.mode = 0;
   beh.until = 0;
-  if (pet.speciesId >= 1 && pet.speciesId <= DEX_COUNT) {
-    pmd.load(pet.speciesId, pet.shiny);          // principal: PMD
-    if (!pmd.loaded) mon.load(pet.speciesId, pet.shiny);  // respaldo: B/N
+  if (pet.speciesId >= 1 && pet.speciesId <= dexCount()) {
+    pmd.load(pet.speciesId, pet.shiny);
   }
 }
 
 void loop() {
+  if (recoveryMode) {
+    handleSerial();
+    static uint32_t lastRecoveryRender = 0;
+    if (millis() - lastRecoveryRender >= 500) {
+      lastRecoveryRender = millis();
+      renderRecovery();
+    }
+    return;
+  }
   uint32_t now = millis();
   pet.update(now);
 
@@ -785,7 +955,7 @@ void loop() {
     // party first, then the box; only a full box makes it your choice
     if (party.add(pet.endedMon) || party.boxAdd(pet.endedMon)) {
       snprintf(partyBannerName, sizeof(partyBannerName), "%s",
-               pet.endedMon.nick[0] ? pet.endedMon.nick : DEX_TBL[pet.endedMon.dex].name);
+               displaySpeciesName(pet.endedMon.dex, pet.endedMon.nick));
       partyBannerUntil = now + 3500;
       pet.endedKind = CER_NONE;
       sfxPlay(SFX_MEDAL);
@@ -876,10 +1046,10 @@ void handleSerial() {
     Serial.println("DONE");
   } else if (line.startsWith("SPEC ")) {
     int n = line.substring(5).toInt();
-    if (n >= 1 && n <= DEX_COUNT) {
+    if (n >= 1 && n <= dexCount()) {
       pet.prevSpeciesId = pet.speciesId;
       pet.speciesId = n;
-      Serial.printf("especie #%d %s\n", n, DEX_TBL[n].name);
+      Serial.printf("especie #%d %s\n", n, speciesName(n));
     }
     Serial.println("DONE");
   } else if (line.startsWith("LVL ")) {
@@ -961,7 +1131,7 @@ void handleSerial() {
     // simula 20 tiradas de huevo (no cambia el estado del juego)
     for (int i = 0; i < 20; i++) {
       int16_t d = pet.pickEggSpecies();
-      Serial.printf("%d:%s(r%u) ", d, DEX_TBL[d].name, DEX_TBL[d].rarity);
+      Serial.printf("%d:%s(r%u) ", d, speciesName(d), dexEntry(d).rarity);
     }
     Serial.println();
     Serial.println("DONE");
@@ -971,9 +1141,9 @@ void handleSerial() {
     // exercise them on hardware (SHINY below just toggles the flag afterwards).
     int dex = 0, sh = 0;
     int n = sscanf(line.c_str() + 4, "%d %d", &dex, &sh);
-    if (n >= 1 && dex >= 1 && dex <= DEX_COUNT) {
+    if (n >= 1 && dex >= 1 && dex <= dexCount()) {
       pet.dbgHatchAs(dex, sh != 0);
-      Serial.printf("%s%s iv=%u/%u/%u/%u\n", DEX_TBL[dex].name,
+      Serial.printf("%s%s iv=%u/%u/%u/%u\n", speciesName(dex),
                     pet.shiny ? " *SHINY*" : "", pet.ivAtk, pet.ivDef,
                     pet.ivSpe, pet.ivHp);
     }
@@ -982,9 +1152,9 @@ void handleSerial() {
     // BATTLE <dex> [level] -- the only way in until the trainer roster exists
     int dex = 0, lvl = 0;
     int n = sscanf(line.c_str() + 6, "%d %d", &dex, &lvl);
-    if (n >= 1 && dex >= 1 && dex <= DEX_COUNT) {
+    if (n >= 1 && dex >= 1 && dex <= dexCount()) {
       startBattle(dex, lvl > 0 ? (uint8_t)lvl : pet.level());
-      Serial.printf("battle vs %s Lv.%u\n", DEX_TBL[dex].name, btlFoe.level);
+      Serial.printf("battle vs %s Lv.%u\n", speciesName(dex), btlFoe.level);
     } else {
       Serial.println("uso: BATTLE <dex> [nivel]");
     }
@@ -1073,7 +1243,7 @@ void handleSerial() {
       for (int i = 0; i < PARTY_SLOTS; i++) party.releaseAt(i);
     } else if (arg.length()) {
       int d = arg.toInt();
-      if (d >= 1 && d <= DEX_COUNT) {
+      if (d >= 1 && d <= dexCount()) {
         PartyMon m;
         m.dex = d;
         m.level = 50;
@@ -1086,20 +1256,20 @@ void handleSerial() {
     for (int i = 0; i < PARTY_SLOTS; i++) {
       const PartyMon &m = party.slots[i];
       if (m.empty()) Serial.print(" -");
-      else Serial.printf(" %s%s(nv%u)", DEX_TBL[m.dex].name, m.shiny ? "*" : "", m.level);
+      else Serial.printf(" %s%s(nv%u)", speciesName(m.dex), m.shiny ? "*" : "", m.level);
     }
     Serial.println();
     Serial.println("DONE");
   } else if (line == "REG") {
-    Serial.printf("pokedex %u/%u:", pet.registeredCount(), DEX_COUNT);
-    for (int i = 1; i <= DEX_COUNT; i++)
+    Serial.printf("pokedex %u/%u:", pet.registeredCount(), dexCount());
+    for (int i = 1; i <= dexCount(); i++)
       if (pet.isRegistered(i)) Serial.printf(" %d", i);
     Serial.println();
     Serial.println("DONE");
   } else if (line == "HEALTH") {
     Serial.printf("up=%lus heap=%u min=%u sd=%d mon=%d\n",
                   (unsigned long)(millis() / 1000), ESP.getFreeHeap(),
-                  ESP.getMinFreeHeap(), sdReady, pmd.loaded || mon.loaded);
+                  ESP.getMinFreeHeap(), sdReady, pmd.loaded);
     // PSRAM is where the sprites and the framebuffer live, so a memory problem
     // shows up here long before it shows up in the heap figure above.
     Serial.printf("psram=%u screen=%s btlspr=%d/%d\n", (unsigned)ESP.getFreePsram(),
@@ -1109,7 +1279,7 @@ void handleSerial() {
   } else if (line == "STATS") {
     Serial.printf("spec=%d nv=%u com=%u fel=%u ene=%u lim=%u desc=%u sd=%d mon=%d bat=%d usb=%d rtc=%u\n",
                   pet.speciesId, pet.level(), pet.fullness, pet.joy, pet.energy,
-                  pet.hygiene, pet.careMistakes, sdReady, mon.loaded,
+                  pet.hygiene, pet.careMistakes, sdReady, pmd.loaded,
                   batPercent(), usbPresent(), rtcEpoch());
     Serial.printf("peso=%u fue=%u def=%u vel=%u vit=%u baya=%d\n",
                   pet.weight, pet.atkStat(), pet.defStat(), pet.speStat(),
@@ -1192,6 +1362,7 @@ void handleTouch() {
 void openClock();  // prototipo
 
 void onSwipeV(int dir) {
+  if (moveInfoOpen) { moveInfoOpen = false; return; }
   if (pet.awaitingStarter()) return;  // bloqueado durante la eleccion de inicial
   if (uiCurrentScreen() == SCR_DEXPICK || uiCurrentScreen() == SCR_GYMPICK)
     return;                 // on the chooser, vertical does nothing: pick a row
@@ -1201,7 +1372,8 @@ void onSwipeV(int dir) {
   if (lanOpen) { lanLeave(); lanOpen = false; return; }
   if (gymOpen) {
     // Same gesture as the Pokedex: vertical changes region, horizontal pages.
-    gymRegion = (uint8_t)((gymRegion + (dir > 0 ? 1 : GYM_REGIONS - 1)) % GYM_REGIONS);
+    uint8_t regions = regionAll();
+    if (regions) gymRegion = (uint8_t)((gymRegion + (dir > 0 ? 1 : regions - 1)) % regions);
     gymPage = 0;
     sfxPlay(SFX_TAP);
     return;
@@ -1256,10 +1428,10 @@ void renderPartyDetail() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
   if (m.empty()) { partyDetail = 0; return; }
-  const DexEntry &d = DEX_TBL[m.dex];
-  char head[36];
+  const DexEntry &d = dexEntry(m.dex);
+  char head[64];
   snprintf(head, sizeof(head), "%s%s Lv.%u", m.shiny ? "*" : "",
-           m.nick[0] ? m.nick : d.name, (unsigned)m.level);
+           displaySpeciesName(m.dex, m.nick), (unsigned)m.level);
   gfx->setTextColor(d.accent);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(head), 40);
@@ -1381,7 +1553,8 @@ void partyTap(int16_t x, int16_t y) {
       movePickParty = partyDetail;
       movePickSlot = i;
       movePickPage = 0;
-      movePickOpen = true;
+      moveInfoOpen = party.slots[partyDetail - 1].moves[i] != MOVE_NONE;
+      movePickOpen = !moveInfoOpen;
       sfxPlay(SFX_TAP);
       return;
     }
@@ -1424,7 +1597,7 @@ void partyTap(int16_t x, int16_t y) {
     }
     party.replaceAt(i, pet.endedMon);
     snprintf(partyBannerName, sizeof(partyBannerName), "%s",
-             pet.endedMon.nick[0] ? pet.endedMon.nick : DEX_TBL[pet.endedMon.dex].name);
+             displaySpeciesName(pet.endedMon.dex, pet.endedMon.nick));
     partyBannerUntil = millis() + 3500;
     pet.endedKind = CER_NONE;
     partyPick = false;
@@ -1436,6 +1609,7 @@ void partyTap(int16_t x, int16_t y) {
 
 // deslizar: dir +1 = hacia la derecha
 void onSwipe(int dir) {
+  if (moveInfoOpen) { moveInfoOpen = false; return; }
   // The region chooser pages, and it is checked before everything else because
   // it sits on TOP of the starter/gallery/gym screens -- each of which has its
   // own horizontal handler that would otherwise swallow the gesture. Paging a
@@ -1453,7 +1627,7 @@ void onSwipe(int dir) {
     return;
   }
   if (gymOpen) {   // horizontal pages the ladder; vertical backs out
-    uint8_t pages = (TRAINER_COUNT + GYM_ROWS - 1) / GYM_ROWS;
+    uint8_t pages = (regionBattleInfo(gymRegion).trainerCount + GYM_ROWS - 1) / GYM_ROWS;
     int p = (int)gymPage + (dir > 0 ? -1 : 1);
     if (p < 0 || p >= pages) { gymPick = true; rpickPage = 0; }  // back to the chooser
     else gymPage = (uint8_t)p;
@@ -1467,8 +1641,8 @@ void onSwipe(int dir) {
   }
   if (trainOpen) { trainOpen = false; return; }
   if (movePickOpen) {   // the picker is paged; without this its later pages
-    uint8_t all[64];    // were simply unreachable
-    uint8_t n = learnableList(all, sizeof(all));
+    MoveId all[64];    // were simply unreachable
+    uint8_t n = learnableList(all, sizeof(all) / sizeof(all[0]));
     uint8_t pages = n ? (n + MOVE_PICK_PER_PAGE - 1) / MOVE_PICK_PER_PAGE : 1;
     int p = (int)movePickPage + (dir > 0 ? -1 : 1);
     if (p < 0 || p >= pages) movePickOpen = false;
@@ -1547,6 +1721,18 @@ void onTap(int16_t x, int16_t y) {
     }
     return;
   }
+  if (moveInfoOpen) {
+    int changeY = uiLayoutMetric(UI_LAYOUT_MOVE_CHANGE_Y, 320);
+    if (x >= 93 && x <= 373 && y >= changeY && y <= changeY + 52) {
+      moveInfoOpen = false;
+      movePickPage = 0;
+      movePickOpen = true;
+      sfxPlay(SFX_TAP);
+    } else {
+      moveInfoOpen = false;
+    }
+    return;
+  }
   if (battleOpen) {
     battleTap(x, y);
     return;
@@ -1610,7 +1796,7 @@ void onTap(int16_t x, int16_t y) {
     }
     for (int i = 0; i < GYM_ROWS; i++) {
       uint8_t idx = gymPage * GYM_ROWS + i;
-      if (idx >= TRAINER_COUNT) break;
+      if (idx >= regionBattleInfo(gymRegion).trainerCount) break;
       int ry = GYM_ROW_Y(i);
       if (x < 70 || x > 396 || y < ry || y > ry + 44) continue;
       if (!gymUnlocked(idx, gymHard)) { sfxPlay(SFX_DENY); return; }
@@ -1683,8 +1869,8 @@ void onTap(int16_t x, int16_t y) {
     return;
   }
   if (movePickOpen) {
-    uint8_t all[64];
-    uint8_t n = learnableList(all, sizeof(all));
+    MoveId all[64];
+    uint8_t n = learnableList(all, sizeof(all) / sizeof(all[0]));
     for (uint8_t i = 0; i < MOVE_PICK_PER_PAGE; i++) {
       uint8_t idx = movePickPage * MOVE_PICK_PER_PAGE + i;
       if (idx >= n) break;
@@ -1693,7 +1879,7 @@ void onTap(int16_t x, int16_t y) {
       sfxPlay(SFX_TAP);
       // Swapping for a move already in another slot would silently duplicate
       // it, so trade the two slots instead of overwriting.
-      uint8_t *tgt = pickTargetMoves();
+      MoveId *tgt = pickTargetMoves();
       for (int s = 0; s < MOVE_SLOTS; s++)
         if (tgt[s] == all[idx] && s != movePickSlot) tgt[s] = tgt[movePickSlot];
       tgt[movePickSlot] = all[idx];
@@ -1745,7 +1931,8 @@ void onTap(int16_t x, int16_t y) {
         movePickParty = 0;      // the live pet
         movePickSlot = i;
         movePickPage = 0;
-        movePickOpen = true;
+        moveInfoOpen = pet.moves[i] != MOVE_NONE;
+        movePickOpen = !moveInfoOpen;
         return;
       }
       cardOpen = false;            // anywhere else on the page still exits
@@ -1976,7 +2163,7 @@ void renderStarterSelect() {
   gfx->print(t);
   for (int i = 0; i < starterCountShown(pet.region); i++) {
     int16_t d = starterOf(pet.region, i);
-    const DexEntry &de = DEX_TBL[d];
+    const DexEntry &de = dexEntry(d);
     int ry = STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP);
     gfx->fillRoundRect(70, ry, 326, STARTER_ROW_H, 14, lerp565(de.accent, UI_WHITE, 6, 8));
     gfx->drawRoundRect(70, ry, 326, STARTER_ROW_H, 14, de.accent);
@@ -1985,7 +2172,7 @@ void renderStarterSelect() {
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(3);
     gfx->setCursor(178, ry + 24);
-    gfx->print(de.name);
+    gfx->print(speciesName(d));
   }
   gfx->flush();
 }
@@ -2009,6 +2196,7 @@ RTC_NOINIT_ATTR uint32_t gCrumbHeap;
 // Which screen is on the panel RIGHT NOW, in the same order render() tests.
 uint8_t uiCurrentScreen() {
   if (pet.awaitingStarter()) return starterRegionDone ? SCR_STARTER : SCR_REGION;
+  if (moveInfoOpen) return SCR_MOVEPICK;
   if (galleryOpen) return galleryPick ? SCR_DEXPICK : SCR_GALLERY;
   if (movePickOpen) return SCR_MOVEPICK;
   if (partyOpen) return boxOpen ? SCR_BOX : SCR_PARTY;
@@ -2072,6 +2260,10 @@ void render() {
   if (pet.awaitingStarter()) {  // primera partida: region y luego inicial
     if (!starterRegionDone) renderRegionPick(RPICK_FOR_START);
     else renderStarterSelect();
+    return;
+  }
+  if (moveInfoOpen) {
+    renderMoveInfo();
     return;
   }
   if (galleryOpen) {
@@ -2147,14 +2339,14 @@ void render() {
   gNight = pet.sleeping || h < 6 || h >= 20;
   // drawScene cubre los 466x466 completos: sin fillScreen(NEGRO) previo para
   // que un flush DMA solapado nunca capture negro a medias (anti-parpadeo)
-  drawScene(pet.isEgg() ? 0 : DEX_TBL[pet.speciesId].biome, millis(), gNight);
+  drawScene(pet.isEgg() ? 0 : dexEntry(pet.speciesId).biome, millis(), gNight);
 
   if (pet.ceremony) {
-    const DexEntry &d = DEX_TBL[pet.speciesId];
+    const DexEntry &d = dexEntry(pet.speciesId);
     const char *msg = (pet.ceremony == CER_FAREWELL) ? T(S_FAREWELL)
                       : (pet.ceremony == CER_RUNAWAY) ? T(S_RUNAWAY)
                                                       : T(S_GOODBYE);
-    drawHeader(d.name, d.accent, msg);
+    drawHeader(speciesName(pet.speciesId), d.accent, msg);
     drawCeremony();
     gfx->flush();
     return;
@@ -2176,7 +2368,7 @@ void render() {
       gfx->print(rar);
     }
     char reg[24];
-    snprintf(reg, sizeof(reg), T(S_POKEDEX_FMT), pet.registeredCount(), DEX_COUNT);
+    snprintf(reg, sizeof(reg), T(S_POKEDEX_FMT), pet.registeredCount(), dexCount());
     gfx->fillRect(0, 312, 466, 154, gNight ? UI_BG_NIGHT : UI_BG_DAY);
     gfx->setTextColor(inkColor());
     gfx->setTextSize(2);
@@ -2189,9 +2381,9 @@ void render() {
     // something you do to the egg in front of you.
     drawEggRegion();
   } else {
-    const DexEntry &d = DEX_TBL[pet.speciesId];
-    char name[28];
-    const char *base = pet.nick[0] ? pet.nick : d.name;
+    const DexEntry &d = dexEntry(pet.speciesId);
+    char name[64];
+    const char *base = displaySpeciesName(pet.speciesId, pet.nick);
     snprintf(name, sizeof(name), T(S_NAME_FMT), pet.shiny ? "*" : "", base, pet.level());
     drawHeader(name, gNight ? UI_INK_NIGHT : d.accent, statusMsg());
     drawStreakBadge();
@@ -2236,8 +2428,8 @@ void render() {
     } else {
       gfx->fillRoundRect(94, 168, 278, 152, 16, UI_WHITE);
       gfx->drawRoundRect(94, 168, 278, 152, 16, UI_INK);
-      char q[28];
-      snprintf(q, sizeof(q), T(S_RELEASE_FMT), DEX_TBL[pet.speciesId].name);
+      char q[64];
+      snprintf(q, sizeof(q), T(S_RELEASE_FMT), speciesName(pet.speciesId));
       gfx->setTextColor(UI_INK);
       gfx->setTextSize(2);
       gfx->setCursor(uiCenterX(q), 196);
@@ -2505,7 +2697,7 @@ void drawGameScene() {
     gfx->fillRect(0, y, 466, 8, lerp565(top, bot, y, hor));
   if (night)
     for (auto &st : STARS) gfx->fillRect(st[0], st[1], 4, 4, UI_WHITE);
-  uint8_t bio = pet.isEgg() ? 0 : DEX_TBL[pet.speciesId].biome;
+  uint8_t bio = pet.isEgg() ? 0 : dexEntry(pet.speciesId).biome;
   uint16_t soil = BIOME_SOIL[bio < 6 ? bio : 0];
   if (night) soil = lerp565(soil, C565(0x16, 0x1c, 0x30), 9, 16);
   gfx->fillRect(0, hor, 466, 466 - hor, soil);
@@ -2585,19 +2777,6 @@ void renderGame() {
     uint8_t act = (ballX > gamePetX + 4) ? PMD_WALKR : (ballX < gamePetX - 4) ? PMD_WALKL : PMD_IDLE;
     if (!pmd.has(act)) act = PMD_IDLE;
     drawPmdAct(act, (int)gamePetX, 394, millis(), true, false, 3);
-  } else if (mon.loaded) {
-    int s = (mon.h * 2 > 130) ? 1 : 2;
-    int w = mon.w * s, h = mon.h * s;
-    uint16_t fm = mon.frameMs ? mon.frameMs : 100;
-    uint16_t fi = (millis() / fm) % mon.frames;
-    const uint8_t *fr = mon.data + (uint32_t)fi * mon.w * mon.h;
-    int px = (int)gamePetX - w / 2, py = 394 - h;
-    for (int r = 0; r < mon.h; r++)
-      for (int c = 0; c < mon.w; c++) {
-        uint8_t idx = fr[r * mon.w + c];
-        if (idx == 0xFF) continue;
-        gfx->fillRect(px + c * s, py + r * s, s, s, mon.pal[idx]);
-      }
   }
 
   // anillo de impacto que se expande y desvanece (feedback suave del golpe)
@@ -2627,7 +2806,10 @@ void drawCardStat(int y, const char *label, uint16_t val, uint16_t maxBar,
   gfx->setTextSize(2);
   char num[8];
   snprintf(num, sizeof(num), "%u", val);
-  int bw = 130, labelX = 70, barX = 132, numX = 272;
+  int bw = uiLayoutMetric(UI_LAYOUT_STAT_BAR_WIDTH, 130);
+  int labelX = uiLayoutMetric(UI_LAYOUT_STAT_LABEL_X, 70);
+  int barX = uiLayoutMetric(UI_LAYOUT_STAT_BAR_X, 132);
+  int numX = uiLayoutMetric(UI_LAYOUT_STAT_VALUE_X, 272);
   if (iv == IV_NONE) {
     int labelW = gfx->textWidth(label), numW = gfx->textWidth(num);
     int total = labelW + 12 + bw + 10 + numW;
@@ -2695,7 +2877,6 @@ void drawClockBtn(int x, int y, const char *l) {
 #define VOL_MINUS_X 146
 #define VOL_PLUS_X 276
 #define VOL_BTN_W 48
-static const char *const LANG_CODES[LANG_COUNT] = { "ES", "EN", "FR", "DE", "IT", "PT", "中文" };
 
 void renderClock() {
   gfx->fillScreen(RGB565_BLACK);
@@ -2762,7 +2943,7 @@ void renderClock() {
   gfx->fillRoundRect(LANG_PILL_X, LANG_PILL_Y, LANG_PILL_W, LANG_PILL_H, 8, UI_WHITE);
   gfx->drawRoundRect(LANG_PILL_X, LANG_PILL_Y, LANG_PILL_W, LANG_PILL_H, 8, UI_INK);
   char lp[10];
-  snprintf(lp, sizeof(lp), "%s >", LANG_CODES[gLang]);
+  snprintf(lp, sizeof(lp), "%s >", langLabel(gLang));
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterIn(lp, LANG_PILL_X, LANG_PILL_W), LANG_PILL_Y + 8);
@@ -2813,8 +2994,8 @@ void clockTap(int16_t x, int16_t y) {
       return;
     }
     if (x >= LANG_PILL_X && x < LANG_PILL_X + LANG_PILL_W) {  // cicla idioma
-      setLang((Lang)((gLang + 1) % LANG_COUNT));
-      gfx->setChineseMode(gLang == LANG_ZH);
+      if (langCount()) setLang((Lang)((gLang + 1) % langCount()));
+      refreshUiFont();
       sfxPlay(SFX_TAP);
       return;
     }
@@ -2874,9 +3055,9 @@ void drawMedalBadge(int x, int y, int i) {
 
 // pagina 0: perfil (retrato grande, identidad, racha, vinculo, baya)
 void renderCardProfile() {
-  const DexEntry &d = DEX_TBL[pet.speciesId];
-  const char *nm = pet.nick[0] ? pet.nick : d.name;
-  char head[26];
+  const DexEntry &d = dexEntry(pet.speciesId);
+  const char *nm = displaySpeciesName(pet.speciesId, pet.nick);
+  char head[64];
   snprintf(head, sizeof(head), T(S_NAME_FMT), pet.shiny ? "*" : "", nm, pet.level());
   gfx->setTextColor(d.accent);
   // auto-encoge: a tamano 3 los nombres largos no caben en la franja estrecha de
@@ -2887,8 +3068,8 @@ void renderCardProfile() {
   gfx->setCursor(uiCenterX(head), hts == 3 ? 34 : 40);
   gfx->print(head);
   if (pet.nick[0]) {  // especie real bajo el apodo
-    char species[20];
-    snprintf(species, sizeof(species), "(%s)", d.name);
+    char species[64];
+    snprintf(species, sizeof(species), "(%s)", speciesName(pet.speciesId));
     gfx->setTextColor(UI_TRACK);
     gfx->setTextSize(2);
     gfx->setCursor(uiCenterX(species), 64);
@@ -2937,7 +3118,7 @@ void renderCardStats() {
 
   // typing, in the accent colour of the species (English in every language,
   // same as the species names themselves)
-  const DexEntry &de = DEX_TBL[pet.speciesId];
+  const DexEntry &de = dexEntry(pet.speciesId);
   char ty[24];
   if (de.type2 == T_NONE) snprintf(ty, sizeof(ty), "%s", typeName(de.type1));
   else snprintf(ty, sizeof(ty), "%s/%s", typeName(de.type1), typeName(de.type2));
@@ -2967,13 +3148,13 @@ int drawTypeChip(int x, int y, uint8_t type) {
   int w = gfx->textWidth(nm) + 10;
   gfx->fillRoundRect(x, y, w, MOVE_CHIP_H, 4, typeColor(type));
   gfx->setTextColor(typeColorIsLight(type) ? UI_INK : UI_WHITE);
-  int compactH = (gLang == LANG_ZH) ? 16 : 8;
+  int compactH = uiLayoutMetric(1, 8);
   gfx->setCursor(x + 5, y + (MOVE_CHIP_H - compactH) / 2);
   gfx->print(nm);
   return w;
 }
 
-void drawMoveRow(int y, uint8_t mv, bool highlight, int16_t dex) {
+void drawMoveRow(int y, MoveId mv, bool highlight, int16_t dex) {
   gfx->fillRoundRect(70, y, 326, MOVE_ROW_H, 12, highlight ? UI_BAR_WARN : UI_BG_DAY);
   gfx->drawRoundRect(70, y, 326, MOVE_ROW_H, 12, UI_INK);
   if (!mv) {
@@ -2983,25 +3164,23 @@ void drawMoveRow(int y, uint8_t mv, bool highlight, int16_t dex) {
     gfx->print(T(S_MOVE_EMPTY));
     return;
   }
-  const MoveEntry &m = MOVE_TBL[mv];
+  const MoveEntry &m = moveEntry(mv);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
   gfx->setCursor(82, y + MOVE_NAME_TOP);
-  gfx->print(m.name);
-  // There is no per-type palette (DexEntry.accent is per species), and inventing
-  // one by hand would duplicate what gen_dex.py generates. Colouring same-type
-  // moves in the species accent is more useful anyway: STAB is a 1.5x damage
-  // bonus, so this marks the moves that actually hit hardest for this creature.
+  gfx->print(moveName(mv));
+  // Type colours come from the move pack. STAB is a 1.5x damage bonus and is
+  // marked on the power figure, where it describes the actual effect.
   // The chip carries the TYPE; STAB moved onto the power figure, where it
   // belongs -- STAB is a damage bonus, so saying it next to the damage reads
   // straight, and it leaves the type free to be its own colour.
   bool stab = hasStab(dex, m.type) && m.cat != MC_STATUS;
   int chipY = y + MOVE_CHIP_TOP;
-  int compactH = (gLang == LANG_ZH) ? 16 : 8;
+  int compactH = uiLayoutMetric(1, 8);
   int metaY = chipY + (MOVE_CHIP_H - compactH) / 2;
   int cw = drawTypeChip(82, chipY, m.type);
   if (stab) {
-    gfx->setTextColor(DEX_TBL[dex].accent);
+    gfx->setTextColor(dexEntry(dex).accent);
     gfx->setTextSize(1);
     gfx->setCursor(82 + cw + 6, metaY);
     gfx->print("STAB");
@@ -3009,7 +3188,7 @@ void drawMoveRow(int y, uint8_t mv, bool highlight, int16_t dex) {
   char pw[16];
   if (m.cat == MC_STATUS) snprintf(pw, sizeof(pw), "%s", T(S_MOVE_STATUS));
   else snprintf(pw, sizeof(pw), T(S_MOVE_PWR), m.power);
-  gfx->setTextColor(stab ? DEX_TBL[dex].accent : UI_INK);
+  gfx->setTextColor(stab ? dexEntry(dex).accent : UI_INK);
   gfx->setTextSize(1);
   gfx->setCursor(uiRightX(pw, 384), metaY);
   gfx->print(pw);
@@ -3018,7 +3197,7 @@ void drawMoveRow(int y, uint8_t mv, bool highlight, int16_t dex) {
 void moveRowVerticals(int *rowBottom, int *nameTop, int *nameBottom,
                       int *chipTop, int *chipBottom,
                       int *metaTop, int *metaBottom) {
-  int compactH = (gLang == LANG_ZH) ? 16 : 8;
+  int compactH = uiLayoutMetric(1, 8);
   int mt = MOVE_CHIP_TOP + (MOVE_CHIP_H - compactH) / 2;
   if (rowBottom) *rowBottom = MOVE_ROW_H;
   if (nameTop) *nameTop = MOVE_NAME_TOP;
@@ -3044,17 +3223,18 @@ void renderCardMoves() {
 
 // Every move the species can learn by this level, so a slot can be swapped for
 // anything legal -- not just the handful a level-up would have offered.
-uint8_t learnableFor(int16_t dex, uint8_t lvl, uint8_t *out, uint8_t max) {
-  if (dex < 1 || dex > DEX_COUNT) return 0;
-  uint8_t n = learnCount(dex), w = 0;
-  for (uint8_t i = 0; i < n && w < max; i++) {
+uint8_t learnableFor(int16_t dex, uint8_t lvl, MoveId *out, uint8_t max) {
+  if (dex < 1 || dex > dexCount()) return 0;
+  uint16_t n = learnCount(dex);
+  uint8_t w = 0;
+  for (uint16_t i = 0; i < n && w < max; i++) {
     // moveUnlockLevel(), NOT learnLevel(): a TM is stored as level 0 and would
     // otherwise clear this check at level 1. That is how a level 22 Charmeleon
     // came to be offered FIRE BLAST -- the same class of bug as the level 1
     // Squirtle with SURF, in the one path that fix did not reach.
     if (moveUnlockLevel(dex, i) > lvl) continue;
-    uint8_t mv = learnMove(dex, i);
-    if (!mv || mv >= MOVE_COUNT) continue;
+    MoveId mv = learnMove(dex, i);
+    if (!mv || mv >= moveCount()) continue;
     bool dup = false;
     for (uint8_t j = 0; j < w; j++)
       if (out[j] == mv) { dup = true; break; }
@@ -3065,7 +3245,7 @@ uint8_t learnableFor(int16_t dex, uint8_t lvl, uint8_t *out, uint8_t max) {
 
 // The picker targets either the live pet or a banked member. A banked one keeps
 // its frozen level, so it can only relearn what it could have known back then.
-uint8_t learnableList(uint8_t *out, uint8_t max) {
+uint8_t learnableList(MoveId *out, uint8_t max) {
   if (movePickParty) {
     const PartyMon &m = party.slots[movePickParty - 1];
     return learnableFor(m.dex, (uint8_t)m.level, out, max);
@@ -3073,11 +3253,43 @@ uint8_t learnableList(uint8_t *out, uint8_t max) {
   return pet.isEgg() ? 0 : learnableFor(pet.speciesId, pet.level(), out, max);
 }
 
-uint8_t *pickTargetMoves() {
+MoveId *pickTargetMoves() {
   return movePickParty ? party.slots[movePickParty - 1].moves : pet.moves;
 }
 int16_t pickTargetDex() {
   return movePickParty ? party.slots[movePickParty - 1].dex : pet.speciesId;
+}
+
+void renderMoveInfo() {
+  MoveId move = pickTargetMoves()[movePickSlot];
+  if (!moveValid(move)) { moveInfoOpen = false; return; }
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(3);
+  gfx->setCursor(uiCenterX(moveName(move)), 42);
+  gfx->print(moveName(move));
+  drawMoveRow(88, move, false, pickTargetDex());
+  const char *description = moveDescription(move, uiActiveLocaleCode());
+  if (description) {
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize((uint8_t)uiLayoutMetric(UI_LAYOUT_MOVE_DESCRIPTION_TEXT_SIZE, 1));
+    drawWrappedText(description, uiLayoutMetric(UI_LAYOUT_MOVE_DESCRIPTION_X, 78),
+                    uiLayoutMetric(UI_LAYOUT_MOVE_DESCRIPTION_Y, 158),
+                    uiLayoutMetric(UI_LAYOUT_MOVE_DESCRIPTION_WIDTH, 310),
+                    (uint8_t)uiLayoutMetric(UI_LAYOUT_MOVE_DESCRIPTION_LINES, 8));
+  }
+  int changeY = uiLayoutMetric(UI_LAYOUT_MOVE_CHANGE_Y, 320);
+  gfx->fillRoundRect(93, changeY, 280, 52, 12, UI_BAR_WARN);
+  gfx->drawRoundRect(93, changeY, 280, 52, 12, UI_INK);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(T(S_MOVE_CHANGE)), changeY + 17);
+  gfx->print(T(S_MOVE_CHANGE));
+  gfx->setTextColor(UI_TRACK);
+  gfx->setCursor(uiCenterX(T(S_BACK)), 402);
+  gfx->print(T(S_BACK));
+  gfx->flush();
 }
 
 void renderMovePick() {
@@ -3088,8 +3300,8 @@ void renderMovePick() {
   gfx->setCursor(uiCenterX(T(S_MOVE_PICK)), 40);
   gfx->print(T(S_MOVE_PICK));
 
-  uint8_t all[64];
-  uint8_t n = learnableList(all, sizeof(all));
+  MoveId all[64];
+  uint8_t n = learnableList(all, sizeof(all) / sizeof(all[0]));
   uint8_t pages = n ? (n + MOVE_PICK_PER_PAGE - 1) / MOVE_PICK_PER_PAGE : 1;
   if (movePickPage >= pages) movePickPage = 0;
   for (uint8_t i = 0; i < MOVE_PICK_PER_PAGE; i++) {
@@ -3137,8 +3349,8 @@ static void drawBack(const BackScene &b, int y0) {
 // same day/night split the main screen already uses.
 static void drawBattleBack() {
   int16_t dex = btlFoe.dex;
-  if (dex < 1 || dex > DEX_COUNT) { gfx->fillCircle(CX, CY, 231, UI_BG_DAY); return; }
-  uint8_t bi = DEX_TBL[dex].biome;
+  if (dex < 1 || dex > dexCount()) { gfx->fillCircle(CX, CY, 231, UI_BG_DAY); return; }
+  uint8_t bi = dexEntry(dex).biome;
   if (bi >= BACK_BIOMES) bi = 0;
   bool night = sceneHour() < 6 || sceneHour() >= 20;
   drawBack(BACKS[bi][night ? 1 : 0], 30);
@@ -3151,7 +3363,7 @@ static void btlSyncSprite(uint8_t who, const Combatant &c) {
   if (btlPmdDex[who] == key && btlPmd[who].loaded) return;
   btlPmd[who].unload();
   btlPmdDex[who] = 0;
-  if (c.dex < 1 || c.dex > DEX_COUNT) return;
+  if (c.dex < 1 || c.dex > dexCount()) return;
   if (btlPmd[who].load(c.dex, c.shiny)) btlPmdDex[who] = key;   // NOT (uint8_t): Hoenn runs past 255
 }
 
@@ -3177,19 +3389,19 @@ static void btlSfxFor(const TurnLog &lg) {
   if (lg.inflicted) { sfxPlay(SFX_STATUS); return; }
   if (lg.damage && lg.effPct > 100) { sfxPlay(SFX_SUPER); return; }
   if (lg.damage) {
-    sfxPlay(lg.move && MOVE_TBL[lg.move].cat == MC_SPEC ? SFX_BEAM : SFX_HIT);
+    sfxPlay(lg.move && moveEntry(lg.move).cat == MC_SPEC ? SFX_BEAM : SFX_HIT);
     return;
   }
-  if (lg.move && MOVE_TBL[lg.move].cat == MC_STATUS && !lg.missed) sfxPlay(SFX_STATUS);
+  if (lg.move && moveEntry(lg.move).cat == MC_STATUS && !lg.missed) sfxPlay(SFX_STATUS);
 }
 
 static void btlNarrate(const Combatant &actor, const Combatant &target, const TurnLog &lg) {
   if (lg.skipped) return;
   btlSfxFor(lg);
   if (lg.hurtSelf) { btlSay(T(S_BTL_HURTSELF)); return; }
-  if (lg.charged) { btlSay(T(S_BTL_USED), actor.name, MOVE_TBL[lg.move].name); return; }
-  if (lg.move) btlSay(T(S_BTL_USED), actor.name, MOVE_TBL[lg.move].name);
-  if (lg.missed) { btlSay(T(S_BTL_MISS), actor.name); return; }
+  if (lg.charged) { btlSay(T(S_BTL_USED), displayCombatantName(actor), moveName(lg.move)); return; }
+  if (lg.move) btlSay(T(S_BTL_USED), displayCombatantName(actor), moveName(lg.move));
+  if (lg.missed) { btlSay(T(S_BTL_MISS), displayCombatantName(actor)); return; }
   if (lg.immune) { btlSay(T(S_BTL_IMMUNE)); return; }
   if (lg.crit) btlSay(T(S_BTL_CRIT));
   if (lg.damage && lg.effPct > 100) btlSay(T(S_BTL_SUPER));
@@ -3197,9 +3409,10 @@ static void btlNarrate(const Combatant &actor, const Combatant &target, const Tu
   if (lg.inflicted) {
     static const StrId AIL_STR[] = { S_AIL_PARA, S_AIL_PARA, S_AIL_BURN, S_AIL_POISON,
                                      S_AIL_SLEEP, S_AIL_FREEZE, S_AIL_CONFUSE };
-    if (lg.inflicted < 7) btlSay(T(S_BTL_STATUS), target.name, T(AIL_STR[lg.inflicted]));
+    if (lg.inflicted < 7)
+      btlSay(T(S_BTL_STATUS), displayCombatantName(target), T(AIL_STR[lg.inflicted]));
   }
-  if (lg.targetFainted) btlSay(T(S_BTL_FAINT), target.name);
+  if (lg.targetFainted) btlSay(T(S_BTL_FAINT), displayCombatantName(target));
 }
 
 // Builds one opponent through Pet, so it gets the same stat formula and the
@@ -3244,8 +3457,8 @@ static void buildSquad(uint8_t maxLvl, uint8_t maxCount, uint16_t mask) {
 
 // How many you may bring: the leader's own count in hard mode, six otherwise.
 uint8_t squadCap(uint8_t idx, bool hard) {
-  if (idx >= TRAINER_COUNT) return TRAINER_TEAM_MAX;
-  return hard ? TRAINERS[idx].count : TRAINER_TEAM_MAX;
+  if (idx >= regionBattleInfo(gymRegion).trainerCount) return TRAINER_TEAM_MAX;
+  return hard ? trainerInfo(gymRegion, idx).count : TRAINER_TEAM_MAX;
 }
 
 // A fight against another device. The squads are already exchanged; the host
@@ -3288,8 +3501,9 @@ void startLinkBattle() {
 }
 
 void startTrainerBattle(uint8_t idx, bool hard) {
-  if (idx >= TRAINER_COUNT || pet.isEgg() || pet.ceremony != CER_NONE) return;
-  const Trainer &tr = TRAINERS[idx];
+  if (idx >= regionBattleInfo(gymRegion).trainerCount ||
+      pet.isEgg() || pet.ceremony != CER_NONE) return;
+  const Trainer &tr = trainerInfo(gymRegion, idx);
   uint8_t top = 0;
   for (int k = 0; k < tr.count; k++)
     if (tr.team[k].level > top) top = tr.team[k].level;
@@ -3301,8 +3515,10 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   btlTrainer = (int8_t)idx;
   btlHard = hard;
   btlFoeAt = 0;
-  const Trainer &t = TRAINERS[idx];
-  foeFromSpecies(btlFoe, t.team[0].dex, t.team[0].level, hard ? HARD_IV : EASY_IV);
+  const Trainer &t = trainerInfo(gymRegion, idx);
+  const RegionBattleInfo &battle = regionBattleInfo(gymRegion);
+  foeFromSpecies(btlFoe, t.team[0].dex, t.team[0].level,
+                 hard ? battle.hardIv : battle.easyIv);
   btlMsgCount = 0;
   btlOver = false;
   btlWon = false;
@@ -3323,7 +3539,7 @@ void startTrainerBattle(uint8_t idx, bool hard) {
 
 void startBattle(int16_t dex, uint8_t lvl) {
   if (pet.isEgg() || pet.ceremony != CER_NONE) return;
-  if (dex < 1 || dex > DEX_COUNT) return;
+  if (dex < 1 || dex > dexCount()) return;
   buildSquad(0, TRAINER_TEAM_MAX, 0xFFFF);
   if (!btlSquadN) return;
   // The opponent is built through Pet so it gets the same stat formula and the
@@ -3387,17 +3603,17 @@ static void btlApplyResult() {
   btlFoe.ailment = r.hostAil;
 
   btlMsgCount = 0;
-  if (r.hostMove) btlSay(T(S_BTL_USED), btlFoe.name, MOVE_TBL[r.hostMove].name);
-  if (r.guestMove) btlSay(T(S_BTL_USED), btlYou.name, MOVE_TBL[r.guestMove].name);
+  if (r.hostMove) btlSay(T(S_BTL_USED), displayCombatantName(btlFoe), moveName(r.hostMove));
+  if (r.guestMove) btlSay(T(S_BTL_USED), displayCombatantName(btlYou), moveName(r.guestMove));
   if (r.guestDmg) { btlHitUntil[0] = now + BTL_HIT_MS; sfxPlay(SFX_HIT); }
   if (r.hostDmg) { btlHitUntil[1] = now + BTL_HIT_MS; sfxPlay(SFX_HIT); }
   if (btlYou.fainted()) {
     btlFaintUntil[0] = now + BTL_FAINT_MS;
-    btlSay(T(S_BTL_FAINT), btlYou.name);
+    btlSay(T(S_BTL_FAINT), displayCombatantName(btlYou));
   }
   if (btlFoe.fainted()) {
     btlFaintUntil[1] = now + BTL_FAINT_MS;
-    btlSay(T(S_BTL_FAINT), btlFoe.name);
+    btlSay(T(S_BTL_FAINT), displayCombatantName(btlFoe));
   }
 }
 
@@ -3442,7 +3658,7 @@ static void btlLinkPoll() {
 }
 
 // Packs the outcome for the guest. Only the host ever calls this.
-static void btlShipResult(uint8_t yourMove, uint8_t theirMove,
+static void btlShipResult(MoveId yourMove, MoveId theirMove,
                           uint16_t hp0You, uint16_t hp0Foe) {
   LinkResult r = {};
   r.hostHp = btlYou.hp;   r.guestHp = btlFoe.hp;
@@ -3456,11 +3672,11 @@ static void btlShipResult(uint8_t yourMove, uint8_t theirMove,
 }
 
 // One exchange: both sides act in speed order, then burn/poison chip.
-static void btlResolve(uint8_t yourMove) {
+static void btlResolve(MoveId yourMove) {
   TurnLog lg;
   // Against another device the opponent's move comes off the wire, never from
   // the AI -- and the host is the only side that runs this at all.
-  uint8_t foeMove;
+  MoveId foeMove;
   bool foeSwitched = false;
   uint32_t now = millis();
   if (btlLink) {
@@ -3477,7 +3693,7 @@ static void btlResolve(uint8_t yourMove) {
         btlSyncSprite(1, btlFoe);
         btlLungeUntil[1] = btlHitUntil[1] = btlFaintUntil[1] = 0;
         btlEnterUntil[1] = now + BTL_ENTER_MS;
-        btlSay(T(S_BTL_SENDS), lan.peerName, btlFoe.name);
+        btlSay(T(S_BTL_SENDS), lan.peerName, displayCombatantName(btlFoe));
         foeSwitched = true;
       }
       foeMove = 0;
@@ -3493,8 +3709,8 @@ static void btlResolve(uint8_t yourMove) {
   bool youFirst = battleMovesFirst(btlYou, yourMove, btlFoe, foeMove);
   Combatant *a = youFirst ? &btlYou : &btlFoe;
   Combatant *b = youFirst ? &btlFoe : &btlYou;
-  uint8_t ma = youFirst ? yourMove : foeMove;
-  uint8_t mb = youFirst ? foeMove : yourMove;
+  MoveId ma = youFirst ? yourMove : foeMove;
+  MoveId mb = youFirst ? foeMove : yourMove;
 
   uint16_t hp0You = btlYou.hp, hp0Foe = btlFoe.hp;
   battleAct(*a, *b, ma, lg);
@@ -3524,7 +3740,7 @@ static void btlResolve(uint8_t yourMove) {
     btlSwapWho = 1;
     return;
   }
-  if (btlFoe.fainted() && btlTrainer >= 0 && btlFoeAt + 1 < BTL_TRAINERS[btlTrainer].count) {
+  if (btlFoe.fainted() && btlTrainer >= 0 && btlFoeAt + 1 < trainerInfo(btlRegion, btlTrainer).count) {
     btlFaintUntil[1] = millis() + BTL_FAINT_MS;
     btlSwapWho = 1;
     return;
@@ -3580,8 +3796,8 @@ static void btlSide(int tx, int ty, int sx, int sy, const Combatant &c, uint8_t 
   int ph = (who == 0) ? 54 : 40;
   gfx->fillRoundRect(tx - 8, ty - 8, 158, ph, 8, UI_BG_DAY);
   gfx->drawRoundRect(tx - 8, ty - 8, 158, ph, 8, UI_INK);
-  char l[28];
-  snprintf(l, sizeof(l), "%s Lv.%u", c.name, c.level);
+  char l[64];
+  snprintf(l, sizeof(l), "%s Lv.%u", displayCombatantName(c), c.level);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(1);
   gfx->setCursor(tx, ty);
@@ -3668,7 +3884,7 @@ static void btlEaseBars() {
 // The moment the ladder builds toward. It used to be one more line in the same
 // message box as "It's super effective!", with the badge awarded silently.
 void renderWin() {
-  const Trainer &t = BTL_TRAINERS[btlTrainer];
+  const Trainer &t = trainerInfo(btlRegion, btlTrainer);
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
 
@@ -3678,25 +3894,25 @@ void renderWin() {
   gfx->print(T(S_BTL_WIN));
 
   char l[40];
-  snprintf(l, sizeof(l), T(S_BTL_BEAT), t.name);
+  snprintf(l, sizeof(l), T(S_BTL_BEAT), trainerName(btlRegion, btlTrainer));
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(l), 96);
   gfx->print(l);
 
   // the badge, large, with the hard-mode halo if that is how it was won
-  if (btlTrainer < TRAINER_GYMS) {
+  if (btlTrainer < regionBattleInfo(btlRegion).gymCount) {
     int by = 190;
     if (btlHard) {
       for (int r = 62; r >= 56; r--) gfx->drawCircle(CX, by, r, r % 2 ? 0xFEA0 : 0xFF60);
     }
-    const BadgeArt &a = BADGES_ART[btlRegion % BADGE_REGIONS][btlTrainer];
-    for (int r = 0; r < BADGE_PX; r++)
-      for (int c = 0; c < BADGE_PX; c++) {
-        uint8_t v = a.idx[r * BADGE_PX + c];
-        if (v == 0xFF) continue;
+    const BadgeArt &a = badgeArt(btlRegion, btlTrainer);
+    for (int r = 0; a.idx && r < a.height; r++)
+      for (int c = 0; c < a.width; c++) {
+        uint8_t v = a.idx[r * a.width + c];
+        if (v == 0xFF || v >= a.paletteCount) continue;
         // 3x, so it reads as a prize rather than a list entry
-        gfx->fillRect(CX - BADGE_PX * 3 / 2 + c * 3, by - BADGE_PX * 3 / 2 + r * 3,
+        gfx->fillRect(CX - a.width * 3 / 2 + c * 3, by - a.height * 3 / 2 + r * 3,
                       3, 3, a.pal[v]);
       }
     if (btlNewBadge) {
@@ -3808,7 +4024,7 @@ void renderBattle() {
       gfx->setTextColor(usable ? UI_INK : 0x8410);
       gfx->setTextSize(1);
       gfx->setCursor(x + 10, y + 10);
-      gfx->print(m.name);
+      gfx->print(displayCombatantName(m));
       char hp[20];
       snprintf(hp, sizeof(hp), "%u/%u", m.hp, m.maxHp);
       gfx->setCursor(x + 10, y + 28);
@@ -3818,21 +4034,21 @@ void renderBattle() {
     drawBtlBack();
     for (int i = 0; i < MOVE_SLOTS; i++) {
       int x = BTL_CELL_X(i), y = BTL_CELL_Y(i);
-      uint8_t mv = btlYou.moves[i];
+      MoveId mv = btlYou.moves[i];
       gfx->fillRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, mv ? UI_BG_DAY : UI_TRACK);
       gfx->drawRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, UI_INK);
       if (!mv) continue;
       gfx->setTextColor(UI_INK);
       gfx->setTextSize(1);
       gfx->setCursor(x + 10, y + 12);
-      gfx->print(MOVE_TBL[mv].name);
+      gfx->print(moveName(mv));
       // Same chip as the move list: in a fight the type IS the decision, and
       // grey 6px text was the least visible thing on the busiest screen.
-      int cw = drawTypeChip(x + 10, y + 26, MOVE_TBL[mv].type);
-      if (hasStab(btlYou.dex, MOVE_TBL[mv].type) &&
-          MOVE_TBL[mv].cat != MC_STATUS) {
+      int cw = drawTypeChip(x + 10, y + 26, moveEntry(mv).type);
+      if (hasStab(btlYou.dex, moveEntry(mv).type) &&
+          moveEntry(mv).cat != MC_STATUS) {
         gfx->setTextSize(1);
-        gfx->setTextColor(DEX_TBL[btlYou.dex].accent);
+        gfx->setTextColor(dexEntry(btlYou.dex).accent);
         gfx->setCursor(x + 10 + cw + 4, y + 30);
         gfx->print("+");
       }
@@ -3856,17 +4072,19 @@ static void btlDoSwap() {
     btlSyncSprite(1, btlFoe);
     btlLungeUntil[1] = btlHitUntil[1] = btlFaintUntil[1] = 0;
     btlEnterUntil[1] = now + BTL_ENTER_MS;
-    btlSay(T(S_BTL_SENDS), lan.peerName, btlFoe.name);
+    btlSay(T(S_BTL_SENDS), lan.peerName, displayCombatantName(btlFoe));
   } else if (btlSwapWho == 1) {
-    const Trainer &t = BTL_TRAINERS[btlTrainer];
+    const Trainer &t = trainerInfo(btlRegion, btlTrainer);
     btlFoeAt++;
+    const RegionBattleInfo &battle = regionBattleInfo(btlRegion);
     foeFromSpecies(btlFoe, t.team[btlFoeAt].dex, t.team[btlFoeAt].level,
-                   btlHard ? HARD_IV : EASY_IV);
+                   btlHard ? battle.hardIv : battle.easyIv);
     btlHpShown[1] = btlFoe.maxHp;
     btlSyncSprite(1, btlFoe);
     btlLungeUntil[1] = btlHitUntil[1] = btlFaintUntil[1] = 0;
     btlEnterUntil[1] = now + BTL_ENTER_MS;
-    btlSay(T(S_BTL_SENDS), t.name, btlFoe.name);
+    btlSay(T(S_BTL_SENDS), trainerName(btlRegion, btlTrainer),
+           displayCombatantName(btlFoe));
   } else if (btlSwapWho == 0) {
     btlSquad[btlSquadAt] = btlYou;     // remember how battered it was
     btlSquadAt++;
@@ -3875,7 +4093,7 @@ static void btlDoSwap() {
     btlSyncSprite(0, btlYou);
     btlLungeUntil[0] = btlHitUntil[0] = btlFaintUntil[0] = 0;
     btlEnterUntil[0] = now + BTL_ENTER_MS;
-    btlSay(T(S_BTL_GO), btlYou.name);
+    btlSay(T(S_BTL_GO), displayCombatantName(btlYou));
   }
   btlSwapWho = -1;
 }
@@ -3892,7 +4110,7 @@ static void btlSwitchTo(uint8_t i) {
   btlLungeUntil[0] = btlHitUntil[0] = btlFaintUntil[0] = 0;
   btlEnterUntil[0] = millis() + BTL_ENTER_MS;
   btlMenu = 0;
-  btlSay(T(S_BTL_GO), btlYou.name);
+  btlSay(T(S_BTL_GO), displayCombatantName(btlYou));
   btlResolve(0);          // move 0 = no attack, so only the foe acts
 }
 
@@ -4022,7 +4240,7 @@ void battleTap(int16_t x, int16_t y) {
 // streak, the Pokedex and the party. No player sprite yet -- the SD carries
 // PMD creature sprites only, so a trainer portrait needs new art.
 // Page 1: who you are -- avatar, badges, totals. Tap the avatar to cycle it;
-// the four sprites are hand-drawn (see species.h) because SpriteCollab has no
+// the four sprites are bundled separately in avatars.h because SpriteCollab has no
 // trainer art and ripped sprites would be unlicensed.
 static void renderPlayerBadges() {
   // the player's name if they have set one, the generic title if not; either
@@ -4036,7 +4254,7 @@ static void renderPlayerBadges() {
   // Pages 1 and 2 are the other regions' ladders: name them, and drop the
   // avatar so the badges have the room. Only page 0 is "you".
   if (playerBadgeRegion != 0) {
-    const char *rn = TRAINER_SETS[playerBadgeRegion].region;
+    const char *rn = regionName(playerBadgeRegion);
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(2);
     gfx->setCursor(uiCenterX(rn), 120);
@@ -4058,7 +4276,7 @@ static void renderPlayerBadges() {
 
   // The real badges, 2x4. Unearned ones draw as a faint outline so the shape
   // of what is missing is still visible.
-  for (int i = 0; i < TRAINER_GYMS; i++) {
+  for (int i = 0; i < regionBattleInfo(playerBadgeRegion).gymCount; i++) {
     int bx = 140 + (i % 4) * 62, by = 188 + (i / 4) * 62;
     bool got = pet.hasBadge(playerBadgeRegion, i, false);
     bool hard = pet.hasBadge(playerBadgeRegion, i, true);
@@ -4075,12 +4293,12 @@ static void renderPlayerBadges() {
       gfx->drawCircle(bx, by, 20, UI_TRACK);
       continue;
     }
-    const BadgeArt &a = BADGES_ART[playerBadgeRegion % BADGE_REGIONS][i];
-    for (int r = 0; r < BADGE_PX; r++)
-      for (int c = 0; c < BADGE_PX; c++) {
-        uint8_t v = a.idx[r * BADGE_PX + c];
-        if (v == 0xFF) continue;
-        gfx->fillRect(bx - BADGE_PX / 2 + c, by - BADGE_PX / 2 + r, 1, 1, a.pal[v]);
+    const BadgeArt &a = badgeArt(playerBadgeRegion, i);
+    for (int r = 0; a.idx && r < a.height; r++)
+      for (int c = 0; c < a.width; c++) {
+        uint8_t v = a.idx[r * a.width + c];
+        if (v == 0xFF || v >= a.paletteCount) continue;
+        gfx->fillRect(bx - a.width / 2 + c, by - a.height / 2 + r, 1, 1, a.pal[v]);
       }
   }
   char l[32];
@@ -4089,7 +4307,7 @@ static void renderPlayerBadges() {
   snprintf(l, sizeof(l), T(S_STREAK_FMT), pet.streak, pet.bestStreak);
   gfx->setCursor(uiCenterX(l), 286);
   gfx->print(l);
-  snprintf(l, sizeof(l), T(S_POKEDEX_FMT), pet.registeredCount(), DEX_COUNT);
+  snprintf(l, sizeof(l), T(S_POKEDEX_FMT), pet.registeredCount(), dexCount());
   gfx->setCursor(uiCenterX(l), 312);
   gfx->print(l);
   snprintf(l, sizeof(l), T(S_PARTY_FMT), party.count());
@@ -4134,7 +4352,7 @@ static void renderPlayerMedals() {
 void renderPlayer() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
-  if (playerPage < GYM_REGIONS) renderPlayerBadges();
+  if (playerPage < regionAll()) renderPlayerBadges();
   else renderPlayerMedals();
 
   for (uint8_t i = 0; i < PLAYER_PAGES; i++) {
@@ -4310,11 +4528,11 @@ static void drawPickCell(uint8_t n, int x, int y, uint8_t capLvl) {
   int16_t dex; uint16_t lvl; const char *nm; bool shiny;
   if (n == 0) {
     dex = pet.speciesId; lvl = pet.level(); shiny = pet.shiny;
-    nm = pet.nick[0] ? pet.nick : DEX_TBL[dex].name;
+    nm = displaySpeciesName(dex, pet.nick);
   } else {
     const PartyMon &m = party.slots[n - 1];
     dex = m.dex; lvl = m.level; shiny = m.shiny;
-    nm = m.nick[0] ? m.nick : DEX_TBL[dex].name;
+    nm = displaySpeciesName(dex, m.nick);
   }
   if (capLvl && lvl > capLvl) lvl = capLvl;   // show the level it will FIGHT at
   gfx->fillRoundRect(x, y, PICK_CELL_W, PICK_CELL_H, 10, on ? UI_BG_DAY : UI_TRACK);
@@ -4330,7 +4548,7 @@ static void drawPickCell(uint8_t n, int x, int y, uint8_t capLvl) {
   gfx->setCursor(x + 54, y + 30);
   gfx->print(l);
   // its typing is the whole reason you are on this screen
-  const DexEntry &d = DEX_TBL[dex];
+  const DexEntry &d = dexEntry(dex);
   gfx->setTextColor(on ? d.accent : 0x8410);
   gfx->setCursor(x + 54, y + 48);
   gfx->print(typeName(d.type1));
@@ -4356,10 +4574,11 @@ void renderPick() {
     snprintf(head, sizeof(head), "%s: %s", T(S_LAN),
              lanWantHost ? T(S_LAN_HOST) : T(S_LAN_JOIN));
   } else {
-    const Trainer &t = TRAINERS[pickTrainer];
+    const Trainer &t = trainerInfo(gymRegion, pickTrainer);
     for (int k = 0; k < t.count; k++)
       if (t.team[k].level > top) top = t.team[k].level;
-    snprintf(head, sizeof(head), "%s  Lv.%u x%u", t.name, top, t.count);
+    snprintf(head, sizeof(head), "%s  Lv.%u x%u",
+             trainerName(gymRegion, pickTrainer), top, t.count);
   }
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
@@ -4603,7 +4822,7 @@ void renderGyms() {
   // The ladder's own region in the title, since a vertical swipe moves between
   // three of them and "GYMS" alone would not say which you are looking at.
   char title[28];
-  snprintf(title, sizeof(title), "%s %s", TRAINER_SETS[gymRegion % GYM_REGIONS].region,
+  snprintf(title, sizeof(title), "%s %s", regionName(gymRegion),
            T(S_GYMS));
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
@@ -4626,8 +4845,8 @@ void renderGyms() {
 
   for (int i = 0; i < GYM_ROWS; i++) {
     uint8_t idx = gymPage * GYM_ROWS + i;
-    if (idx >= TRAINER_COUNT) break;
-    const Trainer &t = TRAINERS[idx];
+    if (idx >= regionBattleInfo(gymRegion).trainerCount) break;
+    const Trainer &t = trainerInfo(gymRegion, idx);
     int y = GYM_ROW_Y(i);
     bool done = pet.hasBadge(gymRegion, idx, gymHard);
     bool open_ = gymUnlocked(idx, gymHard);
@@ -4636,11 +4855,11 @@ void renderGyms() {
     gfx->setTextColor(open_ ? UI_INK : UI_TRACK);
     gfx->setTextSize(2);
     gfx->setCursor(84, y + 8);
-    gfx->print(t.name);
+    gfx->print(trainerName(gymRegion, idx));
     gfx->setTextSize(1);
     gfx->setTextColor(UI_TRACK);
     gfx->setCursor(84, y + 28);
-    gfx->print(open_ ? t.place : T(S_LOCKED));
+    gfx->print(open_ ? trainerPlace(gymRegion, idx) : T(S_LOCKED));
     // the level of the strongest creature: the honest measure of the wall
     uint8_t top = 0;
     for (int k = 0; k < t.count; k++)
@@ -4656,7 +4875,7 @@ void renderGyms() {
       gfx->print("*");
     }
   }
-  uint8_t pages = (TRAINER_COUNT + GYM_ROWS - 1) / GYM_ROWS;
+  uint8_t pages = (regionBattleInfo(gymRegion).trainerCount + GYM_ROWS - 1) / GYM_ROWS;
   for (uint8_t i = 0; i < pages; i++) {
     int dx = CX - (pages - 1) * 13 + i * 26;
     if (i == gymPage) gfx->fillCircle(dx, 366, 5, UI_INK);
@@ -4748,17 +4967,16 @@ static int eggRegionTap(int16_t x, int16_t y) {
 #define RPICK_BACK_Y 392
 #define GYM_PICK_BACK_Y 408
 
-// How many regions this mode lists. Gyms genuinely only exist for three
-// (GYM_REGIONS); the Pokedex and the starter screen list every REAL region,
-// which is GAL_REGIONS -- REGION_COUNT minus the ALL pseudo-region.
+// How many regions this mode lists. Every installed regional battle section is
+// available to gyms; the Pokedex and starter screen list every real region.
 //
-// This used to be GYM_REGIONS for ALL THREE MODES, with the names read out of
-// TRAINER_SETS -- a trainer table driving the Pokedex chooser. So the moment
+// This used to share a fixed count for all three modes, with names read out of
+// a trainer table driving the Pokedex chooser. So the moment
 // Sinnoh landed it had no row, while the gallery's vertical swipe cycled it
 // happily: built, reachable, and looking absent. That is the exact failure the
 // chooser was added to prevent.
 uint8_t rpickRegions(uint8_t mode) {
-  return (mode == RPICK_FOR_GYMS) ? (uint8_t)GYM_REGIONS : (uint8_t)GAL_REGIONS;
+  return (mode == RPICK_FOR_GYMS) ? regionAll() : (uint8_t)GAL_REGIONS;
 }
 
 uint8_t rpickPageCount(uint8_t mode) {
@@ -4805,7 +5023,7 @@ static void renderRegionPick(uint8_t mode) {
   char ttl[40];
   if (mode == RPICK_FOR_START) snprintf(ttl, sizeof(ttl), "%s", T(S_CHOOSE_REGION));
   else if (forGyms) snprintf(ttl, sizeof(ttl), "%s", T(S_GYMS));
-  else snprintf(ttl, sizeof(ttl), T(S_POKEDEX_FMT), pet.registeredCount(), DEX_COUNT);
+  else snprintf(ttl, sizeof(ttl), T(S_POKEDEX_FMT), pet.registeredCount(), dexCount());
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(ttl), 48);
@@ -4818,10 +5036,10 @@ static void renderRegionPick(uint8_t mode) {
     // The sprite pack is the gate. A region without it is drawn GREYED with a
     // reason rather than dropped from the list: hiding it would say "this
     // region does not exist" when what we mean is "download its pack".
-    bool open = forGyms || regionAvailable(i);
+    bool open = forGyms ? regionBattleAvailable(i) : regionAvailable(i);
     gfx->fillRoundRect(RPICK_X, y, RPICK_W, RPICK_H, 12, open ? UI_WHITE : UI_BG_DAY);
     gfx->drawRoundRect(RPICK_X, y, RPICK_W, RPICK_H, 12, open ? UI_INK : UI_TRACK);
-    const char *nm = forGyms ? TRAINER_SETS[i].region : REGIONS[i].name;
+    const char *nm = regionName(i);
     gfx->setTextColor(open ? UI_INK : UI_TRACK);
     gfx->setTextSize(3);
     gfx->setCursor(RPICK_X + 18, y + 12);
@@ -4837,8 +5055,8 @@ static void renderRegionPick(uint8_t mode) {
       snprintf(sub, sizeof(sub), T(S_BADGES_FMT), pet.badgeCountIn(i, gymHard));
     else if (mode == RPICK_FOR_DEX)
       snprintf(sub, sizeof(sub), "%u/%u",
-               pet.registeredCountIn(REGIONS[i].lo, REGIONS[i].hi),
-               (unsigned)(REGIONS[i].hi - REGIONS[i].lo + 1));
+               pet.registeredCountIn(regionInfo(i).lo, regionInfo(i).hi),
+               (unsigned)(regionInfo(i).hi - regionInfo(i).lo + 1));
     if (sub[0]) {
       gfx->setTextColor(UI_TRACK);
       gfx->setTextSize(2);
@@ -4893,7 +5111,8 @@ static int regionPickTap(int16_t x, int16_t y, uint8_t mode) {
     uint8_t i = (uint8_t)(rpickPage * RPICK_PER_PAGE + row);
     if (i >= nreg) break;
     if (y >= RPICK_Y(row) && y <= RPICK_Y(row) + RPICK_H) {
-      if (mode != RPICK_FOR_GYMS && !regionAvailable(i)) {
+      bool available = mode == RPICK_FOR_GYMS ? regionBattleAvailable(i) : regionAvailable(i);
+      if (!available) {
         sfxPlay(SFX_DENY);      // locked: say no out loud rather than do nothing
         return -1;
       }
@@ -4907,18 +5126,18 @@ static int regionPickTap(int16_t x, int16_t y, uint8_t mode) {
 void renderLearn() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
-  uint8_t mv = pet.learnOffer();
-  char head[40];
-  const char *nm = pet.nick[0] ? pet.nick : DEX_TBL[pet.speciesId].name;
+  MoveId mv = pet.learnOffer();
+  char head[96];
+  const char *nm = displaySpeciesName(pet.speciesId, pet.nick);
   snprintf(head, sizeof(head), T(S_LEARN_Q), nm);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(1);
   gfx->setCursor(uiCenterX(head), 48);
   gfx->print(head);
-  gfx->setTextColor(DEX_TBL[pet.speciesId].accent);
+  gfx->setTextColor(dexEntry(pet.speciesId).accent);
   gfx->setTextSize(3);
-  gfx->setCursor(uiCenterX(MOVE_TBL[mv].name), 66);
-  gfx->print(MOVE_TBL[mv].name);
+  gfx->setCursor(uiCenterX(moveName(mv)), 66);
+  gfx->print(moveName(mv));
 
   for (int i = 0; i < MOVE_SLOTS; i++) drawMoveRow(LEARN_ROW_Y(i), pet.moves[i], false, pet.speciesId);
 
@@ -4964,7 +5183,7 @@ void renderCardMedals() {
 // pagina 3: progreso (nivel, evolucion, descuidos) — saca a la luz mecanicas
 // que antes eran invisibles (cuanto falta para subir/evolucionar y por que)
 void renderCardProgress() {
-  const DexEntry &d = DEX_TBL[pet.speciesId];
+  const DexEntry &d = dexEntry(pet.speciesId);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
   gfx->setCursor(uiCenterX(T(S_PROGRESS)), 44);
@@ -4997,7 +5216,7 @@ void renderCardProgress() {
   char evoBuf[28];
   const char *evo;
   uint16_t evoCol = UI_INK;
-  if (d.evolvesTo == 0) {
+  if (!evolutionAvailable(pet.speciesId)) {
     evo = T(S_FINAL_FORM);
   } else {
     // The SAME sum canEvolveNow() uses -- including the day owed for retiring
@@ -5061,7 +5280,7 @@ void renderCard() {
 static void menuRowLabel(int i, char *out, size_t n) {
   switch (i) {
     case 0: snprintf(out, n, "%s", T(S_STATS)); break;
-    case 1: snprintf(out, n, T(S_POKEDEX_FMT), pet.registeredCount(), DEX_COUNT); break;
+    case 1: snprintf(out, n, T(S_POKEDEX_FMT), pet.registeredCount(), dexCount()); break;
     case 2: snprintf(out, n, "%s", T(S_SETTINGS)); break;
     case 3: snprintf(out, n, "%s", T(S_RETIRE)); break;
     default: snprintf(out, n, "%s", T(S_CLOSE)); break;
@@ -5159,9 +5378,9 @@ void renderBox() {
   gfx->print(head);
   if (boxSwapFrom) {
     const PartyMon &p = party.slots[boxSwapFrom - 1];
-    char sub[40];
+    char sub[96];
     snprintf(sub, sizeof(sub), T(S_BOX_SWAP),
-             p.empty() ? "-" : (p.nick[0] ? p.nick : DEX_TBL[p.dex].name));
+             p.empty() ? "-" : displaySpeciesName(p.dex, p.nick));
     gfx->setTextColor(UI_BAR_WARN);
     gfx->setTextSize(1);
     gfx->setCursor(uiCenterX(sub), 64);
@@ -5188,7 +5407,7 @@ void renderBox() {
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(1);
     gfx->setCursor(x + 52, y + 16);
-    gfx->print(m.nick[0] ? m.nick : DEX_TBL[m.dex].name);
+    gfx->print(displaySpeciesName(m.dex, m.nick));
     char l[16];
     snprintf(l, sizeof(l), "Lv.%u%s", (unsigned)m.level, m.shiny ? " *" : "");
     gfx->setCursor(x + 52, y + 34);
@@ -5261,8 +5480,8 @@ void drawPartySlot(int i, int x, int y) {
   }
   const uint8_t *th = thumbs.get(m.dex);
   if (th) drawThumb(th, x - 6, y - 3, 1, false);
-  const DexEntry &d = DEX_TBL[m.dex];
-  const char *nm = m.nick[0] ? m.nick : d.name;
+  const DexEntry &d = dexEntry(m.dex);
+  const char *nm = displaySpeciesName(m.dex, m.nick);
   gfx->setTextColor(d.accent);
   gfx->setTextSize(1);
   gfx->setCursor(x + 62, y + 18);
@@ -5308,9 +5527,9 @@ void renderParty() {
 
   if (boxSel) {
     const PartyMon &b = party.box[boxSel - 1];
-    char sw[44];
+    char sw[96];
     snprintf(sw, sizeof(sw), T(S_BOX_SWAP),
-             b.nick[0] ? b.nick : DEX_TBL[b.dex].name);
+             displaySpeciesName(b.dex, b.nick));
     gfx->setTextColor(UI_BAR_WARN);
     gfx->setTextSize(1);
     gfx->setCursor(uiCenterX(sw), 72);
@@ -5437,15 +5656,69 @@ void drawThumb(const uint8_t *b, int x, int y, int s, bool sil) {
   }
 }
 
+static const char *nextUtf8Char(const char *at) {
+  if (!at || !*at) return at;
+  at++;
+  while ((*at & 0xC0) == 0x80) at++;
+  return at;
+}
+
+int drawWrappedText(const char *text, int x, int y, int width, uint8_t maxLines) {
+  if (!text || !*text || !maxLines) return y;
+  const char *at = text;
+  char line[128];
+  for (uint8_t row = 0; row < maxLines && *at; row++) {
+    while (*at == ' ') at++;
+    const char *start = at, *scan = at, *fit = at, *lastSpace = nullptr;
+    bool overflow = false;
+    while (*scan && *scan != '\n') {
+      const char *character = scan;
+      scan = nextUtf8Char(scan);
+      size_t bytes = (size_t)(scan - start);
+      if (bytes >= sizeof(line)) { overflow = true; break; }
+      memcpy(line, start, bytes);
+      line[bytes] = 0;
+      if (gfx->textWidth(line) > width) { overflow = true; break; }
+      fit = scan;
+      if (*character == ' ') lastSpace = character;
+    }
+    const char *end = fit, *next = scan;
+    if (overflow) {
+      if (lastSpace && lastSpace > start) {
+        end = lastSpace;
+        next = lastSpace + 1;
+      } else {
+        next = fit;
+        if (end == start) end = next = scan;
+      }
+    } else if (*next == '\n') {
+      next++;
+    }
+    while (end > start && end[-1] == ' ') end--;
+    size_t bytes = (size_t)(end - start);
+    if (bytes >= sizeof(line)) bytes = sizeof(line) - 1;
+    memcpy(line, start, bytes);
+    line[bytes] = 0;
+    gfx->setCursor(x, y);
+    gfx->print(line);
+    y += gfx->textLineHeight();
+    if (next <= at) break;
+    at = next;
+  }
+  return y;
+}
+
 void renderGallery() {
   if (galleryDetail) {  // vista detalle: se redibuja siempre (animada)
     gfx->fillScreen(RGB565_BLACK);
     gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
-    const DexEntry &d = DEX_TBL[galleryDetail];
+    const DexEntry &d = dexEntry(galleryDetail);
     bool reg = pet.isRegistered(galleryDetail);
-    char head[24];
+    const char *description = reg ? speciesDescription(galleryDetail, uiActiveLocaleCode()) : nullptr;
+    char head[64];
     snprintf(head, sizeof(head), "N.%03d %s%s", galleryDetail,
-             pet.isShinyRegistered(galleryDetail) ? "*" : "", reg ? d.name : "???");
+             pet.isShinyRegistered(galleryDetail) ? "*" : "",
+             reg ? speciesName(galleryDetail) : "???");
     gfx->setTextColor(reg ? d.accent : UI_INK);
     gfx->setTextSize(3);
     int gts = (gfx->textWidth(head) <= 234) ? 3 : 2;
@@ -5454,14 +5727,25 @@ void renderGallery() {
     gfx->print(head);
     if (galleryPmd.loaded) {
       // animado y a color si esta registrado; silueta estatica si no (estilo "?")
-      drawPmdActM(galleryPmd, PMD_IDLE, CX, 300, reg ? millis() : 0, true, !reg, 6);
+      int ground = description ? uiLayoutMetric(UI_LAYOUT_DETAIL_SPRITE_GROUND, 260) : 300;
+      drawPmdActM(galleryPmd, PMD_IDLE, CX, ground, reg ? millis() : 0,
+                  true, !reg, description ? 4 : 6);
     } else {
       const uint8_t *t = thumbs.get(galleryDetail);
-      if (t) drawThumb(t, CX - GAL_CELL, 135, 4, !reg);
+      if (t) drawThumb(t, CX - GAL_CELL, description ? 105 : 135, 4, !reg);
+    }
+    if (description) {
+      gfx->setTextColor(UI_INK);
+      gfx->setTextSize((uint8_t)uiLayoutMetric(UI_LAYOUT_DETAIL_DESCRIPTION_TEXT_SIZE, 1));
+      drawWrappedText(description, uiLayoutMetric(UI_LAYOUT_DETAIL_DESCRIPTION_X, 78),
+                      uiLayoutMetric(UI_LAYOUT_DETAIL_DESCRIPTION_Y, 282),
+                      uiLayoutMetric(UI_LAYOUT_DETAIL_DESCRIPTION_WIDTH, 310),
+                      (uint8_t)uiLayoutMetric(UI_LAYOUT_DETAIL_DESCRIPTION_LINES, 5));
     }
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(2);
-    gfx->setCursor(uiCenterX(T(S_DETAIL_BACK)), 408);
+    gfx->setCursor(uiCenterX(T(S_DETAIL_BACK)),
+                   uiLayoutMetric(UI_LAYOUT_DETAIL_BACK_Y, 408));
     gfx->print(T(S_DETAIL_BACK));
     gfx->flush();
     return;
@@ -5475,8 +5759,8 @@ void renderGallery() {
   // the region's own name and its own tally: "how much of Johto have I seen"
   // is the question you are actually asking here
   char head[32];
-  const RegionInfo &grg = REGIONS[galleryRegion % GAL_REGIONS];
-  snprintf(head, sizeof(head), "%s %u/%u", grg.name,
+  const RegionInfo &grg = regionInfo(galleryRegion % GAL_REGIONS);
+  snprintf(head, sizeof(head), "%s %u/%u", regionName(galleryRegion % GAL_REGIONS),
            pet.registeredCountIn(grg.lo, grg.hi), (unsigned)GAL_SPAN);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
@@ -5486,7 +5770,7 @@ void renderGallery() {
   for (int r = 0; r < 4; r++) {
     for (int c = 0; c < 4; c++) {
       int16_t dex = GAL_LO + galleryPage * GAL_PER_PAGE + r * 4 + c;
-      if (dex > GAL_HI || dex > DEX_COUNT) break;
+      if (dex > GAL_HI || dex > dexCount()) break;
       int x = GAL_X + c * GAL_CELL, y = GAL_Y + r * GAL_CELL;
       const uint8_t *t = thumbs.get(dex);
       if (t) {
@@ -5534,7 +5818,7 @@ void galleryTap(int16_t x, int16_t y) {
   int c = (x - GAL_X) / GAL_CELL, r = (y - GAL_Y) / GAL_CELL;
   if (c < 0 || c > 3 || r < 0 || r > 3) return;
   int16_t dex = GAL_LO + galleryPage * GAL_PER_PAGE + r * 4 + c;
-  if (dex > GAL_HI || dex > DEX_COUNT) return;
+  if (dex > GAL_HI || dex > dexCount()) return;
   galleryDetail = dex;
   galleryPmd.load(dex, pet.isShinyRegistered(dex));
 }
@@ -5710,7 +5994,7 @@ void drawFarewellButton() {
   gfx->fillRoundRect(x, y, w, h, 16, UI_BAR_WARN);
   gfx->drawRoundRect(x, y, w, h, 16, UI_INK);
   char buf[52];
-  const char *nm = pet.nick[0] ? pet.nick : DEX_TBL[pet.speciesId].name;
+  const char *nm = displaySpeciesName(pet.speciesId, pet.nick);
   snprintf(buf, sizeof(buf), T(S_FAREWELL_BTN), nm);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
@@ -5727,7 +6011,7 @@ void drawRunawayButton() {
   gfx->fillRoundRect(x, y, w, h, 16, C565(0x3a, 0x44, 0x5a));
   gfx->drawRoundRect(x, y, w, h, 16, C565(0x70, 0x80, 0x98));
   char buf[52];
-  const char *nm = pet.nick[0] ? pet.nick : DEX_TBL[pet.speciesId].name;
+  const char *nm = displaySpeciesName(pet.speciesId, pet.nick);
   snprintf(buf, sizeof(buf), T(S_RUNAWAY_BTN), nm);
   gfx->setTextColor(C565(0xc8, 0xd2, 0xe0));
   gfx->setTextSize(2);
@@ -5776,58 +6060,17 @@ void drawPet() {
     drawPetPMD();
     return;
   }
-  if (mon.loaded) {
-    drawPetSD();
-    return;
-  }
-  int fi = flashIdxForDex(pet.speciesId);
-  if (fi < 0) {
-    // sin SD y sin sprite de flash: aviso claro de que faltan sprites
-    gfx->setTextColor(inkColor());
-    gfx->setTextSize(6);
-    gfx->setCursor(CX - 18, PET_CY - 80);
-    gfx->print("?");
-    gfx->setTextSize(2);
-    const char *l1 = T(S_NO_SPRITES);
-    gfx->setCursor(uiCenterX(l1), PET_CY - 4);
-    gfx->print(l1);
-    const char *l2 = T(S_LOAD_SPRITES);
-    gfx->setCursor(uiCenterX(l2), PET_CY + 20);
-    gfx->print(l2);
-    return;
-  }
-  const Species &sp = SPECIES[fi];
-  int s = sp.scale;
-  int x = CX - 16 * s;
-  int y = PET_CY - 16 * s;
-
-  // animacion de evolucion: alterna la silueta de la forma anterior y la nueva
-  if (pet.evolving()) {
-    bool flash = (millis() / 300) % 2;
-    int16_t showDex = (flash && pet.prevSpeciesId >= 0) ? pet.prevSpeciesId : pet.speciesId;
-    int sfi = flashIdxForDex(showDex);
-    if (sfi >= 0) {
-      const Species &show = SPECIES[sfi];
-      drawMap(show.sprite, SPRITE_H, CX - 16 * show.scale, PET_CY - 16 * show.scale, show.scale, flash);
-    }
-    return;
-  }
-
-  PetMood m = pet.mood();
-  if (m == MOOD_HAPPY && (millis() / 500) % 2) y -= 6;  // saltito
-
-  drawMap(sp.sprite, SPRITE_H, x, y, s, false);
-
-  // expresiones superpuestas usando las anclas de la especie
-  bool blink = (millis() % 3500 < 300);
-  if (m == MOOD_SLEEPING || blink) {
-    overlayEye(sp, x, y, s, sp.eyeColL);
-    overlayEye(sp, x, y, s, sp.eyeColR);
-  }
-  if (m == MOOD_EATING) overlayMouth(sp, x, y, s, true);
-  else if (m == MOOD_SAD) overlayMouth(sp, x, y, s, false);
-
-  if (pet.showHeart()) drawMap(SPR_HEART, 32, x + 20 * s, y - 2 * s, 2, false);
+  gfx->setTextColor(inkColor());
+  gfx->setTextSize(6);
+  gfx->setCursor(CX - 18, PET_CY - 80);
+  gfx->print("?");
+  gfx->setTextSize(2);
+  const char *l1 = T(S_NO_SPRITES);
+  gfx->setCursor(uiCenterX(l1), PET_CY - 4);
+  gfx->print(l1);
+  const char *l2 = T(S_LOAD_SPRITES);
+  gfx->setCursor(uiCenterX(l2), PET_CY + 20);
+  gfx->print(l2);
 }
 
 // ---------- escena de bano ----------
@@ -6005,55 +6248,6 @@ void drawPetPMD() {
   drawPmdAct(act, (int)beh.x, PET_GROUND, now - beh.t0, loop || act == PMD_IDLE, false, 5);
 
   if (pet.showHeart()) drawMap(SPR_HEART, 32, (int)beh.x + 50, PET_GROUND - 190, 2, false);
-}
-
-// sprite animado desde la SD: zoom entero por pixel, frames a su ritmo
-void drawPetSD() {
-  int s = mon.scale;
-  int w = mon.w * s, h = mon.h * s;
-  int x = CX - w / 2;
-  int y = PET_CY - h / 2;
-
-  bool sil = false;
-  if (pet.evolving()) {
-    sil = (millis() / 300) % 2;
-  } else if (pet.mood() == MOOD_HAPPY && (millis() / 500) % 2) {
-    y -= 6;  // saltito
-  }
-
-  uint16_t fm = mon.frameMs ? mon.frameMs : 100;
-  uint16_t fi = pet.sleeping ? 0 : (millis() / fm) % mon.frames;
-  const uint8_t *fr = mon.data + (uint32_t)fi * mon.w * mon.h;
-  for (int r = 0; r < mon.h; r++) {
-    const uint8_t *row = fr + r * mon.w;
-    for (int c = 0; c < mon.w; c++) {
-      uint8_t idx = row[c];
-      if (idx == 0xFF) continue;
-      gfx->fillRect(x + c * s, y + r * s, s, s, sil ? INK_K : mon.pal[idx]);
-    }
-  }
-
-  // emotes en vez de expresiones (los sprites importados no tienen anclas)
-  if (pet.showHeart()) drawMap(SPR_HEART, 32, x + w - 30, y - 50, 2, false);
-}
-
-// ojo cerrado: borra el ojo 3x4 y dibuja el parpado
-void overlayEye(const Species &sp, int x, int y, int s, int col) {
-  gfx->fillRect(x + col * s, y + sp.eyeRow * s, 3 * s, 4 * s, sp.bodyColor);
-  gfx->fillRect(x + col * s, y + (sp.eyeRow + 2) * s, 3 * s, s, INK_K);
-}
-
-// borra la sonrisa base y pinta boca abierta (comer) o ceno (triste)
-void overlayMouth(const Species &sp, int x, int y, int s, bool open) {
-  int mc = sp.mouthCol, mr = sp.mouthRow;
-  gfx->fillRect(x + (mc - 3) * s, y + mr * s, 7 * s, 2 * s, sp.bodyColor);
-  if (open) {
-    gfx->fillRect(x + (mc - 2) * s, y + mr * s, 5 * s, 2 * s, INK_K);
-  } else {
-    gfx->fillRect(x + (mc - 2) * s, y + mr * s, 5 * s, s, INK_K);
-    gfx->fillRect(x + (mc - 3) * s, y + (mr + 1) * s, s, s, INK_K);
-    gfx->fillRect(x + (mc + 3) * s, y + (mr + 1) * s, s, s, INK_K);
-  }
 }
 
 void drawPoops() {

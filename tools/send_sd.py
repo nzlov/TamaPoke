@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
-"""Envia los sprites empaquetados a la SD de la placa por USB.
+"""Envia los paquetes generados a la SD de la placa por USB.
 
-  python3 tools/send_sd.py                  # envia tools/sdcard/mons/*.bin
+  python3 tools/send_sd.py                  # envia web/packs/*.tui|*.tmove|*.tregion
   python3 tools/send_sd.py --port /dev/cu.usbmodem101
   python3 tools/send_sd.py --ls             # lista lo que hay en la SD
-  python3 tools/send_sd.py --only thumbs    # send just the files matching
-
---only exists because thumbs.bin changes every time the dex grows, and it is
-one 415 KB file against ~105 MB of sprites. Without it the only way to fix a
-stale gallery was to resend everything.
+  python3 tools/send_sd.py --only zh-cn      # envia solo nombres coincidentes
 """
 import argparse
 import glob
@@ -54,9 +50,13 @@ def main():
         wait_line(ser, 'DONE', 5)
         return
 
-    files = sorted(glob.glob(os.path.join(os.path.dirname(__file__), 'sdcard', 'mons', '*.bin')))
+    pack_dir = os.path.join(os.path.dirname(__file__), '..', 'web', 'packs')
+    files = sorted(
+        path for path in glob.glob(os.path.join(pack_dir, '*'))
+        if os.path.splitext(path)[1] in ('.tui', '.tmove', '.tregion')
+    )
     if not files:
-        sys.exit("no hay .bin; ejecuta antes tools/pack_pmd.py")
+        sys.exit("no hay paquetes; ejecuta antes tools/gen_data_packs.py")
     if args.only:
         files = [f for f in files if args.only in os.path.basename(f)]
         if not files:
@@ -65,7 +65,7 @@ def main():
 
     for path in files:
         size = os.path.getsize(path)
-        name = f"mons/{os.path.basename(path)}"
+        name = f"packs/{os.path.basename(path)}"
         print(f"-> {name} ({size/1024:.0f} KB)")
         ser.write(f"PUT {name} {size}\n".encode())
         if not wait_line(ser, 'OK', 5):

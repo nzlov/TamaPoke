@@ -1,21 +1,6 @@
 #pragma once
 #include <Arduino.h>
 
-// Sprite animado TPK1 (formato heredado, camino de respaldo). El proyecto usa
-// PMD/TPK2 (PmdMon) para todo; esta ruta queda inactiva si no hay NNN.bin en la SD.
-// Los datos indexados viven en PSRAM; la paleta es RGB565.
-struct SdMon {
-  bool loaded = false;
-  uint16_t w = 0, h = 0, frames = 0, frameMs = 100;
-  uint8_t scale = 2;       // factor de zoom entero al dibujar
-  uint16_t palCount = 0;
-  uint16_t pal[256];
-  uint8_t *data = nullptr;  // frames * w * h indices (0xFF = transparente)
-
-  bool load(int16_t dexNum, bool shiny = false);
-  void unload();
-};
-
 // acciones de los sprites PMD (formato TPK2)
 enum : uint8_t {
   PMD_IDLE = 0, PMD_WALKL, PMD_WALKR, PMD_SLEEP, PMD_EAT, PMD_HURT,

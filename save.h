@@ -21,7 +21,8 @@
 #define SAVE_MAGIC1 'K'
 #define SAVE_MAGIC2 'P'
 #define SAVE_MAGIC3 'S'
-#define SAVE_VERSION 1
+#define SAVE_VERSION 2
+#define SAVE_STATE_VERSION 1
 #define SAVE_HDR 8
 
 enum SaveKind : uint8_t {

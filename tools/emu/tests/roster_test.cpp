@@ -1,7 +1,6 @@
 // The three gym ladders as DATA. Every entry is hand-authored, so the failure
 // mode is a typo that puts a creature outside the dex or a level outside the
-// curve -- and a bad dex number here is an out-of-bounds read into DEX_TBL, not
-// a strange-looking opponent.
+// curve -- and a bad dex number must be rejected before a runtime lookup.
 //
 // All three ladders are VERIFIED against the games themselves: Kanto by hand
 // against FireRed/LeafGreen, and Johto and Hoenn by tools/verify_rosters.py,
@@ -25,39 +24,32 @@ static int bad=0;
 static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!ok)bad++;}
 
 int main(){
-  // GYM_REGIONS <= REGION_COUNT - 1, NOT equal to it. This asserted equality
-  // and so broke the moment Sinnoh landed: the dex can carry a region long
-  // before that region has a roster, which is exactly the state the expansion
-  // moves through. What must stay true is that no ladder is claimed for the
-  // ALL pseudo-region and that every ladder the code indexes really exists --
-  // TRAINERS indexes TRAINER_SETS[gymRegion % GYM_REGIONS], so a GYM_REGIONS
-  // larger than the table is the crash this guards.
-  ck(GYM_REGIONS <= REGION_COUNT - 1,
-     "no ladder is claimed for the ALL pseudo-region");
-  ck((int)(sizeof(TRAINER_SETS)/sizeof(*TRAINER_SETS)) == GYM_REGIONS,
-     "and the ladder table is exactly GYM_REGIONS long");
+  const uint8_t regions = regionAll();
+  ck(regions > 0 && regions + 1 == regionCount(),
+     "real regions are followed by one derived ALL entry");
   {
     int unnamed = 0;
-    for (int r = 0; r < GYM_REGIONS; r++)
-      if (!TRAINER_SETS[r].list || !TRAINER_SETS[r].region ||
-          !TRAINER_SETS[r].region[0]) unnamed++;
-    ck(unnamed == 0, "every ladder that exists has a roster and a name");
+    for (int r = 0; r < regions; r++)
+      if (!regionBattleAvailable(r) || !regionInfo(r).name ||
+          !regionInfo(r).name[0] || !regionBattleInfo(r).trainerCount) unnamed++;
+    ck(unnamed == 0, "every installed region has a named battle roster");
   }
 
-  for (int r=0; r<GYM_REGIONS; r++){
-    const TrainerSet &ts = TRAINER_SETS[r];
+  for (int r=0; r<regions; r++){
+    const RegionBattleInfo &battle = regionBattleInfo(r);
+    const char *region = regionInfo(r).name;
     int oob=0, badLvl=0, badCount=0, noName=0;
     uint8_t prevTop=0;
     int outOfRegion=0;
-    for (int i=0;i<TRAINER_COUNT;i++){
-      const Trainer &t = ts.list[i];
+    for (int i=0;i<battle.trainerCount;i++){
+      const Trainer &t = trainerInfo(r, i);
       if (!t.name || !t.name[0] || !t.place || !t.place[0]) noName++;
       if (t.count < 1 || t.count > TRAINER_TEAM_MAX) badCount++;
       uint8_t top=0;
       for (int k=0;k<t.count && k<TRAINER_TEAM_MAX;k++){
         const TrainerMon &m = t.team[k];
-        // the one that would actually crash: DEX_TBL has DEX_COUNT+1 entries
-        if (m.dex < 1 || m.dex > DEX_COUNT) { oob++; continue; }
+        // The one that would otherwise index beyond the loaded catalogue.
+        if (m.dex < 1 || m.dex > dexCount()) { oob++; continue; }
         if (m.level < 1 || m.level > MAX_TRAINER_LEVEL) badLvl++;
         if (m.level > top) top = m.level;
       }
@@ -69,30 +61,32 @@ int main(){
       if (top > prevTop) prevTop = top;
     }
     char m[96];
-    snprintf(m,sizeof(m),"%s: every creature is a real dex number", ts.region);
+    snprintf(m,sizeof(m),"%s: every creature is a real dex number", region);
     ck(oob==0, m);
-    snprintf(m,sizeof(m),"%s: every level is inside the curve", ts.region);
+    snprintf(m,sizeof(m),"%s: every level is inside the curve", region);
     ck(badLvl==0, m);
-    snprintf(m,sizeof(m),"%s: every team has 1..%d members", ts.region, TRAINER_TEAM_MAX);
+    snprintf(m,sizeof(m),"%s: every team has 1..%d members", region, TRAINER_TEAM_MAX);
     ck(badCount==0, m);
-    snprintf(m,sizeof(m),"%s: every trainer is named and placed", ts.region);
+    snprintf(m,sizeof(m),"%s: every trainer is named and placed", region);
     ck(noName==0, m);
-    snprintf(m,sizeof(m),"%s: the ladder never collapses in difficulty", ts.region);
+    snprintf(m,sizeof(m),"%s: the ladder never collapses in difficulty", region);
     ck(outOfRegion==0, m);
   }
 
   // the champion should be the hardest thing in each ladder
-  for (int r=0; r<GYM_REGIONS; r++){
-    const TrainerSet &ts = TRAINER_SETS[r];
+  for (int r=0; r<regions; r++){
+    const RegionBattleInfo &battle = regionBattleInfo(r);
     uint8_t champ=0, best=0;
-    for (int k=0;k<ts.list[TRAINER_COUNT-1].count;k++)
-      if (ts.list[TRAINER_COUNT-1].team[k].level > champ)
-        champ = ts.list[TRAINER_COUNT-1].team[k].level;
-    for (int i=0;i<TRAINER_COUNT-1;i++)
-      for (int k=0;k<ts.list[i].count;k++)
-        if (ts.list[i].team[k].level > best) best = ts.list[i].team[k].level;
+    const Trainer &champion = trainerInfo(r, battle.trainerCount - 1);
+    for (int k=0;k<champion.count;k++)
+      if (champion.team[k].level > champ) champ = champion.team[k].level;
+    for (int i=0;i<battle.trainerCount-1;i++) {
+      const Trainer &t = trainerInfo(r, i);
+      for (int k=0;k<t.count;k++)
+        if (t.team[k].level > best) best = t.team[k].level;
+    }
     char m[96];
-    snprintf(m,sizeof(m),"%s: the champion tops the ladder (%u vs %u)", ts.region, champ, best);
+    snprintf(m,sizeof(m),"%s: the champion tops the ladder (%u vs %u)", regionInfo(r).name, champ, best);
     ck(champ >= best, m);
   }
 
@@ -102,18 +96,20 @@ int main(){
   // Morty's Gastly line, Pryce's Seel, Clair's Dragonair -- so only 13 of its 49
   // are Johto natives, and that is faithful rather than a mistake. Hoenn, which
   // shares almost nothing with Kanto, comes out at 47 of 57.
-  for (int r=1; r<GYM_REGIONS; r++){
-    const TrainerSet &ts = TRAINER_SETS[r];
+  for (int r=1; r<regions; r++){
+    const RegionBattleInfo &battle = regionBattleInfo(r);
     int own=0, total=0;
-    uint16_t lo = REGIONS[r].lo, hi = REGIONS[r].hi;
-    for (int i=0;i<TRAINER_COUNT;i++)
-      for (int k=0;k<ts.list[i].count;k++){
+    uint16_t lo = regionInfo(r).lo, hi = regionInfo(r).hi;
+    for (int i=0;i<battle.trainerCount;i++) {
+      const Trainer &t = trainerInfo(r, i);
+      for (int k=0;k<t.count;k++){
         total++;
-        uint16_t d = ts.list[i].team[k].dex;
+        uint16_t d = t.team[k].dex;
         if (d >= lo && d <= hi) own++;
       }
+    }
     char m[110];
-    snprintf(m,sizeof(m),"%s: %d of %d creatures are its own generation", ts.region, own, total);
+    snprintf(m,sizeof(m),"%s: %d of %d creatures are its own generation", regionInfo(r).name, own, total);
     ck(own >= 8, m);              // enough to prove it is the right table
   }
 

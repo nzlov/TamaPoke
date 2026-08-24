@@ -58,7 +58,7 @@ int main(){
   foe.hp=6;                         // one hit from fainting
   uint8_t pick=aiChooseMove(me,foe,true);
   uint16_t dmg=battleDamage(me,foe,pick,false,236);
-  printf("     foe at 6hp: picks %s for ~%u\n",MOVE_TBL[pick].name,dmg);
+  printf("     foe at 6hp: picks %s for ~%u\n",moveEntry(pick).name,dmg);
   ck(dmg>=foe.hp,"it takes the kill when one is on the table");
 
   // it must not throw a move the target is immune to
@@ -66,7 +66,7 @@ int main(){
   bool everImmune=false;
   for(int i=0;i<40;i++){
     uint8_t p2=aiChooseMove(norm,ghost,true);
-    if(MOVE_TBL[p2].cat!=MC_STATUS && typeEffVsDex(MOVE_TBL[p2].type,ghost.dex)==0) everImmune=true;
+    if(moveEntry(p2).cat!=MC_STATUS && typeEffVsDex(moveEntry(p2).type,ghost.dex)==0) everImmune=true;
   }
   ck(!everImmune,"it never picks a move the target is immune to");
 

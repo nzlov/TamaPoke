@@ -4,7 +4,7 @@
 // from 256 up wrapped into Kanto: a MARSHTOMP (258) opened p002.bin and stood
 // there as an IVYSAUR. Reported from a board, because nothing here looked.
 //
-// It is the third time this exact trap has been sprung -- DexEntry::evolvesTo
+// It is the third time this exact trap has been sprung -- evolution targets
 // and TrainerMon::dex were both uint8_t when the expansion landed -- so this
 // checks EVERY species can be asked for and comes back as itself, rather than
 // spot-checking the one that was reported.
@@ -22,13 +22,10 @@ uint32_t millis(){return 0;}
 void FakeESP::restart(){exit(0);}
 int FakeSerial::available(){return 0;} String FakeSerial::readStringUntil(char){return String("");}
 // sfxPlay comes from host_impl.cpp here -- this test links the host, not the sketch
-void emuSetSpriteDir(const char *);
 static int bad=0;
 static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!ok)bad++;}
 
 int main(){
-  emuSetSpriteDir(SPRITE_DIR);
-
   // the exact creature that was reported, and the exact one it turned into
   {
     PmdMon a, b;
@@ -47,7 +44,7 @@ int main(){
   // EVERY species: asked for by number, comes back as itself
   {
     int loaded = 0, wrong = 0, missing = 0;
-    for (int16_t d = 1; d <= DEX_COUNT; d++) {
+    for (int16_t d = 1; d <= dexCount(); d++) {
       PmdMon m;
       if (!m.load(d, false)) { missing++; continue; }
       loaded++;
@@ -66,7 +63,7 @@ int main(){
   // onto, which is the thing that was really going wrong on the panel.
   {
     int checked = 0, collided = 0;
-    for (int16_t d = 256; d <= DEX_COUNT; d++) {
+    for (int16_t d = 256; d <= dexCount(); d++) {
       PmdMon hi, lo;
       if (!hi.load(d, false)) continue;
       if (!lo.load((int16_t)(d - 256), false)) { hi.unload(); continue; }
@@ -89,6 +86,15 @@ int main(){
     ck(!m.load(0, false), "dex 0 loads nothing");
     ck(!m.load(-1, false), "nor a negative dex");
     ck(!m.load(9999, false), "nor one past the table");
+  }
+
+  // Thumbnail offsets and palette indices are dereferenced by every gallery
+  // render, so contentLoadThumbs validates the complete embedded TPTH first.
+  {
+    ck(thumbs.load(), "the packed thumbnail table passes semantic validation");
+    int missing = 0;
+    for (int16_t d = 1; d <= dexCount(); d++) if (!thumbs.get(d)) missing++;
+    ck(missing == 0, "every installed species has a safe thumbnail offset");
   }
 
   printf("%s\n", bad?"FAILURES":"all good");

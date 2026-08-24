@@ -2,7 +2,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include "dex.h"
-#include "trainers.h"   // GYM_REGIONS sizes the badge masks
+#include "trainers.h"
 #include "party.h"
 
 // 1 tick = 1 minuto de juego. Baja este valor para probar mas rapido
@@ -48,7 +48,7 @@ enum : uint16_t {
 };
 #define MED_COUNT 8
 
-uint8_t moveUnlockLevel(int16_t dex, uint8_t idx);
+uint8_t moveUnlockLevel(SpeciesId dex, uint16_t idx);
 
 // ---------------------------------------------------------------------------
 // Which regions have their sprite pack on the microSD.
@@ -62,23 +62,23 @@ uint8_t moveUnlockLevel(int16_t dex, uint8_t idx);
 // link.cpp taking a transport pointer instead of calling ESP-NOW across a
 // layer, and for the same reason: the tests can drive it.
 //
-// uint16_t, not uint8_t. REGION_COUNT is 5 today and this project has been
+// uint16_t, not uint8_t. regionCount() is 5 today and this project has been
 // bitten five separate times by a width chosen for the current size of the dex.
 extern uint16_t gRegionArt;
-static_assert(REGION_COUNT <= 16, "gRegionArt needs a bit per region");
+static_assert(CONTENT_MAX_REGIONS <= 16, "gRegionArt needs a bit per region");
 
-// Is this region playable? REGION_ALL is available while ANY real region is --
+// Is this region playable? regionAll() is available while ANY real region is --
 // it is the mixed pool and must not vanish because one pack is missing.
 bool regionAvailable(uint8_t r);
 
-// Which region a dex number belongs to, or REGION_ALL if somehow none. The
+// Which region a dex number belongs to, or regionAll() if somehow none. The
 // regions tile the dex exactly once (dexdata_test pins that), so this is a
 // lookup rather than a judgement.
 uint8_t regionOfDex(int16_t d);
 
 // The next region the player can actually choose, skipping any whose sprite
 // pack is missing. The egg pill cycles with this rather than (region + 1) %
-// REGION_COUNT, which would land on a locked region and silently do nothing.
+// regionCount(), which would land on a locked region and silently do nothing.
 uint8_t nextAvailableRegion(uint8_t from);
 
 class Pet {
@@ -99,7 +99,7 @@ public:
   bool berryKnown = false;  // ya descubrio su baya favorita
   bool shiny = false;       // variante de color rara (se sortea en el huevo)
   uint32_t ageMinutes = 0;
-  int16_t speciesId = -1;      // numero de Pokedex (1..DEX_COUNT), -1 = huevo
+  int16_t speciesId = -1;      // numero de Pokedex (1..dexCount()), -1 = huevo
   int16_t prevSpeciesId = -1;  // para la animacion de evolucion
   uint8_t careMistakes = 0;   // descuidos: cada uno retrasa la evolucion 1 nivel
   bool sleeping = false;
@@ -112,12 +112,9 @@ public:
   // it; a runaway leaves endedKind at CER_NONE and the pet is simply gone.
   PartyMon endedMon;
   uint8_t endedKind = CER_NONE;
-  // Pokedex bitmaps, one bit per species. Widening these is SAFE on an existing
-  // save: getBytes() copies only what was stored, and the array is zeroed by its
-  // initialiser, so a 19-byte blob from the Kanto-only build lands in the front
-  // and bits 1-151 keep exactly their old meaning.
-  uint8_t dexReg[(DEX_COUNT + 7) / 8] = { 0 };       // criados
-  uint8_t dexShinyReg[(DEX_COUNT + 7) / 8] = { 0 };  // criados en version shiny
+  // Pokedex bitmaps reserve the runtime pack ABI capacity, one bit per species.
+  uint8_t dexReg[(CONTENT_MAX_SPECIES + 7) / 8] = { 0 };       // criados
+  uint8_t dexShinyReg[(CONTENT_MAX_SPECIES + 7) / 8] = { 0 };  // criados en version shiny
   // racha de cuidado diario (del jugador: persiste entre crianzas)
   uint16_t streak = 0, bestStreak = 0;
   uint32_t lastCareDay = 0;
@@ -163,16 +160,15 @@ public:
   uint16_t vitStat() const;  // vitalidad (bHp): no se entrena, solo IV y nivel
   // The physical/special split lives on the species (bSpA/bSpD), not the
   // individual: special attack reuses ivAtk/trAtk and special defence reuses
-  // ivDef/trDef, so no extra IVs and no save migration. See fetch_pokeapi.py.
+  // ivDef/trDef, so no extra persisted IV fields. See fetch_pokeapi.py.
   uint16_t spaStat() const;
   uint16_t spdStat() const;
 
-  // The four known moves (indices into MOVE_TBL; 0 = empty slot). Player-chosen
-  // once the learn/forget prompt exists -- until then, and for saves made before
-  // moves were stored at all, relearnFromLevel() fills them in.
-  uint8_t moves[MOVE_SLOTS] = { 0, 0, 0, 0 };
+  // The four known moves (0 = empty slot). relearnFromLevel() builds the initial
+  // set, after which the player can choose replacements.
+  MoveId moves[MOVE_SLOTS] = { 0, 0, 0, 0 };
   uint8_t moveCount() const;
-  bool knowsMove(uint8_t mv) const;
+  bool knowsMove(MoveId mv) const;
   // The newest MOVE_SLOTS moves this species has learned by its current level,
   // newest last. Used on hatch, on a fresh save, and to backfill empty slots.
   void relearnFromLevel();
@@ -186,7 +182,7 @@ public:
 
   // Moves reachable at this level that are not already known, for the learn
   // prompt. Returns how many were written into out (at most max).
-  uint8_t pendingLearnables(uint8_t *out, uint8_t max) const;
+  uint8_t pendingLearnables(MoveId *out, uint8_t max) const;
 
   // Player-wide, like the streak and the Pokedex: badges outlive the creature
   // that earned them, so newEgg() must never clear this.
@@ -209,18 +205,21 @@ public:
 
   // Which generation eggs come from. Player-wide, like the badges: it outlives
   // every creature, so newEgg() must never reset it.
-  uint8_t region = REGION_ALL;
+  uint8_t region = 0xFF;
   // The species this egg would be in each region. Filled in as the player
   // looks, cleared by newEgg(). It exists so that switching region and back
   // shows the SAME creature rather than rolling a fresh one -- without it,
   // toggling would be a re-roll button.
-  int16_t eggByRegion[REGION_COUNT] = { 0 };
+  int16_t eggByRegion[CONTENT_MAX_REGIONS + 1] = { 0 };
   void setRegion(uint8_t r);
-  const char *regionName() const { return REGIONS[region % REGION_COUNT].name; }
+  const char *regionName() const {
+    uint8_t count = regionCount();
+    return count ? ::regionName(region < count ? region : regionAll()) : "?";
+  }
   // How much of one region's dex is filled in, for the Pokedex header.
   uint16_t registeredCountIn(uint16_t lo, uint16_t hi) const {
     uint16_t n = 0;
-    for (uint16_t d = lo; d <= hi && d <= DEX_COUNT; d++) if (isRegistered(d)) n++;
+    for (uint16_t d = lo; d <= hi && d <= dexCount(); d++) if (isRegistered(d)) n++;
     return n;
   }
 
@@ -231,19 +230,19 @@ public:
   // put the box under its own key instead of growing the party blob.
   uint16_t badges = 0;      // bit n = trainer n beaten on easy
   uint16_t badgesHard = 0;  // ... and on hard
-  uint16_t badgesX[GYM_REGIONS - 1] = { 0 };
-  uint16_t badgesHardX[GYM_REGIONS - 1] = { 0 };
+  uint16_t badgesX[CONTENT_MAX_REGIONS - 1] = { 0 };
+  uint16_t badgesHardX[CONTENT_MAX_REGIONS - 1] = { 0 };
 
   uint16_t badgeMask(uint8_t rg, bool hard) const {
     if (rg == 0) return hard ? badgesHard : badges;
-    if (rg >= GYM_REGIONS) return 0;
+    if (rg >= CONTENT_MAX_REGIONS) return 0;
     return hard ? badgesHardX[rg - 1] : badgesX[rg - 1];
   }
   bool hasBadge(uint8_t rg, uint8_t i, bool hard) const {
     return (badgeMask(rg, hard) >> i) & 1;
   }
   void winBadge(uint8_t rg, uint8_t i, bool hard) {
-    if (rg >= GYM_REGIONS) return;
+    if (rg >= CONTENT_MAX_REGIONS) return;
     uint16_t bit = (uint16_t)1 << i;
     if (rg == 0) { if (hard) badgesHard |= bit; else badges |= bit; }
     else if (hard) badgesHardX[rg - 1] |= bit;
@@ -259,7 +258,7 @@ public:
   // Every region's badges together, for the player card's running total.
   uint8_t badgeCount(bool hard) const {
     uint8_t n = 0;
-    for (uint8_t r = 0; r < GYM_REGIONS; r++) n += badgeCountIn(r, hard);
+    for (uint8_t r = 0; r < regionAll(); r++) n += badgeCountIn(r, hard);
     return n;
   }
 
@@ -268,11 +267,11 @@ public:
   // offline catch-up -- which can cross a dozen levels in one go -- queues its
   // offers instead of firing a dozen dialogs at boot.
   uint8_t lastLearnLevel = 0;
-  uint8_t learnQueue[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+  MoveId learnQueue[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
   uint8_t learnQCount = 0;
   void checkLearnGates();
   bool hasLearnOffer() const { return learnQCount > 0; }
-  uint8_t learnOffer() const { return learnQCount ? learnQueue[0] : 0; }
+  MoveId learnOffer() const { return learnQCount ? learnQueue[0] : 0; }
   void acceptLearn(uint8_t slot);   // put the pending move into slot 0..3
   void declineLearn();
   // tope de entrenamiento que permite un IV: 77 (IV 8) .. 100 (IV 31)
@@ -340,7 +339,7 @@ public:
   // The legendary/shiny IV guarantees only fire inside hatch(), so without
   // this there is no way to exercise them from outside the class.
   void dbgHatchAs(int16_t dex, bool wantShiny) {
-    if (dex < 1 || dex > DEX_COUNT) return;
+    if (dex < 1 || dex > dexCount()) return;
     eggTarget = dex;
     eggShiny = wantShiny;
     starterPick = false;
@@ -359,10 +358,10 @@ public:
     return l > MAX_LEVEL ? MAX_LEVEL : (uint8_t)l;
   }
   bool isRegistered(int16_t dex) const {
-    return dex >= 1 && dex <= DEX_COUNT && (dexReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
+    return dex >= 1 && dex <= dexCount() && (dexReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
   }
   bool isShinyRegistered(int16_t dex) const {
-    return dex >= 1 && dex <= DEX_COUNT && (dexShinyReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
+    return dex >= 1 && dex <= dexCount() && (dexShinyReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
   }
   uint16_t registeredCount() const;
   bool lineHasUnregistered(int16_t base) const;
@@ -431,7 +430,6 @@ private:
   void addBond(uint8_t amt);
   uint8_t rollIV(int bonus) const;  // una tirada 8-31 empujada por el cuidado
   void rollIVs();                   // los 4, con las garantias de legendario/shiny
-  uint8_t ivFromGene(uint8_t gene) const;  // migracion de guardados con genes
   void defTick(bool resting);       // la calma forja la defensa (ver pet.cpp)
   void snapshotForParty();          // copy into endedMon before newEgg() wipes it
   void checkMedals();

@@ -80,5 +80,7 @@ PYEOF
 echo "Checking the installer cannot erase a save..."
 python3 tools/check_installer.py || { echo "installer would wipe saves -- refusing"; exit 1; }
 
-echo "Empaquetando sprites..."
-python3 tools/pack_bundle.py
+echo "Empaquetando datos..."
+python3 tools/gen_data_packs.py
+python3 tools/check_data_packs.py
+python3 tools/check_web_installer.py

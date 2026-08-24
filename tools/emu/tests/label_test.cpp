@@ -13,29 +13,39 @@ int FakeSerial::available() { return 0; }
 String FakeSerial::readStringUntil(char) { return String(""); }
 void sfxPlay(uint8_t) {}
 #include "i18n.h"
-#include "font_cjk.h"
 #include <cstdio>
 #include <cstring>
 
-static int textWidth2(const char *s, bool cjk) {
-  if (cjk) return emuCjkTextWidth(s, 1) + 1;  // UI size 2 maps to bold Unifont x1
+static uint32_t nextUtf8(const char *&at) {
+  uint8_t first = (uint8_t)*at++;
+  if (first < 0x80) return first;
+  uint32_t value;
+  uint8_t remaining;
+  if ((first & 0xE0) == 0xC0) { value = first & 0x1F; remaining = 1; }
+  else if ((first & 0xF0) == 0xE0) { value = first & 0x0F; remaining = 2; }
+  else return '?';
+  while (remaining--) value = (value << 6) | ((uint8_t)*at++ & 0x3F);
+  return value;
+}
+
+static int textWidth2(const char *s) {
   int width = 0;
   while (*s) {
-    unsigned char c = (unsigned char)*s++;
-    if (c < 0x80) { width += 12; continue; }
-    while (((unsigned char)*s & 0xC0) == 0x80) s++;
-    width += 12;
+    const UiFontGlyph *glyph = uiFontGlyph(nextUtf8(s));
+    width += glyph ? glyph->advance * 2 : 12;
   }
   return width;
 }
 
 int main(){
   const StrId ids[] = { S_VIN, S_STAT_ATK, S_STAT_DEF, S_STAT_SPE, S_STAT_VIT, S_STAT_WGT };
-  const char *ln[] = {"ES","EN","FR","DE","IT","PT","ZH"};
   int worst = 0, bad = 0;
-  for (int l=0;l<LANG_COUNT;l++){ setLang((Lang)l);
-    for (auto id : ids){ int w = 70 + textWidth2(T(id), l == LANG_ZH);
-      if (w > 132) { printf("COLLIDES %s \"%s\" ends at x=%d (bar starts 132)\n", ln[l], T(id), w); bad++; }
+  for (int l=0;l<langCount();l++){ setLang((Lang)l);
+    int labelX = uiLayoutMetric(UI_LAYOUT_STAT_LABEL_X, 70);
+    int barX = uiLayoutMetric(UI_LAYOUT_STAT_BAR_X, 132);
+    int gap = uiLayoutMetric(UI_LAYOUT_MIN_TOUCH_GAP, 8);
+    for (auto id : ids){ int w = labelX + textWidth2(T(id));
+      if (w + gap > barX) { printf("COLLIDES %s \"%s\" ends at x=%d (bar starts %d)\n", langCode((Lang)l), T(id), w, barX); bad++; }
       if (w > worst) worst = w; } }
   printf("widest label ends at x=%d\n", worst);
   return bad ? 1 : 0;

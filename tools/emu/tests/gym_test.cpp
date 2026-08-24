@@ -40,10 +40,11 @@ static bool duel(Combatant &you, Combatant &foe) {
 }
 int main(){
   printf("%-10s %-9s %s\n","TRAINER","TEAM","solo win-rate for one L%d creature");
+  const RegionBattleInfo &battle = regionBattleInfo(0);
   for (int lvl : {40, 60, 73, 100}) {
     printf("\n--- your creature: CHARIZARD L%d, perfect IVs ---\n", lvl);
-    for (int ti=0; ti<TRAINER_COUNT; ti++){
-      const Trainer &t=TRAINER_SETS[0].list[ti];
+    for (int ti=0; ti<battle.trainerCount; ti++){
+      const Trainer &t=trainerInfo(0, ti);
       int wins=0, runs=40;
       for(int r=0;r<runs;r++){
         Pet p; p.dbgHatchAs(6,false);
@@ -53,7 +54,7 @@ int main(){
         Combatant you; combatantFromPet(you,p);
         bool alive=true;
         for(int k=0;k<t.count && alive;k++){
-          Combatant foe; foeOf(foe,t.team[k].dex,t.team[k].level,EASY_IV);
+          Combatant foe; foeOf(foe,t.team[k].dex,t.team[k].level,battle.easyIv);
           alive=duel(you,foe);
         }
         if(alive) wins++;

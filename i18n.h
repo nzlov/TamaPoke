@@ -1,11 +1,9 @@
 #pragma once
 #include <Arduino.h>
+#include "content.h"
 
-// Keep new languages at the end: the enum value is persisted in NVS.
-enum Lang : uint8_t {
-  LANG_ES = 0, LANG_EN, LANG_FR, LANG_DE, LANG_IT, LANG_PT, LANG_ZH, LANG_COUNT
-};
-#define LANG_DEFAULT LANG_EN  // idioma por defecto: ingles
+using Lang = uint8_t;
+constexpr Lang LANG_RECOVERY = 0xFF;
 
 extern Lang gLang;  // idioma activo (definido en i18n.cpp)
 
@@ -124,6 +122,7 @@ enum StrId : uint8_t {
   S_RETIRE_COST,    // what retiring early costs the next creature
   S_EVO_SLOW,       // shown on the card while a creature carries that debt
   S_NEED_PACK,      // region chooser: this region's sprite pack is not on the SD
+  S_MOVE_CHANGE,    // explicit action on the move description screen
   STR_COUNT
 };
 
@@ -134,3 +133,7 @@ const char *medalDesc(int i);  // descripcion larga de medalla
 
 void loadLang();             // lee el idioma de NVS (llamar en setup)
 void setLang(Lang l);        // cambia y persiste el idioma
+uint8_t langCount();
+const char *langCode(Lang l);
+const char *langLabel(Lang l);
+bool langIsCjk(Lang l);

@@ -67,7 +67,7 @@ int main(){
     ck(p.evoPenalty() == EVO_PENALTY_LEVELS, "the next creature owes the day");
     p.dbgHatchAs(1, false);                 // a Bulbasaur, evolves at 16
     p.fullness=p.joy=p.energy=p.hygiene=100;
-    const DexEntry &d = DEX_TBL[1];
+    const DexEntry &d = dexEntry(1);
     p.ageMinutes = (uint32_t)(d.evolveLevel - 1) * MINUTES_PER_LEVEL;
     ck(!p.canEvolveNow(), "which really does hold its evolution back");
     p.ageMinutes = (uint32_t)(d.evolveLevel + EVO_PENALTY_LEVELS - 1) * MINUTES_PER_LEVEL;

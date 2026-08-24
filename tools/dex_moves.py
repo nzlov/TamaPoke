@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
-"""The move list, hand-authored. Source of truth for moves.h via gen_moves.py.
+"""The move list, hand-authored. Source of truth for the move data pack.
 
-86 moves, trimmed from Gen 1's 165 and then topped up with the cheap early
-attacks the early game needs: 63 attacking (three or four per type, a
-cheap one and a strong one), 11 stat-stage moves and 2 heals. STRUGGLE at the
-end makes 77 -- it is a fallback, not a learnable move.
+89 moves, trimmed from the main-series catalogues for this battle model:
+76 attacking moves, 11 stat-stage moves and 2 heals.
 
 Not a pure Gen 1 list, and it can't be. dex_types.py gives the 151 their
 CURRENT typings, so the dex contains Fairy (Clefable, Mr. Mime), Steel
@@ -19,13 +17,13 @@ Display names are capped at 12 characters: four move buttons have to fit
 across a 466 px round panel at text size 2. ANCIENTPOWER is the games' own
 Gen 3 spelling; DAZZLE GLEAM is ours.
 
-No PP by design. Status conditions (burn/para/sleep/poison) are deliberately
-absent for now -- the effect enum has room and they land in a later phase.
+No PP by design. Secondary battle ailments are authored here with each move;
+they are battle-only state and are never persisted on a pet.
 """
 
 # Move categories. There is no separate special-attack IV: special moves run
 # off ivAtk/trAtk against the species' bSpA, and special defence off
-# ivDef/trDef against bSpD. See gen_moves.py and the note in dex_stats.py.
+# ivDef/trDef against bSpD. See gen_data_packs.py and the note in dex_stats.py.
 MC_PHYS, MC_SPEC, MC_STATUS = 0, 1, 2
 
 # Status ailments. Battle-only by design: they live in the battle state and are
@@ -196,16 +194,13 @@ MOVES = [
     ("RECOVER",      "recover",       'normal',   MC_STATUS, 0,   0, EF_HEAL,     50, 0, 0, TG_SELF),
     ("SOFT-BOILED",  "soft-boiled",   'normal',   MC_STATUS, 0,   0, EF_HEAL,     50, 0, 0, TG_SELF),
 
-    # --- fallback ---------------------------------------------------------
-    # Not in any learnset (slug None keeps the fetcher off it): the engine
-    # substitutes this when a species has nothing else. METAPOD, KAKUNA and
-    # DITTO learn none of the 70 above and would otherwise be unable to act.
-    # For the first two that is a few hours before they evolve; DITTO is a
-    # final form and stays this way, since its entire movepool is TRANSFORM.
+    # --- unlearnable move -------------------------------------------------
+    # Kept in the pack for future battle rules; slug None keeps it out of
+    # generated learnsets.
     ("STRUGGLE",     None,            'normal',   MC_PHYS,  50,   0, EF_RECOIL,    4, 0, 0, TG_FOE),
 
     # --- APPEND-ONLY BELOW HERE -------------------------------------------
-    # A move's index IS its position in this list (gen_moves.py: idx = i + 1),
+    # A move's index IS its position in this list (gen_data_packs.py adds 1),
     # and Pet.moves[]/PartyMon.moves[] store that index RAW in NVS. Inserting a
     # move into its type section above would shift every move after it by one
     # and silently rewrite the moveset of every creature already saved -- the

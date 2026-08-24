@@ -2,7 +2,6 @@
 // the real Arduino_Canvas uses; flush() just marks the frame ready for SDL.
 #pragma once
 #include "Arduino.h"
-#include "font_cjk.h"
 #include <vector>
 #include <algorithm>
 
@@ -34,7 +33,6 @@ public:
   int16_t cx = 0, cy = 0;
   uint16_t textColor = 0xFFFF;
   uint8_t textSize = 1;
-  bool cjkFont = false;
   volatile bool frameReady = false;
 
   Arduino_Canvas(int16_t w, int16_t h, Arduino_CO5300 *p)
@@ -43,6 +41,9 @@ public:
   bool begin(uint32_t = 0) { return true; }
   void flush() { frameReady = true; }
   const uint16_t *buffer() const { return fb.data(); }
+  uint16_t *getFramebuffer() { return fb.data(); }
+  int16_t width() const { return _w; }
+  int16_t height() const { return _h; }
 
   inline void px(int x, int y, uint16_t c) {
     if (x < 0 || y < 0 || x >= _w || y >= _h) return;
@@ -144,8 +145,6 @@ public:
   void setCursor(int16_t x, int16_t y) { cx = x; cy = y; }
   int16_t getCursorX() const { return cx; }
   int16_t getCursorY() const { return cy; }
-  void setCjkFont(bool enabled) { cjkFont = enabled; }
-
   void drawChar(char ch, int x, int y) {
     const uint8_t *g = GLCD_FONT + (uint8_t)ch * 5;
     for (int i = 0; i < 5; i++) {
@@ -155,33 +154,11 @@ public:
     }
   }
   void print(char ch) {
-    if (ch == '\n') { cy += (cjkFont ? 16 : 8) * textSize; cx = 0; return; }
-    if (cjkFont) { drawCjk((unsigned char)ch); return; }
+    if (ch == '\n') { cy += 8 * textSize; cx = 0; return; }
     drawChar(ch, cx, cy);
     cx += 6 * textSize;
   }
-  void drawCjk(uint32_t codepoint) {
-    const EmuCjkGlyph *glyph = emuCjkGlyph(codepoint);
-    if (!glyph) glyph = emuCjkGlyph('?');
-    if (!glyph) return;
-    int x = cx + glyph->xOffset * textSize;
-    int y = cy - (glyph->height + glyph->yOffset) * textSize;
-    for (int row = 0; row < glyph->height; row++)
-      for (int col = 0; col < glyph->width; col++)
-        if (glyph->rows[row] & (1U << col))
-          fillRect(x + col * textSize, y + row * textSize,
-                   textSize + (cjkFont ? 1 : 0), textSize, textColor);
-    cx += glyph->advance * textSize;
-  }
   void print(const char *s) {
-    if (cjkFont) {
-      while (*s) {
-        uint32_t codepoint = emuNextUtf8(s);
-        if (codepoint == '\n') print('\n');
-        else drawCjk(codepoint);
-      }
-      return;
-    }
     while (*s) {
       unsigned char c = (unsigned char)*s++;
       if (c < 0x80) { print((char)c); continue; }

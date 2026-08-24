@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "locales": {
+    "zh-CN": {
+      "regions": {
+        "KANTO": {
+          "name": "关都",
+          "trainers": [
+            {"name": "小刚", "place": "深灰市"},
+            {"name": "小霞", "place": "华蓝市"},
+            {"name": "马志士", "place": "枯叶市"},
+            {"name": "莉佳", "place": "彩虹市"},
+            {"name": "阿桔", "place": "浅红市"},
+            {"name": "娜姿", "place": "金黄市"},
+            {"name": "夏伯", "place": "红莲岛"},
+            {"name": "坂木", "place": "常青市"},
+            {"name": "科拿", "place": "四天王"},
+            {"name": "希巴", "place": "四天王"},
+            {"name": "菊子", "place": "四天王"},
+            {"name": "渡", "place": "四天王"},
+            {"name": "劲敌", "place": "冠军"}
+          ]
+        },
+        "JOHTO": {
+          "name": "城都",
+          "trainers": [
+            {"name": "阿速", "place": "桔梗市"},
+            {"name": "阿笔", "place": "桧皮镇"},
+            {"name": "小茜", "place": "满金市"},
+            {"name": "松叶", "place": "圆朱市"},
+            {"name": "阿四", "place": "湛蓝市"},
+            {"name": "蜜柑", "place": "浅葱市"},
+            {"name": "柳伯", "place": "卡吉镇"},
+            {"name": "小椿", "place": "烟墨市"},
+            {"name": "一树", "place": "四天王"},
+            {"name": "阿桔", "place": "四天王"},
+            {"name": "希巴", "place": "四天王"},
+            {"name": "梨花", "place": "四天王"},
+            {"name": "渡", "place": "冠军"}
+          ]
+        },
+        "HOENN": {
+          "name": "丰缘",
+          "trainers": [
+            {"name": "杜娟", "place": "卡那兹市"},
+            {"name": "藤树", "place": "武斗镇"},
+            {"name": "铁旋", "place": "紫堇市"},
+            {"name": "亚莎", "place": "釜炎镇"},
+            {"name": "千里", "place": "橙华市"},
+            {"name": "娜琪", "place": "茵郁市"},
+            {"name": "枫", "place": "绿岭市"},
+            {"name": "亚当", "place": "琉璃市"},
+            {"name": "花月", "place": "四天王"},
+            {"name": "芙蓉", "place": "四天王"},
+            {"name": "波妮", "place": "四天王"},
+            {"name": "源治", "place": "四天王"},
+            {"name": "米可利", "place": "冠军"}
+          ]
+        },
+        "SINNOH": {
+          "name": "神奥",
+          "trainers": [
+            {"name": "瓢太", "place": "黑金市"},
+            {"name": "菜种", "place": "百代市"},
+            {"name": "梅丽莎", "place": "家缘市"},
+            {"name": "阿李", "place": "帷幕市"},
+            {"name": "吉宪", "place": "湿原市"},
+            {"name": "东瓜", "place": "水脉市"},
+            {"name": "小菘", "place": "雪峰市"},
+            {"name": "电次", "place": "滨海市"},
+            {"name": "阿柳", "place": "四天王"},
+            {"name": "菊野", "place": "四天王"},
+            {"name": "大叶", "place": "四天王"},
+            {"name": "悟松", "place": "四天王"},
+            {"name": "竹兰", "place": "冠军"}
+          ]
+        }
+      }
+    }
+  }
+}

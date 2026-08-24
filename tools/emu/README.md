@@ -2,21 +2,20 @@
 
 Runs the **real firmware** on your computer, in a window you can click.
 
-![emulator](https://img.shields.io/badge/needs-SDL2-1793D1)
+![emulator](https://img.shields.io/badge/needs-SDL2%20%2B%20FreeType-1793D1)
 
 ```bash
-brew install sdl2          # macOS   (Debian: apt install libsdl2-dev)
+brew install sdl2 freetype # macOS   (Debian: apt install libsdl2-dev libfreetype-dev)
 bash tools/emu/build.sh
 tools/emu/tamapoke-emu --scale 2 --fast 60
 ```
 
 It compiles `TamaPoke.ino`, `pet.cpp`, `i18n.cpp` and `party.cpp` **unmodified**.
 Only the hardware layer is replaced, so what you see is what the panel draws —
-the same 466×466 RGB565 framebuffer, the same 5×7 font, the same code paths.
-For Chinese, the emulator draws the same 16px GNU Unifont glyphs as the hardware
-from a generated subset in `font_cjk_data.inc`. Regenerate it with
-`gen_cjk_font.py` and Arduino_GFX's `u8g2_font_unifont_h_chinese4.h` when
-translated strings add characters.
+the same 466×466 RGB565 framebuffer and the same code paths. Latin UI packs keep
+the compact 5×7 face. The Chinese `.tui` carries a hinted Noto Sans CJK Medium
+OpenType subset and its pixel-size table; both desktop and ESP32 render it with
+FreeType and the same bounded glyph cache.
 
 ## Why
 
@@ -49,8 +48,8 @@ clipped on real hardware.
 | `--scale N` | window zoom (default 2) |
 | `--fast N` | run the clock N× faster — `--fast 60` turns an in-game minute into a second, so a full 3-day life takes about an hour. The speed-up is **suspended while you are touching the panel**: the firmware times taps and swipes off the same `millis()`, so scaling it during a gesture would shrink the tap window (`dt < 1500`) to `1500/N` real ms and make the screen unclickable |
 | `--save FILE` | where to persist NVS (default `tamapoke.nvs` in the cwd) |
+| `--lang LOCALE` | start with an installed runtime-pack locale, such as `zh-CN` |
 | `--wipe` | delete the save first |
-| `--sprites DIR` | sprite directory (defaults to `tools/sdcard/mons`) |
 
 ### Headless captures
 
@@ -58,12 +57,13 @@ Renders one screen to a PPM and exits — no display needed, so it works over SS
 and in CI:
 
 ```bash
-tools/emu/tamapoke-emu --shot battle --lvl 73 --iv 31 --dex 149 --out shot.ppm
+tools/emu/tamapoke-emu --shot battle --lang zh-CN --lvl 73 --iv 31 --dex 149 --out shot.ppm
 sips -s format png shot.ppm --out shot.png     # macOS; or use ImageMagick
 ```
 
 `--shot` accepts `main`, `battle`, `profile`, `medals`, `progress`, `gallery`,
-`clock`, `menu`, `party`, `partyfull`, `egg`, `starter`. `--lvl`, `--iv` and
+`clock`, `menu`, `party`, `partyfull`, `egg`, `starter`, `dexdetail`, `moveinfo`.
+`--lvl`, `--iv` and
 `--dex` set up the pet first.
 
 ## How it works
@@ -77,15 +77,15 @@ sips -s format png shot.ppm --out shot.png     # macOS; or use ImageMagick
 | `TouchDrvCSTXXX.hpp` | the CST9217, fed by the mouse |
 | `host_impl.cpp` | SD (reads sprites from disk), RTC, battery, audio |
 | `font.cpp` | the classic 5×7 GFX glyphs, so text metrics match exactly |
+| system FreeType | the same OpenType rasterizer used by the ESP32's minimal vendored build |
 | `genproto.py` | the prototypes the Arduino build normally generates for you |
 
-Everything except the generated font data, `font.cpp` and `genproto.py` is a
+Everything except `font.cpp` and `genproto.py` is a
 stub; the game itself is the real thing.
 
-`sprites` are read straight from `tools/sdcard/mons/`, so animation, shinies and
-Pokédex thumbnails all work if you have generated them (`tools/pack_pmd.py`).
-Without them you get the `S_NO_SPRITES` path, exactly as a board with no SD card
-would.
+UI, move, species and sprite data are read from `web/packs/`, the same generated
+packages deployed to the board. Run `tools/gen_data_packs.py` first. Missing
+packages enter the same recovery path as a board with no usable data packs.
 
 ## Credits
 

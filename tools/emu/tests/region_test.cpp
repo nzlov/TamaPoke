@@ -34,9 +34,9 @@ int main(){
   // --- the lottery stays inside the chosen region
   {
     Pet p; seed(p);
-    for (uint8_t r=0; r<REGION_COUNT; r++){
+    for (uint8_t r=0; r<regionCount(); r++){
       p.setRegion(r);
-      const RegionInfo &ri = REGIONS[r];
+      const RegionInfo &ri = regionInfo(r);
       int out=0;
       for (int i=0;i<400;i++){
         int16_t d = p.pickEggSpecies();
@@ -51,7 +51,7 @@ int main(){
   // --- ALL really does span everything
   {
     Pet p; seed(p);
-    p.setRegion(REGION_ALL);
+    p.setRegion(regionAll());
     bool gen[3]={false,false,false};
     for (int i=0;i<900;i++){
       int16_t d = p.pickEggSpecies();
@@ -62,10 +62,10 @@ int main(){
 
   // --- a first egg gives a starter from the chosen region
   {
-    for (uint8_t r=0; r<REGION_COUNT; r++){
+    for (uint8_t r=0; r<regionCount(); r++){
       Pet p; p.begin(); p.factoryReset(); p.begin();
       p.setRegion(r);
-      const RegionInfo &ri = REGIONS[r];
+      const RegionInfo &ri = regionInfo(r);
       bool ok=true;
       for (int i=0;i<60;i++){
         int16_t d = p.pickEggSpecies();
@@ -101,7 +101,7 @@ int main(){
       p.setRegion(0);
       p.newEgg();
       uint8_t tier = p.eggRarity();
-      for (uint8_t r=1; r<REGION_COUNT; r++){
+      for (uint8_t r=1; r<regionCount(); r++){
         p.setRegion(r);
         checked++;
         if (p.eggRarity()==tier) kept++;
@@ -116,19 +116,19 @@ int main(){
     Pet p; seed(p);
     p.setRegion(0);
     p.newEgg();
-    int16_t first[REGION_COUNT];
-    for (uint8_t r=0;r<REGION_COUNT;r++){ p.setRegion(r); first[r]=p.eggPeek(); }
+    int16_t first[regionCount()];
+    for (uint8_t r=0;r<regionCount();r++){ p.setRegion(r); first[r]=p.eggPeek(); }
     bool stable=true;
-    std::set<int16_t> everSeen[REGION_COUNT];
+    std::set<int16_t> everSeen[regionCount()];
     for (int lap=0; lap<25; lap++)
-      for (uint8_t r=0;r<REGION_COUNT;r++){
+      for (uint8_t r=0;r<regionCount();r++){
         p.setRegion(r);
         everSeen[r].insert(p.eggPeek());
         if (p.eggPeek() != first[r]) stable=false;
       }
     ck(stable, "flipping between regions always returns the same creature");
     size_t worst=0;
-    for (uint8_t r=0;r<REGION_COUNT;r++) worst = worst > everSeen[r].size() ? worst : everSeen[r].size();
+    for (uint8_t r=0;r<regionCount();r++) worst = worst > everSeen[r].size() ? worst : everSeen[r].size();
     ck(worst==1, "so 100 switches yield at most one candidate per region");
   }
 
@@ -154,7 +154,7 @@ int main(){
     p.setRegion(1);
     // it may coincide by chance, but the memo must have been cleared: check the
     // stored table rather than the outcome
-    ck(p.eggByRegion[2]==0 && p.eggByRegion[REGION_ALL]==0,
+    ck(p.eggByRegion[2]==0 && p.eggByRegion[regionAll()]==0,
        "a new egg clears what the old one would have been");
     (void)before;
   }
@@ -179,7 +179,7 @@ int main(){
     p.setRegion(1);
     p.region = 99;               // as a corrupt or newer save might have it
     p.setRegion(99);             // must normalise rather than read off the end
-    ck(p.region < REGION_COUNT, "an impossible region is brought back in range");
+    ck(p.region < regionCount(), "an impossible region is brought back in range");
   }
 
   printf("%s\n", bad?"FAILURES":"all good");
