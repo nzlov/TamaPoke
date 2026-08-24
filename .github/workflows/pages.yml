@@ -57,10 +57,24 @@ jobs:
         run: bash tools/build_web.sh
 
       - name: Prepare static site
+        env:
+          BUILD_COMMIT: ${{ github.sha }}
         run: |
           mkdir -p _site
           cp web/index.html web/manifest.json _site/
           cp -R web/firmware web/packs _site/
+          # GLUE: GitHub owns the deployed revision while the static page consumes JSON.
+          # Remove this bridge if Pages gains native build metadata injection.
+          python3 - "$BUILD_COMMIT" "$(git show -s --format=%cs "$BUILD_COMMIT")" <<'PYEOF'
+          import json
+          import sys
+          from pathlib import Path
+
+          metadata = {"commit": sys.argv[1], "date": sys.argv[2]}
+          Path("_site/build-info.json").write_text(
+              json.dumps(metadata, separators=(",", ":")) + "\n", encoding="utf-8"
+          )
+          PYEOF
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6

@@ -38,6 +38,9 @@
                   margin:.75rem 0; }
   .version-grid span { border:1px solid var(--track); border-radius:8px; padding:.45rem .65rem; }
   .version-grid strong { display:block; }
+  .build-info { position:fixed; top:.75rem; right:1rem; z-index:20; padding:.25rem .55rem;
+                border:1px solid var(--track); border-radius:7px; background:#fff;
+                color:#6b6b76; font: .75rem ui-monospace, monospace; box-shadow:0 2px 8px #0002; }
   #catalog-error { color:var(--bad); }
   #log { font-family: ui-monospace, monospace; font-size:.85rem; background:#1b1b25; color:#d8dcf0;
          border-radius:10px; padding:.75rem 1rem; margin-top:1rem; max-height:220px; overflow:auto; white-space:pre-wrap; display:none; }
@@ -46,12 +49,26 @@
   .bar > div { height:100%; width:0; background:var(--ok); transition: width .15s; }
   #deploy-error { display:none; color:var(--bad); background:#fff0ed; border-left:4px solid var(--bad);
                   border-radius:6px; padding:.6rem .75rem; font-size:.9rem; }
+  .loading-overlay { position:fixed; inset:0; z-index:1000; display:flex; align-items:center;
+                     justify-content:center; background:#2a2a3699; backdrop-filter:blur(2px); }
+  .loading-overlay[hidden] { display:none; }
+  .loading-card { min-width:220px; padding:1.5rem; border-radius:14px; background:#fff;
+                  text-align:center; box-shadow:0 12px 32px #0004; }
+  .spinner { width:42px; height:42px; margin:0 auto .75rem; border:4px solid var(--track);
+             border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+  .loading-card strong { display:block; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @media (max-width:900px) {
+    .build-info { position:static; width:max-content; max-width:calc(100% - 2rem);
+                  margin:.75rem 1rem -1.25rem auto; }
+  }
   code { background:#0001; padding:.1em .4em; border-radius:5px; }
   a { color:var(--accent); }
   .note { font-size:.9rem; color:#6b6b76; }
 </style>
 </head>
 <body>
+<div id="build-info" class="build-info" aria-live="polite">Build info unavailable</div>
 <div class="wrap">
   <h1>🐢 TamaPoke</h1>
   <p class="sub">A data-pack-driven Pokémon tamagotchi for the Waveshare ESP32-S3-Touch-AMOLED-1.75.
@@ -155,6 +172,14 @@
      Pokémon is a ™ of Nintendo / Game Freak. Non-commercial project.</p>
 </div>
 
+<div id="format-overlay" class="loading-overlay" role="status" aria-live="polite" hidden>
+  <div class="loading-card">
+    <div class="spinner" aria-hidden="true"></div>
+    <strong>Formatting microSD…</strong>
+    <span class="note">Keep the board connected.</span>
+  </div>
+</div>
+
 <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js"></script>
 <script>
 const log = (m) => { const el = document.getElementById('log'); el.style.display='block';
@@ -206,6 +231,8 @@ const progressPercent = document.getElementById('progress-percent');
 const deployError = document.getElementById('deploy-error');
 const webFirmwareVersionEl = document.getElementById('web-firmware-version');
 const targetFirmwareVersionEl = document.getElementById('target-firmware-version');
+const formatOverlay = document.getElementById('format-overlay');
+const buildInfoEl = document.getElementById('build-info');
 
 // GLUE: firmware keeps stable language-neutral codes while this page owns user-facing copy.
 // Remove this map if the serial protocol ever provides structured display messages.
@@ -326,7 +353,7 @@ function renderCatalog(index) {
       name.textContent = packageLabel(pkg);
       const detail = document.createElement('small');
       const locales = pkg.locales?.length ? ` · ${pkg.locales.join(', ')}` : '';
-      detail.textContent = `${pkg.id} · web revision ${pkg.revision} · ${formatSize(pkg.size)}${locales}`;
+      detail.textContent = `${pkg.id} · ${formatSize(pkg.size)}${locales}`;
       text.append(name, detail);
       label.append(input, text);
       list.append(label);
@@ -359,6 +386,19 @@ async function loadFirmwareVersion() {
     log(`Firmware manifest unavailable: ${error.message}`);
   }
   renderFirmwareVersions();
+}
+
+async function loadBuildInfo() {
+  try {
+    const response = await fetch('build-info.json', { cache: 'no-cache' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const info = await response.json();
+    if (!/^[0-9a-f]{40}$/.test(info.commit) || !/^\d{4}-\d{2}-\d{2}$/.test(info.date))
+      throw new Error('invalid build metadata');
+    buildInfoEl.textContent = `commit ${info.commit.slice(0, 7)} · ${info.date}`;
+  } catch (_) {
+    buildInfoEl.textContent = 'Build info unavailable';
+  }
 }
 
 async function sendOne(name, data, progress) {
@@ -648,6 +688,8 @@ refreshPacksButton.onclick = refreshInstalledPacks;
 formatButton.onclick = async () => {
   if (!confirm('Format the microSD? This permanently erases every file on the card.')) return;
   setSdManagementBusy(true);
+  formatOverlay.hidden = false;
+  document.body.setAttribute('aria-busy', 'true');
   try {
     await runCommand('FORMAT', 120000);
     log('microSD formatted. Restart the board before deploying or playing.');
@@ -655,11 +697,14 @@ formatButton.onclick = async () => {
   } catch (error) {
     log(`Format failed: ${error.message}`);
   } finally {
+    formatOverlay.hidden = true;
+    document.body.removeAttribute('aria-busy');
     setSdManagementBusy(false);
   }
 };
 
 loadFirmwareVersion();
+loadBuildInfo();
 loadCatalog();
 </script>
 </body>

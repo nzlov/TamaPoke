@@ -11,6 +11,7 @@ html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
 sdmon = (ROOT / "sdmon.cpp").read_text(encoding="utf-8")
 content = (ROOT / "content.cpp").read_text(encoding="utf-8")
 firmware = (ROOT / "TamaPoke.ino").read_text(encoding="utf-8")
+pages_workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
 packages = index.get("packages", [])
 ids = {package["id"] for package in packages}
 
@@ -52,10 +53,38 @@ required_fragments = [
     "confirmDependencyOverride", "installedPackIds", "ignore dependencies",
     "web-firmware-version", "target-firmware-version", "web revision",
     "runCommand('INFO'", "versions match", "versions differ",
+    "format-overlay", ".loading-overlay[hidden]", "Formatting microSD…",
+    "formatOverlay.hidden = false",
+    "formatOverlay.hidden = true", "document.body.setAttribute('aria-busy', 'true')",
+    "document.body.removeAttribute('aria-busy')",
+    'id="build-info"', "build-info.json", "info.commit.slice(0, 7)", "info.date",
 ]
 for fragment in required_fragments:
     if fragment not in html:
         raise SystemExit(f"installer is missing {fragment!r}")
+
+format_handler = html.split("formatButton.onclick = async () => {", 1)[1].split("\n};", 1)[0]
+format_finally = format_handler.split("} finally {", 1)[1]
+if "formatOverlay.hidden = false" not in format_handler.split("try {", 1)[0]:
+    raise SystemExit("format overlay must be shown before formatting starts")
+for cleanup in ("formatOverlay.hidden = true", "document.body.removeAttribute('aria-busy')"):
+    if cleanup not in format_finally:
+        raise SystemExit(f"format cleanup must always run: {cleanup}")
+
+catalog_renderer = html.split("function renderCatalog(index) {", 1)[1].split(
+    "async function loadCatalog()", 1)[0]
+if "web revision" in catalog_renderer:
+    raise SystemExit("pending deployment catalogue must not show redundant pack revisions")
+installed_renderer = html.split("async function refreshInstalledPacks() {", 1)[1].split(
+    "async function deleteInstalledPack", 1)[0]
+if "target revision" not in installed_renderer or "web revision" not in installed_renderer:
+    raise SystemExit("installed packs must retain target and web revision comparison")
+
+for fragment in ('BUILD_COMMIT: ${{ github.sha }}', '--format=%cs',
+                 '_site/build-info.json', '"commit": sys.argv[1]', '"date": sys.argv[2]'):
+    if fragment not in pages_workflow:
+        raise SystemExit(f"Pages build metadata is missing {fragment!r}")
+
 for obsolete in ("data-region=", "parsePak(", "sprites-${region}", "mons/"):
     if obsolete in html:
         raise SystemExit(f"installer still contains obsolete sprite deployment: {obsolete}")
