@@ -1567,6 +1567,11 @@ void renderPartyDetail() {
   gfx->setTextSize(1);
   gfx->setCursor(uiCenterX(st), 300);
   gfx->print(st);
+  char natureLine[48];
+  snprintf(natureLine, sizeof(natureLine), T(S_NATURE_FMT), natureName(m.nature));
+  gfx->setTextColor(UI_TRACK);
+  gfx->setCursor(uiCenterX(natureLine), 318);
+  gfx->print(natureLine);
   // Bringing one back is only offered while an egg is waiting. Otherwise it
   // would silently destroy whatever creature is currently alive, and a rule the
   // player cannot see is worse than a button they cannot press.
@@ -3320,8 +3325,15 @@ void renderCardProfile() {
   gfx->setCursor(uiCenterX(info), 296);
   gfx->print(info);
 
+  char natureLine[48];
+  snprintf(natureLine, sizeof(natureLine), T(S_NATURE_FMT), natureName(pet.nature));
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(natureLine), 322);
+  gfx->print(natureLine);
+
   gfx->setTextColor(UI_TRACK);
-  gfx->setCursor(uiCenterX(T(S_RENAME_HINT)), 332);
+  gfx->setCursor(uiCenterX(T(S_RENAME_HINT)), 350);
   gfx->print(T(S_RENAME_HINT));
 }
 

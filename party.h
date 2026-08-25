@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include "moves.h"
+#include "nature.h"
 
 // The party: pets that finished their life and were kept, rather than being
 // dissolved into a single Pokedex bit like every previous ending did.
@@ -43,6 +44,8 @@ struct PartyMon {
   // what it fights with forever. 0 = empty slot (moveEntry(0) is the "-" filler).
   MoveId moves[MOVE_SLOTS] = { 0, 0, 0, 0 };
   uint8_t gymIvRewards[GYM_IV_REWARD_SLOTS] = { 0 };
+  // Appended to preserve every previous field offset in the raw NVS record.
+  NatureId nature = NATURE_UNKNOWN;
 
   bool empty() const { return dex < 1; }
 };

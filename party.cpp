@@ -16,6 +16,28 @@ struct LegacyPartyMonV1 {
 static_assert(sizeof(LegacyPartyMonV1) == 34,
               "legacy party layout must stay byte-exact");
 
+struct LegacyPartyMonV2 {
+  LegacyPartyMonV1 mon;
+  uint8_t gymIvRewards[GYM_IV_REWARD_SLOTS];
+};
+static_assert(sizeof(LegacyPartyMonV2) == 162,
+              "pre-nature party layout must stay byte-exact");
+
+// GLUE: maps the common prefix of both previous raw NVS records into today's
+// PartyMon. Remove only when saves made before natures are unsupported.
+static void migrateMon(PartyMon &out, const LegacyPartyMonV1 &old) {
+  out.dex = old.dex;
+  out.level = old.level;
+  out.medals = old.medals;
+  out.ivAtk = old.ivAtk; out.ivDef = old.ivDef;
+  out.ivSpe = old.ivSpe; out.ivHp = old.ivHp;
+  out.trAtk = old.trAtk; out.trDef = old.trDef; out.trSpe = old.trSpe;
+  out.shiny = old.shiny;
+  memcpy(out.nick, old.nick, sizeof(out.nick));
+  memcpy(out.moves, old.moves, sizeof(out.moves));
+  out.nature = natureForLegacy(out.dex, out.ivAtk, out.ivDef, out.ivSpe, out.ivHp);
+}
+
 template <size_t N>
 static void loadMons(Preferences &prefs, const char *key, PartyMon (&out)[N]) {
   size_t stored = prefs.getBytesLength(key);
@@ -23,23 +45,20 @@ static void loadMons(Preferences &prefs, const char *key, PartyMon (&out)[N]) {
     prefs.getBytes(key, out, sizeof(out));
     return;
   }
+  if (stored == sizeof(LegacyPartyMonV2) * N) {
+    LegacyPartyMonV2 old[N];
+    prefs.getBytes(key, old, sizeof(old));
+    for (size_t i = 0; i < N; i++) {
+      migrateMon(out[i], old[i].mon);
+      memcpy(out[i].gymIvRewards, old[i].gymIvRewards,
+             sizeof(out[i].gymIvRewards));
+    }
+    return;
+  }
   if (stored != sizeof(LegacyPartyMonV1) * N) return;
   LegacyPartyMonV1 old[N];
   prefs.getBytes(key, old, sizeof(old));
-  // GLUE: maps the previous raw NVS record to the new per-creature reward
-  // layout. Remove only when saves made before gym IV rewards are unsupported.
-  for (size_t i = 0; i < N; i++) {
-    out[i].dex = old[i].dex;
-    out[i].level = old[i].level;
-    out[i].medals = old[i].medals;
-    out[i].ivAtk = old[i].ivAtk; out[i].ivDef = old[i].ivDef;
-    out[i].ivSpe = old[i].ivSpe; out[i].ivHp = old[i].ivHp;
-    out[i].trAtk = old[i].trAtk; out[i].trDef = old[i].trDef;
-    out[i].trSpe = old[i].trSpe;
-    out[i].shiny = old[i].shiny;
-    memcpy(out[i].nick, old[i].nick, sizeof(out[i].nick));
-    memcpy(out[i].moves, old[i].moves, sizeof(out[i].moves));
-  }
+  for (size_t i = 0; i < N; i++) migrateMon(out[i], old[i]);
 }
 
 // Same NVS namespace as the pet on purpose: WIPE (Pet::factoryReset) calls
@@ -56,6 +75,8 @@ void Party::begin() {
     for (MoveId &move : s.moves) if (!moveValid(move)) move = MOVE_NONE;
     for (uint8_t &reward : s.gymIvRewards)
       if (reward > GYM_IV_REWARD_HP && reward != GYM_IV_REWARD_MAXED) reward = 0;
+    if (!natureValid(s.nature))
+      s.nature = natureForLegacy(s.dex, s.ivAtk, s.ivDef, s.ivSpe, s.ivHp);
     s.nick[sizeof(s.nick) - 1] = 0;
   }
   for (auto &s : box) s = PartyMon();
@@ -65,6 +86,8 @@ void Party::begin() {
     for (MoveId &move : s.moves) if (!moveValid(move)) move = MOVE_NONE;
     for (uint8_t &reward : s.gymIvRewards)
       if (reward > GYM_IV_REWARD_HP && reward != GYM_IV_REWARD_MAXED) reward = 0;
+    if (!natureValid(s.nature))
+      s.nature = natureForLegacy(s.dex, s.ivAtk, s.ivDef, s.ivSpe, s.ivHp);
     s.nick[sizeof(s.nick) - 1] = 0;
   }
 }
@@ -149,26 +172,34 @@ void Party::releaseAt(uint8_t i) {
 // Mirrors calcStat() in pet.cpp: base + level + IV contribution + training.
 // Kept in step with it by hand; there is no shared home for it that both the
 // live pet and a frozen party member could use without dragging Pet in here.
-static uint16_t calcStat(uint8_t base, uint8_t iv, uint16_t lvl, uint8_t tr) {
-  return (uint16_t)base + lvl + (uint32_t)iv * lvl / 100 + tr;
+static uint16_t calcStat(uint8_t base, uint8_t iv, uint16_t lvl, uint8_t tr,
+                         NatureId nature, NatureStat stat) {
+  uint16_t untrained = (uint16_t)base + lvl + (uint32_t)iv * lvl / 100;
+  return natureStatValue(nature, stat, untrained, tr);
 }
 
 uint16_t Party::atkOf(const PartyMon &m) const {
-  return m.empty() ? 0 : calcStat(dexEntry(m.dex).bAtk, m.ivAtk, m.level, m.trAtk);
+  return m.empty() ? 0 : calcStat(dexEntry(m.dex).bAtk, m.ivAtk, m.level, m.trAtk,
+                                  m.nature, NATURE_STAT_ATK);
 }
 uint16_t Party::defOf(const PartyMon &m) const {
-  return m.empty() ? 0 : calcStat(dexEntry(m.dex).bDef, m.ivDef, m.level, m.trDef);
+  return m.empty() ? 0 : calcStat(dexEntry(m.dex).bDef, m.ivDef, m.level, m.trDef,
+                                  m.nature, NATURE_STAT_DEF);
 }
 uint16_t Party::speOf(const PartyMon &m) const {
-  return m.empty() ? 0 : calcStat(dexEntry(m.dex).bSpe, m.ivSpe, m.level, m.trSpe);
+  return m.empty() ? 0 : calcStat(dexEntry(m.dex).bSpe, m.ivSpe, m.level, m.trSpe,
+                                  m.nature, NATURE_STAT_SPE);
 }
 uint16_t Party::vitOf(const PartyMon &m) const {
-  return m.empty() ? 0 : calcStat(dexEntry(m.dex).bHp, m.ivHp, m.level, 10);
+  return m.empty() ? 0 : calcStat(dexEntry(m.dex).bHp, m.ivHp, m.level, 10,
+                                  m.nature, NATURE_STAT_NONE);
 }
 // Special reuses the physical IV and training, same rule as Pet::spaStat().
 uint16_t Party::spaOf(const PartyMon &m) const {
-  return m.empty() ? 0 : calcStat(dexEntry(m.dex).bSpA, m.ivAtk, m.level, m.trAtk);
+  return m.empty() ? 0 : calcStat(dexEntry(m.dex).bSpA, m.ivAtk, m.level, m.trAtk,
+                                  m.nature, NATURE_STAT_SPA);
 }
 uint16_t Party::spdOf(const PartyMon &m) const {
-  return m.empty() ? 0 : calcStat(dexEntry(m.dex).bSpD, m.ivDef, m.level, m.trDef);
+  return m.empty() ? 0 : calcStat(dexEntry(m.dex).bSpD, m.ivDef, m.level, m.trDef,
+                                  m.nature, NATURE_STAT_SPD);
 }

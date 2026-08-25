@@ -339,6 +339,25 @@ ball game (and still 1 h of wellbeing passively). **VIT** can't be trained. All 
 live in the training menu now; the ball moved off the home row when it became
 defence's trainer.
 
+Every hatch also rolls one of the 25 **natures**. The 20 non-neutral natures apply
+the canonical +10%/-10% modifier to their final combat stats; HP is unaffected.
+The five otherwise-neutral natures instead modify the training contribution and
+its hourly decay:
+
+| Nature | Training contribution | Hourly loss for affected training |
+|---|---|---|
+| Hardy | ATK +10% | ATK: 9% of its cap |
+| Docile | DEF +10% | DEF: 9% of its cap |
+| Serious | SPEED +10% | SPEED: 9% of its cap |
+| Bashful | DEF +10%, ATK -10% | DEF: 9%; ATK: 11% (of each cap) |
+| Quirky | ATK +10%, DEF -10% | ATK: 9%; DEF: 11% (of each cap) |
+
+Unaffected training loses 10% of its IV-based cap per complete hour. Every loss
+uses the cap rather than the current value and rounds up, both live and offline.
+ATK training is also the special-attack training contribution; DEF training is
+also the special-defence contribution. There are no separate special training
+values.
+
 **TMs unlock at level 40**, all of them, and nothing before. A TM carries no level
 requirement in the data — true of the games, wrong here, because a young creature
 has few level-up moves and the spare slots were filled with the strongest TMs in the
@@ -630,7 +649,8 @@ Typing is shown on the Battle page of the stat card. *(Battles: on the roadmap.)
 ## Battle stats and training
 
 Each creature has ATK/DEF/SPD/VIT = **base stat** + level + **IV** (0–31, rolled
-at hatch, `IV × level/100` exactly as in the real games) + **training**:
+at hatch, `IV × level/100` exactly as in the real games) + **training**, followed
+by its nature modifier (see [Battle stats & IVs](#battle-stats--ivs)):
 - SPEED ← the **reaction test** (~2 reactions = 1 pt, cap +18 per session)
 - DEFENSE ← accumulated wellbeing (1 h resting or well-cared = +1)
 - STRENGTH ← the training bag (~4 hits = 1 pt, cap +18 per session)

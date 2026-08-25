@@ -17,7 +17,7 @@ const SaveField SAVE_FIELDS[] = {
   // individual values and training
   { "ivat", SK_U8 },    { "ivdf", SK_U8 },    { "ivsp", SK_U8 },
   { "ivhp", SK_U8 },    { "tatk", SK_U8 },    { "tdef", SK_U8 },
-  { "tspe", SK_U8 },    { "giv", SK_BYTES },
+  { "tspe", SK_U8 },    { "nat", SK_U8 },     { "giv", SK_BYTES },
   // moves
   { "mvs", SK_BYTES },  { "mvlv", SK_U8 },
   // flags

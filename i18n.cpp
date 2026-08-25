@@ -18,6 +18,11 @@ const char *medalLabel(int i) {
 const char *medalDesc(int i) {
   return i >= 0 && i < MED_COUNT ? uiString(MEDAL_DESC_BASE + i) : "?";
 }
+const char *natureName(NatureId nature) {
+  static_assert(S_NATURE_QUIRKY - S_NATURE_HARDY + 1 == NATURE_COUNT,
+                "nature strings must match NatureId");
+  return natureValid(nature) ? T((StrId)(S_NATURE_HARDY + (uint8_t)nature)) : "?";
+}
 
 uint8_t langCount() { return uiLocaleCount(); }
 const char *langCode(Lang l) { return uiLocaleInfo(l).locale; }

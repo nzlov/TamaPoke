@@ -4,6 +4,7 @@
 #include "dex.h"
 #include "trainers.h"
 #include "party.h"
+#include "nature.h"
 
 // 1 tick = 1 minuto de juego. Baja este valor para probar mas rapido
 // (p. ej. 5000UL = las estadisticas caen 12x mas rapido).
@@ -118,6 +119,7 @@ public:
   // mediocre no solo empieza peor, es que no puede llegar tan lejos.
   uint8_t ivAtk = 16, ivDef = 16, ivSpe = 16, ivHp = 16;
   uint8_t trAtk = 0, trDef = 0, trSpe = 0;
+  NatureId nature = NATURE_UNKNOWN;
   uint8_t gymIvRewards[GYM_IV_REWARD_SLOTS] = { 0 };
   bool berryKnown = false;  // ya descubrio su baya favorita
   bool shiny = false;       // variante de color rara (se sortea en el huevo)

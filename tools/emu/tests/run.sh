@@ -62,7 +62,7 @@ fi
 
 # Arrays, not a string: the pack directory has to reach the compiler still
 # quoted, and passing these through eval silently strips it.
-CORE=("$ROOT/gbsynth.cpp" "$ROOT/content.cpp" "$ROOT/font_engine.cpp" "$ROOT/pet.cpp" "$ROOT/quiz.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp")
+CORE=("$ROOT/gbsynth.cpp" "$ROOT/content.cpp" "$ROOT/font_engine.cpp" "$ROOT/nature.cpp" "$ROOT/pet.cpp" "$ROOT/quiz.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp")
 read -r -a FT_CFLAGS <<< "$(pkg-config --cflags freetype2)"
 read -r -a FT_LIBS <<< "$(pkg-config --libs freetype2)"
 FLAGS=(-std=c++17 -O1 -w -I"$EMU" -I"$ROOT" "${FT_CFLAGS[@]}" -DCONTENT_DIR="\"$ROOT/web/packs\"")

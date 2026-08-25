@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include "content.h"
+#include "nature.h"
 
 using Lang = uint8_t;
 constexpr Lang LANG_RECOVERY = 0xFF;
@@ -126,6 +127,15 @@ enum StrId : uint8_t {
   // care quiz modal
   S_QUIZ_TITLE, S_QUIZ_ANSWER, S_QUIZ_CORRECT, S_QUIZ_WRONG,
   S_QUIZ_TIMEOUT, S_QUIZ_EFFECT_FMT,
+  S_NATURE_FMT,     // "NATURE: %s" on live and banked creature sheets
+  // Keep these 25 contiguous and in NatureId order; natureName() indexes them.
+  S_NATURE_HARDY, S_NATURE_LONELY, S_NATURE_BRAVE, S_NATURE_ADAMANT,
+  S_NATURE_NAUGHTY, S_NATURE_BOLD, S_NATURE_DOCILE, S_NATURE_RELAXED,
+  S_NATURE_IMPISH, S_NATURE_LAX, S_NATURE_TIMID, S_NATURE_HASTY,
+  S_NATURE_SERIOUS, S_NATURE_JOLLY, S_NATURE_NAIVE, S_NATURE_MODEST,
+  S_NATURE_MILD, S_NATURE_QUIET, S_NATURE_BASHFUL, S_NATURE_RASH,
+  S_NATURE_CALM, S_NATURE_GENTLE, S_NATURE_SASSY, S_NATURE_CAREFUL,
+  S_NATURE_QUIRKY,
   STR_COUNT
 };
 
@@ -133,6 +143,7 @@ const char *T(StrId id);       // texto en el idioma activo
 const char *medalName(int i);  // banner de medalla (MED_COUNT)
 const char *medalLabel(int i); // etiqueta corta de medalla
 const char *medalDesc(int i);  // descripcion larga de medalla
+const char *natureName(NatureId nature);
 
 void loadLang();             // lee el idioma de NVS (llamar en setup)
 void setLang(Lang l);        // cambia y persiste el idioma

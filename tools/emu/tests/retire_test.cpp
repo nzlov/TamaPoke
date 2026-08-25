@@ -55,6 +55,7 @@ int main(){
     young(p, 4, 21);                        // a Charmeleon, nowhere near 3 days
     p.ivAtk=8; p.ivDef=16; p.ivSpe=24; p.ivHp=29;
     p.trAtk=p.trDef=p.trSpe=1;
+    p.nature=NATURE_JOLLY;
     p.gymIvRewards[0]=GYM_IV_REWARD_DEF;
     uint8_t maxAtk=p.trMaxAtk(), maxDef=p.trMaxDef(), maxSpe=p.trMaxSpe();
     ck(!p.canFarewellNow(), "a young creature is not offered a farewell");
@@ -71,6 +72,7 @@ int main(){
        "banking fills training to the caps set by those IVs");
     ck(q.slots[0].gymIvRewards[0]==GYM_IV_REWARD_DEF,
        "banking preserves its claimed gyms and IV reward");
+    ck(q.slots[0].nature==NATURE_JOLLY,"banking preserves its nature");
     ck(p.isEgg(), "and a new egg is waiting");
 
     // THE POINT: the debt is on the new creature

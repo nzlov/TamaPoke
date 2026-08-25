@@ -1,8 +1,10 @@
-// Training is maintained effort, unlike innate IVs. Every complete hour of
-// life keeps 90% of ATK/DEF/SPE training, online and during RTC catch-up.
+// Training is maintained effort, unlike innate IVs. Every complete hour
+// subtracts a fixed percentage of that individual's IV-based training CAP,
+// online and during RTC catch-up.
 #include "Arduino.h"
 #include "Preferences.h"
 #include "pet.h"
+#include "nature.h"
 #include <cstdio>
 
 uint32_t g_seed=31; FakeSerial Serial; FakeESP ESP; FakeWire Wire;
@@ -15,6 +17,7 @@ static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!
 
 static void ready(Pet &p){
   p.dbgHatchAs(6,false);
+  p.nature=NATURE_ADAMANT;  // a canonical stat nature: no training modifier
   p.ivAtk=p.ivDef=p.ivSpe=p.ivHp=31;
   p.trAtk=p.trDef=p.trSpe=100;
   // Prevent the passive DEF tick from hiding the decay under a +1 gain.
@@ -30,18 +33,58 @@ int main(){
        "training does not decay before a complete hour");
     p.dbgTick();
     ck(p.trAtk==90 && p.trDef==90 && p.trSpe==90,
-       "one live hour keeps exactly 90 percent");
+       "one live hour subtracts ten percent of the cap");
     for(int i=0;i<60;i++) p.dbgTick();
-    ck(p.trAtk==81 && p.trDef==81 && p.trSpe==81,
-       "hourly decay compounds from the current value");
+    ck(p.trAtk==80 && p.trDef==80 && p.trSpe==80,
+       "hourly decay stays based on the cap instead of compounding");
+  }
+
+  {
+    Pet p; ready(p); p.trAtk=p.trDef=p.trSpe=50;
+    for(int i=0;i<60;i++) p.dbgTick();
+    ck(p.trAtk==40 && p.trDef==40 && p.trSpe==40,
+       "decay uses the cap even when current training is lower");
   }
 
   {
     Pet p; ready(p);
     p.dbgSetSeen(1000);
     p.syncClock(1000 + 120*60);
-    ck(p.trAtk==81 && p.trDef==81 && p.trSpe==81,
+    ck(p.trAtk==80 && p.trDef==80 && p.trSpe==80,
        "two offline hours apply the same two decay steps");
+  }
+
+  // The training natures use 9% for a strengthened channel and 11% for a
+  // weakened one. Each loss is rounded UP from the IV-based cap.
+  {
+    Pet p; ready(p); p.nature=NATURE_HARDY;
+    for(int i=0;i<60;i++) p.dbgTick();
+    ck(p.trAtk==91 && p.trDef==90 && p.trSpe==90,
+       "Hardy slows attack-training decay");
+  }
+  {
+    Pet p; ready(p); p.nature=NATURE_BASHFUL;
+    for(int i=0;i<60;i++) p.dbgTick();
+    ck(p.trAtk==89 && p.trDef==91 && p.trSpe==90,
+       "Bashful speeds attack decay and slows defence decay");
+  }
+  {
+    Pet p; ready(p); p.nature=NATURE_QUIRKY;
+    for(int i=0;i<60;i++) p.dbgTick();
+    ck(p.trAtk==91 && p.trDef==89 && p.trSpe==90,
+       "Quirky slows attack decay and speeds defence decay");
+  }
+  {
+    Pet p; ready(p); p.nature=NATURE_SERIOUS;
+    p.dbgSetSeen(1000); p.syncClock(1000+60*60);
+    ck(p.trAtk==90 && p.trDef==90 && p.trSpe==91,
+       "offline catch-up applies the same slower speed decay");
+  }
+
+  {
+    Pet p; ready(p); p.ivAtk=8; p.trAtk=77; p.nature=NATURE_HARDY;
+    for(int i=0;i<60;i++) p.dbgTick();
+    ck(p.trAtk==70,"a 9-percent loss from cap 77 rounds up to seven");
   }
 
   {

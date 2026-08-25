@@ -24,6 +24,10 @@ struct LegacyPartyMonV1 {
   char nick[12] = "";
   MoveId moves[MOVE_SLOTS] = { 0, 0, 0, 0 };
 };
+struct LegacyPartyMonV2 {
+  LegacyPartyMonV1 mon;
+  uint8_t gymIvRewards[GYM_IV_REWARD_SLOTS] = { 0 };
+};
 static PartyMon mk(int dex,int lvl){ PartyMon m; m.dex=dex; m.level=lvl;
   m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20; return m; }
 
@@ -113,6 +117,31 @@ int main(){
        "the previous box record layout migrates too");
     ck(!migrated.slots[1].gymIvRewards[0] && !migrated.box[4].gymIvRewards[0],
        "legacy creatures start with unclaimed gym IV bytes");
+  }
+
+  // The immediately previous record already had gym history but no nature.
+  // It must keep every byte and receive one stable migrated nature.
+  {
+    Preferences seed; seed.begin("tamapoke", false); seed.clear();
+    LegacyPartyMonV2 oldParty[PARTY_SLOTS];
+    LegacyPartyMonV2 oldBox[BOX_SLOTS];
+    oldParty[2].mon.dex=94; oldParty[2].mon.level=55;
+    oldParty[2].mon.ivAtk=9; oldParty[2].mon.ivDef=17;
+    oldParty[2].mon.ivSpe=25; oldParty[2].mon.ivHp=31;
+    oldParty[2].gymIvRewards[8]=GYM_IV_REWARD_HP;
+    oldBox[5].mon.dex=149; oldBox[5].mon.level=73;
+    oldBox[5].gymIvRewards[16]=GYM_IV_REWARD_ATK;
+    seed.putBytes("party", oldParty, sizeof(oldParty));
+    seed.putBytes("box", oldBox, sizeof(oldBox)); seed.end();
+    Party migrated; migrated.begin();
+    ck(migrated.slots[2].dex==94 && migrated.slots[2].level==55 &&
+       migrated.slots[2].gymIvRewards[8]==GYM_IV_REWARD_HP,
+       "the pre-nature party layout preserves its gym history");
+    ck(migrated.box[5].dex==149 && migrated.box[5].level==73 &&
+       migrated.box[5].gymIvRewards[16]==GYM_IV_REWARD_ATK,
+       "the pre-nature box layout preserves its gym history");
+    ck(natureValid(migrated.slots[2].nature) && natureValid(migrated.box[5].nature),
+       "pre-nature banked creatures receive stable valid natures");
   }
 
   printf("%s\n", bad?"FAILURES":"all good");

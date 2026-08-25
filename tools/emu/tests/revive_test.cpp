@@ -18,7 +18,7 @@ static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!
 int main(){
   Pet p; p.begin();
   if (p.awaitingStarter()) p.chooseStarter(4);
-  PartyMon m; m.dex=6; m.level=61; m.shiny=1;
+  PartyMon m; m.dex=6; m.level=61; m.shiny=1; m.nature=NATURE_BRAVE;
   m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=24; m.trAtk=m.trDef=m.trSpe=35;
   m.gymIvRewards[3]=GYM_IV_REWARD_HP;
   m.moves[0]=1; m.moves[1]=2;
@@ -29,6 +29,7 @@ int main(){
   ck(p.shiny && !strcmp(p.nick,"BLAZE"), "keeps its shininess and its name");
   ck(p.moves[0]==1 && p.moves[1]==2, "and its moveset");
   ck(p.gymIvRewards[3]==GYM_IV_REWARD_HP, "and its per-creature gym history");
+  ck(p.nature==NATURE_BRAVE,"and its nature");
   ck(p.frozen, "and is marked frozen");
 
   // it must not age, however long passes
@@ -48,7 +49,8 @@ int main(){
 
   // it survives a reload, still frozen
   Pet q; q.begin();
-  ck(q.frozen && q.speciesId==6, "stays frozen across a reload");
+  ck(q.frozen && q.speciesId==6 && q.nature==NATURE_BRAVE,
+     "stays frozen with its nature across a reload");
 
   // and a brand new egg is a normal life again
   q.newEgg();
