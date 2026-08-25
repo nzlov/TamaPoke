@@ -40,10 +40,10 @@ int main(){
       int out=0;
       for (int i=0;i<400;i++){
         int16_t d = p.pickEggSpecies();
-        if (d < ri.lo || d > ri.hi) out++;
+        if (d < ri.lo || d > ri.hi || !spriteAvailable(d)) out++;
       }
       char msg[80];
-      snprintf(msg,sizeof(msg),"%s eggs stay within %u..%u", ri.name, ri.lo, ri.hi);
+      snprintf(msg,sizeof(msg),"%s eggs stay in range and have art", ri.name);
       ck(out==0, msg);
     }
   }
@@ -52,12 +52,16 @@ int main(){
   {
     Pet p; seed(p);
     p.setRegion(regionAll());
-    bool gen[3]={false,false,false};
-    for (int i=0;i<900;i++){
+    bool seen[CONTENT_MAX_REGIONS]={false};
+    for (int i=0;i<3600;i++){
       int16_t d = p.pickEggSpecies();
-      gen[d<=151?0:(d<=251?1:2)] = true;
+      uint8_t region = regionOfDex(d);
+      if (region < regionAll()) seen[region] = true;
     }
-    ck(gen[0]&&gen[1]&&gen[2], "ALL draws from all three generations");
+    bool allSeen = true;
+    for (uint8_t region=0; region<regionAll(); region++)
+      if (!seen[region]) allSeen = false;
+    ck(allSeen, "ALL draws from every installed region");
   }
 
   // --- a first egg gives a starter from the chosen region

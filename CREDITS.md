@@ -25,9 +25,9 @@ This project is not affiliated with or endorsed by any of those companies.
 | Resource | Source | Use in the project |
 |---|---|---|
 | **All sprites** (idle, walk, sleep, eat, hurt, attack…) | [PMD Sprite Collaboration (PMDCollab/SpriteCollab)](https://github.com/PMDCollab/SpriteCollab) | Mystery-Dungeon-style animated sprites used everywhere: main screen, stat card, minigame, and the Pokédex grid + detail view |
-| **Base stats and learnsets** | [PokéAPI](https://pokeapi.co) | Real stats and level-up moves for the current 493-species catalogue |
+| **Base stats and learnsets** | [PokéAPI](https://pokeapi.co) | Real stats and level-up moves for the current 1025-species catalogue |
 | **Simplified-Chinese species and move names** | [42arch/pokemon-dataset-zh](https://github.com/42arch/pokemon-dataset-zh) | Pack authoring data in `tools/name_locales.json`, emitted as localized-name sections in region and move packs — © 2024 42arch, **MIT**; the source dataset credits 52Poké Wiki |
-| **Gym badges** | [SteGriff/pokemon-badges](https://github.com/SteGriff/pokemon-badges) | Pack authoring data in `tools/region_data.json`, emitted into regional packs — Stephen Griffiths 2011, **CC BY 3.0**, traced from Bulbapedia |
+| **Gym badges** | [SteGriff/pokemon-badges](https://github.com/SteGriff/pokemon-badges) | Kanto through Unova pack data — Stephen Griffiths 2011, **CC BY 3.0**, traced from Bulbapedia |
 | **Gym leader teams** (Johto, Hoenn) | [pret/pokecrystal](https://github.com/pret/pokecrystal), [pret/pokeemerald](https://github.com/pret/pokeemerald) | Verified against the games' own trainer tables by `tools/verify_rosters.py` — no art is taken, only the team data |
 
 The **SpriteCollab** sprites are the work of its community of artists under their
@@ -95,8 +95,11 @@ replace them if that cannot be answered.
 league badges, Kanto through Unova, traced from Bulbapedia. Stephen Griffiths,
 2011, **CC BY 3.0** (attribution required, commercial use permitted).
 
-The rendered 32x32 palettes and indices are kept in `tools/region_data.json` and
-`tools/gen_data_packs.py` places them in the corresponding `.tregion` file.
+The rendered Kanto-through-Unova 32x32 palettes and indices are kept in
+`tools/region_data.json`. Kalos, Alola, Galar, and Paldea use original
+type-colour challenge emblems created for TamaPoke rather than official badge
+art. `tools/gen_data_packs.py` places both forms in their corresponding
+`.tregion` files.
 
 **CC BY requires this attribution to travel with anything built from it** --
 firmware binaries included, not just the source.

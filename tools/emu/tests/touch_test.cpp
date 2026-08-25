@@ -11,6 +11,7 @@
 #include "party.h"
 #include "moves.h"
 #include "battle.h"
+#include "trainers.h"
 #include <chrono>
 #include <thread>
 #include <string>
@@ -39,8 +40,10 @@ extern uint8_t movePickSlot, movePickPage;
 extern bool battleOpen, btlOver, btlWon;
 extern Combatant btlYou, btlFoe;
 extern uint8_t btlMsgCount;
+extern uint8_t gymRegion, btlRegion;
 void startBattle(int16_t dex, uint8_t lvl);
 void startTrainerBattle(uint8_t idx, bool hard);
+void battleTap(int16_t x, int16_t y);
 extern uint8_t btlFoeAt, btlSquadN, btlSquadAt, btlMenu;
 extern Combatant btlSquad[7];
 extern int8_t btlSwapWho;
@@ -325,6 +328,52 @@ int main(int argc, char **argv) {
   if (!btlWon) { printf("FAIL: a L100 creature lost to Brock\n"); return 1; }
   if (!pet.hasBadge(0, 0, false) || hadBadge) { printf("FAIL: no badge awarded\n"); return 1; }
   printf("PASS: beating a leader awards its badge (%u/8)\n", pet.badgeCount(false));
+
+  // A trainer battle snapshots the selected region. Before that handoff was
+  // added, the first opponent came from gymRegion but every later one came
+  // from region 0; Katy therefore continued with Brock's team. Walk every
+  // member of every packed trainer so the third through sixth slots are
+  // covered as well as the originally reported second slot.
+  uint16_t regionalTrainers = 0, regionalMembers = 0;
+  for (uint8_t region = 0; region < regionAll(); region++) {
+    const RegionBattleInfo &battle = regionBattleInfo(region);
+    for (uint8_t trainer = 0; trainer < battle.trainerCount; trainer++) {
+      battleOpen = false;
+      gymRegion = region;
+      const Trainer &expected = trainerInfo(region, trainer);
+      startTrainerBattle(trainer, false);
+      if (btlRegion != region || btlFoeAt != 0 ||
+          btlFoe.dex != expected.team[0].dex ||
+          btlFoe.level != expected.team[0].level) {
+        printf("FAIL: region %u trainer %u member 0 crossed battle context\n",
+               region, trainer);
+        return 1;
+      }
+      for (uint8_t member = 1; member < expected.count; member++) {
+        btlFoe.hp = 0;
+        btlSwapWho = 1;
+        btlMsgCount = 1;
+        battleTap(0, 0);                  // dismiss faint text and send the next one
+        if (btlRegion != region || btlFoeAt != member ||
+            btlFoe.dex != expected.team[member].dex ||
+            btlFoe.level != expected.team[member].level) {
+          printf("FAIL: region %u trainer %u member %u became dex %u L%u "
+                 "instead of dex %u L%u (battle region %u)\n",
+                 region, trainer, member, btlFoe.dex, btlFoe.level,
+                 expected.team[member].dex, expected.team[member].level, btlRegion);
+          return 1;
+        }
+      }
+      regionalTrainers++;
+      regionalMembers += expected.count;
+    }
+  }
+  printf("PASS: all %u members of %u trainer teams stay in their own region\n",
+         regionalMembers, regionalTrainers);
+  battleOpen = false;
+  btlMsgCount = 0;
+  btlSwapWho = -1;
+  gymRegion = 0;
 
   // ---- hard mode caps the team to the opponent's size AND level
   battleOpen = false;

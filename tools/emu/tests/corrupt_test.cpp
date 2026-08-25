@@ -16,8 +16,10 @@ String FakeSerial::readStringUntil(char) { return String(""); }
 void sfxPlay(uint8_t) {}
 
 int main() {
-  bool ok = contentBegin() && contentReady() && contentPackCount() == 13 &&
-            regionAll() == 4 && dexCount() == 493 && dexValid(1) &&
+  bool ok = contentBegin() && contentReady() &&
+            contentPackCount() == uiLocaleCount() + regionAll() + 2 &&
+            regionCount() == regionAll() + 1 &&
+            dexCount() == regionInfo(regionAll()).hi && dexValid(1) &&
             regionBattleAvailable(0);
   printf("%s  a CRC-valid bad region is ignored without poisoning later packs\n",
          ok ? "PASS" : "FAIL");

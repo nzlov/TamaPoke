@@ -74,6 +74,96 @@
             {"name": "悟松", "place": "四天王"},
             {"name": "竹兰", "place": "冠军"}
           ]
+        },
+        "UNOVA": {
+          "name": "合众",
+          "trainers": [
+            {"name": "黑连", "place": "桧扇市"},
+            {"name": "霍米加", "place": "立涌市"},
+            {"name": "亚堤", "place": "飞云市"},
+            {"name": "小菊儿", "place": "雷文市"},
+            {"name": "菊老大", "place": "帆巴市"},
+            {"name": "风露", "place": "吹寄市"},
+            {"name": "夏卡", "place": "双龙市"},
+            {"name": "西子伊", "place": "青海波市"},
+            {"name": "婉龙", "place": "四天王"},
+            {"name": "越橘", "place": "四天王"},
+            {"name": "嘉德丽雅", "place": "四天王"},
+            {"name": "连武", "place": "四天王"},
+            {"name": "艾莉丝", "place": "冠军"}
+          ]
+        },
+        "KALOS": {
+          "name": "卡洛斯",
+          "trainers": [
+            {"name": "紫罗兰", "place": "白檀市"},
+            {"name": "查克洛", "place": "遥香市"},
+            {"name": "可尔妮", "place": "娑罗市"},
+            {"name": "福爷", "place": "比翼市"},
+            {"name": "希特隆", "place": "密阿雷市"},
+            {"name": "玛绣", "place": "香薰市"},
+            {"name": "葛吉花", "place": "百刻市"},
+            {"name": "得抚", "place": "映雪市"},
+            {"name": "雁铠", "place": "四天王"},
+            {"name": "帕琦拉", "place": "四天王"},
+            {"name": "朵拉塞娜", "place": "四天王"},
+            {"name": "志米", "place": "四天王"},
+            {"name": "卡露妮", "place": "冠军"}
+          ]
+        },
+        "ALOLA": {
+          "name": "阿罗拉",
+          "trainers": [
+            {"name": "伊利马", "place": "葱郁洞窟"},
+            {"name": "水莲", "place": "潺潺之丘"},
+            {"name": "卡奇", "place": "维拉火山公园"},
+            {"name": "玛奥", "place": "树荫丛林"},
+            {"name": "马玛内", "place": "辉克拉尼天文台"},
+            {"name": "阿塞萝拉", "place": "超值超市旧址"},
+            {"name": "茉莉", "place": "海洋居民之村"},
+            {"name": "哈普乌", "place": "波尼岛"},
+            {"name": "马睿因", "place": "四天王"},
+            {"name": "丽姿", "place": "四天王"},
+            {"name": "阿塞萝拉", "place": "四天王"},
+            {"name": "卡希丽", "place": "四天王"},
+            {"name": "哈乌", "place": "冠军"}
+          ]
+        },
+        "GALAR": {
+          "name": "伽勒尔",
+          "trainers": [
+            {"name": "亚洛", "place": "草路镇"},
+            {"name": "露璃娜", "place": "水舟镇"},
+            {"name": "卡芜", "place": "机擎市"},
+            {"name": "彩豆", "place": "溯传镇"},
+            {"name": "波普菈", "place": "舞姿镇"},
+            {"name": "玛瓜", "place": "战竞镇"},
+            {"name": "聂梓", "place": "尖钉镇"},
+            {"name": "奇巴纳", "place": "拳关市"},
+            {"name": "玛俐", "place": "冠军杯"},
+            {"name": "露璃娜", "place": "冠军杯"},
+            {"name": "彩豆", "place": "冠军杯"},
+            {"name": "奇巴纳", "place": "冠军杯"},
+            {"name": "丹帝", "place": "冠军"}
+          ]
+        },
+        "PALDEA": {
+          "name": "帕底亚",
+          "trainers": [
+            {"name": "阿枫", "place": "圆模镇"},
+            {"name": "寇沙", "place": "深钵镇"},
+            {"name": "奇树", "place": "酿光市"},
+            {"name": "海岱", "place": "玻瓶市"},
+            {"name": "青木", "place": "锦汇镇"},
+            {"name": "莱姆", "place": "冰柜镇"},
+            {"name": "莉普", "place": "焙固镇"},
+            {"name": "古鲁夏", "place": "霜抹山"},
+            {"name": "辛俐", "place": "四天王"},
+            {"name": "波琵", "place": "四天王"},
+            {"name": "青木", "place": "四天王"},
+            {"name": "八朔", "place": "四天王"},
+            {"name": "也慈", "place": "冠军"}
+          ]
         }
       }
     }

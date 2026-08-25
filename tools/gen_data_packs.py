@@ -365,10 +365,7 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path) -> None:
             append_region_manifest(manifest, path, region_name, lo, hi, battle)
             continue
         if normal_count != len(rows):
-            raise ValueError(
-                f"{region_name}: {normal_count}/{len(rows)} normal sprite sources found; "
-                "refusing to replace a complete region pack with a partial one"
-            )
+            print(f"{region_name}: packing {normal_count}/{len(rows)} species with art")
         thumbs_path = sprite_dir / "thumbs.bin"
         if not thumbs_path.exists():
             raise FileNotFoundError(f"{thumbs_path} is required to rebuild regional packs")
@@ -434,9 +431,10 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path) -> None:
         sprites = bytearray()
         sprite_index = bytearray()
         for number, *_ in rows:
-            normal = (sprite_dir / f"p{number:03d}.bin").read_bytes()
+            normal_path = sprite_dir / f"p{number:03d}.bin"
+            normal = normal_path.read_bytes() if normal_path.exists() else b""
             shiny_path = sprite_dir / f"ps{number:03d}.bin"
-            shiny = shiny_path.read_bytes() if shiny_path.exists() else b""
+            shiny = shiny_path.read_bytes() if normal and shiny_path.exists() else b""
             normal_at = len(sprites)
             sprites.extend(normal)
             shiny_at = len(sprites)

@@ -57,10 +57,10 @@ def local():
     if not os.path.isdir(d):
         return have
     for f in os.listdir(d):
-        if f.startswith('p') and f[1:4].isdigit() and f.endswith('.bin'):
-            have.add(int(f[1:4]))
-        elif f.startswith('ps') and f[2:5].isdigit():
-            have.add(int(f[2:5]))
+        if f.startswith('p') and not f.startswith('ps') and f.endswith('.bin'):
+            number = f[1:-4]
+            if number.isdigit():
+                have.add(int(number))
     return have
 
 

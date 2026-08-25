@@ -92,9 +92,14 @@ int main(){
   // render, so contentLoadThumbs validates the complete embedded TPTH first.
   {
     ck(thumbs.load(), "the packed thumbnail table passes semantic validation");
-    int missing = 0;
-    for (int16_t d = 1; d <= dexCount(); d++) if (!thumbs.get(d)) missing++;
-    ck(missing == 0, "every installed species has a safe thumbnail offset");
+    int missing = 0, inconsistent = 0;
+    for (int16_t d = 1; d <= dexCount(); d++) {
+      if (thumbs.get(d)) continue;
+      missing++;
+      if (spriteAvailable(d)) inconsistent++;
+    }
+    printf("      %d species intentionally have no community art\n", missing);
+    ck(inconsistent == 0, "thumbnail gaps match unavailable animated sprites");
   }
 
   printf("%s\n", bad?"FAILURES":"all good");

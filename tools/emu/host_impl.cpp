@@ -74,7 +74,7 @@ const uint8_t *SdThumbs::get(int16_t dex) const {
   if (!loaded || dex < 1 || dex > count) return nullptr;
   uint32_t off;
   memcpy(&off, data + 6 + 4 * (dex - 1), 4);
-  return data + off;
+  return off ? data + off : nullptr;
 }
 
 bool sdBegin() {

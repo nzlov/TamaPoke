@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pull the 151 from PokeAPI: 6 base stats and the learnsets for our move list.
+"""Pull the full authored dex from PokeAPI: base stats and compact learnsets.
 
   python3 tools/fetch_pokeapi.py
 
@@ -66,7 +66,19 @@ def level_vg(num):
         return 'firered-leafgreen'
     if num <= 251:
         return 'crystal'
-    return 'emerald'
+    if num <= 386:
+        return 'emerald'
+    if num <= 493:
+        return 'platinum'
+    if num <= 649:
+        return 'black-2-white-2'
+    if num <= 721:
+        return 'x-y'
+    if num <= 809:
+        return 'ultra-sun-ultra-moon'
+    if num <= 905:
+        return 'sword-shield'
+    return 'scarlet-violet'
 
 
 def fetch(num):
@@ -75,11 +87,21 @@ def fetch(num):
         with open(path) as f:
             return json.load(f)
     os.makedirs(CACHE, exist_ok=True)
-    # PokeAPI 403s the default python-urllib agent, same as SpriteCollab does
-    # in pack_pmd.py
-    req = urllib.request.Request(API % num, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req, timeout=30, context=SSL_CTX) as r:
-        data = json.load(r)
+    # GLUE: gen_dex_data keeps the full response under a URL-derived name,
+    # while this older generator keeps a compact numeric cache. Remove this
+    # bridge when both generators share one cache implementation.
+    full_path = os.path.join(CACHE, 'pokemon_%d.json' % num)
+    downloaded = not os.path.exists(full_path)
+    if downloaded:
+        # PokeAPI 403s the default python-urllib agent, same as SpriteCollab
+        # does in pack_pmd.py.
+        req = urllib.request.Request(API % num,
+                                     headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=30, context=SSL_CTX) as r:
+            data = json.load(r)
+    else:
+        with open(full_path) as f:
+            data = json.load(f)
     # keep only what we need; the raw payloads are ~200 KB each
     slim = {
         'name': data['name'],
@@ -98,7 +120,8 @@ def fetch(num):
     }
     with open(path, 'w') as f:
         json.dump(slim, f)
-    time.sleep(0.15)  # be polite to a free API
+    if downloaded:
+        time.sleep(0.15)  # be polite to a free API
     return slim
 
 
@@ -126,7 +149,8 @@ def main():
             # Levels are read from ONE version group, not min()'d across all of
             # them: evolved forms relearn their basics at level 1 on evolving in
             # some games, and the minimum flattened Charizard's whole set to 1.
-            # FireRed/LeafGreen is the pick -- Kanto, all 151, properly gated.
+            # Each generation uses one representative version group so its
+            # level gates remain meaningful instead of being mixed together.
             lvlup = [lvl for meth, lvl, vg in m['details']
                      if meth == 'level-up' and vg == level_vg(num) and lvl > 0]
             if not lvlup:   # not in that game (or only at level 1): any game

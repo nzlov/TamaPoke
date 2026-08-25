@@ -372,6 +372,7 @@ static int16_t pickRegionSpecies(const RegionInfo &rg, uint8_t tier,
   int16_t selected = 0;
   uint16_t seen = 0;
   for (int16_t d = rg.lo; d <= rg.hi; d++) {
+    if (!spriteAvailable(d)) continue;
     if (dexEntry(d).rarity != tier) continue;
     if (incompleteOnly && !pet.lineHasUnregistered(d)) continue;
     if (!regionAvailable(regionOfDex(d))) continue;

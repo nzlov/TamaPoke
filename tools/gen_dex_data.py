@@ -3,7 +3,7 @@
 
     python3 tools/gen_dex_data.py --check      # compare against the hand data
     python3 tools/gen_dex_data.py --link       # link evolutions whose target now exists
-    python3 tools/gen_dex_data.py --emit 493   # write the new dex_data/dex_types
+    python3 tools/gen_dex_data.py --emit 1025  # write the new dex_data/dex_types
 
 dex_data.py and dex_types.py were hand-written for the 151. Extending them by
 hand means hundreds of names, typings, evolution targets and levels, so this
@@ -21,6 +21,7 @@ import os
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, 'pokeapi_cache')
@@ -78,12 +79,22 @@ def get(url):
     path = os.path.join(CACHE, key + '.json')
     if os.path.exists(path):
         return json.load(open(path))
-    r = subprocess.run(['curl', '-fsSL', url], capture_output=True)
+    r = subprocess.run(['curl', '-fsSL', '--retry', '3', '--retry-delay', '1', url],
+                       capture_output=True)
     if r.returncode != 0:
         raise SystemExit('fetch failed: %s' % url)
     d = json.loads(r.stdout)
     json.dump(d, open(path, 'w'))
     return d
+
+
+def prefetch(urls):
+    """Populate the existing per-URL cache without changing build order."""
+    unique = list(dict.fromkeys(urls))
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        for done, _data in enumerate(executor.map(get, unique), 1):
+            if done % 50 == 0 or done == len(unique):
+                print('  cached %d/%d' % (done, len(unique)))
 
 
 def display_name(num, slug):
@@ -129,12 +140,23 @@ def walk_chain(node, out, branches, nonbase):
 
 
 def build(limit):
+    species_urls = [
+        'https://pokeapi.co/api/v2/pokemon-species/%d' % n
+        for n in range(1, limit + 1)
+    ]
+    pokemon_urls = [
+        'https://pokeapi.co/api/v2/pokemon/%d' % n
+        for n in range(1, limit + 1)
+    ]
+    prefetch(species_urls + pokemon_urls)
+    species_rows = [get(url) for url in species_urls]
+    prefetch(sorted({row['evolution_chain']['url'] for row in species_rows}))
+
     evo, branches, nonbase = {}, {}, set()
     seen_chains = set()
     rows, types, legend, capture = [], {}, set(), {}
-    for n in range(1, limit + 1):
-        sp = get('https://pokeapi.co/api/v2/pokemon-species/%d' % n)
-        pk = get('https://pokeapi.co/api/v2/pokemon/%d' % n)
+    for n, sp in enumerate(species_rows, 1):
+        pk = get(pokemon_urls[n - 1])
         cu = sp['evolution_chain']['url']
         if cu not in seen_chains:
             seen_chains.add(cu)

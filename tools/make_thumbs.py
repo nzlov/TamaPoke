@@ -7,7 +7,7 @@ estilo que la pantalla principal. Formato TPTH (little-endian):
 
   char[4] "TPTH"
   uint16  count
-  uint32  offset[count]    (desde el inicio del archivo, 1-based: offset[0]=dex 1)
+  uint32  offset[count]    (desde el inicio; 0 cuando no existe arte comunitario)
   blobs:  u8 w, u8 h, u8 palCount, u16 pal[palCount], u8 data[w*h] (0xFF transp.)
 
   python3 tools/make_thumbs.py
@@ -72,6 +72,9 @@ def main():
     blobs = []
     for dex in range(1, DEX_COUNT + 1):
         path = os.path.join(DIR, f'p{dex:03d}.bin')
+        if not os.path.exists(path):
+            blobs.append(None)
+            continue
         w, h, pal, data = read_pmd_idle_frame0(path)
         nw, nh, npal, ndata = shrink(w, h, pal, data)
         if len(npal) > 255:
@@ -84,8 +87,9 @@ def main():
     head = 4 + 2 + 4 * DEX_COUNT
     offsets, pos = [], head
     for b in blobs:
-        offsets.append(pos)
-        pos += len(b)
+        offsets.append(pos if b is not None else 0)
+        if b is not None:
+            pos += len(b)
 
     out = os.path.join(DIR, 'thumbs.bin')
     with open(out, 'wb') as f:
@@ -93,8 +97,10 @@ def main():
         f.write(struct.pack('<H', DEX_COUNT))
         f.write(struct.pack('<%dI' % DEX_COUNT, *offsets))
         for b in blobs:
-            f.write(b)
-    print(f"guardado {out}: {pos / 1024:.0f} KB, {len(blobs)} miniaturas")
+            if b is not None:
+                f.write(b)
+    available = sum(b is not None for b in blobs)
+    print(f"guardado {out}: {pos / 1024:.0f} KB, {available}/{len(blobs)} miniaturas")
 
 
 if __name__ == '__main__':

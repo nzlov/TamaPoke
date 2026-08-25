@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """The move list, hand-authored. Source of truth for the move data pack.
 
-89 moves, trimmed from the main-series catalogues for this battle model:
-76 attacking moves, 11 stat-stage moves and 2 heals.
+93 moves, trimmed from the main-series catalogues for this battle model:
+80 attacking moves, 11 stat-stage moves and 2 heals.
 
 Not a pure Gen 1 list, and it can't be. dex_types.py gives the 151 their
 CURRENT typings, so the dex contains Fairy (Clefable, Mr. Mime), Steel
@@ -213,6 +213,12 @@ MOVES = [
     # STAB; Darkrai is SpA 135 / Atk 90, so neither was usable to it. It learns
     # DARK PULSE by level-up at 27, so this is its real move, not a contrivance.
     ("DARK PULSE",   "dark-pulse",    'dark',     MC_SPEC,  80, 100, EF_NONE,      0, 0, 0, TG_FOE),  # LATER (Gen 4)
+    # Later-generation base forms whose real same-type attacks are otherwise
+    # absent from the compact catalogue. Appending preserves every saved ID.
+    ("STRUGGLE BUG", "struggle-bug",  'bug',      MC_SPEC,  50, 100, EF_STAGE,     0, ST_SPA, -1, TG_FOE),
+    ("SNARL",        "snarl",         'dark',     MC_SPEC,  55,  95, EF_STAGE,     0, ST_SPA, -1, TG_FOE),
+    ("ASTONISH",     "astonish",      'ghost',    MC_PHYS,  30, 100, EF_NONE,      0, 0, 0, TG_FOE),
+    ("CLOSE COMBAT", "close-combat", 'fighting', MC_PHYS, 120, 100, EF_STAGE,     0, ST_DEF | ST_SPD, -1, TG_SELF),
 ]
 
 # Accuracy drops (SAND ATTACK, SMOKESCREEN, FLASH) are deliberately left out:

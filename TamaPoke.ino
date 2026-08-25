@@ -3583,9 +3583,10 @@ void startLinkBattle() {
 }
 
 void startTrainerBattle(uint8_t idx, bool hard) {
-  if (idx >= regionBattleInfo(gymRegion).trainerCount ||
+  const uint8_t region = gymRegion;
+  if (idx >= regionBattleInfo(region).trainerCount ||
       pet.isEgg() || pet.ceremony != CER_NONE) return;
-  const Trainer &tr = trainerInfo(gymRegion, idx);
+  const Trainer &tr = trainerInfo(region, idx);
   uint8_t top = 0;
   for (int k = 0; k < tr.count; k++)
     if (tr.team[k].level > top) top = tr.team[k].level;
@@ -3594,12 +3595,12 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   // size cap on top, plus a smarter AI and better opposing IVs.
   buildSquad(top, hard ? tr.count : TRAINER_TEAM_MAX, squadMask);
   if (!btlSquadN) return;
+  btlRegion = region;
   btlTrainer = (int8_t)idx;
   btlHard = hard;
   btlFoeAt = 0;
-  const Trainer &t = trainerInfo(gymRegion, idx);
-  const RegionBattleInfo &battle = regionBattleInfo(gymRegion);
-  foeFromSpecies(btlFoe, t.team[0].dex, t.team[0].level,
+  const RegionBattleInfo &battle = regionBattleInfo(btlRegion);
+  foeFromSpecies(btlFoe, tr.team[0].dex, tr.team[0].level,
                  hard ? battle.hardIv : battle.easyIv);
   btlMsgCount = 0;
   btlOver = false;

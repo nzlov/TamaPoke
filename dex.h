@@ -42,6 +42,7 @@ struct RegionInfo {
 
 uint16_t dexCount();
 bool dexValid(SpeciesId id);
+bool spriteAvailable(SpeciesId id);
 const DexEntry &dexEntry(SpeciesId id);
 uint8_t evolutionCount(SpeciesId id);
 SpeciesId evolutionTarget(SpeciesId id, uint8_t index);

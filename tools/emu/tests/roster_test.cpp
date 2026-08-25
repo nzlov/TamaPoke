@@ -1,12 +1,11 @@
-// The three gym ladders as DATA. Every entry is hand-authored, so the failure
+// The regional challenge ladders as DATA. Every entry is hand-authored, so the failure
 // mode is a typo that puts a creature outside the dex or a level outside the
 // curve -- and a bad dex number must be rejected before a runtime lookup.
 //
-// All three ladders are VERIFIED against the games themselves: Kanto by hand
-// against FireRed/LeafGreen, and Johto and Hoenn by tools/verify_rosters.py,
-// which diffs them against pokecrystal and pokeemerald -- the disassemblies, so
-// the games' own tables rather than somebody's transcription. Re-run it after
-// touching a roster; it reports zero differences across all 26 trainers.
+// Kanto was checked by hand against FireRed/LeafGreen; Johto and Hoenn are
+// checked by tools/verify_rosters.py against pokecrystal and pokeemerald. The
+// later ladders target their selected games, with Alola and Galar mapped onto
+// the same 8+4+champion runtime progression.
 //
 // This test is the cheap always-on half: it cannot know what is canonical, but
 // it catches the mistakes that would crash or unbalance the game.

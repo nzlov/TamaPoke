@@ -1,7 +1,7 @@
 // First boot: pick a region, then pick a starter from it.
 //
 // The screen is two steps now, and the thing worth pinning is that it reads its
-// species from dex.h's per-region starter arrays rather than a copy. Those same
+// species from each region pack's starter array rather than a copy. Those same
 // arrays are the pool a region's FIRST EGG is drawn from (pet.cpp rollInRegion),
 // where Kanto's five deliberately include Pikachu and Eevee -- so the array must
 // not be trimmed to match the screen, and the screen must not drift if somebody
@@ -37,10 +37,12 @@ int main(){
 
   // --- the canonical trio, pinned. Reordering pack starters would change
   // the first screen anyone sees, and nothing else would notice.
-  const int16_t want[4][3] = {
+  const int16_t want[9][3] = {
     {1,4,7}, {152,155,158}, {252,255,258}, {387,390,393},
+    {495,498,501}, {650,653,656}, {722,725,728},
+    {810,813,816}, {906,909,912},
   };
-  for (uint8_t r = 0; r < 4; r++) {
+  for (uint8_t r = 0; r < regionAll(); r++) {
     bool ok = starterCountShown(r) == 3;
     for (uint8_t i = 0; i < 3; i++) if (starterOf(r,i) != want[r][i]) ok = false;
     char m[64]; snprintf(m,sizeof(m),"%s offers its canonical three", regionInfo(r).name);
@@ -50,7 +52,7 @@ int main(){
   // --- and every one of them really belongs to that region's dex range
   {
     bool ok = true;
-    for (uint8_t r = 0; r < 3; r++)
+    for (uint8_t r = 0; r < regionAll(); r++)
       for (uint8_t i = 0; i < starterCountShown(r); i++) {
         int16_t d = starterOf(r,i);
         if (d < regionInfo(r).lo || d > regionInfo(r).hi) ok = false;
@@ -59,7 +61,7 @@ int main(){
   }
 
   // --- Kanto's egg pool is NOT trimmed to what the screen shows. This is the
-  // one that fails if somebody "tidies" dex.h to match the choice screen.
+  // one that fails if somebody "tidies" the pack to match the choice screen.
   ck(regionInfo(0).starterCount > starterCountShown(0),
      "Kanto's egg pool still holds more than the three on screen");
   {

@@ -79,7 +79,7 @@ int main(){
     for (SpeciesId d = 1; d <= dexCount(); d++)
       if (evolutionCount(d) > 1) branchSources++;
     ck(loops == 0, "every evolution chain ends rather than looping");
-    ck(branchSources == 11 && evolutionCount(133) == 7,
+    ck(branchSources == 19 && evolutionCount(133) == 8,
        "all branching evolutions come from region packs");
   }
 
@@ -88,8 +88,10 @@ int main(){
   // WOBBUFFET and WYNAUT counter rather than attack, SMEARGLE only Sketches.
   // Listed rather than tolerated, so a NEW species joining them is a failure --
   // which is what a new generation's typings would cause.
-  static const int16_t NO_ATTACK[] = { 11, 14, 132, 201, 202, 235, 266, 268, 360 };
-  static const int16_t NO_LEARNSET[] = { 11, 14, 132, 201, 235 };
+  static const int16_t NO_ATTACK[] = {
+    11, 14, 132, 201, 202, 235, 266, 268, 360, 771, 789, 790, 840
+  };
+  static const int16_t NO_LEARNSET[] = { 11, 14, 132, 201, 235, 789, 790, 840 };
   auto known = [](const int16_t *a, size_t n, int16_t d) {
     for (size_t i = 0; i < n; i++) if (a[i] == d) return true;
     return false;
@@ -117,7 +119,7 @@ int main(){
     if (noStab) printf("      %d species have no same-type attack, first is %s (%d)\n",
                        noStab, dexEntry(first).name, first);
     ck(noStab == 0,
-       "every species can learn an attack of its own type, bar the known nine");
+       "every species can learn an attack of its own type, bar known exceptions");
   }
 
   // --- and everything it can learn is a real move

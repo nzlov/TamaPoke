@@ -404,6 +404,7 @@ static bool validThumbs(const uint8_t *data, uint32_t size) {
   uint32_t previousEnd = tableEnd;
   for (uint16_t i = 0; i < count; i++) {
     uint32_t offset = rd32(data + 6 + (uint32_t)i * 4u);
+    if (!offset) continue;  // The species exists, but community art does not.
     if (offset < previousEnd || offset > size || size - offset < 3) return false;
     uint8_t width = data[offset], height = data[offset + 1], paletteCount = data[offset + 2];
     uint32_t recordSize = 3u + (uint32_t)paletteCount * 2u + (uint32_t)width * height;
@@ -1221,8 +1222,12 @@ const char *packedTypeName(uint8_t type) {
 uint16_t packedTypeColor(uint8_t type) { ensureContent(); return type < TYPE_COUNT ? gTypeColors[type] : 0x8410; }
 bool packedTypeColorIsLight(uint8_t type) { ensureContent(); return type < TYPE_COUNT && gTypeLight[type]; }
 
+bool spriteAvailable(SpeciesId species) {
+  return dexValid(species) && gSprites[species].pack != 0xFF &&
+         gSprites[species].normalSize != 0;
+}
 bool contentLoadSprite(SpeciesId species, bool shiny, uint8_t **out, uint32_t *size) {
-  if (!out || !size || !dexValid(species) || gSprites[species].pack == 0xFF) return false;
+  if (!out || !size || !spriteAvailable(species)) return false;
   const SpriteRef &sprite = gSprites[species];
   uint32_t offset = shiny && sprite.shinySize ? sprite.shinyAt : sprite.normalAt;
   uint32_t length = shiny && sprite.shinySize ? sprite.shinySize : sprite.normalSize;
