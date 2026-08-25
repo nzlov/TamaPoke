@@ -53,6 +53,13 @@ struct ContentPackInfo {
   uint32_t revision;
 };
 
+struct ContentPackSource {
+  void *context;
+  uint32_t size;
+  bool (*seek)(void *context, uint32_t offset);
+  size_t (*read)(void *context, uint8_t *out, size_t length);
+};
+
 struct UiLocaleInfo {
   char locale[16];
   char shortLabel[8];
@@ -78,7 +85,9 @@ enum UiFontFormat : uint8_t {
 // catalogue access lazily calls this against CONTENT_DIR.
 bool contentBegin();
 ContentPackValidation contentValidatePackFile(const char *path);
+ContentPackValidation contentValidatePackSource(ContentPackSource &source);
 bool contentReadPackInfo(const char *path, ContentPackInfo &out);
+bool contentReadPackInfo(ContentPackSource &source, ContentPackInfo &out);
 bool contentReady();
 bool contentHasUi();
 bool contentHasPets();

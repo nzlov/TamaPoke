@@ -173,6 +173,20 @@ static String serialPackPath(File &entry) {
   return String("/packs/") + entry.name();
 }
 
+// GLUE: content parsing owns the pack format while Arduino FS owns the open
+// handle. Remove these callbacks if both layers adopt a shared stream type.
+static bool seekOpenPack(void *context, uint32_t offset) {
+  return static_cast<File *>(context)->seek(offset);
+}
+
+static size_t readOpenPack(void *context, uint8_t *out, size_t length) {
+  return static_cast<File *>(context)->read(out, length);
+}
+
+static ContentPackSource openPackSource(File &file) {
+  return { &file, (uint32_t)file.size(), seekOpenPack, readOpenPack };
+}
+
 static void sdSerialError(const char *reason) {
   Serial.print("ERR ");
   Serial.println(reason);
@@ -214,10 +228,16 @@ void sdSerialPackInfo() {
   File entry;
   while ((entry = dir.openNextFile())) {
     String path = serialPackPath(entry);
+    uint32_t size = (uint32_t)entry.size();
     ContentPackInfo info{};
-    if (!entry.isDirectory() && isPackPath(path) && contentReadPackInfo(path.c_str(), info)) {
-      Serial.printf("PACK\t%s\t%lu\t%u\t%s\n", info.id, (unsigned long)info.revision,
-                    (uint32_t)entry.size(), path.c_str());
+    if (!entry.isDirectory() && isPackPath(path)) {
+      ContentPackSource source = openPackSource(entry);
+      if (contentReadPackInfo(source, info)) {
+        Serial.printf("PACK\t%s\t%lu\t%u\t%s\n", info.id,
+                      (unsigned long)info.revision, size, path.c_str());
+      } else {
+        Serial.printf("FILE\t%u\t%s\n", size, path.c_str());
+      }
     }
     entry.close();
   }
@@ -241,7 +261,7 @@ bool sdSerialCommand(const String &line) {
     if (SD_MMC.exists(tempPath) && !SD_MMC.remove(tempPath)) {
       sdSerialError("TEMP_CLEANUP_FAILED"); return true;
     }
-    File f = SD_MMC.open(tempPath, FILE_WRITE);
+    File f = SD_MMC.open(tempPath, "w+");
     if (!f) {
       sdSerialError("OPEN_FAILED"); return true;
     }
@@ -259,21 +279,18 @@ bool sdSerialCommand(const String &line) {
       Serial.println("#");  // ack: listo para el siguiente bloque
     }
     f.flush();
-    f.close();
     Serial.setTimeout(1000);
     bool valid = failure == nullptr && remaining == 0;
     ContentPackValidation validation = CONTENT_PACK_VALID;
     if (valid) {
-      for (uint8_t attempt = 0; attempt < 4; attempt++) {
-        validation = contentValidatePackFile(tempPath.c_str());
-        if (validation != CONTENT_PACK_OPEN_FAILED) break;
-        delay(50);
-      }
+      ContentPackSource source = openPackSource(f);
+      validation = contentValidatePackSource(source);
       if (validation != CONTENT_PACK_VALID) {
         valid = false;
         failure = packValidationError(validation);
       }
     }
+    f.close();
     if (valid) {
       String backupPath = path + ".bak";
       SD_MMC.remove(backupPath);

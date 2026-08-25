@@ -282,7 +282,7 @@ const BOARD_ERRORS = {
   READ_TIMEOUT: 'USB transfer stopped before the board received the complete file',
   WRITE_FAILED: 'the microSD write failed; check free space and the card condition',
   PACK_VALIDATION_FAILED: 'the pack is corrupt or incompatible (header, ABI, size or checksum)',
-  PACK_OPEN_FAILED: 'the uploaded pack could not be reopened from the microSD',
+  PACK_OPEN_FAILED: 'the uploaded pack handle became unavailable before validation',
   PACK_READ_FAILED: 'the uploaded pack could not be read back reliably from the microSD',
   PACK_HEADER_INVALID: 'the uploaded pack header is invalid',
   PACK_ABI_MISMATCH: 'the uploaded pack ABI is incompatible with this firmware',
@@ -497,6 +497,13 @@ function parseInstalledPack(line) {
     const name = detailed[4].split('/').pop();
     return /\.(tui|tmove|tregion)$/.test(name)
       ? { id: detailed[1], revision: Number(detailed[2]), size: Number(detailed[3]), name }
+      : null;
+  }
+  const physical = line.match(/^FILE\t(\d+)\t(.+)$/);
+  if (physical) {
+    const name = physical[2].split('/').pop();
+    return /\.(tui|tmove|tregion)$/.test(name)
+      ? { id: packageByFile.get(name)?.id, revision: null, size: Number(physical[1]), name }
       : null;
   }
   const legacy = line.match(/^(.*) (\d+)$/);

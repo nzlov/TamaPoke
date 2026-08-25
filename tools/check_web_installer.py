@@ -114,11 +114,22 @@ upload_handler = sdmon.split('if (line.startsWith("PUT ")) {', 1)[1].split(
     '} else if (line == "LS")', 1)[0]
 if 'f.flush();' not in upload_handler or 'f.close();' not in upload_handler:
     raise SystemExit("firmware must sync and close an uploaded pack before validation")
-if upload_handler.index('f.flush();') > upload_handler.index('f.close();'):
-    raise SystemExit("firmware must sync an uploaded pack before closing and reopening it")
-for fragment in ('validation != CONTENT_PACK_OPEN_FAILED', 'attempt < 4', 'delay(50)'):
+for fragment in ('SD_MMC.open(tempPath, "w+")', 'contentValidatePackSource(source)'):
     if fragment not in upload_handler:
-        raise SystemExit("firmware must retry only transient uploaded-pack reopen failures")
+        raise SystemExit("firmware must validate an upload through its existing read/write handle")
+if upload_handler.index('f.flush();') > upload_handler.index('contentValidatePackSource(source)') or \
+        upload_handler.index('contentValidatePackSource(source)') > upload_handler.index('f.close();'):
+    raise SystemExit("firmware must validate the synced upload before closing its only handle")
+if 'contentValidatePackFile(tempPath' in upload_handler or 'attempt < 4' in upload_handler:
+    raise SystemExit("firmware must not reopen uploaded packs or mask open failures with retries")
+pack_info = sdmon.split('void sdSerialPackInfo()', 1)[1].split(
+    'bool sdSerialCommand', 1)[0]
+for fragment in ('openPackSource(entry)', 'contentReadPackInfo(source, info)',
+                 'Serial.printf("FILE\\t%u\\t%s'):
+    if fragment not in pack_info:
+        raise SystemExit("INFO must read existing directory handles and retain unreadable files")
+if 'const physical = line.match(/^FILE\\t(\\d+)\\t(.+)$/)' not in html:
+    raise SystemExit("installer must display physical pack records without readable metadata")
 if "waitFor('DONE', 120000" not in html:
     raise SystemExit("installer must allow enough time to sync and validate large packs")
 if 'Serial.printf("PACK\\t%s\\t%lu\\t%u\\t%s' not in sdmon:

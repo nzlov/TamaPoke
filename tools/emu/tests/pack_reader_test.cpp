@@ -29,6 +29,14 @@ extern "C" int __wrap_fseek(FILE *stream, long offset, int origin) {
   return __real_fseek(stream, offset, origin);
 }
 
+static bool seekSource(void *context, uint32_t offset) {
+  return __real_fseek(static_cast<FILE *>(context), (long)offset, SEEK_SET) == 0;
+}
+
+static size_t readSource(void *context, uint8_t *out, size_t length) {
+  return __real_fread(out, 1, length, static_cast<FILE *>(context));
+}
+
 int main() {
   bool ok = contentValidatePackFile(PACK_READER_FIXTURE) == CONTENT_PACK_VALID;
   bool sequential = seekCount == 5;
@@ -39,6 +47,15 @@ int main() {
   std::vector<uint8_t> raw((size_t)size);
   bool loaded = size > 64 && __real_fread(raw.data(), 1, raw.size(), source) == raw.size();
   fclose(source);
+  FILE *uploaded = tmpfile();
+  bool uploadedWritten = uploaded && loaded &&
+      fwrite(raw.data(), 1, raw.size(), uploaded) == raw.size() && fflush(uploaded) == 0;
+  ContentPackSource uploadedSource{
+      uploaded, (uint32_t)raw.size(), seekSource, readSource
+  };
+  bool sameHandle = uploadedWritten &&
+      contentValidatePackSource(uploadedSource) == CONTENT_PACK_VALID;
+  if (uploaded) fclose(uploaded);
   std::string badPath = std::string(PACK_READER_FIXTURE) + ".bad";
   auto mutationIs = [&](size_t offset, ContentPackValidation expected) {
     uint8_t saved = raw[offset];
@@ -61,7 +78,9 @@ int main() {
   printf("%s  pack validation tolerates short filesystem reads\n", ok ? "PASS" : "FAIL");
   printf("%s  payload CRC uses one sequential filesystem scan\n",
          sequential ? "PASS" : "FAIL");
+  printf("%s  uploaded pack validates through its existing open handle\n",
+         sameHandle ? "PASS" : "FAIL");
   printf("%s  pack validation reports the failing format stage\n",
          precise ? "PASS" : "FAIL");
-  return ok && sequential && precise ? 0 : 1;
+  return ok && sequential && sameHandle && precise ? 0 : 1;
 }
