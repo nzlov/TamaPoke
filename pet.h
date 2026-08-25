@@ -40,6 +40,12 @@ enum : uint8_t { CER_NONE = 0, CER_FAREWELL, CER_RUNAWAY, CER_RELEASE };
 
 enum PetMood : uint8_t { MOOD_HAPPY, MOOD_SAD, MOOD_EATING, MOOD_SLEEPING };
 
+enum GymIvReward : uint8_t {
+  GYM_IV_NONE = 0,
+  GYM_IV_GAINED,
+  GYM_IV_MAXED,
+};
+
 // medallas del individuo (bitmask)
 enum : uint16_t {
   MED_LV10 = 1 << 0, MED_LV25 = 1 << 1, MED_LV50 = 1 << 2,
@@ -96,6 +102,7 @@ public:
   // mediocre no solo empieza peor, es que no puede llegar tan lejos.
   uint8_t ivAtk = 16, ivDef = 16, ivSpe = 16, ivHp = 16;
   uint8_t trAtk = 0, trDef = 0, trSpe = 0;
+  uint8_t gymIvRewards[GYM_IV_REWARD_SLOTS] = { 0 };
   bool berryKnown = false;  // ya descubrio su baya favorita
   bool shiny = false;       // variante de color rara (se sortea en el huevo)
   uint32_t ageMinutes = 0;
@@ -144,13 +151,13 @@ public:
   // Reaction test: its own trainer, so the ball game can go back to being purely
   // about joy instead of doubling as a stat grind.
   uint8_t trainSpeed(uint16_t hits);
-  // What beating a gym leader is worth. Random WHICH stat, but only among the
-  // ones with room left -- a random grant that landed on an already-capped stat
-  // would silently evaporate, which reads as a bug rather than as luck. Writes
-  // the stat into `which` (0 ATK, 1 DEF, 2 SPE) and returns what was actually
-  // gained; 0 means every stat is at its ceiling. Costs nothing: the fight
-  // already spent the energy, and that is what rate-limits rematching.
-  uint8_t rewardTraining(uint8_t amount, uint8_t &which);
+  // A real gym can raise one innate IV for this creature exactly once. Easy
+  // and hard share the byte because the claim belongs to the gym, not ladder.
+  GymIvReward rewardGymIv(uint8_t region, uint8_t gym, uint8_t &which);
+  uint8_t gymIvRewardAt(uint8_t region, uint8_t gym) const;
+  bool gymIvClaimed(uint8_t region, uint8_t gym) const {
+    return gymIvRewardAt(region, gym) != GYM_IV_REWARD_UNCLAIMED;
+  }
   uint16_t spdHi = 0;    // best reaction-test score
 
   // stats de combate: base real de gen 1 + nivel + IV + entrenamiento
@@ -430,6 +437,7 @@ private:
   void addBond(uint8_t amt);
   uint8_t rollIV(int bonus) const;  // una tirada 8-31 empujada por el cuidado
   void rollIVs();                   // los 4, con las garantias de legendario/shiny
+  void advanceAgeMinute();          // age plus the hourly training decay
   void defTick(bool resting);       // la calma forja la defensa (ver pet.cpp)
   void snapshotForParty();          // copy into endedMon before newEgg() wipes it
   void checkMedals();

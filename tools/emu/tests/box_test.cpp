@@ -14,6 +14,16 @@ int FakeSerial::available(){return 0;} String FakeSerial::readStringUntil(char){
 void sfxPlay(uint8_t){}
 static int bad=0;
 static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!ok)bad++;}
+struct LegacyPartyMonV1 {
+  int16_t dex = 0;
+  uint16_t level = 1;
+  uint16_t medals = 0;
+  uint8_t ivAtk = 0, ivDef = 0, ivSpe = 0, ivHp = 0;
+  uint8_t trAtk = 0, trDef = 0, trSpe = 0;
+  uint8_t shiny = 0;
+  char nick[12] = "";
+  MoveId moves[MOVE_SLOTS] = { 0, 0, 0, 0 };
+};
 static PartyMon mk(int dex,int lvl){ PartyMon m; m.dex=dex; m.level=lvl;
   m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20; return m; }
 
@@ -79,6 +89,30 @@ int main(){
     r.swapPartyBox((uint8_t)free, 0);
     ck(r.slots[1].dex==9 && r.box[0].empty(),
        "withdrawing into a free slot moves it without displacing anyone");
+  }
+
+  // Adding the per-creature byte array changes the raw NVS record size. Saves
+  // from the previous firmware must be mapped rather than appearing empty.
+  {
+    Preferences seed; seed.begin("tamapoke", false); seed.clear();
+    LegacyPartyMonV1 oldParty[PARTY_SLOTS];
+    LegacyPartyMonV1 oldBox[BOX_SLOTS];
+    oldParty[1].dex=25; oldParty[1].level=44; oldParty[1].ivDef=27;
+    oldParty[1].trDef=73; oldParty[1].moves[0]=9;
+    snprintf(oldParty[1].nick,sizeof(oldParty[1].nick),"SPARK");
+    oldBox[4].dex=150; oldBox[4].level=70; oldBox[4].shiny=1;
+    seed.putBytes("party", oldParty, sizeof(oldParty));
+    seed.putBytes("box", oldBox, sizeof(oldBox));
+    seed.end();
+    Party migrated; migrated.begin();
+    ck(migrated.slots[1].dex==25 && migrated.slots[1].level==44 &&
+       migrated.slots[1].ivDef==27 && migrated.slots[1].trDef==73 &&
+       migrated.slots[1].moves[0]==9 && !strcmp(migrated.slots[1].nick,"SPARK"),
+       "the previous party record layout migrates without losing fields");
+    ck(migrated.box[4].dex==150 && migrated.box[4].level==70 && migrated.box[4].shiny,
+       "the previous box record layout migrates too");
+    ck(!migrated.slots[1].gymIvRewards[0] && !migrated.box[4].gymIvRewards[0],
+       "legacy creatures start with unclaimed gym IV bytes");
   }
 
   printf("%s\n", bad?"FAILURES":"all good");

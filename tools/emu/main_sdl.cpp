@@ -152,7 +152,8 @@ extern bool gymPick, galleryPick;
 int wavMain(const char *path, const char *demo);
 extern bool lanOpen;
 extern uint8_t btlMyAct;
-extern uint8_t btlTrainGain, btlTrainWhich;
+extern GymIvReward btlIvReward;
+extern uint8_t btlIvWhich;
 extern bool lanWantHost;
 extern bool gShowAllAvatars;
 #define PICK_LAN 0xFF
@@ -347,7 +348,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   else if (!strcmp(screen, "win")) {
     startTrainerBattle(2, true);
     btlNewBadge = true; btlWinUntil = 60000; pet.badgesHard = 0x07;
-    btlTrainGain = 8; btlTrainWhich = 2;
+    btlIvReward = GYM_IV_GAINED; btlIvWhich = 2;
   }
   else if (!strcmp(screen, "pmon")) {
     Pet t; t.dbgHatchAs(131,false); t.ivAtk=t.ivDef=t.ivSpe=t.ivHp=27;

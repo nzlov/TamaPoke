@@ -31,6 +31,8 @@ int main(){
   pet.ageMinutes = 72UL*MINUTES_PER_LEVEL;
   pet.ivAtk=31; pet.ivDef=7; pet.ivSpe=22; pet.ivHp=19;
   pet.trAtk=64; pet.trDef=31; pet.trSpe=90;
+  pet.gymIvRewards[0]=GYM_IV_REWARD_DEF;
+  pet.gymIvRewards[71]=GYM_IV_REWARD_MAXED;
   pet.relearnFromLevel();
   while (pet.hasLearnOffer()) pet.declineLearn();
   pet.rename("SCORCH");
@@ -42,10 +44,12 @@ int main(){
   pet.dexReg[0] = 0x5A; pet.dexReg[9] = 0xC3; pet.dexShinyReg[3] = 0x11;
   for (int i=0;i<PARTY_SLOTS;i++){ PartyMon m; m.dex=20+i*7; m.level=40+i;
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20+i; m.shiny=(i==2);
+    m.gymIvRewards[i]=GYM_IV_REWARD_ATK;
     snprintf(m.nick,sizeof(m.nick),"P%d",i);
     m.moves[0]=1+i; m.moves[1]=9; party.replaceAt(i,m); }
   for (int i=0;i<BOX_SLOTS;i++){ PartyMon m; m.dex=1+i*3; m.level=10+i;
-    m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=11; party.box[i]=m; }
+    m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=11;
+    m.gymIvRewards[i]=GYM_IV_REWARD_SPE; party.box[i]=m; }
   party.boxSave();
   // renameTrainer() persists, and save() writes every field -- so this is also
   // what commits everything set above. save() itself is private on purpose.
@@ -72,7 +76,7 @@ int main(){
     ck(inTable.size()==SAVE_FIELD_COUNT, "and the table has no duplicates");
   }
 
-  static uint8_t buf[2048];
+  static uint8_t buf[8192];
   size_t n = saveExport(buf, sizeof(buf));
   ck(n > 0, "a save exports");
   ck(n < sizeof(buf), "and fits a sensible buffer");
@@ -107,6 +111,8 @@ int main(){
   ck(p2.ageMinutes==72UL*MINUTES_PER_LEVEL, "at the age it was");
   ck(p2.ivAtk==31 && p2.ivDef==7 && p2.ivSpe==22 && p2.ivHp==19, "with its IVs");
   ck(p2.trAtk==64 && p2.trDef==31 && p2.trSpe==90, "and its training");
+  ck(p2.gymIvRewards[0]==GYM_IV_REWARD_DEF &&
+     p2.gymIvRewards[71]==GYM_IV_REWARD_MAXED, "and its gym IV reward bytes");
   ck(!strcmp(p2.trainerName,"DYLAN"), "the trainer name survives");
   ck(!strcmp(p2.nick,"SCORCH"), "so does the nickname");
   ck(p2.avatar==6, "and the avatar, including one past the original four");
@@ -132,6 +138,7 @@ int main(){
     const PartyMon &m = q2.slots[i];
     if (m.dex != 20+i*7 || m.level != 40+i) party_ok = false;
     if (m.moves[0] != 1+i || m.moves[1] != 9) party_ok = false;
+    if (m.gymIvRewards[i] != GYM_IV_REWARD_ATK) party_ok = false;
     char want[8]; snprintf(want,sizeof(want),"P%d",i);
     if (strcmp(m.nick, want)) party_ok = false;
   }
@@ -139,6 +146,8 @@ int main(){
   ck(q2.slots[2].shiny, "and a banked shiny is still shiny");
   ck(q2.boxCount()==BOX_SLOTS, "the box comes back full");
   ck(q2.box[7].dex==1+7*3 && q2.box[7].level==17, "with the right creatures in it");
+  ck(q2.box[7].gymIvRewards[7]==GYM_IV_REWARD_SPE,
+     "with each banked creature's gym IV bytes");
 
   // --- a restore must not leave anything of whatever was there before
   {

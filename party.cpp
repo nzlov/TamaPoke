@@ -3,6 +3,45 @@
 
 Party party;
 
+struct LegacyPartyMonV1 {
+  int16_t dex;
+  uint16_t level;
+  uint16_t medals;
+  uint8_t ivAtk, ivDef, ivSpe, ivHp;
+  uint8_t trAtk, trDef, trSpe;
+  uint8_t shiny;
+  char nick[12];
+  MoveId moves[MOVE_SLOTS];
+};
+static_assert(sizeof(LegacyPartyMonV1) == 34,
+              "legacy party layout must stay byte-exact");
+
+template <size_t N>
+static void loadMons(Preferences &prefs, const char *key, PartyMon (&out)[N]) {
+  size_t stored = prefs.getBytesLength(key);
+  if (stored == sizeof(out)) {
+    prefs.getBytes(key, out, sizeof(out));
+    return;
+  }
+  if (stored != sizeof(LegacyPartyMonV1) * N) return;
+  LegacyPartyMonV1 old[N];
+  prefs.getBytes(key, old, sizeof(old));
+  // GLUE: maps the previous raw NVS record to the new per-creature reward
+  // layout. Remove only when saves made before gym IV rewards are unsupported.
+  for (size_t i = 0; i < N; i++) {
+    out[i].dex = old[i].dex;
+    out[i].level = old[i].level;
+    out[i].medals = old[i].medals;
+    out[i].ivAtk = old[i].ivAtk; out[i].ivDef = old[i].ivDef;
+    out[i].ivSpe = old[i].ivSpe; out[i].ivHp = old[i].ivHp;
+    out[i].trAtk = old[i].trAtk; out[i].trDef = old[i].trDef;
+    out[i].trSpe = old[i].trSpe;
+    out[i].shiny = old[i].shiny;
+    memcpy(out[i].nick, old[i].nick, sizeof(out[i].nick));
+    memcpy(out[i].moves, old[i].moves, sizeof(out[i].moves));
+  }
+}
+
 // Same NVS namespace as the pet on purpose: WIPE (Pet::factoryReset) calls
 // clear() on it, and a factory reset that left the party behind would be a lie.
 void Party::begin() {
@@ -11,19 +50,21 @@ void Party::begin() {
   // old party out of RAM.
   for (auto &s : slots) s = PartyMon();
   prefs.begin("tamapoke", false);
-  if (prefs.getBytesLength("party") == sizeof(slots))
-    prefs.getBytes("party", slots, sizeof(slots));
+  loadMons(prefs, "party", slots);
   for (auto &s : slots) {
     if (s.dex < 1 || s.dex > dexCount()) s.dex = 0;
     for (MoveId &move : s.moves) if (!moveValid(move)) move = MOVE_NONE;
+    for (uint8_t &reward : s.gymIvRewards)
+      if (reward > GYM_IV_REWARD_HP && reward != GYM_IV_REWARD_MAXED) reward = 0;
     s.nick[sizeof(s.nick) - 1] = 0;
   }
   for (auto &s : box) s = PartyMon();
-  if (prefs.getBytesLength("box") == sizeof(box))
-    prefs.getBytes("box", box, sizeof(box));
+  loadMons(prefs, "box", box);
   for (auto &s : box) {
     if (s.dex < 1 || s.dex > dexCount()) s.dex = 0;
     for (MoveId &move : s.moves) if (!moveValid(move)) move = MOVE_NONE;
+    for (uint8_t &reward : s.gymIvRewards)
+      if (reward > GYM_IV_REWARD_HP && reward != GYM_IV_REWARD_MAXED) reward = 0;
     s.nick[sizeof(s.nick) - 1] = 0;
   }
 }

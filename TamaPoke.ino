@@ -582,8 +582,8 @@ uint8_t gymRegion = 0;
 uint8_t btlRegion = 0;
 bool gShowAllAvatars = false;  // emulator screenshot aid, never set on hardware
 bool btlPetIn = false;       // was the live pet in the squad?
-uint8_t btlTrainGain = 0;    // what the win trained, for the win screen
-uint8_t btlTrainWhich = 0;
+GymIvReward btlIvReward = GYM_IV_NONE;
+uint8_t btlIvWhich = 0;
 bool btlLink = false;      // this fight is against another device
 bool btlLinkHost = false;
 static bool gymUnlocked(uint8_t idx, bool hard) {
@@ -1237,7 +1237,7 @@ void handleSerial() {
     // Prints the whole save as a block of IMPORT commands. Pasting that block
     // back is the restore -- there is no separate format to get wrong, and no
     // single 2000-character line for a terminal to mangle.
-    static uint8_t buf[2048];
+    static uint8_t buf[8192];
     size_t n = saveExport(buf, sizeof(buf));
     if (!n) { Serial.println("EXPORT FAIL"); return; }
     Serial.printf("# TamaPoke save, %u bytes. Paste this whole block back.\n",
@@ -1251,7 +1251,7 @@ void handleSerial() {
   } else if (line.startsWith("IMPORT")) {
     // IMPORT <hex>   append a chunk
     // IMPORT         commit what has been appended
-    static uint8_t in[2048];
+    static uint8_t in[8192];
     static size_t inN = 0;
     String hex = line.substring(6);
     hex.trim();
@@ -3837,22 +3837,16 @@ static void btlResolve(MoveId yourMove) {
     btlOver = true;
     btlWon = btlFoe.fainted();
     btlNewBadge = false;
-    btlTrainGain = 0;
+    btlIvReward = GYM_IV_NONE;
     if (btlWon && btlTrainer >= 0 && !pet.hasBadge(btlRegion, btlTrainer, btlHard)) {
       pet.winBadge(btlRegion, btlTrainer, btlHard);
       btlNewBadge = true;
     }
-    // A badge and nothing else made the ladder a one-way checklist. A win now
-    // trains the creature that fought for it -- so a leader you can already
-    // beat is worth returning to. It goes to the LIVE pet only: banked members
-    // are frozen at the level and training they were banked with, and battling
-    // already costs the live pet energy, which is what rate-limits the grind
-    // without needing a cooldown.
-    if (btlWon && btlTrainer >= 0 && btlPetIn) {
-      // Later leaders are worth more, and hard mode is worth roughly double.
-      uint8_t amt = (btlHard ? 6 + random(5) : 3 + random(3)) + btlTrainer / 3;
-      btlTrainGain = pet.rewardTraining(amt, btlTrainWhich);
-    }
+    // Badges belong to the player, but each live creature may claim each real
+    // leader's IV reward once. Difficulty does not enter that creature key.
+    if (btlWon && btlTrainer >= 0 &&
+        btlTrainer < regionBattleInfo(btlRegion).gymCount && btlPetIn)
+      btlIvReward = pet.rewardGymIv(btlRegion, btlTrainer, btlIvWhich);
     audioMusic(btlWon ? MUS_VICTORY : MUS_NONE);
     if (btlWon) sfxPlay(SFX_VICTORY);
     // Tell the peer before anything else: if we stop here without sending, the
@@ -4011,16 +4005,16 @@ void renderWin() {
   gfx->setCursor(uiCenterX(l), 316);
   gfx->print(l);
 
-  // what the win was worth beyond the badge
-  if (btlTrainGain) {
-    static const StrId NAMES[3] = { S_TR_ATK, S_TR_DEF, S_TR_SPE };
+  // what this creature claimed beyond the player-wide badge
+  if (btlIvReward == GYM_IV_GAINED) {
+    static const StrId NAMES[4] = { S_STAT_ATK, S_STAT_DEF, S_STAT_SPE, S_STAT_VIT };
     snprintf(l, sizeof(l), T(S_WIN_TRAIN_FMT),
-             T(NAMES[btlTrainWhich % 3]), btlTrainGain);
+             T(NAMES[btlIvWhich % 4]), 1);
     gfx->setTextColor(UI_BAR_OK);
     gfx->setTextSize(2);
     gfx->setCursor(uiCenterX(l), 344);
     gfx->print(l);
-  } else if (btlPetIn && btlTrainer >= 0) {
+  } else if (btlIvReward == GYM_IV_MAXED) {
     gfx->setTextColor(UI_TRACK);
     gfx->setTextSize(1);
     gfx->setCursor(uiCenterX(T(S_WIN_MAXED)), 348);
@@ -4932,6 +4926,8 @@ void renderGyms() {
     const Trainer &t = trainerInfo(gymRegion, idx);
     int y = GYM_ROW_Y(i);
     bool done = pet.hasBadge(gymRegion, idx, gymHard);
+    uint8_t ivReward = idx < regionBattleInfo(gymRegion).gymCount
+                         ? pet.gymIvRewardAt(gymRegion, idx) : 0;
     bool open_ = gymUnlocked(idx, gymHard);
     gfx->fillRoundRect(70, y, 326, 44, 10, done ? UI_TRACK : UI_BG_DAY);
     gfx->drawRoundRect(70, y, 326, 44, 10, open_ ? UI_INK : UI_TRACK);
@@ -4954,8 +4950,20 @@ void renderGyms() {
     gfx->print(lv);
     if (done) {
       gfx->setTextColor(UI_BAR_OK);
-      gfx->setCursor(370, y + 8);
+      gfx->setCursor(382, y + 8);
       gfx->print("*");
+    }
+    if (ivReward) {
+      char ivMark[8];
+      if (ivReward == GYM_IV_REWARD_MAXED) snprintf(ivMark, sizeof(ivMark), "IV MAX");
+      else {
+        static const char stat[] = "ADSH";
+        snprintf(ivMark, sizeof(ivMark), "IV+%c", stat[ivReward - 1]);
+      }
+      gfx->setTextSize(1);
+      gfx->setTextColor(UI_BAR_WARN);
+      gfx->setCursor(uiRightX(ivMark, 370), y + 8);
+      gfx->print(ivMark);
     }
   }
   uint8_t pages = (regionBattleInfo(gymRegion).trainerCount + GYM_ROWS - 1) / GYM_ROWS;

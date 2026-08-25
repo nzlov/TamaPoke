@@ -20,6 +20,7 @@ int main(){
   if (p.awaitingStarter()) p.chooseStarter(4);
   PartyMon m; m.dex=6; m.level=61; m.shiny=1;
   m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=24; m.trAtk=m.trDef=m.trSpe=35;
+  m.gymIvRewards[3]=GYM_IV_REWARD_HP;
   m.moves[0]=1; m.moves[1]=2;
   snprintf(m.nick,sizeof(m.nick),"BLAZE");
 
@@ -27,6 +28,7 @@ int main(){
   ck(p.speciesId==6 && p.level()==61, "comes back at the level it was banked at");
   ck(p.shiny && !strcmp(p.nick,"BLAZE"), "keeps its shininess and its name");
   ck(p.moves[0]==1 && p.moves[1]==2, "and its moveset");
+  ck(p.gymIvRewards[3]==GYM_IV_REWARD_HP, "and its per-creature gym history");
   ck(p.frozen, "and is marked frozen");
 
   // it must not age, however long passes

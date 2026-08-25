@@ -53,6 +53,10 @@ int main(){
   {
     Pet p; Party q; p.begin(); q.begin();
     young(p, 4, 21);                        // a Charmeleon, nowhere near 3 days
+    p.ivAtk=8; p.ivDef=16; p.ivSpe=24; p.ivHp=29;
+    p.trAtk=p.trDef=p.trSpe=1;
+    p.gymIvRewards[0]=GYM_IV_REWARD_DEF;
+    uint8_t maxAtk=p.trMaxAtk(), maxDef=p.trMaxDef(), maxSpe=p.trMaxSpe();
     ck(!p.canFarewellNow(), "a young creature is not offered a farewell");
     ck(p.canRetireNow(), "but it can be retired on demand");
     ck(!p.retireIsFree(), "and the game says that costs something");
@@ -61,6 +65,12 @@ int main(){
     finish(p, q);
     ck(q.count() == 1 && q.slots[0].dex == 4, "the creature is banked, not lost");
     ck(q.slots[0].level == 21, "frozen at the level it had");
+    ck(q.slots[0].ivAtk==8 && q.slots[0].ivDef==16 && q.slots[0].ivSpe==24 && q.slots[0].ivHp==29,
+       "banking preserves the creature's actual IVs");
+    ck(q.slots[0].trAtk==maxAtk && q.slots[0].trDef==maxDef && q.slots[0].trSpe==maxSpe,
+       "banking fills training to the caps set by those IVs");
+    ck(q.slots[0].gymIvRewards[0]==GYM_IV_REWARD_DEF,
+       "banking preserves its claimed gyms and IV reward");
     ck(p.isEgg(), "and a new egg is waiting");
 
     // THE POINT: the debt is on the new creature

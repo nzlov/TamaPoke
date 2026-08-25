@@ -17,7 +17,7 @@ const SaveField SAVE_FIELDS[] = {
   // individual values and training
   { "ivat", SK_U8 },    { "ivdf", SK_U8 },    { "ivsp", SK_U8 },
   { "ivhp", SK_U8 },    { "tatk", SK_U8 },    { "tdef", SK_U8 },
-  { "tspe", SK_U8 },
+  { "tspe", SK_U8 },    { "giv", SK_BYTES },
   // moves
   { "mvs", SK_BYTES },  { "mvlv", SK_U8 },
   // flags
@@ -38,7 +38,7 @@ const SaveField SAVE_FIELDS[] = {
 };
 const uint16_t SAVE_FIELD_COUNT = sizeof(SAVE_FIELDS) / sizeof(SAVE_FIELDS[0]);
 
-#define MAX_VAL 768        // the box is the largest, at 18 records
+#define MAX_VAL 4096       // the box is the largest, at 18 reward-bearing records
 
 static uint16_t crc16(const uint8_t *p, size_t n) {
   uint16_t c = 0xFFFF;
@@ -121,7 +121,7 @@ size_t saveExport(uint8_t *out, size_t cap) {
   p.begin("tamapoke", true);
   size_t at = SAVE_HDR;
   uint16_t count = 0;
-  uint8_t val[MAX_VAL];
+  static uint8_t val[MAX_VAL];
   for (uint16_t i = 0; i < SAVE_FIELD_COUNT; i++) {
     const SaveField &f = SAVE_FIELDS[i];
     int n = readField(p, f, val);

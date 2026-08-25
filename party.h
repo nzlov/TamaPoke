@@ -14,6 +14,21 @@
 #define BOX_SLOTS 18
 #define MOVE_SLOTS 4    // the same four every trainer gets in the real games
 
+// One byte per real gym, stored with the creature. 0 means unclaimed; the
+// other values say which IV that win raised, so the same array is both the
+// claim record and the reward history shown by the gym screen.
+constexpr uint8_t GYM_IV_GYMS_PER_REGION = 8;
+constexpr size_t GYM_IV_REWARD_SLOTS =
+    (size_t)CONTENT_MAX_REGIONS * GYM_IV_GYMS_PER_REGION;
+enum : uint8_t {
+  GYM_IV_REWARD_UNCLAIMED = 0,
+  GYM_IV_REWARD_ATK = 1,
+  GYM_IV_REWARD_DEF = 2,
+  GYM_IV_REWARD_SPE = 3,
+  GYM_IV_REWARD_HP = 4,
+  GYM_IV_REWARD_MAXED = 0xFF,
+};
+
 // A retired pet. Its level is frozen at the moment it joined; it does not keep
 // ageing, and nothing about it can be trained any further.
 struct PartyMon {
@@ -27,6 +42,7 @@ struct PartyMon {
   // Frozen with everything else: the moves you chose while it was alive are
   // what it fights with forever. 0 = empty slot (moveEntry(0) is the "-" filler).
   MoveId moves[MOVE_SLOTS] = { 0, 0, 0, 0 };
+  uint8_t gymIvRewards[GYM_IV_REWARD_SLOTS] = { 0 };
 
   bool empty() const { return dex < 1; }
 };

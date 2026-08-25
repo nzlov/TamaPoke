@@ -24,6 +24,7 @@ void Pet::begin() {
   memset(badgesHardX, 0, sizeof(badgesHardX));
   memset(dexReg, 0, sizeof(dexReg));
   memset(dexShinyReg, 0, sizeof(dexShinyReg));
+  memset(gymIvRewards, 0, sizeof(gymIvRewards));
   for (int i = 0; i < regionCount(); i++) eggByRegion[i] = 0;
   if (!prefs.getBool("init", false)) {
     prefs.putBool("init", true);
@@ -63,6 +64,7 @@ void Pet::newEgg() {
   mistakeCooldown = 0;
   sleeping = false;
   frozen = false;
+  memset(gymIvRewards, 0, sizeof(gymIvRewards));
   save();
 }
 
@@ -72,6 +74,16 @@ void Pet::newEgg() {
 static uint8_t dropTo(uint8_t v, uint8_t d, uint8_t fl) {
   if (v <= fl) return v;
   return (v - fl > d) ? v - d : fl;
+}
+
+void Pet::advanceAgeMinute() {
+  if (frozen) return;
+  ageMinutes++;
+  if (!isEgg() && ageMinutes % 60 == 0) {
+    trAtk = (uint8_t)((uint16_t)trAtk * 90 / 100);
+    trDef = (uint8_t)((uint16_t)trDef * 90 / 100);
+    trSpe = (uint8_t)((uint16_t)trSpe * 90 / 100);
+  }
 }
 
 void Pet::setClock(uint32_t nowEpoch) {
@@ -91,7 +103,7 @@ void Pet::syncClock(uint32_t nowEpoch) {
   if (mins > 14UL * 24 * 60) mins = 14UL * 24 * 60;  // tope: 2 semanas
 
   for (uint32_t i = 0; i < mins; i++) {
-    ageMinutes++;
+    advanceAgeMinute();
     if (isEgg()) {
       if (ageMinutes >= 3) hatch();  // eclosiona en tu ausencia
       continue;
@@ -141,7 +153,7 @@ void Pet::tick() {
                             // tiempo corriera aqui, el huevo eclosionaria solo a
                             // los 3 min con la especie sorteada y se perderia la
                             // eleccion del jugador
-  if (!frozen) ageMinutes++;   // a revived companion does not age
+  advanceAgeMinute();   // a revived companion does not age or lose training
 
   if (isEgg()) {
     if (ageMinutes >= 3) hatch();  // si no lo tocas, eclosiona solo a los 3 min
@@ -233,6 +245,7 @@ void Pet::reviveFrom(const PartyMon &m) {
   shiny = m.shiny != 0;
   ivAtk = m.ivAtk; ivDef = m.ivDef; ivSpe = m.ivSpe; ivHp = m.ivHp;
   trAtk = m.trAtk; trDef = m.trDef; trSpe = m.trSpe;
+  memcpy(gymIvRewards, m.gymIvRewards, sizeof(gymIvRewards));
   for (int i = 0; i < MOVE_SLOTS; i++) moves[i] = m.moves[i];
   // its banked level expressed as an age, so level() needs no special case
   ageMinutes = (uint32_t)(m.level ? m.level - 1 : 0) * MINUTES_PER_LEVEL;
@@ -268,11 +281,12 @@ void Pet::snapshotForParty() {
   endedMon.ivDef = ivDef;
   endedMon.ivSpe = ivSpe;
   endedMon.ivHp = ivHp;
-  endedMon.trAtk = trAtk;
-  endedMon.trDef = trDef;
-  endedMon.trSpe = trSpe;
+  endedMon.trAtk = trMaxAtk();
+  endedMon.trDef = trMaxDef();
+  endedMon.trSpe = trMaxSpe();
   endedMon.shiny = shiny ? 1 : 0;
   for (int i = 0; i < MOVE_SLOTS; i++) endedMon.moves[i] = moves[i];  // frozen too
+  memcpy(endedMon.gymIvRewards, gymIvRewards, sizeof(gymIvRewards));
   strncpy(endedMon.nick, nick, sizeof(endedMon.nick) - 1);
   endedMon.nick[sizeof(endedMon.nick) - 1] = 0;
   endedKind = ceremony;
@@ -992,27 +1006,39 @@ uint8_t Pet::playResult(uint8_t score) {
   return gain;
 }
 
-// saco de entrenamiento: los golpes entrenan la fuerza. Devuelve la subida.
-uint8_t Pet::rewardTraining(uint8_t amount, uint8_t &which) {
+uint8_t Pet::gymIvRewardAt(uint8_t region, uint8_t gym) const {
+  if (region >= CONTENT_MAX_REGIONS || gym >= GYM_IV_GYMS_PER_REGION) return 0;
+  return gymIvRewards[(size_t)region * GYM_IV_GYMS_PER_REGION + gym];
+}
+
+GymIvReward Pet::rewardGymIv(uint8_t region, uint8_t gym, uint8_t &which) {
   which = 0;
-  if (ceremony != CER_NONE || isEgg() || !amount) return 0;
-  // Only the stats with headroom are candidates.
-  uint8_t room[3], n = 0;
-  if (trAtk < trMaxAtk()) room[n++] = 0;
-  if (trDef < trMaxDef()) room[n++] = 1;
-  if (trSpe < trMaxSpe()) room[n++] = 2;
-  if (!n) return 0;                     // nothing left to train
-  which = room[random(n)];
-  uint8_t before, capped;
-  switch (which) {
-    case 0: before = trAtk; capped = trMaxAtk(); trAtk = (uint8_t)min<uint16_t>(before + amount, capped); amount = trAtk - before; break;
-    case 1: before = trDef; capped = trMaxDef(); trDef = (uint8_t)min<uint16_t>(before + amount, capped); amount = trDef - before; break;
-    default: before = trSpe; capped = trMaxSpe(); trSpe = (uint8_t)min<uint16_t>(before + amount, capped); amount = trSpe - before; break;
+  if (ceremony != CER_NONE || isEgg() || frozen || region >= regionAll() ||
+      gym >= GYM_IV_GYMS_PER_REGION || gym >= regionBattleInfo(region).gymCount)
+    return GYM_IV_NONE;
+  size_t at = (size_t)region * GYM_IV_GYMS_PER_REGION + gym;
+  if (gymIvRewards[at] != GYM_IV_REWARD_UNCLAIMED) return GYM_IV_NONE;
+
+  uint8_t room[4], n = 0;
+  if (ivAtk < 31) room[n++] = 0;
+  if (ivDef < 31) room[n++] = 1;
+  if (ivSpe < 31) room[n++] = 2;
+  if (ivHp < 31) room[n++] = 3;
+  if (!n) {
+    gymIvRewards[at] = GYM_IV_REWARD_MAXED;
+    save();
+    return GYM_IV_MAXED;
   }
-  // The IV-bound ceiling is never crossed: a mediocre individual not reaching
-  // as far is the whole point of trMaxFor().
+  which = room[random(n)];
+  switch (which) {
+    case 0: ivAtk++; break;
+    case 1: ivDef++; break;
+    case 2: ivSpe++; break;
+    default: ivHp++; break;
+  }
+  gymIvRewards[at] = (uint8_t)(which + 1);
   save();
-  return amount;
+  return GYM_IV_GAINED;
 }
 
 uint8_t Pet::trainSpeed(uint16_t hits) {
@@ -1185,6 +1211,7 @@ void Pet::save() {
   prefs.putUChar("tatk", trAtk);
   prefs.putUChar("tdef", trDef);
   prefs.putUChar("tspe", trSpe);
+  prefs.putBytes("giv", gymIvRewards, sizeof(gymIvRewards));
   prefs.putBytes("mvs", moves, sizeof(moves));
   prefs.putUChar("mvlv", lastLearnLevel);
   prefs.putUChar("avtr", avatar);
@@ -1240,6 +1267,10 @@ void Pet::load() {
   trAtk = prefs.getUChar("tatk", 0);
   trDef = prefs.getUChar("tdef", 0);
   trSpe = prefs.getUChar("tspe", 0);
+  if (prefs.getBytesLength("giv") == sizeof(gymIvRewards))
+    prefs.getBytes("giv", gymIvRewards, sizeof(gymIvRewards));
+  for (uint8_t &reward : gymIvRewards)
+    if (reward > GYM_IV_REWARD_HP && reward != GYM_IV_REWARD_MAXED) reward = 0;
   // un guardado antiguo puede traer entrenamiento por encima del nuevo tope
   if (trAtk > trMaxAtk()) trAtk = trMaxAtk();
   if (trDef > trMaxDef()) trDef = trMaxDef();

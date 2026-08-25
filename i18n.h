@@ -114,8 +114,8 @@ enum StrId : uint8_t {
   S_LAN_GONE, S_LAN_WAITFOE, S_LAN_REMATCH,
   S_BTL_RUN,        // the third option in a fight: leave it
   S_EGG_REGION,     // hint under the egg's region pill
-  S_WIN_TRAIN_FMT,  // "%s +%u" -- the training a gym win is worth
-  S_WIN_MAXED,      // ... or that there is nowhere left to train
+  S_WIN_TRAIN_FMT,  // "%s IV +%u" -- the innate reward from this gym
+  S_WIN_MAXED,      // ... or that all four IVs were already maxed
   S_CHOOSE_REGION,  // first boot: pick the region your starter comes from
   S_RETIRE,         // menu row: retire the creature on demand
   S_RETIRE_Q,       // ...and the confirmation
