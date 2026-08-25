@@ -61,19 +61,26 @@ echo "OK -> web/firmware/ (4 parts + tamapoke.bin for a blank board)"
 # with FW_VERSION by hand is exactly the sort of thing that silently rots.
 FW="$(grep -o '"[0-9.]*"' TamaPoke.ino | head -1 | tr -d '"')"
 python3 - "$FW" <<'PYEOF'
-import json, sys
+import hashlib, json, sys
+from pathlib import Path
+
 m = json.load(open('web/manifest.json'))
 m['version'] = sys.argv[1]
+
+def firmware_path(path):
+    digest = hashlib.sha256((Path('web') / path).read_bytes()).hexdigest()
+    return f'{path}?v={digest}'
+
 # Four parts at their own offsets, never one image at 0 -- see the comment above
 # the copies. The gap between 0x8000+partitions and 0xe000 is where NVS lives
 # and nothing may be written there.
 m['builds'] = [{
     'chipFamily': 'ESP32-S3',
     'parts': [
-        {'path': 'firmware/bootloader.bin', 'offset': 0},
-        {'path': 'firmware/partitions.bin', 'offset': 0x8000},
-        {'path': 'firmware/boot_app0.bin',  'offset': 0xe000},
-        {'path': 'firmware/app.bin',        'offset': 0x10000},
+        {'path': firmware_path('firmware/bootloader.bin'), 'offset': 0},
+        {'path': firmware_path('firmware/partitions.bin'), 'offset': 0x8000},
+        {'path': firmware_path('firmware/boot_app0.bin'),  'offset': 0xe000},
+        {'path': firmware_path('firmware/app.bin'),        'offset': 0x10000},
     ],
 }]
 # ALWAYS true, and the name is the exact opposite of what it does. In
@@ -91,7 +98,9 @@ m['builds'] = [{
 # This was set to False on purpose once, on the belief that the name meant what
 # it says. It destroyed two real saves. Do not "fix" it back.
 m['new_install_prompt_erase'] = True
-json.dump(m, open('web/manifest.json', 'w'), indent=2)
+with open('web/manifest.json', 'w') as output:
+    json.dump(m, output, indent=2)
+    output.write('\n')
 print('manifest version -> ' + sys.argv[1])
 PYEOF
 

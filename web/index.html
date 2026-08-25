@@ -269,6 +269,9 @@ const webFirmwareVersionEl = document.getElementById('web-firmware-version');
 const targetFirmwareVersionEl = document.getElementById('target-firmware-version');
 const formatOverlay = document.getElementById('format-overlay');
 const buildInfoEl = document.getElementById('build-info');
+document.querySelector('esp-web-install-button').setAttribute(
+  'manifest', `manifest.json?v=${Date.now()}`
+);
 
 // GLUE: firmware keeps stable language-neutral codes while this page owns user-facing copy.
 // Remove this map if the serial protocol ever provides structured display messages.
@@ -651,12 +654,15 @@ function confirmDependencyOverride(selected) {
 }
 
 async function fetchPackage(pkg) {
-  const response = await fetch(`packs/${encodeURIComponent(pkg.file)}`);
+  const expectedCrc = String(pkg.crc32 || '').toLowerCase();
+  if (!/^[0-9a-f]{8}$/.test(expectedCrc))
+    throw new Error(`${pkg.file} has an invalid catalogue checksum`);
+  const response = await fetch(`packs/${encodeURIComponent(pkg.file)}?v=${expectedCrc}`);
   if (!response.ok) throw new Error(`server returned HTTP ${response.status} for ${pkg.file}`);
   const data = new Uint8Array(await response.arrayBuffer());
   if (data.length !== pkg.size)
     throw new Error(`${pkg.file} is incomplete: expected ${pkg.size} bytes, received ${data.length}`);
-  if (!/^[0-9a-f]{8}$/i.test(pkg.crc32) || crc32Hex(data) !== pkg.crc32.toLowerCase())
+  if (crc32Hex(data) !== expectedCrc)
     throw new Error(`${pkg.file} failed the catalogue download checksum`);
   return data;
 }

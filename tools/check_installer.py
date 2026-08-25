@@ -32,6 +32,7 @@ import json
 import os
 import struct
 import sys
+from urllib.parse import urlsplit
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB = os.path.join(ROOT, "web")
@@ -59,11 +60,12 @@ def main():
     parts = []
     for build in manifest.get("builds", []):
         for p in build.get("parts", []):
-            path = os.path.join(WEB, p["path"])
+            relative_path = urlsplit(p["path"]).path
+            path = os.path.join(WEB, relative_path)
             if not os.path.exists(path):
                 print("MISSING: %s (named by the manifest)" % p["path"])
                 return 1
-            parts.append((p["path"], int(p["offset"]), os.path.getsize(path)))
+            parts.append((relative_path, int(p["offset"]), os.path.getsize(path)))
 
     if not parts:
         print("the manifest lists no parts at all")

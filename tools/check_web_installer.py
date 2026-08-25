@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Check that the Web Serial installer is driven by the generated catalogue."""
 
+import hashlib
 import json
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
 index = json.loads((ROOT / "web" / "packs" / "index.json").read_text(encoding="utf-8"))
+manifest = json.loads((ROOT / "web" / "manifest.json").read_text(encoding="utf-8"))
 html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
 sdmon = (ROOT / "sdmon.cpp").read_text(encoding="utf-8")
 content = (ROOT / "content.cpp").read_text(encoding="utf-8")
@@ -60,7 +62,8 @@ required_fragments = [
     'id="build-info"', "build-info.json", "info.commit.slice(0, 7)", "info.date",
     "pumpSerial(reader)", "serialWaiters", "Refreshing installed packs…",
     "Could not refresh installed packs.", "CRC32_TABLE", "crc32Hex(data)",
-    "failed the catalogue download checksum",
+    "failed the catalogue download checksum", "?v=${expectedCrc}",
+    "`manifest.json?v=${Date.now()}`",
 ]
 for fragment in required_fragments:
     if fragment not in html:
@@ -82,6 +85,13 @@ installed_renderer = html.split("async function refreshInstalledPacks() {", 1)[1
     "async function deleteInstalledPack", 1)[0]
 if "target revision" not in installed_renderer or "web revision" not in installed_renderer:
     raise SystemExit("installed packs must retain target and web revision comparison")
+
+for build in manifest.get("builds", []):
+    for part in build.get("parts", []):
+        path, marker = part["path"].split("?v=", 1)
+        asset = ROOT / "web" / path
+        if not asset.is_file() or hashlib.sha256(asset.read_bytes()).hexdigest() != marker:
+            raise SystemExit(f"firmware cache marker does not match {path!r}")
 
 for fragment in ('BUILD_COMMIT: ${{ github.sha }}', '--format=%cs',
                  '_site/build-info.json', '"commit": sys.argv[1]', '"date": sys.argv[2]'):

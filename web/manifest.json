@@ -7,19 +7,19 @@
       "chipFamily": "ESP32-S3",
       "parts": [
         {
-          "path": "firmware/bootloader.bin",
+          "path": "firmware/bootloader.bin?v=31b3c1be45dc5a76aa85c82540d6787b675e711eaf11021a5eea7e36f469c6de",
           "offset": 0
         },
         {
-          "path": "firmware/partitions.bin",
+          "path": "firmware/partitions.bin?v=ace02503447d0f470692e65fa76002f2d77a92dc81cd3813d8aa66718d716da9",
           "offset": 32768
         },
         {
-          "path": "firmware/boot_app0.bin",
+          "path": "firmware/boot_app0.bin?v=f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0",
           "offset": 57344
         },
         {
-          "path": "firmware/app.bin",
+          "path": "firmware/app.bin?v=afbe7df01b01b8c2aa5cc06d6d7171f0ad920ba42e61655d8f0b4a4c2400c2e0",
           "offset": 65536
         }
       ]
