@@ -109,6 +109,7 @@ echo "Checking the installer cannot erase a save..."
 python3 tools/check_installer.py || { echo "installer would wipe saves -- refusing"; exit 1; }
 
 echo "Empaquetando datos..."
+python3 tools/quiz_pack_test.py
 python3 tools/gen_data_packs.py
 python3 tools/check_data_packs.py
 python3 tools/check_web_installer.py

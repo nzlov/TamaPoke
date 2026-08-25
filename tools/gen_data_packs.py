@@ -19,17 +19,14 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 WEB_PACKS = ROOT / "web" / "packs"
-PACK_ABI = 2
-PACK_REVISION = 1
 
 KIND_UI = 1
 KIND_REGION = 2
 KIND_MOVE = 3
 
-COMMON = struct.Struct("<4sHBBIIIIHH20s")
-SECTION = struct.Struct("<4sIII")
-
 sys.path.insert(0, str(HERE))
+from pack_format import PACK_ABI, PACK_REVISION, pack  # noqa: E402
+from quiz_pack import build_quiz_pack  # noqa: E402
 from dex_data import (  # noqa: E402
     DEX, TYPE_ACCENTS, RARE, LEGENDARY, REGIONS, EVOLUTION_BRANCHES,
 )
@@ -57,13 +54,6 @@ TYPE_ZH = {
     "bug": "虫", "rock": "岩石", "ghost": "幽灵", "dragon": "龙",
     "dark": "恶", "steel": "钢", "fairy": "妖精",
 }
-
-
-def fourcc(tag: str) -> bytes:
-    raw = tag.encode("ascii")
-    if len(raw) != 4:
-        raise ValueError(f"section tag must be four bytes: {tag}")
-    return raw
 
 
 def string_pool(values: list[str]) -> tuple[bytes, list[int]]:
@@ -103,29 +93,6 @@ def localized_strings(locale_values: dict[str, list[str]], item_count: int) -> b
         code = locale.encode("ascii")[:15].ljust(16, b"\0")
         out.extend(struct.pack("<16sIII", code, index_at, blob_at, blob_size))
     out.extend(blocks)
-    return bytes(out)
-
-
-def pack(kind: int, pack_id: str, mechanics_hash: int,
-         sections: list[tuple[str, bytes, int]]) -> bytes:
-    header_size = COMMON.size + SECTION.size * len(sections)
-    payload = bytearray()
-    directory = []
-    for tag, data, count in sections:
-        while (header_size + len(payload)) % 4:
-            payload.append(0)
-        directory.append((tag, header_size + len(payload), len(data), count))
-        payload.extend(data)
-    crc = binascii.crc32(payload) & 0xFFFFFFFF
-    file_size = header_size + len(payload)
-    ident = pack_id.encode("ascii")[:19].ljust(20, b"\0")
-    out = bytearray(COMMON.pack(
-        b"TPPK", PACK_ABI, kind, 0, file_size, crc, PACK_REVISION,
-        mechanics_hash, header_size, len(directory), ident,
-    ))
-    for tag, offset, size, count in directory:
-        out.extend(SECTION.pack(fourcc(tag), offset, size, count))
-    out.extend(payload)
     return bytes(out)
 
 
@@ -596,13 +563,14 @@ def build_move_pack(manifest: list[dict]) -> None:
     manifest.append(item)
 
 
-def pack_manifest(path: Path, kind: str, pack_id: str, locales: list[str]) -> dict:
+def pack_manifest(path: Path, kind: str, pack_id: str, locales: list[str],
+                  revision: int = PACK_REVISION) -> dict:
     blob = path.read_bytes()
     return {
         "id": pack_id,
         "kind": kind,
         "abi": PACK_ABI,
-        "revision": PACK_REVISION,
+        "revision": revision,
         "file": path.name,
         "size": len(blob),
         "crc32": f"{binascii.crc32(blob) & 0xFFFFFFFF:08x}",
@@ -611,19 +579,34 @@ def pack_manifest(path: Path, kind: str, pack_id: str, locales: list[str]) -> di
     }
 
 
+def build_quiz_packs(manifest: list[dict]) -> None:
+    source_dir = HERE / "question_banks"
+    for source in sorted(source_dir.glob("*.json")):
+        document = json.loads(source.read_text(encoding="utf-8"))
+        blob, metadata = build_quiz_pack(document)
+        path = WEB_PACKS / f"{metadata['id']}.tquiz"
+        path.write_bytes(blob)
+        item = pack_manifest(path, "quiz", metadata["id"], metadata["locales"],
+                             metadata["revision"])
+        item["label"] = metadata["label"]
+        item["questions"] = metadata["questions"]
+        manifest.append(item)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sprite-dir", type=Path, default=HERE / "sdcard" / "mons",
                         help="directory containing pNNN.bin, psNNN.bin and thumbs.bin sources")
     args = parser.parse_args()
     WEB_PACKS.mkdir(parents=True, exist_ok=True)
-    for pattern in ("*.tui", "*.tmove", "*.tpet"):
+    for pattern in ("*.tui", "*.tmove", "*.tpet", "*.tquiz"):
         for obsolete in WEB_PACKS.glob(pattern):
             obsolete.unlink()
     manifest: list[dict] = []
     build_ui_packs(manifest)
     build_move_pack(manifest)
     build_region_packs(manifest, args.sprite_dir.resolve())
+    build_quiz_packs(manifest)
     expected_regions = {item["file"] for item in manifest if item["kind"] == "region"}
     for obsolete in WEB_PACKS.glob("*.tregion"):
         if obsolete.name not in expected_regions:

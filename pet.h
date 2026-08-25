@@ -87,6 +87,22 @@ uint8_t regionOfDex(int16_t d);
 // regionCount(), which would land on a locked region and silently do nothing.
 uint8_t nextAvailableRegion(uint8_t from);
 
+enum CareActionKind : uint8_t {
+  CARE_ACTION_NONE = 0,
+  CARE_ACTION_FEED_BERRY,
+  CARE_ACTION_FEED_CANDY,
+  CARE_ACTION_CLEAN,
+  CARE_ACTION_CARESS,
+  CARE_ACTION_PLAY,
+  CARE_ACTION_TRAIN_STRENGTH,
+  CARE_ACTION_TRAIN_SPEED,
+};
+
+struct CareAction {
+  CareActionKind kind = CARE_ACTION_NONE;
+  uint16_t value = 0;
+};
+
 class Pet {
 public:
   // Estadisticas 0..100
@@ -142,6 +158,9 @@ public:
   void feed();              // baya roja (compatibilidad)
   void feedBerry(uint8_t color);  // 0 roja, 1 azul, 2 verde
   void feedCandy();
+  // Applies the single domain-owned interpretation of a quiz result. Positive
+  // rewards are scaled; exercise costs and records still reflect what happened.
+  uint8_t settleCare(const CareAction &action, uint8_t percent);
   bool lovesBerry(uint8_t color) const {
     return !isEgg() && (speciesId % 3) == color;  // gusto oculto por especie
   }

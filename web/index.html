@@ -136,8 +136,9 @@
       <button id="deploy" disabled>⬇️ Deploy selected packs</button>
     </div>
     <p class="note">Have a custom pack? <label style="cursor:pointer;text-decoration:underline">select
-       <code>.tui</code>, <code>.tmove</code> or <code>.tregion</code> files
-       <input id="files" type="file" accept=".tui,.tmove,.tregion" multiple disabled hidden></label>.</p>
+       <code>.tui</code>, <code>.tmove</code>, <code>.tregion</code> or <code>.tquiz</code> files
+       <input id="files" type="file" accept=".tui,.tmove,.tregion,.tquiz" multiple disabled hidden></label>.</p>
+    <p class="note"><a href="question-bank.html">Build, edit and deploy a question bank</a>.</p>
     <div class="progress-status" id="progress-status">
       <span id="progress-label">Preparing deployment…</span>
       <strong id="progress-percent">0%</strong>
@@ -181,75 +182,16 @@
 </div>
 
 <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js"></script>
-<script>
+<script type="module">
+import { SerialClient } from './serial-client.js';
 const log = (m) => { const el = document.getElementById('log'); el.style.display='block';
   el.textContent += m + '\n'; el.scrollTop = el.scrollHeight; };
 const supported = 'serial' in navigator;
 if (!supported) { document.getElementById('unsupported').style.display='block';
   document.getElementById('connect').disabled = true; }
 
-let port, reader, writer, serialBusy = false;
-let serialLines = [], serialWaiters = [];
-
-function receiveSerialLine(line) {
-  const waiter = serialWaiters.shift();
-  if (!waiter) {
-    serialLines.push(line);
-    return;
-  }
-  clearTimeout(waiter.timer);
-  waiter.resolve(line);
-}
-
-async function pumpSerial(activeReader) {
-  const decoder = new TextDecoder();
-  let buffer = '';
-  try {
-    while (true) {
-      const { value, done } = await activeReader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      for (let newline; (newline = buffer.indexOf('\n')) >= 0;) {
-        receiveSerialLine(buffer.slice(0, newline).trim());
-        buffer = buffer.slice(newline + 1);
-      }
-    }
-  } catch (error) {
-    log(`Serial receive stopped: ${error.message}`);
-  } finally {
-    for (const waiter of serialWaiters.splice(0)) {
-      clearTimeout(waiter.timer);
-      waiter.resolve(null);
-    }
-  }
-}
-
-async function readLine(timeoutMs = 6000) {
-  if (serialLines.length) return serialLines.shift();
-  if (timeoutMs <= 0) return null;
-  return new Promise(resolve => {
-    const waiter = { resolve, timer: 0 };
-    waiter.timer = setTimeout(() => {
-      const index = serialWaiters.indexOf(waiter);
-      if (index >= 0) serialWaiters.splice(index, 1);
-      resolve(null);
-    }, timeoutMs);
-    serialWaiters.push(waiter);
-  });
-}
-
-async function waitFor(token, timeoutMs = 6000, action = token) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const l = await readLine(deadline - Date.now());
-    if (l === null) break;
-    if (l === token) return true;
-    if (isBoardError(l)) throw boardError(l);
-  }
-  throw new Error(`board timed out while ${action}`);
-}
-
-const enc = new TextEncoder();
+let serialBusy = false;
+let serial;
 let packages = [], packageById = new Map(), packageByFile = new Map();
 let installedPackIds = new Set(), installedPacksKnown = false;
 let webFirmwareVersion = null, targetFirmwareVersion = null, deviceInfoSupported = null;
@@ -304,11 +246,8 @@ const BOARD_ERRORS = {
   FORMAT_REMOUNT_FAILED: 'the new FAT32 filesystem could not be mounted',
   FORMAT_TYPE_MISMATCH: 'formatting completed but the filesystem is not FAT32',
   FORMAT_INIT_FAILED: 'FAT32 was created but the /packs directory could not be initialized',
+  QUIZ_CONFIG_INVALID: 'the answer rules are invalid',
 };
-
-function isBoardError(line) {
-  return line === 'ERR' || line.startsWith('ERR ');
-}
 
 function boardError(line) {
   const code = line.slice(3).trim();
@@ -367,7 +306,7 @@ function renderFirmwareVersions() {
     ? `${targetFirmwareVersion}${webFirmwareVersion
         ? (targetFirmwareVersion === webFirmwareVersion ? ' · matches web' : ' · differs from web')
         : ''}`
-    : (writer ? 'Unavailable (older firmware)' : 'Connect the board');
+    : (serial?.connected ? 'Unavailable (older firmware)' : 'Connect the board');
 }
 
 function checkedIds() {
@@ -378,7 +317,7 @@ function checkedIds() {
 function updateSelection() {
   const selected = checkedIds();
   const chosen = [...selected].map(id => packageById.get(id)).filter(Boolean);
-  deployButton.disabled = serialBusy || !writer || chosen.length === 0;
+  deployButton.disabled = serialBusy || !serial?.connected || chosen.length === 0;
   const total = chosen.reduce((sum, pkg) => sum + pkg.size, 0);
   deployButton.textContent = chosen.length
     ? `⬇️ Deploy ${chosen.length} packs (${formatSize(total)})`
@@ -394,6 +333,7 @@ function renderCatalog(index) {
     ['ui', 'UI and languages'],
     ['move', 'Moves'],
     ['region', 'Regions'],
+    ['quiz', 'Question banks'],
   ];
   for (const [kind, title] of groups) {
     const rows = packages.filter(pkg => pkg.kind === kind);
@@ -466,34 +406,18 @@ async function loadBuildInfo() {
 }
 
 async function sendOne(name, data, progress) {
-  await writer.write(enc.encode(`PUT packs/${name} ${data.length}\n`));
-  await waitFor('OK', 6000, `accepting ${name}`);
-  for (let offset = 0; offset < data.length; offset += 2048) {
-    await writer.write(data.slice(offset, offset + 2048));
-    await waitFor('#', 6000, `writing ${name} at byte ${offset}`);
-    progress?.(Math.min(offset + 2048, data.length));
-  }
-  await waitFor('DONE', 120000, `validating ${name}`);
+  await serial.sendFile(`packs/${name}`, data, progress);
 }
 
 async function runCommand(command, timeoutMs = 10000) {
-  await writer.write(enc.encode(`${command}\n`));
-  const lines = [], deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const line = await readLine(deadline - Date.now());
-    if (line === null) break;
-    if (line === 'DONE') return lines;
-    if (isBoardError(line)) throw boardError(line);
-    lines.push(line);
-  }
-  throw new Error('board response timed out');
+  return serial.command(command, timeoutMs);
 }
 
 function setSdManagementBusy(busy) {
   serialBusy = busy;
-  refreshPacksButton.disabled = busy || !writer;
-  formatButton.disabled = busy || !writer;
-  document.getElementById('files').disabled = busy || !writer;
+  refreshPacksButton.disabled = busy || !serial?.connected;
+  formatButton.disabled = busy || !serial?.connected;
+  document.getElementById('files').disabled = busy || !serial?.connected;
   for (const button of installedPacksEl.querySelectorAll('button')) button.disabled = busy;
   updateSelection();
 }
@@ -502,21 +426,21 @@ function parseInstalledPack(line) {
   const detailed = line.match(/^PACK\t([^\t]+)\t(\d+)\t(\d+)\t(.+)$/);
   if (detailed) {
     const name = detailed[4].split('/').pop();
-    return /\.(tui|tmove|tregion)$/.test(name)
+    return /\.(tui|tmove|tregion|tquiz)$/.test(name)
       ? { id: detailed[1], revision: Number(detailed[2]), size: Number(detailed[3]), name }
       : null;
   }
   const physical = line.match(/^FILE\t(\d+)\t(.+)$/);
   if (physical) {
     const name = physical[2].split('/').pop();
-    return /\.(tui|tmove|tregion)$/.test(name)
+    return /\.(tui|tmove|tregion|tquiz)$/.test(name)
       ? { id: packageByFile.get(name)?.id, revision: null, size: Number(physical[1]), name }
       : null;
   }
   const legacy = line.match(/^(.*) (\d+)$/);
   if (!legacy) return null;
   const name = legacy[1].split('/').pop();
-  return /\.(tui|tmove|tregion)$/.test(name)
+  return /\.(tui|tmove|tregion|tquiz)$/.test(name)
     ? { id: packageByFile.get(name)?.id, revision: null, size: Number(legacy[2]), name }
     : null;
 }
@@ -542,7 +466,7 @@ async function queryInstalledPacks() {
 }
 
 async function refreshInstalledPacks() {
-  if (!writer) return;
+  if (!serial?.connected) return;
   setSdManagementBusy(true);
   installedPacksEl.innerHTML = '<span class="note">Refreshing installed packs…</span>';
   try {
@@ -669,12 +593,9 @@ async function fetchPackage(pkg) {
 
 document.getElementById('connect').onclick = async () => {
   try {
-    port = await navigator.serial.requestPort();
-    await port.open({ baudRate: 115200 });
-    reader = port.readable.getReader();
-    writer = port.writable.getWriter();
-    serialLines = [];
-    pumpSerial(reader);
+    serial = new SerialClient(boardError,
+      error => log(`Serial receive stopped: ${error.message}`));
+    await serial.connect();
     log('Connected. Choose packs, then deploy.');
     document.getElementById('files').disabled = false;
     document.getElementById('connect').disabled = true;
@@ -684,7 +605,7 @@ document.getElementById('connect').onclick = async () => {
 };
 
 deployButton.onclick = async () => {
-  if (!writer) { log('Connect the board first.'); return; }
+  if (!serial?.connected) { log('Connect the board first.'); return; }
   setSdManagementBusy(true);
   beginDeployment('Preparing selected packs…');
   let phase = 'preparing the deployment';
@@ -727,7 +648,7 @@ deployButton.onclick = async () => {
 
 document.getElementById('files').onchange = async (ev) => {
   const files = [...ev.target.files];
-  if (!writer) { log('Connect the board first.'); return; }
+  if (!serial?.connected) { log('Connect the board first.'); return; }
   setSdManagementBusy(true);
   beginDeployment('Preparing custom packs…');
   let completed = 0;

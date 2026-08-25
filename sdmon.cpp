@@ -153,6 +153,7 @@ bool sdBegin() {
 // ---------------------------------------------------------------------------
 // Protocolo de carga por USB (para llenar la SD sin sacarla de la placa):
 //   PUT <ruta> <bytes>\n  + datos crudos   -> "OK" ... "DONE"
+//   GET <ruta>\n -> "FILE <bytes>"; cliente "OK"; datos crudos; "DONE"
 //   LS\n                                   -> listado de /packs
 //   INFO\n                                 -> firmware + id/revision/tamano/ruta
 //   RM <ruta>\n                            -> borra un paquete de /packs
@@ -165,7 +166,7 @@ static bool isPackPath(String path) {
   if (!path.startsWith("/packs/") || path.substring(7).indexOf('/') >= 0 ||
       path.indexOf("..") >= 0) return false;
   return path.endsWith(".tui") || path.endsWith(".tmove") ||
-         path.endsWith(".tregion");
+         path.endsWith(".tregion") || path.endsWith(".tquiz");
 }
 
 // GLUE: FS entry paths may include the mount point, while the serial protocol owns
@@ -309,6 +310,44 @@ bool sdSerialCommand(const String &line) {
     sdDirty = valid;
     if (valid) Serial.println("DONE");
     else sdSerialError(failure ? failure : "UPLOAD_FAILED");
+    return true;
+  } else if (line.startsWith("GET ")) {
+    String path = line.substring(4);
+    if (!path.startsWith("/")) path = "/" + path;
+    if (!sdReady) { sdSerialError("SD_NOT_READY"); return true; }
+    if (!isPackPath(path)) { sdSerialError("INVALID_PACK_PATH"); return true; }
+    File file = SD_MMC.open(path, "r");
+    if (!file) { sdSerialError("PACK_NOT_FOUND"); return true; }
+    uint32_t size = (uint32_t)file.size();
+    if (!size || size > 256UL * 1024 * 1024) {
+      file.close();
+      sdSerialError("INVALID_PACK_SIZE");
+      return true;
+    }
+    Serial.printf("FILE %u\n", size);
+    Serial.flush();
+    Serial.setTimeout(5000);
+    String ack = Serial.readStringUntil('\n');
+    ack.trim();
+    if (ack != "OK") {
+      file.close();
+      Serial.setTimeout(1000);
+      sdSerialError("DOWNLOAD_CANCELLED");
+      return true;
+    }
+    static uint8_t buffer[2048];
+    uint32_t remaining = size;
+    while (remaining) {
+      size_t want = remaining > sizeof(buffer) ? sizeof(buffer) : remaining;
+      size_t count = file.read(buffer, want);
+      if (!count || Serial.write(buffer, count) != count) break;
+      remaining -= count;
+    }
+    file.close();
+    Serial.flush();
+    Serial.setTimeout(1000);
+    if (remaining) sdSerialError("PACK_READ_FAILED");
+    else Serial.println("DONE");
     return true;
   } else if (line == "LS") {
     if (!sdReady) { sdSerialError("SD_NOT_READY"); return true; }

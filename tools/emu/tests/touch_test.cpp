@@ -12,6 +12,7 @@
 #include "moves.h"
 #include "battle.h"
 #include "trainers.h"
+#include "quiz.h"
 #include <chrono>
 #include <thread>
 #include <string>
@@ -39,8 +40,10 @@ extern bool trainOpen, sackOpen, gameOpen, menuOpen, cardOpen, moveInfoOpen, mov
 extern uint8_t movePickSlot, movePickPage;
 extern bool battleOpen, btlOver, btlWon;
 extern Combatant btlYou, btlFoe;
+extern QuizRuntime quiz;
 extern uint8_t btlMsgCount;
 extern uint8_t gymRegion, btlRegion;
+void updateQuiz(uint32_t now);
 void startBattle(int16_t dex, uint8_t lvl);
 void startTrainerBattle(uint8_t idx, bool hard);
 void battleTap(int16_t x, int16_t y);
@@ -87,6 +90,30 @@ static void click(int x, int y) {
   pump(3);                       // finger up: gesture resolves as a tap
 }
 
+static bool answerActiveQuiz() {
+  if (!quiz.active) return false;
+  uint32_t now = millis();
+  quiz.markRendered(now);
+  bool answered = false;
+  if (quiz.kind == QUIZ_QUESTION_CHOICE) {
+    answered = quiz.choose(quiz.choice.correctIndex, now);
+  } else {
+    snprintf(quiz.input, sizeof(quiz.input), "%s", quiz.expected);
+    answered = quiz.submit(now);
+  }
+  if (!answered) return false;
+  updateQuiz(quiz.feedbackUntil);
+  return !quiz.active;
+}
+
+static int bestMoveSlot() {
+  MoveId best = aiChooseMove(btlYou, btlFoe, true);
+  for (int i = 0; i < MOVE_SLOTS; i++) {
+    if (btlYou.moves[i] == best) return i;
+  }
+  return -1;
+}
+
 void uiButtonAt(int i, int *cx, int *cy, int *half);
 
 int main(int argc, char **argv) {
@@ -105,6 +132,7 @@ int main(int argc, char **argv) {
   printf("--- time scale x%u ---\n", emuTimeScale());
   setup();
   pump(4);
+  quiz.config.choiceWeight = 0;
 
   if (!pet.awaitingStarter()) { printf("FAIL: not on the starter screen\n"); return 1; }
   printf("on starter screen, awaitingStarter=1\n");
@@ -288,9 +316,12 @@ int main(int argc, char **argv) {
   int turns = 0;
   while (battleOpen && turns < 60) {
     turns++;
+    if (quiz.active) {
+      if (!answerActiveQuiz()) { printf("FAIL: battle question could not be answered\n"); return 1; }
+      continue;
+    }
     if (btlMsgCount) { click(233, 320); continue; }   // clear narration
-    int slot = -1;
-    for (int i = 0; i < MOVE_SLOTS; i++) if (btlYou.moves[i]) { slot = i; break; }
+    int slot = bestMoveSlot();
     if (slot < 0) break;
     click(BTL_CELL_X(slot) + 40, BTL_CELL_Y(slot) + 20);
   }
@@ -303,7 +334,8 @@ int main(int argc, char **argv) {
   printf("PASS: the fight concludes and closes\n");
 
   // ---- a trainer fight: the foe's squad must chain, and winning awards a badge
-  pet.ageMinutes = 100 * MINUTES_PER_LEVEL;   // strong enough to sweep Brock
+  pet.dbgHatchAs(9, false);                   // a stable favourable matchup for Brock
+  pet.ageMinutes = 100 * MINUTES_PER_LEVEL;
   pet.relearnFromLevel();
   while (pet.hasLearnOffer()) pet.declineLearn();
   bool hadBadge = pet.hasBadge(0, 0, false);
@@ -315,9 +347,12 @@ int main(int argc, char **argv) {
   uint8_t sawFoeAt = 0;
   while (battleOpen && taps < 200) {
     taps++;
+    if (quiz.active) {
+      if (!answerActiveQuiz()) { printf("FAIL: gym question could not be answered\n"); return 1; }
+      continue;
+    }
     if (btlMsgCount) { click(233, 320); continue; }
-    int slot = -1;
-    for (int i = 0; i < MOVE_SLOTS; i++) if (btlYou.moves[i]) { slot = i; break; }
+    int slot = bestMoveSlot();
     if (slot < 0) break;
     click(BTL_CELL_X(slot) + 40, BTL_CELL_Y(slot) + 20);
     if (btlFoeAt > sawFoeAt) sawFoeAt = btlFoeAt;

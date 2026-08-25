@@ -949,61 +949,166 @@ void Pet::feed() {
 }
 
 void Pet::feedBerry(uint8_t color) {
-  if (ceremony != CER_NONE) return;
-  if (isEgg() || sleeping) return;
-  if (lovesBerry(color)) {
-    fullness = clamp100(fullness + 35);
-    joy = clamp100(joy + 10);
-    heartUntil = millis() + HEART_MS;  // "le encanta!"
-    berryKnown = true;                 // descubierto: se muestra en la ficha
-    addBond(2);
-  } else {
-    fullness = clamp100(fullness + 25);
-  }
-  eatUntil = millis() + EAT_ANIM_MS;
-  registerCare();
-  save();
+  settleCare({ CARE_ACTION_FEED_BERRY, color }, 100);
 }
 
 void Pet::feedCandy() {
-  if (ceremony != CER_NONE) return;
-  if (isEgg() || sleeping) return;
-  fullness = clamp100(fullness + 10);
-  joy = clamp100(joy + 12);
-  weight = clamp100(weight + 12);  // las chuches pasan factura
-  eatUntil = millis() + EAT_ANIM_MS;
-  registerCare();
-  save();
+  settleCare({ CARE_ACTION_FEED_CANDY, 0 }, 100);
 }
 
 uint8_t Pet::playResult(uint8_t score) {
+  return settleCare({ CARE_ACTION_PLAY, score }, 100);
+}
+
+uint8_t Pet::trainSpeed(uint16_t hits) {
+  return settleCare({ CARE_ACTION_TRAIN_SPEED, hits }, 100);
+}
+
+uint8_t Pet::trainStrength(uint16_t hits) {
+  return settleCare({ CARE_ACTION_TRAIN_STRENGTH, hits }, 100);
+}
+
+static uint8_t scaledCareGain(uint16_t value, uint8_t percent) {
+  if (percent > 100) percent = 100;
+  return (uint8_t)(((uint32_t)value * percent + 50u) / 100u);
+}
+
+uint8_t Pet::settleCare(const CareAction &action, uint8_t percent) {
+  if (percent > 100) percent = 100;
   if (ceremony != CER_NONE || isEgg()) return 0;
-  // The ball game is DEFENCE's trainer now. It used to train SPEED, which was
-  // moved to its own reaction test to stop playing being a stat grind -- and
-  // that left DEF with no active trainer at all, only the slow passive tick.
-  // Keeping the ball on the defensive stat fits it: you are stopping something
-  // from getting past you.
-  uint8_t before = trDef;
-  uint8_t gain = score / 2;
-  if (gain > 18) gain = 18;          // the same per-session ceiling as the bag
-  uint16_t v = (uint16_t)trDef + gain;
-  trDef = v > trMaxDef() ? trMaxDef() : (uint8_t)v;
-  gain = trDef - before;
-  joy = clamp100(joy + 5 + (score > 15 ? 30 : score * 2));
-  energy = dropTo(energy, 10 + score / 2, 5);
-  fullness = dropTo(fullness, 5, 5);
-  int burn = (int)weight - score * 2;  // el ejercicio quema peso
-  weight = burn > 0 ? burn : 0;
-  if (score >= 5) heartUntil = millis() + HEART_MS;
-  if (score > gameHi) gameHi = score;  // nuevo record
-  // Training bonds, and it scales with the session: a token effort is worth the
-  // base, a full one is worth more. The daily cap in addBond() still stops it
-  // being farmed -- this changes how fast a good session gets there, not the
-  // ceiling.
-  addBond((uint8_t)(2 + gain / 6));
-  registerCare();
-  save();
-  return gain;
+  if ((action.kind == CARE_ACTION_FEED_BERRY || action.kind == CARE_ACTION_FEED_CANDY ||
+       action.kind == CARE_ACTION_CARESS) && sleeping) return 0;
+
+  if (action.kind == CARE_ACTION_FEED_BERRY) {
+    bool loved = lovesBerry((uint8_t)action.value);
+    uint8_t food = scaledCareGain(loved ? 35 : 25, percent);
+    uint8_t happiness = scaledCareGain(loved ? 10 : 0, percent);
+    fullness = clamp100(fullness + food);
+    joy = clamp100(joy + happiness);
+    if (percent) {
+      if (loved) {
+        heartUntil = millis() + HEART_MS;
+        berryKnown = true;
+        addBond(scaledCareGain(2, percent));
+      }
+      registerCare();
+    }
+    if (percent) eatUntil = millis() + EAT_ANIM_MS;
+    if (percent) save();
+    return food;
+  }
+  if (action.kind == CARE_ACTION_FEED_CANDY) {
+    uint8_t food = scaledCareGain(10, percent);
+    fullness = clamp100(fullness + food);
+    joy = clamp100(joy + scaledCareGain(12, percent));
+    weight = clamp100(weight + scaledCareGain(12, percent));
+    if (percent) registerCare();
+    if (percent) eatUntil = millis() + EAT_ANIM_MS;
+    if (percent) save();
+    return food;
+  }
+  if (action.kind == CARE_ACTION_CLEAN) {
+    if (!percent) return 0;
+    uint8_t gain = scaledCareGain(100 - hygiene, percent);
+    hygiene = clamp100(hygiene + gain);
+    poops = 0;
+    addBond(scaledCareGain(1, percent));
+    registerCare();
+    save();
+    return gain;
+  }
+  if (action.kind == CARE_ACTION_CARESS) {
+    uint8_t gain = scaledCareGain(5, percent);
+    joy = clamp100(joy + gain);
+    if (percent) {
+      heartUntil = millis() + HEART_MS;
+      addBond(scaledCareGain(1, percent));
+      registerCare();
+    }
+    return gain;
+  }
+  if (action.kind == CARE_ACTION_PLAY) {
+    uint16_t score = action.value;
+    // The ball game is DEFENCE's trainer now. It used to train SPEED, which was
+    // moved to its own reaction test to stop playing being a stat grind -- and
+    // that left DEF with no active trainer at all, only the slow passive tick.
+    // Keeping the ball on the defensive stat fits it: you are stopping something
+    // from getting past you.
+    uint8_t before = trDef;
+    uint8_t baseGain = score / 2;
+    if (baseGain > 18) baseGain = 18;          // the same per-session ceiling as the bag
+    uint8_t potentialGain = baseGain < trMaxDef() - before ? baseGain : trMaxDef() - before;
+    uint8_t gain = scaledCareGain(potentialGain, percent);
+    uint16_t v = (uint16_t)trDef + gain;
+    trDef = v > trMaxDef() ? trMaxDef() : (uint8_t)v;
+    gain = trDef - before;
+    uint8_t joyGain = (uint8_t)(5 + (score > 15 ? 30 : score * 2));
+    joy = clamp100(joy + scaledCareGain(joyGain, percent));
+    energy = dropTo(energy, 10 + score / 2, 5);
+    fullness = dropTo(fullness, 5, 5);
+    int burn = (int)weight - score * 2;  // el ejercicio quema peso
+    weight = burn > 0 ? burn : 0;
+    if (percent && score >= 5) heartUntil = millis() + HEART_MS;
+    if (score > gameHi) gameHi = score;  // nuevo record
+    // Training bonds, and it scales with the session: a token effort is worth the
+    // base, a full one is worth more. The daily cap in addBond() still stops it
+    // being farmed -- this changes how fast a good session gets there, not the
+    // ceiling.
+    if (percent) {
+      addBond(scaledCareGain((uint8_t)(2 + potentialGain / 6), percent));
+      registerCare();
+    }
+    save();
+    return gain;
+  }
+  if (action.kind == CARE_ACTION_TRAIN_SPEED) {
+    uint16_t hits = action.value;
+    uint8_t baseGain = hits / 2;
+    if (baseGain > 18) baseGain = 18;
+    uint8_t before = trSpe;
+    uint8_t potentialGain = baseGain < trMaxSpe() - before ? baseGain : trMaxSpe() - before;
+    uint8_t gain = scaledCareGain(potentialGain, percent);
+    uint8_t v = trSpe + gain;
+    trSpe = v > trMaxSpe() ? trMaxSpe() : v;
+    gain = trSpe - before;
+    energy = dropTo(energy, 10, 5);
+    fullness = dropTo(fullness, 4, 5);
+    int burn = (int)weight - hits / 2;
+    weight = burn > 0 ? burn : 0;
+    joy = clamp100(joy + scaledCareGain(4, percent));
+    if (hits > spdHi) spdHi = hits;
+    if (percent) {
+      addBond(scaledCareGain((uint8_t)(2 + potentialGain / 6), percent));
+      registerCare();
+    }
+    save();
+    return gain;
+  }
+  if (action.kind == CARE_ACTION_TRAIN_STRENGTH) {
+    uint16_t hits = action.value;
+    uint8_t baseGain = hits / 4;
+    if (baseGain > 18) baseGain = 18;
+    uint8_t before = trAtk;
+    uint8_t potentialGain = baseGain < trMaxAtk() - before ? baseGain : trMaxAtk() - before;
+    uint8_t gain = scaledCareGain(potentialGain, percent);
+    uint8_t v = trAtk + gain;
+    trAtk = v > trMaxAtk() ? trMaxAtk() : v;
+    gain = trAtk - before;
+    energy = dropTo(energy, 12, 5);
+    fullness = dropTo(fullness, 5, 5);
+    int burn = (int)weight - hits / 3;
+    weight = burn > 0 ? burn : 0;
+    joy = clamp100(joy + scaledCareGain(6, percent));
+    if (percent && hits >= 20) heartUntil = millis() + HEART_MS;
+    if (hits > strHi) strHi = hits;
+    if (percent) {
+      addBond(scaledCareGain((uint8_t)(2 + potentialGain / 6), percent));
+      registerCare();
+    }
+    save();
+    return gain;
+  }
+  return 0;
 }
 
 uint8_t Pet::gymIvRewardAt(uint8_t region, uint8_t gym) const {
@@ -1039,55 +1144,6 @@ GymIvReward Pet::rewardGymIv(uint8_t region, uint8_t gym, uint8_t &which) {
   gymIvRewards[at] = (uint8_t)(which + 1);
   save();
   return GYM_IV_GAINED;
-}
-
-uint8_t Pet::trainSpeed(uint16_t hits) {
-  if (ceremony != CER_NONE || isEgg()) return 0;
-  uint8_t gain = hits / 2;          // ~2 reactions = 1 point
-  if (gain > 18) gain = 18;         // same per-session ceiling as the bag
-  uint8_t before = trSpe;
-  uint8_t v = trSpe + gain;
-  trSpe = v > trMaxSpe() ? trMaxSpe() : v;   // el IV pone el techo
-  gain = trSpe - before;
-  energy = dropTo(energy, 10, 5);
-  fullness = dropTo(fullness, 4, 5);
-  int burn = (int)weight - hits / 2;
-  weight = burn > 0 ? burn : 0;
-  joy = clamp100(joy + 4);
-  if (hits > spdHi) spdHi = hits;
-  // Training bonds, and it scales with the session: a token effort is worth the
-  // base, a full one is worth more. The daily cap in addBond() still stops it
-  // being farmed -- this changes how fast a good session gets there, not the
-  // ceiling.
-  addBond((uint8_t)(2 + gain / 6));
-  registerCare();
-  save();
-  return gain;
-}
-
-uint8_t Pet::trainStrength(uint16_t hits) {
-  if (ceremony != CER_NONE || isEgg()) return 0;
-  uint8_t gain = hits / 4;          // ~4 golpes = 1 punto de entrenamiento
-  if (gain > 18) gain = 18;         // tope por sesion: la FUE se forja a fuego lento
-  uint8_t before = trAtk;
-  uint8_t v = trAtk + gain;
-  trAtk = v > trMaxAtk() ? trMaxAtk() : v;  // el IV pone el techo
-  gain = trAtk - before;            // lo que de verdad subio (puede topar)
-  energy = dropTo(energy, 12, 5);   // cansa
-  fullness = dropTo(fullness, 5, 5);
-  int burn = (int)weight - hits / 3;  // tambien quema peso
-  weight = burn > 0 ? burn : 0;
-  joy = clamp100(joy + 6);
-  if (hits >= 20) heartUntil = millis() + HEART_MS;
-  if (hits > strHi) strHi = hits;   // record de golpes
-  // Training bonds, and it scales with the session: a token effort is worth the
-  // base, a full one is worth more. The daily cap in addBond() still stops it
-  // being farmed -- this changes how fast a good session gets there, not the
-  // ceiling.
-  addBond((uint8_t)(2 + gain / 6));
-  registerCare();
-  save();
-  return gain;
 }
 
 void Pet::play() {
@@ -1165,21 +1221,11 @@ void Pet::toggleLight() {
 }
 
 void Pet::clean() {
-  if (ceremony != CER_NONE) return;
-  poops = 0;
-  hygiene = 100;
-  addBond(1);
-  registerCare();
-  save();
+  settleCare({ CARE_ACTION_CLEAN, 0 }, 100);
 }
 
 void Pet::caress() {
-  if (ceremony != CER_NONE) return;
-  if (isEgg() || sleeping) return;
-  joy = clamp100(joy + 5);
-  heartUntil = millis() + HEART_MS;
-  addBond(1);
-  registerCare();
+  settleCare({ CARE_ACTION_CARESS, 0 }, 100);
 }
 
 void Pet::eggTap() {

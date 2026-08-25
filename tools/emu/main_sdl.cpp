@@ -9,6 +9,7 @@
 #include "party.h"
 #include "battle.h"
 #include "i18n.h"
+#include "quiz.h"
 #include <chrono>
 #include <string>
 #include <deque>
@@ -180,6 +181,7 @@ extern uint8_t cardPage;
 extern int16_t galleryDetail;
 extern bool moveInfoOpen;
 extern uint8_t movePickSlot;
+extern QuizRuntime quiz;
 
 #define PANEL 466
 
@@ -265,6 +267,10 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   else if (!strcmp(screen, "clock"))   clockOpen = true;
   else if (!strcmp(screen, "menu"))    menuOpen = true;
   else if (!strcmp(screen, "train"))   trainOpen = true;
+  else if (!strcmp(screen, "quiz")) {
+    quiz.config.choiceWeight = 0;
+    quiz.begin(locale ? locale : "en-US");
+  }
   else if (!strcmp(screen, "moves"))   { cardOpen = true; cardPage = 2; }
   else if (!strcmp(screen, "moveinfo")) { movePickSlot = 0; moveInfoOpen = true; }
   else if (!strcmp(screen, "movepick")) { movePickOpen = true; }

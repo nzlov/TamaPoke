@@ -5,7 +5,7 @@
 [![在浏览器中刷写](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://dylanpdao.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![开发板](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![固件](https://img.shields.io/badge/firmware-v3.4-8A2BE2)
+![固件](https://img.shields.io/badge/firmware-v3.6-8A2BE2)
 ![代码](https://img.shields.io/badge/code-MIT-blue)
 ![语言](https://img.shields.io/badge/languages-7-FFCB05)
 [![Stars](https://img.shields.io/github/stars/DylanPDao/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/DylanPDao/TamaPoke/stargazers)
@@ -35,7 +35,7 @@ CO5300 QSPI 显示驱动和 CST9217 I2C 触控。你可以培育任意已安装�
 完整的简体中文界面、名称和说明。推荐使用**[网页安装器](https://dylanpdao.github.io/TamaPoke/web/)**：
 先刷入固件，再将所选语言与地区部署到 microSD，无需 Arduino IDE。
 
-语言、招式和地区内容现已拆分为可独立部署的运行时数据包。你可以只安装所需语言和
+语言、招式、地区和题库内容现已拆分为可独立部署的运行时数据包。你可以只安装所需语言和
 地区，也能在不重新编译固件的情况下更新内容：
 
 | 分包 | 内容 | 是否必需 |
@@ -43,6 +43,7 @@ CO5300 QSPI 显示驱动和 CST9217 I2C 触控。你可以培育任意已安装�
 | UI（`.tui`） | 界面文字、布局参数和字体；简体中文包为 `ui-zh-CN.tui` | 至少一个 |
 | 招式（`.tmove`） | 招式机制、学习表、属性克制、名称和说明 | 必需 |
 | 地区（`.tregion`） | 宝可梦资料、名称与说明、动画/异色精灵、缩略图、训练家、道馆和徽章 | 至少一个 |
+| 题库（`.tquiz`） | 按语言建立随机访问索引的选择题 | 可选；仅在四则运算题已开启时回退生成 |
 
 安装器读取 `web/packs/index.json`，并根据设备上已有的包与本次所选包检查每项依赖。
 如果存在缺失，会明确列出依赖项，并允许取消或显式强制进行部分部署。卡中没有的地区
@@ -89,7 +90,10 @@ CO5300 QSPI 显示驱动和 CST9217 I2C 触控。你可以培育任意已安装�
 | <img src="docs/screens/btlmenu.png" width="240"> | <img src="docs/screens/pick.png" width="240"> | <img src="docs/screens/win.png" width="240"> |
 
 回合制、按招式行动，采用真实属性克制、异常状态和 STAB；全程播放真实 Game Boy
-战斗音乐。
+战斗音乐。每次选择本方招式后会先答题：伤害招式按答题阶段缩放最终伤害；变化招式与
+治疗招式只要答对就完整生效，答错或超时则整次招式失败。对手 AI 始终按 100% 行动。
+局域网对战中双方各自在自己的设备上答题，答题比例随招式发送，由主机统一权威结算；
+答题期间持续发送保活帧，因此较长的全局答题限时不会被误判为掉线。
 
 ### 四个地区
 
@@ -118,7 +122,8 @@ CO5300 QSPI 显示驱动和 CST9217 I2C 触控。你可以培育任意已安装�
 
 已在硬件上运行。已实现：493 种及异色形态的地区包动画、完整生命周期（按稀有度
 孵蛋 → 进化 → 告别/放生/出走，均由决定对话框触发）、培育图鉴、战斗数值（IV 与
-训练）、连续照顾/羁绊/勋章/昵称、生态与实时时间背景、球类小游戏、训练沙袋、洗澡
+训练）、连续照顾/羁绊/勋章/昵称、生态与实时时间背景、球类小游戏、训练沙袋、答题
+弹窗、索引题库、可配置四则运算、洗澡
 动画、RTC 离线进度、电池（AXP2101）和 PWR 键、防烧屏调暗、**ES8311 音频**、
 **7 种 UI 语言（默认英语）**、首次启动选择伙伴，以及一键**网页安装器**。
 
@@ -157,12 +162,26 @@ CO5300 QSPI 显示驱动和 CST9217 I2C 触控。你可以培育任意已安装�
 - 🍎 **树果**（3 种口味）：FOOD +25。每种宝可梦有隐藏偏好口味，命中时 FOOD +35、
   JOY +10、增加爱心和羁绊，并揭示偏好。
 - 🍬 **糖果：** FOOD +10、JOY +12，但体重 **+12**。
-- ⚽ **玩耍/小游戏：** JOY +5，每次接球再 +2（最多 +35），消耗 ENE 并减重；不训练
-  数值，提前离开仍保留已获收益。
+- ⚽ **球类/防御训练：** JOY +5，每次接球再 +2（最多 +35），每 2 次接球增加 1 点
+  **DEFENCE**（单次最多 +18），消耗 ENE 并减重；提前离开仍保留实际成绩并进入答题。
 - 🎯 **反应测试：** 在目标缩小消失前点击，训练 **SPEED**，难度逐渐提高。
 - 🥊 **训练沙袋：** 约 4 击增加 1 点 **STRENGTH**，每次最多 +18，并消耗体力。
 - 🫧 **洗澡：** 清除便便，HYG 恢复至 100。
-- 👆 **抚摸：** JOY +5，并增加羁绊。
+
+选择喂食、洗澡或抚摸时会先弹出答题界面，正确结算后才播放对应动画；球类训练、反应测试
+和沙袋训练则在训练结束后答题。选择题和四则运算题可以分别启用，只会出现已开启的题型；
+两者都关闭时交互按 100% 直接执行，不弹出答题框。设备按当前界面语言从已安装 `.tquiz`
+中通过索引随机读取选择题；没有匹配题目且四则运算题已开启时，按全局启用的运算符、项数、
+位数、小数、分数和括号规则动态生成精确四则运算题。四则运算使用屏幕小
+数字键盘直接输入答案，等值小数与分数均可判对；长题干可上下滚动。
+
+答题时间固定划分为六个等长阶段。正确时按所在阶段取得正向效果的 **100%、83%、67%、
+50%、33% 或 17%**；例如限时 30 秒、15 秒答对，最终效果为 50%。答错或超时为 0%：
+喂食、洗澡和抚摸不产生效果或成功动画；训练仍保留实际成绩、能量/饱腹消耗与减重，但不
+增加数值、快乐或羁绊；战斗招式完全失败。题型开关、限时、选择题比例和四则运算生成规则
+在照顾、训练和战斗中全局共用一套配置。局域网对战允许双方使用不同开关：关闭答题的一方
+立即提交 100%，另一方继续答题并保活，主机收到双方动作后统一结算。
+- 👆 **抚摸：** 答题正确后按阶段获得最多 JOY +5，并增加羁绊。
 - 🌙 **睡眠：** ENE 每分钟 **+6**；需求下降约慢 **4 倍**，且有 FOOD 30 / JOY 35 /
   HYG 45 下限。睡眠中不排便、不记失误、不会出走。**屏幕关闭且处于 00:00–06:00**
   会入睡，直到再次点亮屏幕才醒；系统每分钟复查。手动灯光按钮优先于自动规则。
@@ -360,8 +379,10 @@ tools/emu/tamapoke-emu --scale 2 --fast 60
 
 ### 最简单的安装方式：网页安装器
 
-`web/index.html` 通过 ESP Web Tools 刷写固件，再通过 Web Serial 向 SD 部署 UI、招式和
-地区包，无需 Arduino。请通过 HTTPS 或 `localhost`（安全上下文）提供页面，并使用
+`web/index.html` 通过 ESP Web Tools 刷写固件，再通过 Web Serial 向 SD 部署 UI、招式、
+地区和题库包，无需 Arduino。页面链接的 `web/question-bank.html` 可以从文件或已连接设备
+导入、编辑、搜索、分页、导出、构建并直接部署索引题库；内部包 ID、题目 ID 和版本均由
+页面自动维护，也能读取和写入设备的全局题型开关与答题规则。请通过 HTTPS 或 `localhost`（安全上下文）提供页面，并使用
 **Chrome/Edge** 打开。详见 [`web/README.md`](web/README.md)。
 
 迁移到运行时分包会有意重置旧固件存档；未知存档结构会被清除，不会尝试按新目录布局解释。
@@ -375,7 +396,7 @@ tools/emu/tamapoke-emu --scale 2 --fast 60
 ```bash
 python3 tools/pack_pmd.py       # 获取并打包当前目录及异色输入
 python3 tools/make_thumbs.py    # 从 PMD 精灵生成图鉴缩略图 -> thumbs.bin
-python3 tools/gen_data_packs.py # web/packs/*.tui、*.tmove、*.tregion + index.json
+python3 tools/gen_data_packs.py # web/packs/*.tui、*.tmove、*.tregion、*.tquiz + index.json
 python3 tools/check_data_packs.py
 ```
 
@@ -389,6 +410,9 @@ python3 tools/subset_ui_font.py /path/to/NotoSansCJK-Medium.ttc \
 
 随后通过网页安装器部署所选包。固件只接受 `/packs` 下通过验证的包文件；中断上传使用
 临时文件，不会覆盖工作包。
+
+题库源 JSON 放在 `tools/question_banks/`；生成器会把每份源文件编译为带索引的 `.tquiz`
+并写入网页目录。浏览器题库构建器无需 Python，也会生成完全相同的二进制格式。
 
 ## 游戏方法
 
@@ -446,6 +470,8 @@ python3 tools/subset_ui_font.py /path/to/NotoSansCJK-Medium.ttc \
 - **招式（`.tmove`）：** 稳定招式 ID、机制、学习表/TM、属性克制、名称与本地化说明。
 - **地区（`.tregion`）：** 物种记录、本地化名称与说明、PMD 精灵、缩略图、地区元数据、
   训练家、地区战斗配置与徽章。
+- **题库（`.tquiz`）：** 语言范围、定长随机访问索引和变长题目记录。固件每次只读取被选中
+  的一行索引与一道题目，不会把整个题库载入内存。
 
 精灵按需从地区包读入 PSRAM；OpenType 字体及有界字形缓存也在 PSRAM 中。固件不嵌入
 字体或宠物精灵，也没有散文件回退。缺少必需包时进入内置 USB 恢复界面，而非用残缺
@@ -545,6 +571,7 @@ IV 也决定每项数值可训练的上限（77–100），高 IV 不只起点�
 - `pet.h` / `pet.cpp`：伙伴状态与逻辑（状态、进化、生命周期、连续照顾/羁绊/勋章、NVS）。
 - `party.h` / `party.cpp`：由告别和放生保留的 6 位退休伙伴。
 - `content.h` / `content.cpp`：包 ABI、CRC 校验、目录、说明与延迟加载资源。
+- `quiz.h` / `quiz.cpp`：全局答题规则、精确四则运算生成/输入与限时效果结算。
 - `sdmon.h` / `sdmon.cpp`：TPK2 精灵、缩略图与 USB 原子接收分包。
 - `rtcbat.h` / `rtcbat.cpp`：PCF85063 RTC、AXP2101 PMU、电池、亮度与 PWR 键。
 - `audio.h` / `audio.cpp`：ES8311、I2S、Game Boy 风格非阻塞音调合成任务。
@@ -553,11 +580,11 @@ IV 也决定每项数值可训练的上限（77–100），高 IV 不只起点�
 - `ui_art.h`：生成的核心 UI 图标/颜色；宠物精灵仅存在于地区包。
 - `pin_config.h`：开发板官方引脚。
 - `tools/`：数据与生成流水线，包括 `dex_data.py`、`dex_stats.py`、`dex_types.py`、
-  `sprites.py`、`pack_pmd.py`、`make_thumbs.py`、`gen_data_packs.py`、校验器与 `touch_log.py`。
+  `sprites.py`、`pack_pmd.py`、`make_thumbs.py`、`gen_data_packs.py`、`quiz_pack.py`、校验器与 `touch_log.py`。
 - `tools/emu/`：使用真实固件与 SDL 硬件桩的桌面模拟器。
 - `tools/sdcard/mons/`：生成的动画/异色 PMD 精灵与缩略图输入。
-- `web/packs/`：可部署 UI、招式、地区包及动态目录。
-- `web/`：基于 ESP Web Tools 与目录驱动 Web Serial 部署的浏览器安装器。
+- `web/packs/`：可部署 UI、招式、地区、题库包及动态目录。
+- `web/`：浏览器安装器与题库构建器，提供 ESP Web Tools、Web Serial 部署和规则配置。
 
 ## 串口控制台（115200，调试）
 
@@ -569,7 +596,8 @@ IV 也决定每项数值可训练的上限（77–100），高 IV 不只起点�
 `EGGS`（模拟 20 枚蛋）· `GAL`（画廊）· `CAREDAY` ·
 `PARTY` / `PARTY <dex>` / `PARTY CLEAR`（查看/填充队伍）·
 `TIME <epoch>` / `RTCSET <epoch>` · `HEALTH`（稳定性测试的运行时间与堆）·
-`LS` / `PUT`（通过验证的 `/packs` 文件）。
+`LS` / `GET` / `PUT`（列出、读取或部署通过验证的 `/packs` 文件）· `QUIZCFG`（读取全局答题规则）·
+`QUIZSET <time> <ops> <terms> <operandDigits> <answerDigits> <decimals> <fractionDigits> <flags> <parenthesisDepth> <choiceWeight> <questionTypes>`，其中 `questionTypes` 为位掩码：选择题 `1`、四则运算题 `2`。
 
 快速测试时可降低 `pet.h` 中的 `PET_TICK_MS`、`MINUTES_PER_LEVEL` 和
 `FAREWELL_AGE_MIN`。

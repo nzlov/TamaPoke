@@ -62,7 +62,7 @@ fi
 
 # Arrays, not a string: the pack directory has to reach the compiler still
 # quoted, and passing these through eval silently strips it.
-CORE=("$ROOT/gbsynth.cpp" "$ROOT/content.cpp" "$ROOT/font_engine.cpp" "$ROOT/pet.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp")
+CORE=("$ROOT/gbsynth.cpp" "$ROOT/content.cpp" "$ROOT/font_engine.cpp" "$ROOT/pet.cpp" "$ROOT/quiz.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp")
 read -r -a FT_CFLAGS <<< "$(pkg-config --cflags freetype2)"
 read -r -a FT_LIBS <<< "$(pkg-config --libs freetype2)"
 FLAGS=(-std=c++17 -O1 -w -I"$EMU" -I"$ROOT" "${FT_CFLAGS[@]}" -DCONTENT_DIR="\"$ROOT/web/packs\"")
@@ -101,6 +101,11 @@ for src in "$HERE"/*_test.cpp; do
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/reader-packs\""
                  -DPACK_READER_FIXTURE="\"$OUT/reader-packs/reader-test.tregion\"")
     extra+=(-Wl,--wrap=fread -Wl,--wrap=fseek)
+  elif [ "$name" = quiz_content_test ]; then
+    mkdir -p "$OUT/quiz-packs"
+    python3 "$HERE/make_quiz_fixture.py" "$OUT/quiz-packs/quiz-reader.tquiz"
+    test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/quiz-packs\""
+                 -DQUIZ_READER_FIXTURE="\"$OUT/quiz-packs/quiz-reader.tquiz\"")
   fi
   # every test starts from a clean NVS so one cannot leak state into the next
   rm -f "$OUT/tamapoke.nvs"

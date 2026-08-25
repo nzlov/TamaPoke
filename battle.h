@@ -63,8 +63,10 @@ uint16_t battleDamage(const Combatant &atk, const Combatant &def, MoveId mv,
 bool battleMovesFirst(const Combatant &a, MoveId ma,
                       const Combatant &b, MoveId mb);
 
-// One creature's action. Applies damage, ailments, stat stages and recoil.
-void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log);
+// One creature's action. `effectPercent` comes from the local answer: damaging
+// moves scale their final damage, while 0 makes every move category fail.
+void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log,
+               uint8_t effectPercent = 100);
 
 // Burn and poison chip damage, applied to one creature after both have acted.
 void battleEndTurn(Combatant &c, TurnLog &log);

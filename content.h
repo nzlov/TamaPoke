@@ -7,6 +7,10 @@
 
 constexpr uint16_t CONTENT_PACK_ABI = 2;
 constexpr uint8_t CONTENT_MAX_UI_LOCALES = 16;
+constexpr uint8_t CONTENT_MAX_QUIZ_OPTIONS = 4;
+constexpr uint16_t CONTENT_MAX_QUESTION_ID_BYTES = 40;
+constexpr uint16_t CONTENT_MAX_QUESTION_STEM_BYTES = 768;
+constexpr uint16_t CONTENT_MAX_QUESTION_OPTION_BYTES = 192;
 
 enum UiLayoutMetric : uint16_t {
   UI_LAYOUT_COMPACT_TEXT_HEIGHT = 1,
@@ -35,6 +39,7 @@ enum ContentPackKind : uint8_t {
   CONTENT_PACK_UI = 1,
   CONTENT_PACK_REGION = 2,
   CONTENT_PACK_MOVE = 3,
+  CONTENT_PACK_QUIZ = 4,
 };
 
 enum ContentPackValidation : uint8_t {
@@ -69,6 +74,15 @@ struct UiFontGlyph {
   const uint8_t *alpha4;
 };
 
+struct ContentChoiceQuestion {
+  uint32_t idHash = 0;
+  char id[CONTENT_MAX_QUESTION_ID_BYTES + 1] = {};
+  char stem[CONTENT_MAX_QUESTION_STEM_BYTES + 1] = {};
+  char options[CONTENT_MAX_QUIZ_OPTIONS][CONTENT_MAX_QUESTION_OPTION_BYTES + 1] = {};
+  uint8_t optionCount = 0;
+  uint8_t correctIndex = 0;
+};
+
 enum UiFontFormat : uint8_t {
   UI_FONT_BITMAP = 1,
   UI_FONT_OPENTYPE = 2,
@@ -84,6 +98,13 @@ bool contentHasUi();
 bool contentHasPets();
 bool contentHasMoves();
 uint32_t contentMechanicsHash();
+
+// Question packs keep locale spans and fixed-width record indexes on the SD.
+// Counting is metadata-only; reading one random question touches one index row
+// and one variable-size record instead of scanning or loading the whole bank.
+uint32_t contentChoiceQuestionCount(const char *locale);
+bool contentChoiceQuestionAt(const char *locale, uint32_t index,
+                             ContentChoiceQuestion &out);
 
 uint8_t uiLocaleCount();
 const UiLocaleInfo &uiLocaleInfo(uint8_t index);

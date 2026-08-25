@@ -17,6 +17,15 @@ and lets the user cancel or explicitly force deployment without them.
 - `.tmove` — moves, localized names/descriptions, learnsets/TMs and type chart.
 - `.tregion` — species, localized names/descriptions, sprites, region metadata, trainers,
   regional battle data and badges.
+- `.tquiz` — locale spans, fixed-width random indexes and variable-size multiple-choice records.
+
+`question-bank.html` imports authoring JSON, compiled `.tquiz` files or an installed
+bank read from a connected device. It searches and paginates questions, hides and
+automatically maintains internal IDs/revision, exports either format, and deploys
+the current bank directly. The same page reads and writes independent multiple-choice
+and arithmetic enable switches plus the device-wide timer, choice ratio and arithmetic
+generation rules shared by care, training and battle questions. With both types disabled,
+interactions run directly at 100% without opening the question modal.
 
 The firmware validates the common ABI and payload CRC before accepting an
 upload. Data is written to a `.part` file first; a valid replacement is renamed
@@ -39,10 +48,12 @@ listing.
 ## Contents
 
 - `index.html` — firmware install plus catalogue-driven data-pack deployment.
+- `question-bank.html` — question-bank editor, builder, deployment and answer-rule configuration.
+- `serial-client.js` — shared line-oriented Web Serial transport.
 - `manifest.json` — ESP Web Tools firmware manifest.
 - `firmware/` — bootloader, partition table, app and merged blank-board image.
 - `packs/index.json` — generated package catalogue.
-- `packs/*.tui`, `packs/*.tmove`, `packs/*.tregion` — generated deployable data.
+- `packs/*.tui`, `packs/*.tmove`, `packs/*.tregion`, `packs/*.tquiz` — generated deployable data.
 
 The files under `firmware/` and `packs/` are generated outputs and are not
 tracked by Git. The GitHub Pages workflow rebuilds them from the pinned Arduino
@@ -83,7 +94,7 @@ End-user flow:
 3. Connect the running board and deploy the selected packs.
 4. Restart the board.
 
-Custom `.tui`, `.tmove` and `.tregion` files can be selected manually. Other
+Custom `.tui`, `.tmove`, `.tregion` and `.tquiz` files can be selected manually. Other
 paths and extensions are rejected by the firmware.
 
 ## GitHub Pages

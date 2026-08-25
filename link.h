@@ -32,7 +32,7 @@
 // whole handshake without a radio, and a deliberately lossy transport exercises
 // all of the above. Only the radio itself is unverifiable here.
 
-#define LINK_PROTO 3        // bump on ANY wire change; a mismatch is refused
+#define LINK_PROTO 4        // bump on ANY wire change; a mismatch is refused
 #define LINK_MAX_PAYLOAD 200
 #define LINK_NAME_LEN 12
 
@@ -75,11 +75,12 @@ enum LinkState : uint8_t {
 enum LinkMsg : uint8_t {
   LM_HELLO = 1,
   LM_SQUAD,
-  LM_ACT,        // guest -> host: a move slot or a switch, stamped with a turn
+  LM_ACT,        // guest -> host: turn, move/switch, and answer percentage
   LM_RESULT,     // host -> guest: what happened, stamped with the same turn
   LM_END,
   LM_BYE,        // leaving on purpose, so the peer need not wait for a timeout
   LM_REMATCH,    // go again with the same squads
+  LM_WAIT,       // answer-time keepalive request/acknowledgement for one turn
 };
 
 // A creature on the wire. Deliberately not `Combatant` itself: that carries
@@ -127,6 +128,7 @@ struct Link {
 
   uint8_t turn = 0;            // the exchange both sides are on
   uint8_t pendingAct = 0;      // host: the guest's action for `turn`, 0 = none
+  uint8_t pendingPercent = 0;  // host: answer effect for that move, 0..100
   bool youWon = false;
 
   // guest: the last turn the host resolved. `resultNew` is cleared by whoever
@@ -155,7 +157,8 @@ struct Link {
   void onPacket(const uint8_t *buf, uint8_t len);
   void tick(uint32_t now);            // resend + timeout; call once a frame
 
-  void sendAct(uint8_t act);          // guest -> host: a move slot or a switch
+  void sendAct(uint8_t act, uint8_t percent = 100);  // guest -> host
+  void sendWait();                    // request reciprocal proof of life while answering
   void sendResult(const uint8_t *blob, uint8_t len);   // host -> guest
   void sendEnd(bool hostWon);
   void sendBye();                     // leaving deliberately

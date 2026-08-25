@@ -5,7 +5,7 @@ English | [简体中文](README.zh-CN.md)
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://dylanpdao.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.4-8A2BE2)
+![Firmware](https://img.shields.io/badge/firmware-v3.6-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
 ![Languages](https://img.shields.io/badge/languages-7-FFCB05)
 [![Stars](https://img.shields.io/github/stars/DylanPDao/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/DylanPDao/TamaPoke/stargazers)
@@ -40,7 +40,7 @@ installer](https://dylanpdao.github.io/TamaPoke/web/)**: flash the firmware,
 then deploy the selected languages and regions to the microSD. Arduino IDE is
 not required.
 
-Language, move and regional content now lives in independently deployable
+Language, move, regional and question-bank content now lives in independently deployable
 runtime packages. Install only the languages and regions you need, and update
 content without recompiling the firmware:
 
@@ -49,6 +49,7 @@ content without recompiling the firmware:
 | UI (`.tui`) | UI strings, layout metrics and fonts; Simplified Chinese is `ui-zh-CN.tui` | At least one |
 | Moves (`.tmove`) | Move mechanics, learnsets, type chart, names and descriptions | Yes |
 | Region (`.tregion`) | Species data, names and descriptions, animated/shiny sprites, thumbnails, trainers, gyms and badges | At least one |
+| Questions (`.tquiz`) | Locale-indexed multiple-choice questions; records are read directly by random index | No; arithmetic is the fallback only when enabled |
 
 The installer reads `web/packs/index.json` and checks each selection's
 dependencies against both the packages already on the device and those selected
@@ -108,7 +109,13 @@ region's answer, so it cannot be flipped to farm a legendary.
 | <img src="docs/screens/btlmenu.png" width="240"> | <img src="docs/screens/pick.png" width="240"> | <img src="docs/screens/win.png" width="240"> |
 
 Turn- and move-based, with the real type chart, ailments and STAB. Real Game Boy
-battle music plays throughout.
+battle music plays throughout. Every local move opens a question before it acts:
+damaging moves scale their final damage by the answer stage, while status and
+healing moves take full effect after any correct answer and fail entirely after
+a wrong answer or timeout. The AI always acts at 100%. In LAN battles each player
+answers on their own device, the percentage travels with that move, and the host
+remains authoritative. Keepalive frames prevent a long global question timer from
+being mistaken for a dropped peer.
 
 ### Four regions
 
@@ -141,7 +148,8 @@ Running on hardware. Implemented: 493 species + shinies animated from regional p
 life cycle (egg by rarity → evolution → farewell/release/runaway, each gated
 behind a decision dialog), bred-Pokédex with gallery, battle stats (IVs +
 training), retention hooks (streak / bond / medals / name), biome + real-time
-backgrounds, ball minigame, training bag, animated bath, RTC with offline
+backgrounds, ball minigame, training bag, post-care question modal, indexed question
+banks, configurable arithmetic generation, animated bath, RTC with offline
 progression, battery (AXP2101) and PWR button, anti-burn-in dimming,
 **sound (ES8311)**, **7 UI languages (English default)**, **starter choice on
 first run**, and a one-click **web installer**.
@@ -181,14 +189,36 @@ While **awake**, per minute:
 - 🍎 **Berry** (3 flavors): +25 FOOD. Each species has a **hidden favorite flavor**
   → +35 FOOD, +10 JOY, ♥, bond, and it gets revealed.
 - 🍬 **Candy:** +10 FOOD, +12 JOY, but **+12 weight** (fattening).
-- ⚽ **Play / minigame:** **+5 JOY, plus 2 per rally** (max +35), −ENE, burns
-  weight. Pure happiness — it trains nothing, so playing is never a stat grind.
-  Leaving early keeps what you earned.
+- ⚽ **Ball / defence training:** **+5 JOY, plus 2 per rally** (max +35), trains
+  **DEFENCE** (2 rallies = 1 pt, cap +18/session), −ENE and burns weight. Leaving
+  early keeps the actual score and still proceeds to its question.
 - 🎯 **Reaction test:** a target appears, tap it before it shrinks away. Trains
   **SPEED**; the window tightens as you go.
 - 🥊 **Training bag:** trains **STRENGTH** (~4 hits = 1 pt, cap +18/session), tires it.
 - 🫧 **Bath:** clears poops, HYG → 100.
-- 👆 **Pet it:** +5 JOY + bond.
+
+Choosing feed, bath or petting opens the modal question first, and the matching
+success animation starts only after a correct result settles. Ball, reaction and
+training-bag sessions ask their question after the session. Multiple-choice and
+arithmetic questions can be enabled independently, and only enabled types appear;
+when both are disabled the interaction runs directly at 100% with no modal. A
+locale-matching multiple-choice question is selected by a direct random index from
+installed `.tquiz` packs. If none matches and arithmetic is enabled, the firmware
+creates an exact-rational arithmetic question from the global operator, operand, digit,
+decimal, fraction and parenthesis rules. Arithmetic answers are entered on the
+small on-screen numeric keypad, and equivalent decimal/fraction forms are accepted.
+Long question text can be scrolled.
+
+The answer timer has six equal stages. A correct answer applies **100%, 83%, 67%,
+50%, 33% or 17%** of the positive result according to the current stage; for
+example, answering at 15 seconds with a 30-second limit applies 50%. A wrong or
+timed-out answer applies 0%: feed, bath and petting produce no benefit or success animation. Training still
+keeps the real session record, energy/fullness cost and weight burn, but grants no
+positive stat, joy or bond gain; a battle move fails entirely. Care, training and
+battle share one global type, time-limit and generation configuration. LAN peers
+may use different switches: a side with questions disabled submits 100% immediately,
+the answering side keeps the link alive, and the host settles once both actions arrive.
+- 👆 **Pet it:** after a correct answer, up to +5 JOY + bond according to the stage.
 - 🌙 **Sleep:** rest — ENE **+6/min**, needs drain ~**4× slower** with floors
   (FOOD 30 / JOY 35 / HYG 45). No poops, no slip-ups, can't run away while asleep.
   **Screen off + between midnight and 06:00 puts it to sleep**, and it stays
@@ -431,8 +461,12 @@ timing, DMA tearing, PSRAM or audio — those still need the board.
 
 ### Easiest install: the web installer
 
-`web/index.html` flashes the firmware (ESP Web Tools) and deploys UI, move and
-region packs to the SD over Web Serial, no Arduino needed. Serve it over HTTPS or `localhost`
+`web/index.html` flashes the firmware (ESP Web Tools) and deploys UI, move,
+region and question packs to the SD over Web Serial, no Arduino needed. The linked
+`web/question-bank.html` imports banks from files or a connected device, searches and
+paginates questions, edits, exports, builds and directly deploys indexed question banks.
+Package/question IDs and the internal revision are maintained automatically; the page also
+reads/writes the device's global answer rules. Serve it over HTTPS or `localhost`
 (secure context) and open it in **Chrome/Edge**. See [`web/README.md`](web/README.md).
 
 This runtime-pack migration intentionally resets saves created by older firmware.
@@ -449,7 +483,7 @@ and badge data. No regional intermediate bundle is created.
 ```bash
 python3 tools/pack_pmd.py       # fetch + pack the current catalogue + shiny inputs
 python3 tools/make_thumbs.py    # Pokédex thumbnails (from the PMD sprites) -> thumbs.bin
-python3 tools/gen_data_packs.py # web/packs/*.tui, *.tmove, *.tregion + index.json
+python3 tools/gen_data_packs.py # web/packs/*.tui, *.tmove, *.tregion, *.tquiz + index.json
 python3 tools/check_data_packs.py
 ```
 
@@ -466,6 +500,11 @@ python3 tools/subset_ui_font.py /path/to/NotoSansCJK-Medium.ttc \
 Then deploy the selected packs from the Web installer. The firmware only accepts
 validated pack files under `/packs`; interrupted uploads use a temporary file and
 cannot overwrite a working pack.
+
+Question-bank authoring JSON lives under `tools/question_banks/`; each source is
+compiled into an indexed `.tquiz` and added to the generated web catalogue. The
+browser question-bank editor provides the same binary format without requiring the
+Python pipeline.
 
 ## How to play
 
@@ -542,6 +581,9 @@ witness it), each opening a two-option dialog:
 - **Regions (`.tregion`)** — species records, localized names and descriptions,
   PMD sprites, thumbnails, region metadata, trainers, regional battle configuration
   and badges.
+- **Questions (`.tquiz`)** — language spans, fixed-width random-access indexes and
+  variable-size question records. Only the selected index row and question record
+  are read from the microSD; the whole bank is never loaded into memory.
 
 Sprites are read lazily from the region pack into PSRAM. OpenType faces and their
 bounded glyph cache also live in PSRAM; neither fonts nor sprites are embedded in
@@ -671,6 +713,7 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
 - `pet.h` / `pet.cpp` — pet state and logic (stats, evolution, life cycle, streak/bond/medals, NVS)
 - `party.h` / `party.cpp` — the 6 retired pets kept from farewells and releases
 - `content.h` / `content.cpp` — pack ABI, CRC validation, catalogues, descriptions and lazy assets
+- `quiz.h` / `quiz.cpp` — global answer rules, exact arithmetic generation/input and timed settlement
 - `sdmon.h` / `sdmon.cpp` — packed TPK2 sprites + thumbnails and atomic pack reception over USB
 - `rtcbat.h` / `rtcbat.cpp` — PCF85063 RTC + AXP2101 PMU (battery, brightness, PWR button)
 - `audio.h` / `audio.cpp` — ES8311 + I2S + Game-Boy-style tone synth (non-blocking task)
@@ -680,11 +723,11 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
 - `pin_config.h` — the board's official pins
 - `tools/` — pipeline: `dex_data.py` (data), `dex_stats.py`, `dex_types.py`,
   `sprites.py` (workshop), `pack_pmd.py` / `make_thumbs.py`,
-  `gen_data_packs.py`, validators and `touch_log.py`
+  `gen_data_packs.py`, `quiz_pack.py`, validators and `touch_log.py`
 - `tools/emu/` — desktop emulator (real firmware + stubbed hardware, SDL)
 - `tools/sdcard/mons/` — generated sprite inputs (animated, shiny, PMD, thumbnails)
-- `web/packs/` — deployable UI, move and region packs plus their dynamic catalogue
-- `web/` — the browser installer (ESP Web Tools + catalogue-driven Web Serial deployment)
+- `web/packs/` — deployable UI, move, region and question packs plus their dynamic catalogue
+- `web/` — the browser installer and question-bank editor (ESP Web Tools + Web Serial deployment/configuration)
 
 ## Serial console (115200, debug)
 
@@ -697,7 +740,8 @@ runaway-ready state) · `WIPE` (factory reset → new game) · `BEEP` (audio tes
 `REG` (Pokédex) · `EGGS` (simulate 20 eggs) · `GAL` (gallery) · `CAREDAY` ·
 `PARTY` / `PARTY <dex>` / `PARTY CLEAR` (inspect and fill the party) ·
 `TIME <epoch>` / `RTCSET <epoch>` · `HEALTH` (uptime + heap for the soak test) ·
-`LS` / `PUT` (validated `/packs` files).
+`LS` / `GET` / `PUT` (list, read or deploy validated `/packs` files) · `QUIZCFG` (read global answer rules) ·
+`QUIZSET <time> <ops> <terms> <operandDigits> <answerDigits> <decimals> <fractionDigits> <flags> <parenthesisDepth> <choiceWeight> <questionTypes>`, where `questionTypes` is a bit mask: multiple choice `1`, arithmetic `2`.
 
 To test fast: lower `PET_TICK_MS`, `MINUTES_PER_LEVEL` and `FAREWELL_AGE_MIN` in `pet.h`.
 

@@ -121,9 +121,11 @@ static void heal(Combatant &c, uint16_t amount) {
   c.hp = v > c.maxHp ? c.maxHp : (uint16_t)v;
 }
 
-void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log) {
+void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log,
+               uint8_t effectPercent) {
   log = TurnLog();
   log.move = mv;
+  if (effectPercent > 100) effectPercent = 100;
   if (atk.fainted() || def.fainted()) { log.skipped = true; return; }
 
   // --- things that can cost the turn before a move is even chosen
@@ -150,9 +152,14 @@ void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log) {
     }
   }
 
-  // a wound-up EF_CHARGE move fires this turn instead of whatever was picked
-  if (atk.charging) { mv = atk.charging; atk.charging = 0; }
-  else if (mv && mv < moveCount() && moveEntry(mv).effect == EF_CHARGE) {
+  // A wound-up EF_CHARGE move fires this turn instead of whatever was picked.
+  // The answer gates the move before a fresh charge is stored, so a failed
+  // answer cannot bank an attack for a later turn.
+  bool firingCharge = atk.charging != 0;
+  if (firingCharge) { mv = atk.charging; atk.charging = 0; }
+  log.move = mv;
+  if (!effectPercent) { log.missed = true; return; }
+  if (!firingCharge && mv && mv < moveCount() && moveEntry(mv).effect == EF_CHARGE) {
     atk.charging = mv;
     log.charged = true;
     return;
@@ -183,13 +190,18 @@ void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log) {
 
   // --- damage, including multi-hit
   uint8_t hits = (m.effect == EF_MULTI) ? (uint8_t)(2 + random(4)) : 1;
+  uint32_t rawTotal = 0;
   uint16_t total = 0;
   log.effPct = typeEffVsDex(m.type, def.dex);
   if (log.effPct == 0) { log.immune = true; return; }
   for (uint8_t h = 0; h < hits; h++) {
     bool crit = random(16) == 0;                 // ~6%, the series' base rate
     uint16_t d = battleDamage(atk, def, mv, crit, (uint8_t)(217 + random(39)));
-    total += d;
+    rawTotal += d;
+    uint32_t scaledTotal = (rawTotal * effectPercent + 50u) / 100u;
+    if (scaledTotal > UINT16_MAX) scaledTotal = UINT16_MAX;
+    d = (uint16_t)(scaledTotal - total);
+    total = (uint16_t)scaledTotal;
     if (crit) log.crit = true;
     hurt(def, d);
     if (def.fainted()) { hits = h + 1; break; }
@@ -197,7 +209,8 @@ void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log) {
   log.hits = hits;
   log.damage = total;
 
-  if (m.effect == EF_RECOIL && m.param > 0) hurt(atk, total / m.param ? total / m.param : 1);
+  if (m.effect == EF_RECOIL && m.param > 0 && total)
+    hurt(atk, total / m.param ? total / m.param : 1);
   if (m.effect == EF_DRAIN && m.param > 0) heal(atk, total * m.param / 100);
   if (m.effect == EF_RECHARGE) atk.recharge = true;
 

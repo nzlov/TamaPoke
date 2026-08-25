@@ -66,10 +66,19 @@ int main(){
 
   // --- the turn flow
   ck(A.turn==0 && B.turn==0, "both start on turn zero");
-  B.sendAct(LINK_ACT_MOVE(0));
+  A.sawRx = B.sawRx = false;
+  A.sendWait();
+  ck(A.sawRx && B.sawRx,
+     "a keepalive request is acknowledged back to a lone answering side");
+  B.sendWait();
+  ck(A.state==LINK_READY && B.state==LINK_READY &&
+     A.txLive && B.txLive && A.tx[0]==LM_WAIT && B.tx[0]==LM_WAIT,
+     "both sides can keep the link alive while answering");
+  B.sendAct(LINK_ACT_MOVE(0), 50);
   ck(A.hasPeerAct(), "the host receives the guest's action");
   ck(LINK_ACT_SLOT(A.pendingAct)==0 && !LINK_ACT_IS_SWITCH(A.pendingAct),
      "move slot 0 survives -- it is not confused with silence");
+  ck(A.pendingPercent==50, "the answer percentage travels with the move");
   ck(B.state==LINK_WAITING, "and the guest waits rather than resolving");
 
   A.pendingAct = 0;
@@ -86,8 +95,8 @@ int main(){
 
   // a stale action -- the resend of a turn already resolved -- is not a choice
   A.pendingAct = 0;
-  uint8_t stale[4]={LM_ACT,2,0,LINK_ACT_MOVE(1)};   // turn 0, already done
-  A.onPacket(stale,4);
+  uint8_t stale[5]={LM_ACT,3,0,LINK_ACT_MOVE(1),83};   // turn 0, already done
+  A.onPacket(stale,5);
   ck(!A.hasPeerAct(), "a resent action from a finished turn is ignored");
 
   // the real payload: what the guest actually renders a turn from
@@ -107,7 +116,7 @@ int main(){
 
   // the guest never acts on an action; the host never accepts a result
   B.pendingAct=0;
-  B.onPacket((const uint8_t[]){LM_ACT,2,0,1},4);
+  B.onPacket((const uint8_t[]){LM_ACT,3,0,1,100},5);
   ck(B.pendingAct==0, "the guest ignores ACT packets");
   uint8_t was=A.turn;
   A.onPacket((const uint8_t[]){LM_RESULT,1,0},3);
@@ -177,6 +186,9 @@ int main(){
     ck(E.state==LINK_LISTENING, "an unknown type is ignored without desyncing");
     E.onPacket((const uint8_t[]){LM_HELLO,3,LINK_PROTO,0,1},5);   // short hello
     ck(E.state==LINK_LISTENING, "and a short hello is not half-read");
+    E.state=LINK_READY;
+    E.onPacket((const uint8_t[]){LM_ACT,3,0,LINK_ACT_MOVE(0),101},5);
+    ck(!E.pendingAct, "an out-of-range answer percentage is rejected");
   }
 
   // --- NOTHING off the wire may be trusted to index a table

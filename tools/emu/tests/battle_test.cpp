@@ -60,18 +60,64 @@ int main() {
   printf("     FLAMETHROWER: vs VENUSAUR %u, vs BLASTOISE %u\n", vsGrass, vsWater);
   ck(vsGrass > vsWater * 2, "fire hits grass far harder than water");
 
+  // --- the local answer ratio scales the final move, not the base stat input
+  Combatant fullAtk = zard, fullDef = venu, halfAtk = zard, halfDef = venu;
+  TurnLog fullLog, halfLog, failedLog;
+  g_seed = 0xB4771E;
+  battleAct(fullAtk, fullDef, flame, fullLog, 100);
+  g_seed = 0xB4771E;
+  battleAct(halfAtk, halfDef, flame, halfLog, 50);
+  ck(fullLog.damage > 0 && halfLog.damage == (fullLog.damage * 50 + 50) / 100,
+     "a 50 percent answer scales final attack damage to 50 percent");
+  Combatant failedAtk = zard, failedDef = venu;
+  battleAct(failedAtk, failedDef, flame, failedLog, 0);
+  ck(failedLog.missed && failedLog.damage == 0 && failedDef.hp == failedDef.maxHp,
+     "a failed answer makes a damaging move fail completely");
+
+  Combatant multiFullAtk, multiFullDef, multiThirdAtk, multiThirdDef;
+  TurnLog multiFullLog, multiThirdLog;
+  for (uint32_t seed = 1; seed < 100 && multiFullLog.hits < 2; seed++) {
+    multiFullAtk = multiThirdAtk = zard;
+    multiFullDef = multiThirdDef = venu;
+    multiFullDef.maxHp = multiFullDef.hp = 60000;
+    multiThirdDef.maxHp = multiThirdDef.hp = 60000;
+    g_seed = seed;
+    battleAct(multiFullAtk, multiFullDef, findMove("FURY ATTACK"), multiFullLog, 100);
+    if (multiFullLog.hits < 2) continue;
+    g_seed = seed;
+    battleAct(multiThirdAtk, multiThirdDef, findMove("FURY ATTACK"), multiThirdLog, 33);
+  }
+  printf("     FURY ATTACK: full %u in %u hits, 33%% %u in %u hits\n",
+         multiFullLog.damage, multiFullLog.hits, multiThirdLog.damage, multiThirdLog.hits);
+  ck(multiFullLog.hits > 1 && multiThirdLog.hits == multiFullLog.hits &&
+     multiThirdLog.damage == (multiFullLog.damage * 33 + 50) / 100,
+     "a multi-hit move rounds the scaled final total only once");
+
   // --- SWORDS DANCE really doubles physical output
   Combatant m1, m2;
   mk(m1, 68, 50); mk(m2, 68, 50);
   uint8_t chop = findMove("KARATE CHOP");
   uint16_t before = battleDamage(m1, m2, chop, false, 255);
   TurnLog lg;
-  battleAct(m1, m2, findMove("SWORDS DANCE"), lg);
+  battleAct(m1, m2, findMove("SWORDS DANCE"), lg, 0);
+  ck(m1.stage[SI_ATK] == 0 && lg.missed,
+     "a failed answer also blocks a status move");
+  battleAct(m1, m2, findMove("SWORDS DANCE"), lg, 17);
   uint16_t after = battleDamage(m1, m2, chop, false, 255);
   printf("     KARATE CHOP before %u, after SWORDS DANCE %u (stage %d)\n",
          before, after, m1.stage[SI_ATK]);
   ck(m1.stage[SI_ATK] == 2, "SWORDS DANCE sets +2 ATK");
   ck(after > before * 18 / 10, "and roughly doubles damage");
+
+  Combatant healer = zard, healTarget = venu;
+  healer.hp = healer.maxHp / 4;
+  uint16_t hurtHp = healer.hp;
+  battleAct(healer, healTarget, findMove("RECOVER"), lg, 0);
+  ck(healer.hp == hurtHp && lg.missed,
+     "a failed answer also blocks a healing move");
+  battleAct(healer, healTarget, findMove("RECOVER"), lg, 17);
+  ck(healer.hp == hurtHp + healer.maxHp / 2 && lg.healed,
+     "a correct healing move keeps its full effect at any positive stage");
 
   // --- GROWL lowers the FOE, not the user
   Combatant g1, g2;

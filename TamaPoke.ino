@@ -31,6 +31,7 @@
 #include "party.h"
 #include "save.h"
 #include "pet.h"
+#include "quiz.h"
 #include "sdmon.h"
 #include "rtcbat.h"
 #include "i18n.h"
@@ -45,7 +46,7 @@ SET_LOOP_TASK_STACK_SIZE(32 * 1024);
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.5"
+#define FW_VERSION "3.6"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -271,6 +272,7 @@ static int16_t uiRightX(const char *text, int16_t right) {
 
 TouchDrvCST92xx touch;
 Pet pet;
+QuizRuntime quiz;
 
 // Sprite data is resolved only through the installed region pack.
 PmdMon pmd;         // sprite PMD multi-accion (pantalla principal)
@@ -399,9 +401,13 @@ uint8_t brightnessLevelAt(int16_t x) {
 
 // escena de bano: espuma sobre el bicho y limpieza al reventar
 uint32_t bathUntil = 0;
-bool bathPending = false;
 struct { int16_t x, y; uint8_t r, ph; } bubbles[14];
 uint32_t feedMenuUntil = 0;   // selector de comida abierto hasta este millis
+enum QuizPurpose : uint8_t { QUIZ_PURPOSE_NONE = 0, QUIZ_PURPOSE_CARE, QUIZ_PURPOSE_BATTLE };
+QuizPurpose quizPurpose = QUIZ_PURPOSE_NONE;
+CareAction quizCareAction;
+uint8_t quizBattleMoveSlot = 0;
+bool quizShowsGameResult = false;
 
 // minijuego "toques": mantener la pokeball en el aire
 bool gameOpen = false;
@@ -441,6 +447,8 @@ uint8_t movePickParty = 0;  // 0 = the live pet, else the party slot + 1
 uint8_t movePickPage = 0;
 void renderMoveInfo();
 int drawWrappedText(const char *text, int x, int y, int width, uint8_t maxLines);
+int drawWrappedTextWindow(const char *text, int x, int y, int width,
+                          uint8_t skipLines, uint8_t maxLines, uint8_t *totalLines);
 #define MOVE_ROW_Y(i) (96 + (i) * 58)
 #define MOVE_ROW_H 50
 #define MOVE_NAME_TOP 6
@@ -461,7 +469,7 @@ int drawWrappedText(const char *text, int x, int y, int width, uint8_t maxLines)
 bool battleOpen = false;
 
 enum : uint8_t {
-  SCR_STARTER = 0, SCR_REGION, SCR_GALLERY, SCR_DEXPICK, SCR_MOVEPICK, SCR_BOX,
+  SCR_QUIZ = 0, SCR_STARTER, SCR_REGION, SCR_GALLERY, SCR_DEXPICK, SCR_MOVEPICK, SCR_BOX,
   SCR_PARTY, SCR_KEYBOARD, SCR_CARD, SCR_PLAYER, SCR_CLOCK, SCR_GYM, SCR_GYMPICK,
   SCR_LAN, SCR_PICK, SCR_BATTLE, SCR_WIN, SCR_LEARN, SCR_TRAIN, SCR_MENU,
   SCR_GAME, SCR_MAIN, SCR_COUNT
@@ -475,8 +483,19 @@ extern const char *const SCREEN_NAME[SCR_COUNT];   // const is internal linkage 
 // builds; only arduino-cli is.
 void bootReport();
 uint8_t uiCurrentScreen();
+bool beginCareQuiz(const CareAction &action, bool showGameResult);
+bool beginBattleQuiz(uint8_t moveSlot);
+void updateQuiz(uint32_t now);
+bool quizBlocking();
+void commitBattleMove(uint8_t moveSlot, uint8_t percent);
+void settleCareInteraction(const CareAction &action, uint8_t percent, bool correct,
+                           bool showGameResult, uint32_t now);
+void startBathAnimation(uint32_t now);
+void renderQuiz();
+void quizTap(int16_t x, int16_t y);
+uint32_t pmdActTotalMs(const PmdAct &action);
 const char *const SCREEN_NAME[SCR_COUNT] = {
-  "starter", "region", "gallery", "dexpick", "movepick", "box",
+  "quiz", "starter", "region", "gallery", "dexpick", "movepick", "box",
   "party", "keyboard", "card", "player", "clock", "gym", "gympick",
   "lan", "pick", "battle", "win", "learn", "train", "menu",
   "minigame", "main"
@@ -537,7 +556,7 @@ static int eggRegionTap(int16_t x, int16_t y);
 static void drawBtlBack();
 static void btlLinkPoll();   // defined with the battle code, called from render()
 static void btlSwitchTo(uint8_t i);
-static void btlResolve(MoveId yourMove);
+static void btlResolve(MoveId yourMove, uint8_t yourPercent = 100);
 // The peer's whole team, kept live. A trainer's replacements are built fresh
 // from TRAINERS[] because they only ever arrive once; a linked opponent can
 // switch OUT and back IN, so its creatures have to remember how battered they
@@ -545,6 +564,7 @@ static void btlResolve(MoveId yourMove);
 Combatant btlFoeSquad[TRAINER_TEAM_MAX];
 uint8_t btlFoeSquadN = 0;
 uint8_t btlMyAct = 0;        // host: our own action, latched until theirs lands
+uint8_t btlMyPercent = 0;    // answer effect attached to that latched move
 // Which ladder the gym screen and the current fight belong to. The battle keeps
 // its own copy so that leaving the gym list mid-fight cannot retarget the badge.
 // The BOX button on the party screen. It was 150x32 with a pixel-exact hit
@@ -869,6 +889,7 @@ void setup() {
   Serial.printf("TamaPoke fw v%s\n", FW_VERSION);
   bootReport();   // why the last run ended, and what it was doing
   sdBegin();
+  quiz.loadConfig();
   Wire.begin(IIC_SDA, IIC_SCL);
   // CST9217 (tactil), AXP2101 (PMU) y PCF85063 (RTC) comparten este bus I2C.
   // Red de seguridad para PMU/RTC (SensorLib NO respeta este timeout en el
@@ -961,6 +982,7 @@ void loop() {
   }
   uint32_t now = millis();
   pet.update(now);
+  updateQuiz(now);
 
   // The link is pumped here rather than from the LAN screen, because it has to
   // keep running through the battle too: linkNowPoll() drains what the radio
@@ -984,6 +1006,7 @@ void loop() {
   wasRunReady = runReady;
 
   handleTouch();
+  updateQuiz(millis());
   handleSerial();
   ensureMon();
 
@@ -1055,7 +1078,7 @@ void loop() {
 // brillo segun sueno + inactividad (proteccion del AMOLED)
 void updateBrightness(uint32_t now) {
   // los eventos visibles despiertan la pantalla solos
-  if (pet.evolving() || pet.ceremony || pet.eating() || pet.showHeart()) {
+  if (pet.evolving() || pet.ceremony || pet.eating() || pet.showHeart() || quiz.active) {
     lastInteract = now;
   }
   uint32_t idle = now - lastInteract;
@@ -1089,6 +1112,28 @@ void handleSerial() {
     return;
   }
   if (sdSerialCommand(line)) return;
+
+  if (line == "QUIZCFG") {
+    quiz.config = quizConfigLoad();
+    char response[128];
+    if (quizConfigFormat(quiz.config, response, sizeof(response))) Serial.println(response);
+    else Serial.println("ERR QUIZ_CONFIG_INVALID");
+    Serial.println("DONE");
+    return;
+  }
+  if (line.startsWith("QUIZSET ")) {
+    QuizConfig configured;
+    if (!quizConfigParse(line.c_str() + 8, configured) || !quizConfigSave(configured)) {
+      Serial.println("ERR QUIZ_CONFIG_INVALID");
+      return;
+    }
+    quiz.config = configured;
+    char response[128];
+    quizConfigFormat(quiz.config, response, sizeof(response));
+    Serial.println(response);
+    Serial.println("DONE");
+    return;
+  }
 
   if (line == "HATCH") {
     pet.eggTap(); pet.eggTap(); pet.eggTap();
@@ -1365,7 +1410,7 @@ void handleTouch() {
   bool pressed = touch.getPoint(&x, &y, 1) > 0;
 
   // saco de entrenamiento: cada toque cuenta al instante (aporrear rapido)
-  if (sackOpen) {
+  if (sackOpen && !quizBlocking()) {
     if (pressed && !wasPressed) {
       lastInteract = millis();
       if (y < 72) leaveSack();       // tocar arriba = salir, conservando lo ganado
@@ -1395,7 +1440,8 @@ void handleTouch() {
       setUserBrightness(brightnessLevelAt(x), false);
     }
     // pulsacion larga sin moverse sobre el bicho -> dialogo de soltar
-    else if (!holdFired && !swallowGesture && !galleryOpen && !cardOpen && !kbOpen && !clockOpen && millis() - tStart > 3000 &&
+    else if (!holdFired && !swallowGesture && !quizBlocking() &&
+        !galleryOpen && !cardOpen && !kbOpen && !clockOpen && millis() - tStart > 3000 &&
         abs(tXl - tX0) < 30 && abs(tYl - tY0) < 30 && inPetZone(tX0, tY0) &&
         !pet.isEgg() && !confirmUntil && !pet.ceremony) {
       confirmUntil = millis() + 10000;
@@ -1422,6 +1468,13 @@ void handleTouch() {
 void openClock();  // prototipo
 
 void onSwipeV(int dir) {
+  if (quiz.active) {
+    if (!quiz.answered) {
+      if (dir < 0 && quiz.scrollLine < quiz.maxScrollLine) quiz.scrollLine++;
+      else if (dir > 0 && quiz.scrollLine) quiz.scrollLine--;
+    }
+    return;
+  }
   if (moveInfoOpen) { moveInfoOpen = false; return; }
   if (pet.awaitingStarter()) return;  // bloqueado durante la eleccion de inicial
   if (uiCurrentScreen() == SCR_DEXPICK || uiCurrentScreen() == SCR_GYMPICK)
@@ -1669,6 +1722,7 @@ void partyTap(int16_t x, int16_t y) {
 
 // deslizar: dir +1 = hacia la derecha
 void onSwipe(int dir) {
+  if (quizBlocking()) return;
   if (moveInfoOpen) { moveInfoOpen = false; return; }
   // The region chooser pages, and it is checked before everything else because
   // it sits on TOP of the starter/gallery/gym screens -- each of which has its
@@ -1761,6 +1815,7 @@ void onSwipe(int dir) {
 }
 
 void onTap(int16_t x, int16_t y) {
+  if (quiz.active) { quizTap(x, y); return; }
   if (pet.awaitingStarter()) {  // primera partida: region y luego inicial
     if (!starterRegionDone) {
       int r = regionPickTap(x, y, RPICK_FOR_START);
@@ -2037,9 +2092,8 @@ void onTap(int16_t x, int16_t y) {
   if (feedMenuUntil) {       // selector de comida
     if (millis() < feedMenuUntil && y >= 288 && y <= 352 && x >= 101 && x <= 365) {
       int item = (x - 101) / 66;
-      if (item == 3) pet.feedCandy();
-      else pet.feedBerry(item);
-      sfxPlay(SFX_EAT);
+      if (item == 3) beginCareQuiz({ CARE_ACTION_FEED_CANDY, 0 }, false);
+      else beginCareQuiz({ CARE_ACTION_FEED_BERRY, (uint16_t)item }, false);
     }
     feedMenuUntil = 0;
     return;
@@ -2091,8 +2145,8 @@ void onTap(int16_t x, int16_t y) {
   }
   // tocar al bicho = caricia
   if (inPetZone(x, y)) {
-    pet.caress();
-    if (!pet.sleeping) sfxPlay(SFX_HEART);
+    if (!pet.sleeping && beginCareQuiz({ CARE_ACTION_CARESS, 0 }, false) && quiz.active)
+      sfxPlay(SFX_TAP);
   }
 }
 
@@ -2255,6 +2309,7 @@ RTC_NOINIT_ATTR uint32_t gCrumbHeap;
 
 // Which screen is on the panel RIGHT NOW, in the same order render() tests.
 uint8_t uiCurrentScreen() {
+  if (quiz.active) return SCR_QUIZ;
   if (pet.awaitingStarter()) return starterRegionDone ? SCR_STARTER : SCR_REGION;
   if (moveInfoOpen) return SCR_MOVEPICK;
   if (galleryOpen) return galleryPick ? SCR_DEXPICK : SCR_GALLERY;
@@ -2317,6 +2372,11 @@ void bootReport() {
 
 void render() {
   crumbDrop();   // so a crash can name the screen it happened on
+  if (quiz.active) {
+    quiz.markRendered(millis());
+    renderQuiz();
+    return;
+  }
   if (pet.awaitingStarter()) {  // primera partida: region y luego inicial
     if (!starterRegionDone) renderRegionPick(RPICK_FOR_START);
     else renderStarterSelect();
@@ -2531,6 +2591,88 @@ void render() {
   gfx->flush();
 }
 
+// ---------- quiz orchestration ----------
+
+bool quizBlocking() {
+  return quiz.active;
+}
+
+void settleCareInteraction(const CareAction &action, uint8_t percent, bool correct,
+                           bool showGameResult, uint32_t now) {
+  uint8_t gain = pet.settleCare(action, percent);
+  if (!correct) sfxPlay(SFX_DENY);
+  else if (action.kind == CARE_ACTION_FEED_BERRY ||
+           action.kind == CARE_ACTION_FEED_CANDY) sfxPlay(SFX_EAT);
+  else if (action.kind == CARE_ACTION_CARESS) sfxPlay(SFX_HEART);
+  else sfxPlay(SFX_LEVEL);
+
+  if (action.kind == CARE_ACTION_CLEAN && percent) {
+    startBathAnimation(now);
+    if (pmd.has(PMD_POSE)) {
+      beh.mode = 2;
+      beh.act = PMD_POSE;
+      beh.t0 = now;
+      beh.until = now + pmdActTotalMs(pmd.acts[PMD_POSE]) * 2;
+    }
+  }
+  if (!showGameResult) return;
+  if (action.kind == CARE_ACTION_PLAY) {
+    gameOverUntil = now + 4000;
+  } else if (action.kind == CARE_ACTION_TRAIN_STRENGTH) {
+    sackGain = gain;
+    sackOverUntil = now + 3500;
+  } else if (action.kind == CARE_ACTION_TRAIN_SPEED) {
+    spdGain = gain;
+    spdOverUntil = now + 3500;
+  }
+}
+
+bool beginCareQuiz(const CareAction &action, bool showGameResult) {
+  if (action.kind == CARE_ACTION_NONE) return false;
+  uint32_t now = millis();
+  lastInteract = now;
+  if (!quiz.begin(uiActiveLocaleCode())) {
+    settleCareInteraction(action, 100, true, showGameResult, now);
+    return true;
+  }
+  quizPurpose = QUIZ_PURPOSE_CARE;
+  quizCareAction = action;
+  quizShowsGameResult = showGameResult;
+  return true;
+}
+
+bool beginBattleQuiz(uint8_t moveSlot) {
+  if (moveSlot >= MOVE_SLOTS || !btlYou.moves[moveSlot]) return false;
+  lastInteract = millis();
+  if (!quiz.begin(uiActiveLocaleCode())) {
+    commitBattleMove(moveSlot, 100);
+    return true;
+  }
+  quizPurpose = QUIZ_PURPOSE_BATTLE;
+  quizBattleMoveSlot = moveSlot;
+  quizShowsGameResult = false;
+  if (btlLink) lan.sendWait();
+  return true;
+}
+
+void updateQuiz(uint32_t now) {
+  quiz.update(now);
+  uint8_t percent = 0;
+  bool correct = false;
+  if (!quiz.takeSettlement(now, percent, correct)) return;
+  QuizPurpose completedPurpose = quizPurpose;
+  quizPurpose = QUIZ_PURPOSE_NONE;
+  if (completedPurpose == QUIZ_PURPOSE_BATTLE) {
+    sfxPlay(correct ? SFX_LEVEL : SFX_DENY);
+    commitBattleMove(quizBattleMoveSlot, percent);
+    return;
+  }
+  if (completedPurpose != QUIZ_PURPOSE_CARE) return;
+  CareAction completed = quizCareAction;
+  settleCareInteraction(completed, percent, correct, quizShowsGameResult, now);
+  quizShowsGameResult = false;
+}
+
 // ---------- minijuego: toques con la pokeball ----------
 
 void startGame() {
@@ -2561,16 +2703,14 @@ void respawnBall() {
 // happiness, and a pet that just played should be happier for it. The
 // gameOver/over guards stop a swipe during the results screen paying twice.
 void leaveGame() {
-  if (!gameOverUntil) pet.playResult(gameScore);
-  gameOpen = false;
+  if (!gameOverUntil && beginCareQuiz({ CARE_ACTION_PLAY, gameScore }, false)) gameOpen = false;
 }
 void leaveSack() {
-  if (!sackOverUntil) pet.trainStrength(sackHits);
-  sackOpen = false;
+  if (!sackOverUntil && beginCareQuiz({ CARE_ACTION_TRAIN_STRENGTH, sackHits }, false))
+    sackOpen = false;
 }
 void leaveSpeed() {
-  if (!spdOverUntil) pet.trainSpeed(spdHits);
-  spdOpen = false;
+  if (!spdOverUntil && beginCareQuiz({ CARE_ACTION_TRAIN_SPEED, spdHits }, false)) spdOpen = false;
 }
 
 void gameTap(int16_t x, int16_t y) {
@@ -2622,17 +2762,13 @@ void stepGame() {
   // the clock, or three misses, whichever lands first
   if (gameUntil && millis() >= gameUntil && !gameOverUntil) {
     gameNewHi = (gameScore > pet.gameHi);
-    pet.playResult(gameScore);
-    sfxPlay(gameNewHi && gameScore > 0 ? SFX_MEDAL : SFX_LEVEL);
-    gameOverUntil = millis() + 4000;
+    if (beginCareQuiz({ CARE_ACTION_PLAY, gameScore }, true)) gameUntil = 0;
     return;
   }
   if (ballY > 384) {  // al suelo
     if (++gameMisses >= 3) {
       gameNewHi = (gameScore > pet.gameHi);
-      pet.playResult(gameScore);  // actualiza el record y da felicidad
-      sfxPlay(gameNewHi && gameScore > 0 ? SFX_MEDAL : SFX_LEVEL);
-      gameOverUntil = millis() + 4000;
+      if (beginCareQuiz({ CARE_ACTION_PLAY, gameScore }, true)) gameUntil = 0;
     } else {
       respawnBall();
     }
@@ -2704,9 +2840,7 @@ void renderSack() {
   // se acabaron los 10 s: aplicar entrenamiento
   if (now >= sackUntil) {
     sackNewHi = (sackHits > pet.strHi);
-    sackGain = pet.trainStrength(sackHits);
-    sfxPlay(sackNewHi ? SFX_MEDAL : SFX_PLAY);
-    sackOverUntil = now + 3500;
+    beginCareQuiz({ CARE_ACTION_TRAIN_STRENGTH, sackHits }, true);
     gfx->flush();
     return;
   }
@@ -3566,6 +3700,7 @@ void startLinkBattle() {
     linkMonTo(btlFoeSquad[btlFoeSquadN++], lan.theirs[i]);
   btlFoe = btlFoeSquad[0];
   btlMyAct = 0;
+  btlMyPercent = 0;
   btlMsgCount = 0;
   btlOver = false;
   btlWon = false;
@@ -3723,9 +3858,11 @@ static void btlLinkPoll() {
     if (btlMyAct && lan.hasPeerAct() && !btlOver && !btlMsgCount &&
         btlSwapWho < 0) {
       uint8_t act = btlMyAct;
+      uint8_t percent = btlMyPercent;
       btlMyAct = 0;
+      btlMyPercent = 0;
       if (LINK_ACT_IS_SWITCH(act)) btlSwitchTo(LINK_ACT_SLOT(act));
-      else btlResolve(btlYou.moves[LINK_ACT_SLOT(act) % MOVE_SLOTS]);
+      else btlResolve(btlYou.moves[LINK_ACT_SLOT(act) % MOVE_SLOTS], percent);
     }
     return;
   }
@@ -3755,11 +3892,12 @@ static void btlShipResult(MoveId yourMove, MoveId theirMove,
 }
 
 // One exchange: both sides act in speed order, then burn/poison chip.
-static void btlResolve(MoveId yourMove) {
+static void btlResolve(MoveId yourMove, uint8_t yourPercent) {
   TurnLog lg;
   // Against another device the opponent's move comes off the wire, never from
   // the AI -- and the host is the only side that runs this at all.
   MoveId foeMove;
+  uint8_t foePercent = 100;
   bool foeSwitched = false;
   uint32_t now = millis();
   if (btlLink) {
@@ -3782,8 +3920,10 @@ static void btlResolve(MoveId yourMove) {
       foeMove = 0;
     } else {
       foeMove = btlFoe.moves[LINK_ACT_SLOT(act) % MOVE_SLOTS];
+      foePercent = lan.pendingPercent;
     }
     lan.pendingAct = 0;
+    lan.pendingPercent = 0;
   } else {
     foeMove = aiChooseMove(btlFoe, btlYou, btlHard);
   }
@@ -3796,11 +3936,11 @@ static void btlResolve(MoveId yourMove) {
   MoveId mb = youFirst ? foeMove : yourMove;
 
   uint16_t hp0You = btlYou.hp, hp0Foe = btlFoe.hp;
-  battleAct(*a, *b, ma, lg);
+  battleAct(*a, *b, ma, lg, a == &btlYou ? yourPercent : foePercent);
   btlNarrate(*a, *b, lg);
   if (lg.damage && !lg.hurtSelf) btlLungeUntil[a == &btlYou ? 0 : 1] = now + BTL_LUNGE_MS;
   if (!b->fainted()) {
-    battleAct(*b, *a, mb, lg);
+    battleAct(*b, *a, mb, lg, b == &btlYou ? yourPercent : foePercent);
     btlNarrate(*b, *a, lg);
     if (lg.damage && !lg.hurtSelf)
       btlLungeUntil[b == &btlYou ? 0 : 1] = now + BTL_LUNGE_MS + BTL_LUNGE_MS;
@@ -4188,7 +4328,24 @@ static void btlSwitchTo(uint8_t i) {
   btlEnterUntil[0] = millis() + BTL_ENTER_MS;
   btlMenu = 0;
   btlSay(T(S_BTL_GO), displayCombatantName(btlYou));
-  btlResolve(0);          // move 0 = no attack, so only the foe acts
+  btlResolve(0, 100);     // move 0 = no attack, so only the foe acts
+}
+
+void commitBattleMove(uint8_t moveSlot, uint8_t percent) {
+  if (!battleOpen || btlOver || moveSlot >= MOVE_SLOTS || !btlYou.moves[moveSlot]) return;
+  uint8_t act = LINK_ACT_MOVE(moveSlot);
+  if (btlLink && !btlLinkHost) {
+    lan.sendAct(act, percent);         // the guest asks; the host decides
+    return;
+  }
+  if (btlLink) {
+    btlMyAct = act;
+    btlMyPercent = percent;
+    if (!lan.hasPeerAct()) return;     // resolved by btlLinkPoll when it lands
+    btlMyAct = 0;
+    btlMyPercent = 0;
+  }
+  btlResolve(btlYou.moves[moveSlot], percent);
 }
 
 int btlCellIndexAt(int16_t x, int16_t y) {
@@ -4278,9 +4435,11 @@ void battleTap(int16_t x, int16_t y) {
       }
       if (btlLink) {            // host: latched like a move, see btlLinkPoll
         btlMyAct = LINK_ACT_SWITCH_TO(i);
+        btlMyPercent = 100;
         btlMenu = 0;
         if (!lan.hasPeerAct()) return;
         btlMyAct = 0;
+        btlMyPercent = 0;
       }
       btlSwitchTo(i);
       return;
@@ -4294,19 +4453,7 @@ void battleTap(int16_t x, int16_t y) {
     if (!btlCellHit(i, x, y)) continue;
     sfxPlay(SFX_TAP);
     btlMenu = 0;
-    if (btlLink && !btlLinkHost) {
-      lan.sendAct(LINK_ACT_MOVE(i));   // the guest asks; the host decides
-      return;
-    }
-    if (btlLink) {
-      // Latched, not discarded. The host used to throw the tap away when the
-      // rival had not chosen yet, so you had to keep jabbing at the move until
-      // the timing happened to line up.
-      btlMyAct = LINK_ACT_MOVE(i);
-      if (!lan.hasPeerAct()) return;   // resolved by btlLinkPoll when it lands
-      btlMyAct = 0;
-    }
-    btlResolve(btlYou.moves[i]);
+    beginBattleQuiz((uint8_t)i);
     return;
   }
   btlMenu = 0;        // a tap off the grid goes back to FIGHT/POKEMON
@@ -4531,9 +4678,7 @@ void renderSpeed() {
   // session over?
   if (now >= spdUntil) {
     spdNewHi = (spdHits > pet.spdHi);
-    spdGain = pet.trainSpeed(spdHits);
-    sfxPlay(spdNewHi ? SFX_MEDAL : SFX_PLAY);
-    spdOverUntil = now + 3500;
+    beginCareQuiz({ CARE_ACTION_TRAIN_SPEED, spdHits }, true);
     gfx->flush();
     return;
   }
@@ -5754,11 +5899,13 @@ static const char *nextUtf8Char(const char *at) {
   return at;
 }
 
-int drawWrappedText(const char *text, int x, int y, int width, uint8_t maxLines) {
+int drawWrappedTextWindow(const char *text, int x, int y, int width,
+                          uint8_t skipLines, uint8_t maxLines, uint8_t *totalLines) {
   if (!text || !*text || !maxLines) return y;
   const char *at = text;
   char line[128];
-  for (uint8_t row = 0; row < maxLines && *at; row++) {
+  uint8_t logicalLine = 0, drawn = 0;
+  while (*at) {
     while (*at == ' ') at++;
     const char *start = at, *scan = at, *fit = at, *lastSpace = nullptr;
     bool overflow = false;
@@ -5790,13 +5937,190 @@ int drawWrappedText(const char *text, int x, int y, int width, uint8_t maxLines)
     if (bytes >= sizeof(line)) bytes = sizeof(line) - 1;
     memcpy(line, start, bytes);
     line[bytes] = 0;
-    gfx->setCursor(x, y);
-    gfx->print(line);
-    y += gfx->textLineHeight();
+    if (logicalLine >= skipLines && drawn < maxLines) {
+      gfx->setCursor(x, y);
+      gfx->print(line);
+      y += gfx->textLineHeight();
+      drawn++;
+    }
+    logicalLine++;
     if (next <= at) break;
     at = next;
   }
+  if (totalLines) *totalLines = logicalLine;
   return y;
+}
+
+int drawWrappedText(const char *text, int x, int y, int width, uint8_t maxLines) {
+  return drawWrappedTextWindow(text, x, y, width, 0, maxLines, nullptr);
+}
+
+// ---------- care-question modal ----------
+
+#define QUIZ_OPTION_X 72
+#define QUIZ_OPTION_Y 164
+#define QUIZ_OPTION_W 322
+#define QUIZ_OPTION_H 44
+#define QUIZ_OPTION_GAP 6
+#define QUIZ_KEY_X 84
+#define QUIZ_KEY_Y 208
+#define QUIZ_KEY_W 70
+#define QUIZ_KEY_H 44
+#define QUIZ_KEY_GAP 6
+
+void quizOptionRect(uint8_t option, int *x, int *y, int *w, int *h) {
+  if (x) *x = QUIZ_OPTION_X;
+  if (y) *y = QUIZ_OPTION_Y + option * (QUIZ_OPTION_H + QUIZ_OPTION_GAP);
+  if (w) *w = QUIZ_OPTION_W;
+  if (h) *h = QUIZ_OPTION_H;
+}
+
+void quizKeyRect(uint8_t row, uint8_t column, int *x, int *y, int *w, int *h) {
+  if (x) *x = QUIZ_KEY_X + column * (QUIZ_KEY_W + QUIZ_KEY_GAP);
+  if (y) *y = QUIZ_KEY_Y + row * (QUIZ_KEY_H + QUIZ_KEY_GAP);
+  if (w) *w = QUIZ_KEY_W;
+  if (h) *h = QUIZ_KEY_H;
+}
+
+void quizTap(int16_t x, int16_t y) {
+  if (!quiz.active || quiz.answered) return;
+  if (quiz.kind == QUIZ_QUESTION_CHOICE) {
+    for (uint8_t option = 0; option < quiz.choice.optionCount; option++) {
+      int left, top, width, height;
+      quizOptionRect(option, &left, &top, &width, &height);
+      if (x >= left && x <= left + width && y >= top && y <= top + height) {
+        quiz.choose(option, millis());
+        return;
+      }
+    }
+    return;
+  }
+  if (quiz.kind != QUIZ_QUESTION_ARITHMETIC) return;
+  static const char keys[4][4] = {
+    { '7', '8', '9', '<' },
+    { '4', '5', '6', '-' },
+    { '1', '2', '3', '.' },
+    { '0', '/', 'C', 'O' },
+  };
+  for (uint8_t row = 0; row < 4; row++) {
+    for (uint8_t column = 0; column < 4; column++) {
+      int left, top, width, height;
+      quizKeyRect(row, column, &left, &top, &width, &height);
+      if (x < left || x > left + width || y < top || y > top + height) continue;
+      char key = keys[row][column];
+      if (key == '<') quiz.erase();
+      else if (key == 'C') quiz.clearInput();
+      else if (key == 'O') {
+        if (!quiz.submit(millis())) sfxPlay(SFX_DENY);
+      } else if (!quiz.append(key)) {
+        sfxPlay(SFX_DENY);
+      }
+      return;
+    }
+  }
+}
+
+void renderQuiz() {
+  uint32_t now = millis();
+  gfx->fillCircle(CX, CY, 231, UI_WHITE);
+  gfx->drawCircle(CX, CY, 231, UI_INK);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(T(S_QUIZ_TITLE)), 28);
+  gfx->print(T(S_QUIZ_TITLE));
+
+  uint32_t remaining = quiz.remainingMs(now);
+  char seconds[12];
+  snprintf(seconds, sizeof(seconds), "%lus", (unsigned long)((remaining + 999) / 1000));
+  gfx->setTextSize(1);
+  gfx->setCursor(uiCenterX(seconds), 52);
+  gfx->print(seconds);
+  int timerWidth = 310;
+  gfx->fillRoundRect(78, 68, timerWidth, 8, 3, UI_TRACK);
+  if (!quiz.answered && quiz.config.timeSeconds) {
+    uint32_t duration = (uint32_t)quiz.config.timeSeconds * 1000u;
+    int fill = (int)((uint64_t)timerWidth * remaining / duration);
+    if (fill > 2) gfx->fillRoundRect(78, 68, fill, 8, 3,
+                                    remaining < duration / 6 ? UI_BAR_WARN : UI_BAR_OK);
+  }
+
+  gfx->setTextSize(2);
+  const char *question = quiz.kind == QUIZ_QUESTION_CHOICE ? quiz.choice.stem : quiz.expression;
+  uint8_t questionLines = 0;
+  drawWrappedTextWindow(question, 58, 84, 350, quiz.scrollLine, 3, &questionLines);
+  quiz.maxScrollLine = questionLines > 3 ? questionLines - 3 : 0;
+  if (quiz.scrollLine) {
+    gfx->setTextSize(1);
+    gfx->setCursor(410, 86);
+    gfx->print("^");
+  }
+  if (quiz.scrollLine < quiz.maxScrollLine) {
+    gfx->setTextSize(1);
+    gfx->setCursor(410, 136);
+    gfx->print("v");
+  }
+
+  if (quiz.kind == QUIZ_QUESTION_CHOICE) {
+    gfx->setTextSize(1);
+    for (uint8_t option = 0; option < quiz.choice.optionCount; option++) {
+      int left, top, width, height;
+      quizOptionRect(option, &left, &top, &width, &height);
+      uint16_t color = 0xEF7D;
+      if (quiz.answered && option == quiz.choice.correctIndex) color = UI_BAR_OK;
+      else if (quiz.answered && option == quiz.selectedOption) color = UI_BAR_BAD;
+      gfx->fillRoundRect(left, top, width, height, 10, color);
+      gfx->drawRoundRect(left, top, width, height, 10, UI_INK);
+      char label[4] = { (char)('A' + option), '.', 0, 0 };
+      gfx->setCursor(left + 12, top + 14);
+      gfx->print(label);
+      drawWrappedText(quiz.choice.options[option], left + 40, top + 6, width - 50, 2);
+    }
+  } else {
+    gfx->fillRoundRect(70, 154, 326, 40, 10, 0xEF7D);
+    gfx->drawRoundRect(70, 154, 326, 40, 10, UI_INK);
+    gfx->setTextSize(2);
+    const char *answer = quiz.input[0] ? quiz.input : T(S_QUIZ_ANSWER);
+    gfx->setCursor(uiCenterX(answer), 165);
+    gfx->print(answer);
+    static const char *keys[4][4] = {
+      { "7", "8", "9", "<" },
+      { "4", "5", "6", "-" },
+      { "1", "2", "3", "." },
+      { "0", "/", "C", "OK" },
+    };
+    for (uint8_t row = 0; row < 4; row++) {
+      for (uint8_t column = 0; column < 4; column++) {
+        int left, top, width, height;
+        quizKeyRect(row, column, &left, &top, &width, &height);
+        bool disabled = (keys[row][column][0] == '-' && !(quiz.config.flags & QUIZ_ALLOW_NEGATIVE)) ||
+                        (keys[row][column][0] == '.' && !(quiz.config.flags & QUIZ_ALLOW_DECIMALS)) ||
+                        (keys[row][column][0] == '/' && !(quiz.config.flags & QUIZ_ALLOW_FRACTIONS));
+        gfx->fillRoundRect(left, top, width, height, 9,
+                           disabled ? UI_TRACK : (column == 3 && row == 3 ? UI_BAR_OK : 0xEF7D));
+        gfx->drawRoundRect(left, top, width, height, 9, UI_INK);
+        gfx->setTextColor(disabled ? UI_WHITE : UI_INK);
+        gfx->setCursor(uiCenterIn(keys[row][column], left, width), top + 13);
+        gfx->print(keys[row][column]);
+      }
+    }
+  }
+
+  if (quiz.answered) {
+    gfx->fillRoundRect(78, 170, 310, 126, 18, quiz.correct ? UI_BAR_OK : UI_BAR_BAD);
+    gfx->drawRoundRect(78, 170, 310, 126, 18, UI_INK);
+    gfx->setTextColor(UI_WHITE);
+    gfx->setTextSize(3);
+    const char *message = quiz.correct ? T(S_QUIZ_CORRECT)
+                                      : (quiz.timedOut ? T(S_QUIZ_TIMEOUT) : T(S_QUIZ_WRONG));
+    gfx->setCursor(uiCenterX(message), 198);
+    gfx->print(message);
+    char effect[32];
+    snprintf(effect, sizeof(effect), T(S_QUIZ_EFFECT_FMT), quiz.effectPercent);
+    gfx->setTextSize(2);
+    gfx->setCursor(uiCenterX(effect), 248);
+    gfx->print(effect);
+  }
+  gfx->flush();
 }
 
 void renderGallery() {
@@ -6168,8 +6492,11 @@ void drawPet() {
 
 void startBath() {
   if (pet.isEgg() || pet.sleeping || pet.ceremony || bathUntil) return;
-  bathUntil = millis() + 3000;
-  bathPending = true;
+  beginCareQuiz({ CARE_ACTION_CLEAN, 0 }, false);
+}
+
+void startBathAnimation(uint32_t now) {
+  bathUntil = now + 3000;
   int cx = (int)beh.x;
   for (auto &b : bubbles) {
     b.x = cx - 70 + random(140);
@@ -6183,17 +6510,6 @@ void drawBath() {
   uint32_t now = millis();
   if (now > bathUntil) {
     bathUntil = 0;
-    if (bathPending) {
-      bathPending = false;
-      pet.clean();
-      // pose de alegria al quedar limpio
-      if (pmd.has(PMD_POSE)) {
-        beh.mode = 2;
-        beh.act = PMD_POSE;
-        beh.t0 = now;
-        beh.until = now + pmdActTotalMs(pmd.acts[PMD_POSE]) * 2;
-      }
-    }
     return;
   }
   uint32_t left = bathUntil - now;

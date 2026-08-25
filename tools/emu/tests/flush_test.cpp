@@ -7,6 +7,7 @@
 #include "Preferences.h"
 #include "pet.h"
 #include "party.h"
+#include "quiz.h"
 #include <cstdio>
 #include <cstring>
 uint32_t g_seed=7; FakeSerial Serial; FakeESP ESP; FakeWire Wire;
@@ -20,6 +21,7 @@ uint8_t uiCurrentScreen();
 extern const char *const SCREEN_NAME[];
 extern Arduino_Canvas *gfx;
 extern Pet pet;
+extern QuizRuntime quiz;
 extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyOpen, partyPick;
 extern bool trainOpen, movePickOpen, battleOpen, gymOpen, playerOpen;
 extern uint8_t cardPage;
@@ -67,6 +69,8 @@ int main(){
   for (uint8_t p=0;p<4;p++){ clearAll(); cardOpen=true; cardPage=p;
     char n[16]; snprintf(n,sizeof(n),"card%u",p); check(n); }
   clearAll(); startBattle(9,50); check("battle");
+  clearAll(); quiz.config.choiceWeight=0;
+  quiz.begin("en-US"); check("quiz"); quiz.active=false;
 
   clearAll();                       crumbIs("main");
   clearAll(); trainOpen=true;       crumbIs("train");
@@ -78,6 +82,8 @@ int main(){
   clearAll(); clockOpen=true;       crumbIs("clock");
   clearAll(); cardOpen=true;        crumbIs("card");
   clearAll(); startBattle(9,50);    crumbIs("battle");
+  clearAll(); quiz.config.choiceWeight=0;
+  quiz.begin("en-US"); crumbIs("quiz"); quiz.active=false;
   clearAll();
 
   printf("%s\n", bad ? "FAILURES" : "every screen flushes");

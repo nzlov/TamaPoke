@@ -5,6 +5,7 @@
 #include "Preferences.h"
 #include "pet.h"
 #include "party.h"
+#include "quiz.h"
 #include <chrono>
 #include <thread>
 #include <cstdio>
@@ -17,11 +18,78 @@ void setup(); void loop();
 extern Pet pet;
 extern bool gameOpen;
 extern uint8_t gameScore;
+extern QuizRuntime quiz;
+extern uint32_t bathUntil;
 void startGame(); void leaveGame();
+void updateQuiz(uint32_t now);
+void onTap(int16_t x, int16_t y);
+void uiButtonAt(int i, int *cx, int *cy, int *half);
+
+static bool answerCurrentQuiz() {
+  if (!quiz.active) return false;
+  uint32_t now = millis();
+  quiz.markRendered(now);
+  snprintf(quiz.input, sizeof(quiz.input), "%s", quiz.expected);
+  if (!quiz.submit(now)) return false;
+  updateQuiz(now);
+  return true;
+}
+
+static void finishQuizFeedback() {
+  updateQuiz(quiz.feedbackUntil);
+}
+
 int main(){
   setup(); for(int i=0;i<4;i++) loop();
   if (pet.awaitingStarter()) pet.chooseStarter(4);
   if (pet.isEgg()) pet.dbgHatchAs(25,false);
+  quiz.config.choiceWeight = 0;
+
+  int bad = 0;
+
+  // Home care starts with the question. Its visible success animation and
+  // positive effect begin only after the answer feedback has finished.
+  pet.joy = 20;
+  onTap(233, 200);
+  bool caressAskedFirst = quiz.active && pet.joy == 20;
+  bool caressWaited = answerCurrentQuiz() && pet.joy == 20 && !pet.showHeart();
+  finishQuizFeedback();
+  bool caressSettled = !quiz.active && pet.joy > 20 && pet.showHeart();
+  printf("caress: asked=%d waited=%d settled=%d\n",
+         caressAskedFirst, caressWaited, caressSettled);
+  if (!caressAskedFirst || !caressWaited || !caressSettled) bad = 1;
+
+  int bx = 0, by = 0;
+  uiButtonAt(2, &bx, &by, nullptr);  // bath
+  pet.hygiene = 20;
+  onTap(bx, by);
+  bool cleanAskedFirst = quiz.active && bathUntil == 0 && pet.hygiene == 20;
+  bool cleanWaited = answerCurrentQuiz() && bathUntil == 0 && pet.hygiene == 20;
+  finishQuizFeedback();
+  bool cleanSettled = !quiz.active && bathUntil > millis() && pet.hygiene > 20;
+  printf("clean:   asked=%d waited=%d settled=%d\n",
+         cleanAskedFirst, cleanWaited, cleanSettled);
+  if (!cleanAskedFirst || !cleanWaited || !cleanSettled) bad = 1;
+
+  uiButtonAt(0, &bx, &by, nullptr);  // food
+  pet.fullness = 0;
+  onTap(bx, by);
+  onTap(120, 320);                   // red berry
+  bool feedAskedFirst = quiz.active && !pet.eating() && pet.fullness == 0;
+  bool feedWaited = answerCurrentQuiz() && !pet.eating() && pet.fullness == 0;
+  finishQuizFeedback();
+  bool feedSettled = !quiz.active && pet.eating() && pet.fullness > 0;
+  printf("feed:    asked=%d waited=%d settled=%d\n",
+         feedAskedFirst, feedWaited, feedSettled);
+  if (!feedAskedFirst || !feedWaited || !feedSettled) bad = 1;
+
+  quiz.config.questionTypes = 0;
+  pet.joy = 20;
+  onTap(233, 200);
+  bool disabledCaressSettled = !quiz.active && pet.joy > 20 && pet.showHeart();
+  printf("disabled quiz: caress settled directly=%d\n", disabledCaressSettled);
+  if (!disabledCaressSettled) bad = 1;
+  quiz.config.questionTypes = QUIZ_TYPE_ARITHMETIC;
 
   printf("direct playResult:\n");
   for (int sc : {0, 3, 8, 20}) {
@@ -34,9 +102,12 @@ int main(){
   startGame();
   gameScore = 9;              // as if nine rallies had landed
   leaveGame();
+  bool waitedForAnswer = pet.joy == 40 && quiz.active;
+  answerCurrentQuiz();
+  finishQuizFeedback();
   printf("\nleave early with score 9: joy 40 -> %u, gameOpen=%d, record=%u\n",
          pet.joy, (int)gameOpen, pet.gameHi);
-  int bad = pet.joy > 40 ? 0 : 1;
+  if (!waitedForAnswer || pet.joy <= 40) bad = 1;
 
   // --- the ball game is DEFENCE's trainer now
   {

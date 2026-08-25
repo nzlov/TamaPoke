@@ -26,6 +26,8 @@ constexpr uint8_t MAX_SECTIONS = 16;
 constexpr uint16_t COMMON_SIZE = 48;
 constexpr uint16_t SECTION_SIZE = 16;
 constexpr uint8_t MAX_PET_PACKS = CONTENT_MAX_REGIONS;
+constexpr uint8_t MAX_QUIZ_PACKS = MAX_PACKS;
+constexpr uint8_t MAX_QUIZ_LOCALES = 16;
 constexpr uint8_t MAX_STARTERS = 16;
 constexpr uint32_t UI_FONT_HEADER_SIZE = 8;
 constexpr uint32_t UI_FONT_GLYPH_SIZE = 137;
@@ -67,6 +69,18 @@ struct RegionPackRuntime {
 struct UiRuntime {
   UiLocaleInfo info{};
   uint8_t packRef = 0xFF;
+};
+
+struct QuizLocaleSpan {
+  char locale[16];
+  uint32_t first, count;
+};
+
+struct QuizPackRuntime {
+  uint8_t packRef = 0xFF;
+  uint8_t localeCount = 0;
+  uint32_t questionCount = 0;
+  QuizLocaleSpan locales[MAX_QUIZ_LOCALES] = {};
 };
 
 static bool gAttempted = false;
@@ -119,6 +133,8 @@ static uint8_t gUiCount = 0, gUiActive = 0xFF;
 static uint8_t *gUiStrings = nullptr, *gUiFont = nullptr, *gUiLayout = nullptr;
 static uint32_t gUiStringsSize = 0, gUiFontSize = 0, gUiLayoutSize = 0;
 static uint32_t gMechanicsHash = 2166136261u;
+static QuizPackRuntime gQuizPacks[MAX_QUIZ_PACKS];
+static uint8_t gQuizPackCount = 0;
 
 static const DexEntry MISSING_SPECIES = {
   "?", 0, 0, 0x2946, 50, 50, 50, 50, 50, 50, 0, T_NORMAL, T_NONE, {}, 0,
@@ -275,7 +291,7 @@ static ContentPackValidation validatePackHeader(const char *path, Reader &reader
   if (!reader.readAt(0, common, COMMON_SIZE)) return CONTENT_PACK_READ_FAILED;
   uint8_t kind = common[6];
   uint16_t headerSize = rd16(common + 24), sectionCount = rd16(common + 26);
-  if (memcmp(common, "TPPK", 4) != 0 || kind < CONTENT_PACK_UI || kind > CONTENT_PACK_MOVE ||
+  if (memcmp(common, "TPPK", 4) != 0 || kind < CONTENT_PACK_UI || kind > CONTENT_PACK_QUIZ ||
       sectionCount == 0 || sectionCount > MAX_SECTIONS ||
       headerSize != COMMON_SIZE + sectionCount * SECTION_SIZE || headerSize > reader.size)
     return CONTENT_PACK_HEADER_INVALID;
@@ -348,7 +364,7 @@ static bool parsePack(const char *path, PackRef &out,
 static bool hasPackExtension(const char *path) {
   if (!path) return false;
   size_t length = strlen(path);
-  const char *extensions[] = { ".tui", ".tmove", ".tregion" };
+  const char *extensions[] = { ".tui", ".tmove", ".tregion", ".tquiz" };
   for (const char *extension : extensions) {
     size_t extensionLength = strlen(extension);
     if (length >= extensionLength &&
@@ -900,6 +916,54 @@ static bool loadUiMeta(uint8_t packIndex) {
   return true;
 }
 
+static bool parseQuizMeta(const PackRef &pack, QuizPackRuntime &runtime) {
+  const SectionRef *locales = findSection(pack, "QLOC");
+  const SectionRef *index = findSection(pack, "QIDX");
+  const SectionRef *data = findSection(pack, "QDAT");
+  if (!locales || !index || !data || !locales->count ||
+      locales->count > MAX_QUIZ_LOCALES ||
+      locales->size != locales->count * 24u ||
+      !index->count || index->size != index->count * 12u ||
+      data->count != index->count || !data->size) return false;
+  uint8_t *raw = readSection(pack, "QLOC");
+  if (!raw) return false;
+  memset(&runtime, 0, sizeof(runtime));
+  runtime.packRef = 0xFF;
+  runtime.localeCount = (uint8_t)locales->count;
+  runtime.questionCount = index->count;
+  uint32_t covered = 0;
+  bool valid = true;
+  for (uint8_t i = 0; i < runtime.localeCount; i++) {
+    const uint8_t *row = raw + (uint32_t)i * 24u;
+    QuizLocaleSpan &span = runtime.locales[i];
+    memcpy(span.locale, row, 16);
+    span.locale[15] = 0;
+    span.first = rd32(row + 16);
+    span.count = rd32(row + 20);
+    if (!span.locale[0] || !memchr(row, 0, 16) || !span.count ||
+        span.first != covered || span.count > runtime.questionCount - covered) {
+      valid = false;
+      break;
+    }
+    for (uint8_t previous = 0; previous < i; previous++)
+      if (strncmp(runtime.locales[previous].locale, span.locale, 16) == 0) valid = false;
+    if (!valid) break;
+    covered += span.count;
+  }
+  free(raw);
+  return valid && covered == runtime.questionCount;
+}
+
+static bool loadQuizMeta(uint8_t packIndex) {
+  if (gQuizPackCount >= MAX_QUIZ_PACKS) return false;
+  QuizPackRuntime runtime;
+  if (!parseQuizMeta(gPacks[packIndex], runtime)) return false;
+  runtime.packRef = packIndex;
+  gQuizPacks[gQuizPackCount++] = runtime;
+  gPacks[packIndex].loaded = true;
+  return true;
+}
+
 static void buildAllRegion() {
   if (!gRealRegionCount || gRealRegionCount >= CONTENT_MAX_REGIONS) return;
   uint8_t all = gRealRegionCount;
@@ -934,10 +998,13 @@ bool contentBegin() {
     if (gPacks[i].kind == CONTENT_PACK_REGION) loadRegionPack(i);
   for (uint8_t i = 0; i < gPackCount; i++)
     if (gPacks[i].kind == CONTENT_PACK_UI) loadUiMeta(i);
+  for (uint8_t i = 0; i < gPackCount; i++)
+    if (gPacks[i].kind == CONTENT_PACK_QUIZ) loadQuizMeta(i);
   buildAllRegion();
 
   for (uint8_t i = 0; i < gPackCount; i++) {
-    if (gPacks[i].kind == CONTENT_PACK_UI || !gPacks[i].loaded) continue;
+    if (gPacks[i].kind == CONTENT_PACK_UI || gPacks[i].kind == CONTENT_PACK_QUIZ ||
+        !gPacks[i].loaded) continue;
     gMechanicsHash ^= gPacks[i].mechanicsHash;
     gMechanicsHash *= 16777619u;
   }
@@ -955,7 +1022,11 @@ bool contentBegin() {
 ContentPackValidation contentValidatePackFile(const char *path) {
   PackRef parsed;
   ContentPackValidation validation = CONTENT_PACK_OPEN_FAILED;
-  parsePack(path, parsed, PackParseMode::VERIFY_PAYLOAD, &validation);
+  if (parsePack(path, parsed, PackParseMode::VERIFY_PAYLOAD, &validation) &&
+      parsed.kind == CONTENT_PACK_QUIZ) {
+    QuizPackRuntime runtime;
+    if (!parseQuizMeta(parsed, runtime)) validation = CONTENT_PACK_DIRECTORY_INVALID;
+  }
   return validation;
 }
 
@@ -977,6 +1048,93 @@ bool contentHasUi() { ensureContent(); return gUiActive < gUiCount; }
 bool contentHasPets() { ensureContent(); return gRegionsReady; }
 bool contentHasMoves() { ensureContent(); return gMoves; }
 uint32_t contentMechanicsHash() { ensureContent(); return gMechanicsHash; }
+
+uint32_t contentChoiceQuestionCount(const char *locale) {
+  ensureContent();
+  if (!locale || !*locale) return 0;
+  uint32_t total = 0;
+  for (uint8_t packIndex = 0; packIndex < gQuizPackCount; packIndex++) {
+    const QuizPackRuntime &pack = gQuizPacks[packIndex];
+    for (uint8_t localeIndex = 0; localeIndex < pack.localeCount; localeIndex++)
+      if (strncmp(pack.locales[localeIndex].locale, locale, 16) == 0) {
+        total += pack.locales[localeIndex].count;
+        break;
+      }
+  }
+  return total;
+}
+
+static bool readChoiceQuestion(const QuizPackRuntime &runtime, uint32_t index,
+                               ContentChoiceQuestion &out) {
+  if (runtime.packRef >= gPackCount || index >= runtime.questionCount) return false;
+  const PackRef &pack = gPacks[runtime.packRef];
+  const SectionRef *indexSection = findSection(pack, "QIDX");
+  const SectionRef *dataSection = findSection(pack, "QDAT");
+  if (!indexSection || !dataSection) return false;
+  uint8_t indexRow[12];
+  if (!readRange(pack, indexSection->offset + index * sizeof(indexRow),
+                 indexRow, sizeof(indexRow))) return false;
+  uint32_t idHash = rd32(indexRow), offset = rd32(indexRow + 4), size = rd32(indexRow + 8);
+  constexpr uint32_t RECORD_HEADER = 14;
+  constexpr uint32_t RECORD_MAX = RECORD_HEADER + CONTENT_MAX_QUESTION_ID_BYTES +
+      CONTENT_MAX_QUESTION_STEM_BYTES +
+      CONTENT_MAX_QUIZ_OPTIONS * CONTENT_MAX_QUESTION_OPTION_BYTES;
+  if (size < RECORD_HEADER || size > RECORD_MAX || offset > dataSection->size ||
+      size > dataSection->size - offset) return false;
+  uint8_t *record = (uint8_t *)contentAlloc(size);
+  if (!record || !readRange(pack, dataSection->offset + offset, record, size)) {
+    free(record); return false;
+  }
+  uint8_t optionCount = record[0], correct = record[1];
+  uint16_t idSize = rd16(record + 2), stemSize = rd16(record + 4);
+  uint16_t optionSize[CONTENT_MAX_QUIZ_OPTIONS];
+  uint32_t total = RECORD_HEADER + idSize + stemSize;
+  for (uint8_t i = 0; i < CONTENT_MAX_QUIZ_OPTIONS; i++) {
+    optionSize[i] = rd16(record + 6 + i * 2);
+    total += optionSize[i];
+  }
+  bool valid = optionCount >= 2 && optionCount <= CONTENT_MAX_QUIZ_OPTIONS &&
+               correct < optionCount && idSize && idSize <= CONTENT_MAX_QUESTION_ID_BYTES &&
+               stemSize && stemSize <= CONTENT_MAX_QUESTION_STEM_BYTES && total == size;
+  for (uint8_t i = 0; i < CONTENT_MAX_QUIZ_OPTIONS; i++)
+    if ((i < optionCount && (!optionSize[i] || optionSize[i] > CONTENT_MAX_QUESTION_OPTION_BYTES)) ||
+        (i >= optionCount && optionSize[i])) valid = false;
+  uint32_t cursor = RECORD_HEADER;
+  if (valid && (memchr(record + cursor, 0, idSize) ||
+                memchr(record + cursor + idSize, 0, stemSize))) valid = false;
+  if (valid) {
+    memset(&out, 0, sizeof(out));
+    out.idHash = idHash;
+    memcpy(out.id, record + cursor, idSize); cursor += idSize;
+    memcpy(out.stem, record + cursor, stemSize); cursor += stemSize;
+    out.optionCount = optionCount;
+    out.correctIndex = correct;
+    for (uint8_t i = 0; i < optionCount; i++) {
+      if (memchr(record + cursor, 0, optionSize[i])) { valid = false; break; }
+      memcpy(out.options[i], record + cursor, optionSize[i]);
+      cursor += optionSize[i];
+    }
+  }
+  free(record);
+  return valid;
+}
+
+bool contentChoiceQuestionAt(const char *locale, uint32_t index,
+                             ContentChoiceQuestion &out) {
+  ensureContent();
+  if (!locale || !*locale) return false;
+  for (uint8_t packIndex = 0; packIndex < gQuizPackCount; packIndex++) {
+    const QuizPackRuntime &pack = gQuizPacks[packIndex];
+    for (uint8_t localeIndex = 0; localeIndex < pack.localeCount; localeIndex++) {
+      const QuizLocaleSpan &span = pack.locales[localeIndex];
+      if (strncmp(span.locale, locale, 16) != 0) continue;
+      if (index < span.count) return readChoiceQuestion(pack, span.first + index, out);
+      index -= span.count;
+      break;
+    }
+  }
+  return false;
+}
 
 uint16_t dexCount() { ensureContent(); return gDexCount; }
 bool dexValid(SpeciesId id) {

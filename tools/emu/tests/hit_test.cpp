@@ -16,6 +16,7 @@
 #include "party.h"
 #include "battle.h"
 #include "i18n.h"
+#include "quiz.h"
 #include <cstdio>
 uint32_t g_seed=4; FakeSerial Serial; FakeESP ESP; FakeWire Wire;
 volatile int g_touchX=0,g_touchY=0; volatile bool g_touchDown=false;
@@ -24,7 +25,10 @@ int FakeSerial::available(){return 0;}
 String FakeSerial::readStringUntil(char){return String("");}
 
 void setup(); void render(); void battleTap(int16_t,int16_t);
+void updateQuiz(uint32_t now);
+bool beginBattleQuiz(uint8_t moveSlot);
 extern Pet pet;
+extern QuizRuntime quiz;
 extern bool battleOpen;
 extern uint8_t choiceKind;
 extern uint8_t btlMenu;
@@ -46,11 +50,38 @@ int uiSleepButton(int *cx, int *cy);
 void uiEggPillRect(int *x, int *y, int *w, int *h, bool hitArea);
 bool uiButtonDisabled(int i);
 void uiButtonAt(int i, int *cx, int *cy, int *half);
+void quizOptionRect(uint8_t option, int *x, int *y, int *w, int *h);
+void quizKeyRect(uint8_t row, uint8_t column, int *x, int *y, int *w, int *h);
 extern Pet pet;
 void onTap(int16_t x, int16_t y);
 
 static int bad=0;
 static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!ok)bad++;}
+
+static bool answerActiveQuiz() {
+  if (!quiz.active) return false;
+  uint32_t now = millis();
+  quiz.markRendered(now);
+  bool answered = false;
+  if (quiz.kind == QUIZ_QUESTION_CHOICE) {
+    answered = quiz.choose(quiz.choice.correctIndex, now);
+  } else {
+    snprintf(quiz.input, sizeof(quiz.input), "%s", quiz.expected);
+    answered = quiz.submit(now);
+  }
+  if (!answered) return false;
+  updateQuiz(quiz.feedbackUntil);
+  return !quiz.active;
+}
+
+static bool rectInsideRoundPanel(int x, int y, int w, int h) {
+  const int points[4][2] = {{x, y}, {x + w, y}, {x, y + h}, {x + w, y + h}};
+  for (const auto &point : points) {
+    int dx = point[0] - 233, dy = point[1] - 233;
+    if (dx * dx + dy * dy > 231 * 231) return false;
+  }
+  return true;
+}
 
 int main(){
   setup();
@@ -60,6 +91,7 @@ int main(){
   pet.ageMinutes = 50UL*MINUTES_PER_LEVEL;
   pet.relearnFromLevel();
   while (pet.hasLearnOffer()) pet.declineLearn();
+  quiz.config.choiceWeight = 0;
 
   // Sweep the whole grid area and record which cell each pixel belongs to.
   const int X0 = 40, X1 = 430, Y0 = 258, Y1 = 410;
@@ -112,10 +144,19 @@ int main(){
 
   // finally, drive a real tap low in the bottom-left cell through battleTap
   startBattle(9, 50);
+  btlYou.moves[2] = btlYou.moves[0];
   btlMenu = 1;
   uint8_t before = btlMenu;
-  battleTap(150, 390);
+  battleTap(150, 372);
   ck(btlMenu != before, "a low tap in the move grid is actually accepted");
+  ck(quiz.active, "an accepted battle move opens its question before resolving");
+  ck(answerActiveQuiz(), "answer feedback resumes the pending battle move");
+
+  startBattle(9, 50);
+  quiz.config.questionTypes = 0;
+  ck(beginBattleQuiz(0) && !quiz.active,
+     "a disabled battle question resolves the move without a popup");
+  quiz.config.questionTypes = QUIZ_TYPE_ARITHMETIC;
 
   // The party screen's BOX and CLOSE buttons must not share a pixel. Padding
   // BOX to make it easier to hit pushed its hit area 8 px into CLOSE, so taps
@@ -143,6 +184,26 @@ int main(){
     for (int i = 0; i < n; i++) printf(" %d", h[i]);
     printf(" px\n");
     ck(small == 0, "every primary button is at least 44 px tall");
+  }
+
+  {
+    bool safe = true;
+    bool largeEnough = true;
+    for (uint8_t row = 0; row < 4; row++)
+      for (uint8_t column = 0; column < 4; column++) {
+        int x, y, w, h;
+        quizKeyRect(row, column, &x, &y, &w, &h);
+        safe &= rectInsideRoundPanel(x, y, w, h);
+        largeEnough &= w >= 44 && h >= 44;
+      }
+    for (uint8_t option = 0; option < 4; option++) {
+      int x, y, w, h;
+      quizOptionRect(option, &x, &y, &w, &h);
+      safe &= rectInsideRoundPanel(x, y, w, h);
+      largeEnough &= w >= 44 && h >= 44;
+    }
+    ck(safe, "quiz controls stay inside the round panel");
+    ck(largeEnough, "quiz controls remain full-size touch targets");
   }
 
   {
@@ -203,6 +264,8 @@ int main(){
     uiButtonAt(2, &bx, &by, nullptr);
     onTap((int16_t)bx, (int16_t)by);
     ck(pet.sleeping, "the bath icon does not wake a sleeping pet");
+    onTap(233, 200);
+    ck(!quiz.active, "a sleeping pet does not open a caress question");
     // and what is drawn greyed is exactly what is refused: one answer, so the
     // dimming can never point at a different icon than the tap handler does
     bool grey[4];
@@ -284,7 +347,7 @@ int main(){
     ck(pet.isEgg(), "and never cracks the egg while doing it");
 
     // and the egg itself still hatches when you actually tap the egg
-    for (int i = 0; i < 4; i++) onTap(233, 200);
+    for (int i = 0; i < 4 && pet.isEgg(); i++) onTap(233, 200);
     ck(!pet.isEgg(), "tapping the egg still hatches it");
   }
 

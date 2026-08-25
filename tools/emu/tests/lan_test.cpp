@@ -12,6 +12,7 @@
 #include "party.h"
 #include "battle.h"
 #include "link.h"
+#include "quiz.h"
 #include <cstdio>
 uint32_t g_seed=5; FakeSerial Serial; FakeESP ESP; FakeWire Wire;
 volatile int g_touchX=0,g_touchY=0; volatile bool g_touchDown=false;
@@ -22,17 +23,19 @@ String FakeSerial::readStringUntil(char){return String("");}
 void setup(); void render(); void battleTap(int16_t,int16_t);
 extern Pet pet;
 extern Link lan;
+extern QuizRuntime quiz;
 extern bool battleOpen, btlLink, btlLinkHost, btlOver, btlWon, lanOpen;
 extern Combatant btlYou, btlFoe;
 extern Combatant btlSquad[];
 extern uint8_t btlSquadN, btlSquadAt, btlFoeAt, btlMenu, btlMsgCount;
-extern uint8_t btlMyAct, btlFoeSquadN;
+extern uint8_t btlMyAct, btlMyPercent, btlFoeSquadN;
 extern Combatant btlFoeSquad[];
 extern uint16_t squadMask;
 extern bool pickOpen, lanWantHost;
 extern uint8_t pickTrainer, pickPage;
 extern bool pickHard;
 void startLinkBattle();
+void updateQuiz(uint32_t now);
 void pickTap(int16_t x, int16_t y);
 void pickDefault(uint8_t cap);
 uint8_t squadCap(uint8_t, bool);
@@ -47,6 +50,22 @@ static void capture(void*, const uint8_t*b, uint8_t n){
 }
 static int bad=0;
 static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!ok)bad++;}
+
+static bool answerBattleQuiz(uint32_t elapsedMs) {
+  if (!quiz.active) return false;
+  uint32_t start = 1000;
+  quiz.markRendered(start);
+  bool answered = false;
+  if (quiz.kind == QUIZ_QUESTION_CHOICE) {
+    answered = quiz.choose(quiz.choice.correctIndex, start + elapsedMs);
+  } else {
+    snprintf(quiz.input, sizeof(quiz.input), "%s", quiz.expected);
+    answered = quiz.submit(start + elapsedMs);
+  }
+  if (!answered) return false;
+  updateQuiz(quiz.feedbackUntil);
+  return !quiz.active;
+}
 
 static LinkMon mon(int16_t dex, uint8_t lvl, const char *nm){
   Pet p; p.dbgHatchAs(dex,false);
@@ -79,6 +98,7 @@ int main(){
   lan.send=capture;
 
   startLinkBattle();
+  quiz.config.choiceWeight = 0;
   ck(battleOpen && btlLink && btlLinkHost, "the host starts a linked battle");
   // The party above is full of level-30 nobodies and the live pet is level 1.
   // If the squad were rebuilt from squadMask we would fight with those instead
@@ -97,6 +117,7 @@ int main(){
   // --- the guest ASKS to switch; it never switches on its own, because the
   // host is the only side that may spend a turn
   btlLinkHost = false;
+  lan.isHost = false;
   lan.state = LINK_READY;
   btlMenu = 2;                       // the POKEMON list
   uint8_t was = btlSquadAt;
@@ -106,23 +127,79 @@ int main(){
   ck(sent==1 && lastPkt[0]==LM_ACT, "it sends the request instead");
   ck(LINK_ACT_IS_SWITCH(lastPkt[3]) && LINK_ACT_SLOT(lastPkt[3])==1,
      "and the request names the slot it wants");
+  ck(lastPkt[1]==3 && lastPkt[4]==100,
+     "a switch carries the fixed full-effect percentage");
+
+  // --- a guest answers locally before its move is sent. The answer ratio is
+  // part of that turn's action, while LM_WAIT keeps a long question alive.
+  lan.state = LINK_READY;
+  btlMenu = 1;
+  sent = 0;
+  battleTap(69 + 10, 286 + 10);
+  ck(quiz.active && sent==1 && lastPkt[0]==LM_WAIT,
+     "the guest sends only a keepalive while answering");
+  ck(answerBattleQuiz(15000), "the guest can finish its local battle question");
+  ck(lan.state==LINK_WAITING && lastPkt[0]==LM_ACT && lastPkt[1]==3,
+     "the guest sends its move only after feedback");
+  ck(lastPkt[4]==50, "the guest's 50 percent answer travels with that move");
 
   // --- the host LATCHES its own action instead of throwing it away
   btlLinkHost = true;
+  lan.isHost = true;
   btlLink = true;
   btlOver = false;
   btlMsgCount = 0;
   lan.pendingAct = 0;
   btlMyAct = 0;
+  btlMyPercent = 0;
   btlMenu = 1;                       // the move grid
   uint16_t hpWas = btlFoe.hp;
+  sent = 0;
   battleTap(69 + 10, 286 + 10);      // move slot 0
-  ck(btlMyAct != 0, "the host latches its move while the rival is still choosing");
+  ck(quiz.active && !btlMyAct && sent==1 && lastPkt[0]==LM_WAIT,
+     "the host also answers before latching its move");
   ck(btlFoe.hp == hpWas, "and nothing is resolved yet");
+  ck(answerBattleQuiz(15000), "the host can finish its local battle question");
+  ck(btlMyAct != 0 && btlMyPercent==50,
+     "the host latches its move with the local answer percentage");
   lan.pendingAct = LINK_ACT_MOVE(0);
+  lan.pendingPercent = 100;
   render();                          // btlLinkPoll spots that both are in
-  ck(btlMyAct == 0 && !lan.pendingAct,
+  ck(btlMyAct == 0 && !btlMyPercent && !lan.pendingAct && !lan.pendingPercent,
      "and the turn goes as soon as the rival's action lands");
+
+  // --- asymmetric rules are legal: the side with questions disabled submits
+  // 100 percent immediately, while the answering peer keeps the turn pending.
+  lan.isHost = false;
+  lan.state = LINK_READY;
+  startLinkBattle();
+  quiz.config.questionTypes = 0;
+  btlMenu = 1;
+  sent = 0;
+  battleTap(69 + 10, 286 + 10);
+  ck(!quiz.active && sent == 1 && lastPkt[0] == LM_ACT && lastPkt[4] == 100,
+     "a guest with questions disabled submits 100 percent immediately");
+
+  lan.isHost = true;
+  lan.state = LINK_READY;
+  startLinkBattle();
+  quiz.config.questionTypes = 0;
+  btlMenu = 1;
+  btlMyAct = 0;
+  btlMyPercent = 0;
+  lan.pendingAct = 0;
+  lan.pendingPercent = 0;
+  uint16_t asymmetricHpWas = btlFoe.hp;
+  battleTap(69 + 10, 286 + 10);
+  ck(!quiz.active && btlMyAct != 0 && btlMyPercent == 100 &&
+     btlFoe.hp == asymmetricHpWas,
+     "a host with questions disabled waits for an answering guest");
+  lan.pendingAct = LINK_ACT_MOVE(0);
+  lan.pendingPercent = 50;
+  render();
+  ck(!btlMyAct && !btlMyPercent && !lan.pendingAct && !lan.pendingPercent,
+     "the asymmetric turn resolves once after the answering guest submits");
+  quiz.config.questionTypes = QUIZ_TYPE_ARITHMETIC;
 
   // --- a peer that goes quiet ends the fight rather than hanging on it
   btlOver = false; btlMsgCount = 0;

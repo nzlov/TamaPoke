@@ -123,6 +123,9 @@ enum StrId : uint8_t {
   S_EVO_SLOW,       // shown on the card while a creature carries that debt
   S_NEED_PACK,      // region chooser: this region's sprite pack is not on the SD
   S_MOVE_CHANGE,    // explicit action on the move description screen
+  // care quiz modal
+  S_QUIZ_TITLE, S_QUIZ_ANSWER, S_QUIZ_CORRECT, S_QUIZ_WRONG,
+  S_QUIZ_TIMEOUT, S_QUIZ_EFFECT_FMT,
   STR_COUNT
 };
 

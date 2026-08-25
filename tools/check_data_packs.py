@@ -13,14 +13,19 @@ ROOT = Path(__file__).resolve().parent.parent
 PACKS = ROOT / "web" / "packs"
 COMMON = struct.Struct("<4sHBBIIIIHH20s")
 SECTION = struct.Struct("<4sIII")
-EXT_KIND = {".tui": 1, ".tregion": 2, ".tmove": 3}
+EXT_KIND = {".tui": 1, ".tregion": 2, ".tmove": 3, ".tquiz": 4}
 REQUIRED_SECTIONS = {
     1: {b"META", b"STRS", b"FONT", b"LAYT"},
     2: {b"SPEC", b"EVOS", b"NAME", b"LNAM", b"REGN", b"RLNM", b"SPRI", b"SBLB", b"THMB",
         b"LOCL", b"BTTL", b"TRNR", b"GSTR", b"BADG", b"BBLB"},
     3: {b"MOVE", b"NAME", b"LNAM", b"LOFS", b"LERN", b"TYPS", b"TSTR", b"TLNM",
         b"CHRT", b"LOCL"},
+    4: {b"QLOC", b"QIDX", b"QDAT"},
 }
+
+QLOC = struct.Struct("<16sII")
+QIDX = struct.Struct("<III")
+QREC = struct.Struct("<BBHHHHHH")
 
 
 def validate_ui_font(data: bytes, expected_count: int) -> None:
@@ -88,6 +93,40 @@ def validate_localized_strings(data: bytes, expected_items: int) -> None:
                 raise ValueError("invalid localized string value")
 
 
+def validate_quiz(sections: dict[bytes, bytes], counts: dict[bytes, int]) -> None:
+    locales, index, data = sections[b"QLOC"], sections[b"QIDX"], sections[b"QDAT"]
+    if not counts[b"QLOC"] or not counts[b"QIDX"] or counts[b"QDAT"] != counts[b"QIDX"] or \
+            len(locales) != counts[b"QLOC"] * QLOC.size or \
+            len(index) != counts[b"QIDX"] * QIDX.size:
+        raise ValueError("invalid question-pack index sizes")
+    covered = 0
+    for offset in range(0, len(locales), QLOC.size):
+        code, first, count = QLOC.unpack_from(locales, offset)
+        locale = code.split(b"\0", 1)[0]
+        if not locale or first != covered or not count or first + count > counts[b"QIDX"]:
+            raise ValueError("invalid question-pack locale span")
+        covered += count
+    if covered != counts[b"QIDX"]:
+        raise ValueError("question-pack locale spans do not cover the index")
+    previous_end = 0
+    for number in range(counts[b"QIDX"]):
+        _identity, start, size = QIDX.unpack_from(index, number * QIDX.size)
+        if start < previous_end or size < QREC.size or start + size > len(data):
+            raise ValueError("question-pack record is outside QDAT")
+        record = data[start:start + size]
+        option_count, answer, id_size, stem_size, *option_sizes = QREC.unpack_from(record)
+        if not 2 <= option_count <= 4 or answer >= option_count or \
+                not 0 < id_size <= 40 or not 0 < stem_size <= 768 or \
+                any(not 0 < length <= 192 for length in option_sizes[:option_count]) or \
+                any(option_sizes[option_count:]) or \
+                QREC.size + id_size + stem_size + sum(option_sizes) != size:
+            raise ValueError("invalid question-pack record")
+        strings = record[QREC.size:]
+        if b"\0" in strings:
+            raise ValueError("question-pack records must not contain NUL")
+        previous_end = start + size
+
+
 def validate(path: Path, expected: dict) -> None:
     raw = path.read_bytes()
     if len(raw) < COMMON.size:
@@ -128,6 +167,8 @@ def validate(path: Path, expected: dict) -> None:
         validate_ui_font(sections[b"FONT"], section_counts[b"FONT"])
     elif kind == 2:
         validate_localized_strings(sections[b"RLNM"], section_counts[b"RLNM"])
+    elif kind == 4:
+        validate_quiz(sections, section_counts)
     if kind in (2, 3) and mechanics_hash == 0:
         raise ValueError(f"{path.name}: mechanics pack has no fingerprint")
 

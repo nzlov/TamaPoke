@@ -132,6 +132,7 @@ void Link::begin(bool host, const char *myName) {
   theirsGot = 0;
   turn = 0;
   pendingAct = 0;
+  pendingPercent = 0;
   resultN = 0;
   resultNew = false;
   youWon = false;
@@ -160,11 +161,18 @@ void Link::start() {
   sendHello(*this);
 }
 
-void Link::sendAct(uint8_t act) {
+void Link::sendAct(uint8_t act, uint8_t percent) {
   if (state != LINK_READY || !act) return;
-  uint8_t b[2] = { turn, act };
-  put(*this, LM_ACT, b, 2, true);   // kept: the host may never have heard it
+  if (percent > 100) percent = 100;
+  uint8_t b[3] = { turn, act, LINK_ACT_IS_SWITCH(act) ? (uint8_t)100 : percent };
+  put(*this, LM_ACT, b, 3, true);   // kept: the host may never have heard it
   if (!isHost) state = LINK_WAITING;
+}
+
+void Link::sendWait() {
+  if (state != LINK_READY && state != LINK_WAITING) return;
+  uint8_t b[2] = { turn, 0 };   // request; the peer returns the same turn with flag 1
+  put(*this, LM_WAIT, b, 2, true);
 }
 
 void Link::sendResult(const uint8_t *blob, uint8_t len) {
@@ -176,6 +184,7 @@ void Link::sendResult(const uint8_t *blob, uint8_t len) {
   put(*this, LM_RESULT, b, (uint8_t)(len + 1), true);
   turn++;                              // this exchange is finished
   pendingAct = 0;
+  pendingPercent = 0;
 }
 
 void Link::sendEnd(bool hostWon) {
@@ -204,6 +213,7 @@ void Link::sendRematch() {
 void Link::rearm() {
   turn = 0;
   pendingAct = 0;
+  pendingPercent = 0;
   resultN = 0;
   resultNew = false;
   youWon = false;
@@ -315,13 +325,23 @@ void Link::onPacket(const uint8_t *buf, uint8_t len) {
       return;
     }
     case LM_ACT:
-      if (!isHost || n < 2) return;    // only the host acts on an action
+      if (!isHost || n < 3) return;    // only the host acts on an action
       // A resend of a turn already resolved is not a new choice. Without this
       // the retransmissions that make the link reliable would themselves
       // desync it -- every repeat would spend another turn.
       if (body[0] != turn) return;
       if (!body[1]) return;            // 0 is not an action, it means silence
+      if (body[2] > 100) return;
       pendingAct = body[1];
+      pendingPercent = LINK_ACT_IS_SWITCH(body[1]) ? 100 : body[2];
+      return;
+    case LM_WAIT:
+      if (n < 2 || body[0] != turn || body[1] > 1 ||
+          (state != LINK_READY && state != LINK_WAITING)) return;
+      if (body[1] == 0) {
+        uint8_t acknowledgement[2] = { turn, 1 };
+        put(*this, LM_WAIT, acknowledgement, 2);
+      }
       return;
     case LM_RESULT: {
       if (isHost || n < 1) return;     // the host never receives results

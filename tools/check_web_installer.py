@@ -10,6 +10,11 @@ ROOT = Path(__file__).resolve().parent.parent
 index = json.loads((ROOT / "web" / "packs" / "index.json").read_text(encoding="utf-8"))
 manifest = json.loads((ROOT / "web" / "manifest.json").read_text(encoding="utf-8"))
 html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+serial_client = (ROOT / "web" / "serial-client.js").read_text(encoding="utf-8")
+question_page = (ROOT / "web" / "question-bank.html").read_text(encoding="utf-8")
+question_script = (ROOT / "web" / "question-bank-page.js").read_text(encoding="utf-8")
+question_pack = (ROOT / "web" / "question-pack.js").read_text(encoding="utf-8")
+question_model = (ROOT / "web" / "question-bank-model.mjs").read_text(encoding="utf-8")
 sdmon = (ROOT / "sdmon.cpp").read_text(encoding="utf-8")
 content = (ROOT / "content.cpp").read_text(encoding="utf-8")
 firmware = (ROOT / "TamaPoke.ino").read_text(encoding="utf-8")
@@ -17,8 +22,10 @@ pages_workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encodi
 packages = index.get("packages", [])
 ids = {package["id"] for package in packages}
 
-if not packages or {package["kind"] for package in packages} != {"ui", "move", "region"}:
-    raise SystemExit("catalogue must expose UI, move and region packs")
+kinds = {package["kind"] for package in packages}
+if not packages or not {"ui", "move", "region"}.issubset(kinds) or \
+        not kinds.issubset({"ui", "move", "region", "quiz"}):
+    raise SystemExit("catalogue must expose UI, move and region packs, plus optional question banks")
 if len(ids) != len(packages):
     raise SystemExit("duplicate package id")
 if sum(bool(package.get("default")) for package in packages if package["kind"] == "ui") != 1:
@@ -47,10 +54,10 @@ for package_id in ids:
     visit(package_id)
 
 required_fragments = [
-    "packs/index.json", "data-pack-id", "pkg.requires", "PUT packs/",
-    ".tui,.tmove,.tregion", "Deploy selected packs", "SD card management",
+    "packs/index.json", "data-pack-id", "pkg.requires", "serial.sendFile(`packs/${name}`",
+    ".tui,.tmove,.tregion,.tquiz", "Deploy selected packs", "SD card management",
     "runCommand('LS')", "`RM packs/${name}`", "runCommand('FORMAT'", "confirm(",
-    "progress-percent", "deploy-error", "BOARD_ERRORS", "isBoardError",
+    "progress-percent", "deploy-error", "BOARD_ERRORS",
     "reportDeploymentError", "transferred === total ? total * .999",
     "confirmDependencyOverride", "installedPackIds", "ignore dependencies",
     "web-firmware-version", "target-firmware-version", "web revision",
@@ -60,7 +67,7 @@ required_fragments = [
     "formatOverlay.hidden = true", "document.body.setAttribute('aria-busy', 'true')",
     "document.body.removeAttribute('aria-busy')",
     'id="build-info"', "build-info.json", "info.commit.slice(0, 7)", "info.date",
-    "pumpSerial(reader)", "serialWaiters", "Refreshing installed packs…",
+    "Refreshing installed packs…", "question-bank.html", "Question banks",
     "Could not refresh installed packs.", "CRC32_TABLE", "crc32Hex(data)",
     "failed the catalogue download checksum", "?v=${expectedCrc}",
     "`manifest.json?v=${Date.now()}`",
@@ -102,15 +109,65 @@ for obsolete in ("data-region=", "parsePak(", "sprites-${region}", "mons/"):
     if obsolete in html:
         raise SystemExit(f"installer still contains obsolete sprite deployment: {obsolete}")
 
-read_line = html.split("async function readLine", 1)[1].split("async function waitFor", 1)[0]
+shared_fragments = [
+    "export class SerialClient", "navigator.serial.requestPort()", "async pump(activeReader)",
+    "async readLine", "async waitFor", "async sendFile", "async command",
+    "`PUT ${path} ${data.length}\\n`", "waitFor('DONE', 120000",
+]
+for fragment in shared_fragments:
+    if fragment not in serial_client:
+        raise SystemExit(f"shared Web Serial client is missing {fragment!r}")
+if "new SerialClient(boardError" not in html or "from './serial-client.js'" not in html:
+    raise SystemExit("installer must use the shared Web Serial client")
+for obsolete in ("navigator.serial.requestPort()", "reader.read()", "serialWaiters"):
+    if obsolete in html:
+        raise SystemExit(f"installer still contains inline serial transport: {obsolete}")
+
+read_line = serial_client.split("async readLine", 1)[1].split("boardError(line)", 1)[0]
 if "reader.read()" in read_line or "setTimeout" not in read_line:
     raise SystemExit("serial line timeouts must not block directly on reader.read()")
 
-for command in ('line == "LS"', 'line.startsWith("RM ")', 'line == "FORMAT"'):
+for fragment in ('id="question-form"', 'id="question-list"', 'id="config-form"',
+                 'id="deploy-pack"', 'id="deploy-progress"', 'id="import-device"',
+                 'id="question-search"', 'id="previous-page"', 'id="next-page"',
+                 'id="enable-choice"', 'id="enable-arithmetic"',
+                 'data-arithmetic-setting', 'prefers-reduced-motion'):
+    if fragment not in question_page:
+        raise SystemExit(f"question-bank page is missing {fragment!r}")
+for hidden_internal_field in ('id="pack-id"', 'id="pack-label"', 'id="pack-revision"',
+                              'id="question-id"'):
+    if hidden_internal_field in question_page:
+        raise SystemExit(f"question-bank page exposes internal field {hidden_internal_field!r}")
+for theme_token in ('--bg:#f2efe1', '--ink:#2a2a36', '--accent:#4f93c4',
+                    '#e8503a', '#58b868'):
+    if theme_token not in html or theme_token not in question_page:
+        raise SystemExit(f"installer pages do not share theme token {theme_token!r}")
+for fragment in ("buildQuestionPack", "readQuestionPack", "QUIZSET ${values.join(' ')}",
+                 "packs/${document.id}.tquiz", "serial.command('QUIZCFG')",
+                 "serial.readFile", "paginateQuestions", "QUESTION_TYPE_CHOICE",
+                 "QUESTION_TYPE_ARITHMETIC", "updateConfigAvailability"):
+    if fragment not in question_script:
+        raise SystemExit(f"question-bank editor is missing {fragment!r}")
+for fragment in ("QLOC", "QIDX", "QDAT", "PACK_KIND_QUIZ = 4", "crc32",
+                 "normalizeQuestionBank"):
+    if fragment not in question_pack:
+        raise SystemExit(f"browser question-pack codec is missing {fragment!r}")
+for fragment in ('createPackId', 'createQuestionId', 'paginateQuestions', 'pageSize = 10'):
+    if fragment not in question_model:
+        raise SystemExit(f"question-bank page model is missing {fragment!r}")
+
+for command in ('line.startsWith("GET ")', 'line == "LS"', 'line.startsWith("RM ")',
+                'line == "FORMAT"'):
     if command not in sdmon:
         raise SystemExit(f"firmware is missing SD management command {command!r}")
 if 'isPackPath(path)' not in sdmon:
     raise SystemExit("firmware SD management must restrict pack deletion paths")
+download_handler = sdmon.split('line.startsWith("GET ")', 1)[1].split(
+    '} else if (line == "LS")', 1)[0]
+for fragment in ('isPackPath(path)', 'Serial.printf("FILE %u\\n"',
+                 'ack != "OK"', 'Serial.write(buffer, count)', 'Serial.println("DONE")'):
+    if fragment not in download_handler:
+        raise SystemExit(f"firmware pack download is missing {fragment!r}")
 format_fat32 = sdmon.split('static const char *formatFat32()', 1)[1].split(
     'void sdSerialPackInfo()', 1)[0]
 for fragment in ('f_getfree(', 'f_mount(nullptr, drive, 0)', 'options.fmt = FM_FAT32',
@@ -155,8 +212,12 @@ for fragment in ('contentReadPackInfo(path.c_str(), info)',
         raise SystemExit("INFO must inspect pack paths and retain unreadable files")
 if 'const physical = line.match(/^FILE\\t(\\d+)\\t(.+)$/)' not in html:
     raise SystemExit("installer must display physical pack records without readable metadata")
-if "waitFor('DONE', 120000" not in html:
+if "waitFor('DONE', 120000" not in serial_client:
     raise SystemExit("installer must allow enough time to sync and validate large packs")
+for fragment in ('consume(chunk)', 'async readFile(path, progress = null)',
+                 '`GET ${path}\\n`', "waitFor('DONE', 120000"):
+    if fragment not in serial_client:
+        raise SystemExit(f"shared Web Serial download is missing {fragment!r}")
 if 'Serial.printf("PACK\\t%s\\t%lu\\t%u\\t%s' not in sdmon:
     raise SystemExit("firmware must report installed package ids and revisions")
 if 'contentReadPackInfo' not in content or 'line == "INFO"' not in firmware or 'FW\\t%s' not in firmware:
@@ -171,4 +232,5 @@ for reason in ("SD_NOT_READY", "WRITE_FAILED", "READ_TIMEOUT", "PACK_VALIDATION_
         raise SystemExit(f"installer must expose detailed board error {reason}")
 
 print(f"PASS catalogue-driven installer: {len(packages)} packages, "
-      f"{sum(package['kind'] == 'ui' for package in packages)} UI languages")
+      f"{sum(package['kind'] == 'ui' for package in packages)} UI languages, "
+      f"{sum(package['kind'] == 'quiz' for package in packages)} question banks")
