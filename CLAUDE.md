@@ -50,8 +50,9 @@ entry in one language shifts every string after it in that language.
 **Balance changes must update the README.** `README.md` § "Game manual (the actual
 numbers)" documents exact drain rates, spawn odds and thresholds straight from the
 code. It is the project's spec, not decoration — changing a constant in `pet.h`/
-`pet.cpp` without updating that table makes the docs lie. Bump `FW_VERSION` in
-`TamaPoke.ino:27` and the firmware badge at the top of the README in the same commit.
+`pet.cpp` without updating that table makes the docs lie. Do not hardcode a release
+number in `TamaPoke.ino`: GitHub Release builds inject the published tag, while
+supported local scripts inject the short commit ID and UTC build time.
 
 **Comments and commit messages are in English** — as of v1.5. Most of the existing
 source is commented in unaccented Spanish (the original author's convention) and is

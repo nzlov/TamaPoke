@@ -370,12 +370,18 @@ CO5300 QSPI 显示驱动和 CST9217 I2C 触控。你可以培育任意已安装�
 
 ```bash
 FQBN="esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB"
-arduino-cli compile --fqbn "$FQBN" .
+TAMAPOKE_VERSION="$(python3 tools/firmware_version.py)"
+FW_DEFINE="$(TAMAPOKE_VERSION="$TAMAPOKE_VERSION" python3 tools/firmware_version.py --cpp-define)"
+arduino-cli compile --fqbn "$FQBN" \
+  --build-property "compiler.cpp.extra_flags=$FW_DEFINE" .
 arduino-cli upload -p /dev/cu.usbmodemXXXX --fqbn "$FQBN" .
 
 # 或使用会自动寻找端口并可打开串口监视器的脚本：
 bash tools/flash.sh --monitor
 ```
+
+受支持的本地构建脚本会将最新提交的短 ID 和 UTC 构建时间写入固件版本。GitHub Pages
+发布构建则原样使用已发布 GitHub Release 的标签。
 
 ### 在电脑上运行
 

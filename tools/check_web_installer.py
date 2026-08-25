@@ -19,6 +19,7 @@ sdmon = (ROOT / "sdmon.cpp").read_text(encoding="utf-8")
 content = (ROOT / "content.cpp").read_text(encoding="utf-8")
 firmware = (ROOT / "TamaPoke.ino").read_text(encoding="utf-8")
 pages_workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+pages_preparer = (ROOT / "tools" / "prepare_pages_site.py").read_text(encoding="utf-8")
 packages = index.get("packages", [])
 ids = {package["id"] for package in packages}
 
@@ -101,9 +102,13 @@ for build in manifest.get("builds", []):
             raise SystemExit(f"firmware cache marker does not match {path!r}")
 
 for fragment in ('BUILD_COMMIT: ${{ github.sha }}', '--format=%cs',
-                 '_site/build-info.json', '"commit": sys.argv[1]', '"date": sys.argv[2]'):
+                 'python3 tools/prepare_pages_site.py', '--commit "$BUILD_COMMIT"', '--date'):
     if fragment not in pages_workflow:
         raise SystemExit(f"Pages build metadata is missing {fragment!r}")
+for fragment in ('"firmware", "packs"', '"build-info.json"',
+                 '{"commit": commit, "date": date}'):
+    if fragment not in pages_preparer:
+        raise SystemExit(f"Pages site preparer is missing {fragment!r}")
 
 for obsolete in ("data-region=", "parsePak(", "sprites-${region}", "mons/"):
     if obsolete in html:

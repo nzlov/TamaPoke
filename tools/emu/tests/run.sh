@@ -20,6 +20,11 @@ EMU="$(cd "$HERE/.." && pwd)"
 ROOT="$(cd "$EMU/../.." && pwd)"
 FILTER="${1:-}"
 
+TAMAPOKE_VERSION="${TAMAPOKE_VERSION:-$(python3 "$ROOT/tools/firmware_version.py")}"
+export TAMAPOKE_VERSION
+FW_DEFINE="$(python3 "$ROOT/tools/firmware_version.py" --cpp-define)"
+python3 "$ROOT/tools/check_firmware_version.py"
+
 command -v sdl2-config >/dev/null || { echo "SDL2 not found (brew install sdl2)" >&2; exit 1; }
 pkg-config --exists freetype2 || { echo "FreeType 2 not found (apt install libfreetype-dev)" >&2; exit 1; }
 
@@ -52,6 +57,7 @@ if [ "${SKIP_FIRMWARE:-0}" != 1 ] && command -v arduino-cli >/dev/null; then
   LIB_ARGS=()
   [ -n "${ARDUINO_LIBRARIES:-}" ] && LIB_ARGS=(--libraries "$ARDUINO_LIBRARIES")
   if ! arduino-cli compile --build-path "$OUT/arduino-build" --fqbn "$FQBN" \
+      --build-property "compiler.cpp.extra_flags=$FW_DEFINE" \
       "${LIB_ARGS[@]}" "$FW_SKETCH" >"$OUT_FW_STDOUT" 2>"$OUT_FW"; then
     echo "=== THE FIRMWARE DOES NOT COMPILE (the emulator does; that is not the same thing)"
     tail -30 "$OUT_FW"
@@ -65,7 +71,7 @@ fi
 CORE=("$ROOT/gbsynth.cpp" "$ROOT/content.cpp" "$ROOT/font_engine.cpp" "$ROOT/nature.cpp" "$ROOT/pet.cpp" "$ROOT/quiz.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp")
 read -r -a FT_CFLAGS <<< "$(pkg-config --cflags freetype2)"
 read -r -a FT_LIBS <<< "$(pkg-config --libs freetype2)"
-FLAGS=(-std=c++17 -O1 -w -I"$EMU" -I"$ROOT" "${FT_CFLAGS[@]}" -DCONTENT_DIR="\"$ROOT/web/packs\"")
+FLAGS=(-std=c++17 -O1 -w -I"$EMU" -I"$ROOT" "${FT_CFLAGS[@]}" "$FW_DEFINE" -DCONTENT_DIR="\"$ROOT/web/packs\"")
 
 # these drive setup()/loop()/render(), so they need the sketch itself
 needs_sketch() { case "$1" in touch_test|flush_test|joy_test|anim_test|swipe_test|lan_test|console_test|hit_test|brightness_test|starter_test|recovery_test) return 0;; *) return 1;; esac; }

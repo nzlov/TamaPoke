@@ -44,9 +44,11 @@
 SET_LOOP_TASK_STACK_SIZE(32 * 1024);
 #endif
 
-// Version del firmware. Subir este numero en cada release (y manifest.json para
-// el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.6"
+// Release builds inject the GitHub Release tag. Supported local build scripts
+// inject the current short commit plus the UTC build time.
+#ifndef FW_VERSION
+#define FW_VERSION "local-unversioned"
+#endif
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -886,7 +888,7 @@ void setup() {
   // monitor serie abierto en el host (el bufer TX del USB CDC se llena
   // y nadie lo vacia) -> con timeout 0 los mensajes se descartan
   Serial.setTxTimeoutMs(0);
-  Serial.printf("TamaPoke fw v%s\n", FW_VERSION);
+  Serial.printf("TamaPoke fw %s\n", FW_VERSION);
   bootReport();   // why the last run ended, and what it was doing
   sdBegin();
   quiz.loadConfig();
@@ -3177,8 +3179,8 @@ void renderClock() {
   gfx->print(T(S_CLOCK_CANCEL));
 
   // version del firmware (discreta, abajo del todo)
-  char ver[20];
-  snprintf(ver, sizeof(ver), "TamaPoke v%s", FW_VERSION);
+  char ver[64];
+  snprintf(ver, sizeof(ver), "TamaPoke %s", FW_VERSION);
   gfx->setTextSize(1);
   gfx->setCursor(uiCenterX(ver), 436);
   gfx->print(ver);

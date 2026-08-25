@@ -57,7 +57,10 @@ listing.
 
 The files under `firmware/` and `packs/` are generated outputs and are not
 tracked by Git. The GitHub Pages workflow rebuilds them from the pinned Arduino
-profile and PMD SpriteCollab revision before deployment.
+profile and PMD SpriteCollab revision before deployment. That workflow runs only
+when a GitHub Release is published and writes its tag into both the firmware and
+installer manifest. Local builds use the current short commit ID plus UTC build
+time instead.
 
 Regional packs are generated directly from the per-species TPK2/TPTH sources;
 there is no regional intermediate bundle.

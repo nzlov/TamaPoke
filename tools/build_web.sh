@@ -7,6 +7,12 @@ ROOT="$PWD"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+TAMAPOKE_VERSION="${TAMAPOKE_VERSION:-$(python3 tools/firmware_version.py)}"
+export TAMAPOKE_VERSION
+FW_DEFINE="$(python3 tools/firmware_version.py --cpp-define)"
+python3 tools/check_firmware_version.py
+python3 tools/check_pages_site.py
+
 # GLUE: Arduino requires the sketch directory and main .ino to share a name,
 # while task worktrees deliberately use descriptive directory names. The mirror
 # can disappear when Arduino removes that naming constraint.
@@ -23,7 +29,8 @@ ln -s "$ROOT/sketch.yaml" "$SKETCH/sketch.yaml"
 B="$WORK/arduino-build"
 
 echo "Compilando..."
-arduino-cli compile --profile esp32s3 --build-path "$B" "$SKETCH"
+arduino-cli compile --profile esp32s3 --build-path "$B" \
+  --build-property "compiler.cpp.extra_flags=$FW_DEFINE" "$SKETCH"
 
 echo "Fusionando binarios..."
 # esptool is not on PATH; the Arduino core ships one and that is the version
@@ -57,10 +64,8 @@ cp "$B/TamaPoke.ino.bin"            web/firmware/app.bin
 
 echo "OK -> web/firmware/ (4 parts + tamapoke.bin for a blank board)"
 
-# The manifest version is what the installer shows people; keeping it in step
-# with FW_VERSION by hand is exactly the sort of thing that silently rots.
-FW="$(grep -o '"[0-9.]*"' TamaPoke.ino | head -1 | tr -d '"')"
-python3 - "$FW" <<'PYEOF'
+# The exact version compiled into the firmware is also what the installer shows.
+python3 - "$TAMAPOKE_VERSION" <<'PYEOF'
 import hashlib, json, sys
 from pathlib import Path
 

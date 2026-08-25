@@ -12,6 +12,10 @@
 set -e
 cd "$(dirname "$0")/.."
 
+TAMAPOKE_VERSION="${TAMAPOKE_VERSION:-$(python3 tools/firmware_version.py)}"
+export TAMAPOKE_VERSION
+FW_DEFINE="$(python3 tools/firmware_version.py --cpp-define)"
+
 FQBN="esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB"
 PORT=""
 MONITOR=0
@@ -53,13 +57,14 @@ echo "      way back if anything goes wrong."
 echo
 
 echo "Compiling..."
-arduino-cli compile --fqbn "$FQBN" .
+arduino-cli compile --fqbn "$FQBN" \
+  --build-property "compiler.cpp.extra_flags=$FW_DEFINE" .
 
 echo "Uploading..."
 arduino-cli upload -p "$PORT" --fqbn "$FQBN" .
 
 echo
-echo "Done. Firmware v$(grep -o '"[0-9.]*"' TamaPoke.ino | head -1 | tr -d '"') on $PORT"
+echo "Done. Firmware $TAMAPOKE_VERSION on $PORT"
 
 if [ "$MONITOR" = "1" ]; then
   echo "Opening the console at 115200 -- ctrl-C to leave."

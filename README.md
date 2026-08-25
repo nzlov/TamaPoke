@@ -454,12 +454,19 @@ what rate-limits rematching. A fully trained creature is told so.
 
 ```bash
 FQBN="esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB"
-arduino-cli compile --fqbn "$FQBN" .
+TAMAPOKE_VERSION="$(python3 tools/firmware_version.py)"
+FW_DEFINE="$(TAMAPOKE_VERSION="$TAMAPOKE_VERSION" python3 tools/firmware_version.py --cpp-define)"
+arduino-cli compile --fqbn "$FQBN" \
+  --build-property "compiler.cpp.extra_flags=$FW_DEFINE" .
 arduino-cli upload -p /dev/cu.usbmodemXXXX --fqbn "$FQBN" .
 
 # or just, which finds the port itself and can open the console:
 bash tools/flash.sh --monitor
 ```
+
+Supported local build scripts stamp the firmware with the current short commit
+ID and UTC build time. A GitHub Pages release build instead uses the published
+GitHub Release tag verbatim.
 
 ### Run it on your computer
 

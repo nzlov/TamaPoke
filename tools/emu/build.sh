@@ -10,6 +10,10 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 cd "$HERE"
 
+TAMAPOKE_VERSION="${TAMAPOKE_VERSION:-$(python3 "$ROOT/tools/firmware_version.py")}"
+export TAMAPOKE_VERSION
+FW_DEFINE="$(python3 "$ROOT/tools/firmware_version.py" --cpp-define)"
+
 if ! command -v sdl2-config >/dev/null 2>&1; then
   echo "SDL2 not found. macOS: brew install sdl2   Debian: apt install libsdl2-dev" >&2
   exit 1
@@ -29,6 +33,7 @@ python3 genproto.py "$ROOT/TamaPoke.ino"
 
 g++ -std=c++17 -O1 -w \
   -I. -I"$ROOT" \
+  "$FW_DEFINE" \
   -DCONTENT_DIR="\"$ROOT/web/packs\"" \
   $(sdl2-config --cflags) $(pkg-config --cflags freetype2) \
   -o tamapoke-emu \
@@ -36,4 +41,4 @@ g++ -std=c++17 -O1 -w \
   host_impl.cpp font.cpp clock.cpp main_sdl.cpp \
   $(sdl2-config --libs) $(pkg-config --libs freetype2)
 
-echo "built: $HERE/tamapoke-emu"
+echo "built: $HERE/tamapoke-emu ($TAMAPOKE_VERSION)"
