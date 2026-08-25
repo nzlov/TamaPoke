@@ -154,11 +154,9 @@ struct Reader {
 #else
   FILE *file = nullptr;
 #endif
-  ContentPackSource *source = nullptr;
   uint32_t size = 0;
 
   bool open(const char *path) {
-    close();
 #if defined(ESP32)
     file = SD_MMC.open(path, FILE_READ);
     if (!file) return false;
@@ -175,18 +173,8 @@ struct Reader {
     return true;
   }
 
-  bool attach(ContentPackSource &input) {
-    close();
-    if (!input.seek || !input.read) return false;
-    source = &input;
-    size = input.size;
-    return true;
-  }
-
   bool seek(uint32_t offset) {
-    if (offset > size) return false;
-    if (source) return source->seek(source->context, offset);
-    if (!file) return false;
+    if (!file || offset > size) return false;
 #if defined(ESP32)
     return file.seek(offset);
 #else
@@ -195,18 +183,14 @@ struct Reader {
   }
 
   bool read(void *out, size_t length) {
+    if (!file) return false;
     uint8_t *cursor = (uint8_t *)out;
     while (length > 0) {
-      size_t count;
-      if (source) count = source->read(source->context, cursor, length);
-      else {
-        if (!file) return false;
 #if defined(ESP32)
-        count = file.read(cursor, length);
+      size_t count = file.read(cursor, length);
 #else
-        count = fread(cursor, 1, length, file);
+      size_t count = fread(cursor, 1, length, file);
 #endif
-      }
       if (count == 0) return false;
       cursor += count;
       length -= count;
@@ -219,7 +203,6 @@ struct Reader {
   }
 
   void close() {
-    source = nullptr;
 #if defined(ESP32)
     if (file) file.close();
 #else
@@ -285,8 +268,9 @@ static ContentPackValidation payloadCrc(Reader &reader, uint32_t offset, uint32_
   return crc == expected ? CONTENT_PACK_VALID : CONTENT_PACK_CHECKSUM_MISMATCH;
 }
 
-static ContentPackValidation validatePackHeader(Reader &reader,
+static ContentPackValidation validatePackHeader(const char *path, Reader &reader,
                                                 uint8_t common[COMMON_SIZE]) {
+  if (!path || !reader.open(path)) return CONTENT_PACK_OPEN_FAILED;
   if (reader.size < COMMON_SIZE) return CONTENT_PACK_SIZE_MISMATCH;
   if (!reader.readAt(0, common, COMMON_SIZE)) return CONTENT_PACK_READ_FAILED;
   uint8_t kind = common[6];
@@ -300,13 +284,8 @@ static ContentPackValidation validatePackHeader(Reader &reader,
   return CONTENT_PACK_VALID;
 }
 
-static bool readPackInfo(Reader &reader, ContentPackInfo &out) {
-  uint8_t common[COMMON_SIZE];
-  if (validatePackHeader(reader, common) != CONTENT_PACK_VALID) return false;
-  memcpy(out.id, common + 28, 20);
-  out.id[20] = 0;
-  out.revision = rd32(common + 16);
-  return out.id[0] != 0;
+static bool readPackHeader(const char *path, Reader &reader, uint8_t common[COMMON_SIZE]) {
+  return validatePackHeader(path, reader, common) == CONTENT_PACK_VALID;
 }
 
 static bool validationFailed(ContentPackValidation result, ContentPackValidation *validation) {
@@ -314,19 +293,28 @@ static bool validationFailed(ContentPackValidation result, ContentPackValidation
   return false;
 }
 
-static bool parseOpenPack(const char *path, Reader &reader, PackRef &out,
-                          ContentPackValidation *validation = nullptr) {
+enum class PackParseMode : uint8_t {
+  METADATA_ONLY,
+  VERIFY_PAYLOAD,
+};
+
+static bool parsePack(const char *path, PackRef &out,
+                      PackParseMode mode,
+                      ContentPackValidation *validation = nullptr) {
+  Reader reader;
   uint8_t common[COMMON_SIZE];
-  ContentPackValidation result = validatePackHeader(reader, common);
+  ContentPackValidation result = validatePackHeader(path, reader, common);
   if (result != CONTENT_PACK_VALID) return validationFailed(result, validation);
   uint8_t kind = common[6];
   uint32_t fileSize = rd32(common + 8), expectedCrc = rd32(common + 12);
   uint16_t headerSize = rd16(common + 24), sectionCount = rd16(common + 26);
-  result = payloadCrc(reader, headerSize, expectedCrc);
-  if (result != CONTENT_PACK_VALID) return validationFailed(result, validation);
+  if (mode == PackParseMode::VERIFY_PAYLOAD) {
+    result = payloadCrc(reader, headerSize, expectedCrc);
+    if (result != CONTENT_PACK_VALID) return validationFailed(result, validation);
+  }
 
   memset(&out, 0, sizeof(out));
-  snprintf(out.path, sizeof(out.path), "%s", path ? path : "");
+  snprintf(out.path, sizeof(out.path), "%s", path);
   out.kind = kind;
   out.revision = rd32(common + 16);
   out.mechanicsHash = rd32(common + 20);
@@ -357,14 +345,6 @@ static bool parseOpenPack(const char *path, Reader &reader, PackRef &out,
   return true;
 }
 
-static bool parsePack(const char *path, PackRef &out,
-                      ContentPackValidation *validation = nullptr) {
-  Reader reader;
-  if (!path || !reader.open(path))
-    return validationFailed(CONTENT_PACK_OPEN_FAILED, validation);
-  return parseOpenPack(path, reader, out, validation);
-}
-
 static bool hasPackExtension(const char *path) {
   if (!path) return false;
   size_t length = strlen(path);
@@ -389,7 +369,7 @@ static void scanPacks() {
       entry.close();
       if (!hasPackExtension(path)) continue;
       PackRef parsed;
-      if (parsePack(path, parsed)) gPacks[gPackCount++] = parsed;
+      if (parsePack(path, parsed, PackParseMode::METADATA_ONLY)) gPacks[gPackCount++] = parsed;
       else Serial.printf("pack invalido: %s\n", path);
     } else entry.close();
   }
@@ -402,7 +382,8 @@ static void scanPacks() {
     std::string path = entry.path().string();
     if (!hasPackExtension(path.c_str())) continue;
     PackRef parsed;
-    if (parsePack(path.c_str(), parsed)) gPacks[gPackCount++] = parsed;
+    if (parsePack(path.c_str(), parsed, PackParseMode::METADATA_ONLY))
+      gPacks[gPackCount++] = parsed;
   }
 #endif
   std::sort(gPacks, gPacks + gPackCount, [](const PackRef &a, const PackRef &b) {
@@ -973,27 +954,18 @@ bool contentBegin() {
 ContentPackValidation contentValidatePackFile(const char *path) {
   PackRef parsed;
   ContentPackValidation validation = CONTENT_PACK_OPEN_FAILED;
-  parsePack(path, parsed, &validation);
-  return validation;
-}
-
-ContentPackValidation contentValidatePackSource(ContentPackSource &source) {
-  Reader reader;
-  if (!reader.attach(source)) return CONTENT_PACK_OPEN_FAILED;
-  PackRef parsed;
-  ContentPackValidation validation = CONTENT_PACK_OPEN_FAILED;
-  parseOpenPack(nullptr, reader, parsed, &validation);
+  parsePack(path, parsed, PackParseMode::VERIFY_PAYLOAD, &validation);
   return validation;
 }
 
 bool contentReadPackInfo(const char *path, ContentPackInfo &out) {
   Reader reader;
-  return path && reader.open(path) && readPackInfo(reader, out);
-}
-
-bool contentReadPackInfo(ContentPackSource &source, ContentPackInfo &out) {
-  Reader reader;
-  return reader.attach(source) && readPackInfo(reader, out);
+  uint8_t common[COMMON_SIZE];
+  if (!readPackHeader(path, reader, common)) return false;
+  memcpy(out.id, common + 28, 20);
+  out.id[20] = 0;
+  out.revision = rd32(common + 16);
+  return out.id[0] != 0;
 }
 
 bool contentReady() {

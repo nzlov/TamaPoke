@@ -37,6 +37,12 @@
 #include "audio.h"
 #include <Preferences.h>
 
+#if defined(ESP32)
+// FreeType's CFF glyph interpreter needs more than Arduino's default 8 KiB
+// loop-task stack while rendering the Chinese OpenType font.
+SET_LOOP_TASK_STACK_SIZE(32 * 1024);
+#endif
+
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
 #define FW_VERSION "3.5"

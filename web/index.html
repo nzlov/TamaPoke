@@ -149,11 +149,11 @@
 
     <h3>SD card management</h3>
     <p class="note">List or remove deployed resource packs and compare their target
-       revision with the current web catalogue. Formatting erases every file on the
-       microSD; restart the board after deleting packs or formatting.</p>
+       revision with the current web catalogue. Formatting rebuilds the FAT32 filesystem
+       and erases every file on the microSD; restart the board afterwards.</p>
     <div class="row">
       <button id="refresh-packs" disabled>↻ Refresh installed packs</button>
-      <button id="format-sd" class="danger" disabled>Format microSD</button>
+      <button id="format-sd" class="danger" disabled>Format microSD as FAT32</button>
     </div>
     <div id="installed-packs" class="pack-list"><span class="note">Connect the board to inspect the microSD.</span></div>
   </div>
@@ -175,7 +175,7 @@
 <div id="format-overlay" class="loading-overlay" role="status" aria-live="polite" hidden>
   <div class="loading-card">
     <div class="spinner" aria-hidden="true"></div>
-    <strong>Formatting microSD…</strong>
+    <strong>Formatting microSD as FAT32…</strong>
     <span class="note">Keep the board connected.</span>
   </div>
 </div>
@@ -282,7 +282,7 @@ const BOARD_ERRORS = {
   READ_TIMEOUT: 'USB transfer stopped before the board received the complete file',
   WRITE_FAILED: 'the microSD write failed; check free space and the card condition',
   PACK_VALIDATION_FAILED: 'the pack is corrupt or incompatible (header, ABI, size or checksum)',
-  PACK_OPEN_FAILED: 'the uploaded pack handle became unavailable before validation',
+  PACK_OPEN_FAILED: 'the uploaded pack could not be reopened from the microSD',
   PACK_READ_FAILED: 'the uploaded pack could not be read back reliably from the microSD',
   PACK_HEADER_INVALID: 'the uploaded pack header is invalid',
   PACK_ABI_MISMATCH: 'the uploaded pack ABI is incompatible with this firmware',
@@ -295,8 +295,12 @@ const BOARD_ERRORS = {
   LIST_FAILED: 'the board could not open the /packs directory',
   PACK_NOT_FOUND: 'the selected pack no longer exists on the microSD',
   DELETE_FAILED: 'the board could not delete the selected pack',
-  FORMAT_ERASE_FAILED: 'one or more files could not be erased from the microSD',
-  FORMAT_INIT_FAILED: 'the card was erased but the /packs directory could not be recreated',
+  FORMAT_VOLUME_NOT_FOUND: 'the mounted microSD FAT volume could not be identified',
+  FORMAT_UNMOUNT_FAILED: 'the existing microSD filesystem could not be unmounted',
+  FORMAT_FAILED: 'the microSD could not be formatted as FAT32',
+  FORMAT_REMOUNT_FAILED: 'the new FAT32 filesystem could not be mounted',
+  FORMAT_TYPE_MISMATCH: 'formatting completed but the filesystem is not FAT32',
+  FORMAT_INIT_FAILED: 'FAT32 was created but the /packs directory could not be initialized',
 };
 
 function isBoardError(line) {
@@ -754,13 +758,13 @@ document.getElementById('files').onchange = async (ev) => {
 refreshPacksButton.onclick = refreshInstalledPacks;
 
 formatButton.onclick = async () => {
-  if (!confirm('Format the microSD? This permanently erases every file on the card.')) return;
+  if (!confirm('Format the microSD as FAT32? This permanently erases every file on the card.')) return;
   setSdManagementBusy(true);
   formatOverlay.hidden = false;
   document.body.setAttribute('aria-busy', 'true');
   try {
     await runCommand('FORMAT', 120000);
-    log('microSD formatted. Restart the board before deploying or playing.');
+    log('microSD formatted as FAT32. Restart the board before deploying or playing.');
     await refreshInstalledPacks();
   } catch (error) {
     log(`Format failed: ${error.message}`);

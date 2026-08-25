@@ -53,7 +53,7 @@ required_fragments = [
     "confirmDependencyOverride", "installedPackIds", "ignore dependencies",
     "web-firmware-version", "target-firmware-version", "web revision",
     "runCommand('INFO'", "versions match", "versions differ",
-    "format-overlay", ".loading-overlay[hidden]", "Formatting microSD…",
+    "format-overlay", ".loading-overlay[hidden]", "Formatting microSD as FAT32…",
     "formatOverlay.hidden = false",
     "formatOverlay.hidden = true", "document.body.setAttribute('aria-busy', 'true')",
     "document.body.removeAttribute('aria-busy')",
@@ -99,8 +99,21 @@ if "reader.read()" in read_line or "setTimeout" not in read_line:
 for command in ('line == "LS"', 'line.startsWith("RM ")', 'line == "FORMAT"'):
     if command not in sdmon:
         raise SystemExit(f"firmware is missing SD management command {command!r}")
-if 'isPackPath(path)' not in sdmon or 'emptyDirectory("/", false)' not in sdmon:
-    raise SystemExit("firmware SD management must restrict deletion and erase all card contents")
+if 'isPackPath(path)' not in sdmon:
+    raise SystemExit("firmware SD management must restrict pack deletion paths")
+format_fat32 = sdmon.split('static const char *formatFat32()', 1)[1].split(
+    'void sdSerialPackInfo()', 1)[0]
+for fragment in ('f_getfree(', 'f_mount(nullptr, drive, 0)', 'options.fmt = FM_FAT32',
+                 'options.au_size = 4096', 'f_mkfs(', 'f_mount(filesystem, drive, 1)',
+                 'filesystem->fs_type != FS_FAT32'):
+    if fragment not in format_fat32:
+        raise SystemExit(f"firmware FAT32 format path is missing {fragment!r}")
+format_order = ('f_mount(nullptr, drive, 0)', 'f_mkfs(', 'f_mount(filesystem, drive, 1)')
+if [format_fat32.index(fragment) for fragment in format_order] != sorted(
+        format_fat32.index(fragment) for fragment in format_order):
+    raise SystemExit("firmware must unmount, format FAT32, and remount in order")
+if 'emptyDirectory(' in sdmon:
+    raise SystemExit("FORMAT must rebuild FAT32 instead of only deleting files")
 if sdmon.count('SD_MMC.begin(') != 1:
     raise SystemExit("firmware must have exactly one audited microSD mount path")
 mount = sdmon.split('SD_MMC.begin("/sdcard"', 1)[1].split(';', 1)[0]
@@ -114,20 +127,22 @@ upload_handler = sdmon.split('if (line.startsWith("PUT ")) {', 1)[1].split(
     '} else if (line == "LS")', 1)[0]
 if 'f.flush();' not in upload_handler or 'f.close();' not in upload_handler:
     raise SystemExit("firmware must sync and close an uploaded pack before validation")
-for fragment in ('SD_MMC.open(tempPath, "w+")', 'contentValidatePackSource(source)'):
+for fragment in ('SD_MMC.open(tempPath, "w+")',
+                 'contentValidatePackFile(tempPath.c_str())'):
     if fragment not in upload_handler:
-        raise SystemExit("firmware must validate an upload through its existing read/write handle")
-if upload_handler.index('f.flush();') > upload_handler.index('contentValidatePackSource(source)') or \
-        upload_handler.index('contentValidatePackSource(source)') > upload_handler.index('f.close();'):
-    raise SystemExit("firmware must validate the synced upload before closing its only handle")
-if 'contentValidatePackFile(tempPath' in upload_handler or 'attempt < 4' in upload_handler:
-    raise SystemExit("firmware must not reopen uploaded packs or mask open failures with retries")
+        raise SystemExit("firmware must validate the persisted upload by path")
+upload_order = ('f.flush();', 'f.close();', 'contentValidatePackFile(tempPath.c_str())')
+if [upload_handler.index(fragment) for fragment in upload_order] != sorted(
+        upload_handler.index(fragment) for fragment in upload_order):
+    raise SystemExit("firmware must close and validate the persisted upload in order")
+if 'ContentPackSource' in upload_handler or 'attempt < 4' in upload_handler:
+    raise SystemExit("firmware must not retain same-handle adapters or reopen retries")
 pack_info = sdmon.split('void sdSerialPackInfo()', 1)[1].split(
     'bool sdSerialCommand', 1)[0]
-for fragment in ('openPackSource(entry)', 'contentReadPackInfo(source, info)',
+for fragment in ('contentReadPackInfo(path.c_str(), info)',
                  'Serial.printf("FILE\\t%u\\t%s'):
     if fragment not in pack_info:
-        raise SystemExit("INFO must read existing directory handles and retain unreadable files")
+        raise SystemExit("INFO must inspect pack paths and retain unreadable files")
 if 'const physical = line.match(/^FILE\\t(\\d+)\\t(.+)$/)' not in html:
     raise SystemExit("installer must display physical pack records without readable metadata")
 if "waitFor('DONE', 120000" not in html:
@@ -140,7 +155,8 @@ for reason in ("SD_NOT_READY", "WRITE_FAILED", "READ_TIMEOUT", "PACK_VALIDATION_
                "PACK_OPEN_FAILED", "PACK_READ_FAILED", "PACK_HEADER_INVALID",
                "PACK_ABI_MISMATCH", "PACK_SIZE_MISMATCH", "PACK_CHECKSUM_MISMATCH",
                "PACK_DIRECTORY_INVALID", "REPLACE_FAILED", "DELETE_FAILED",
-               "FORMAT_ERASE_FAILED"):
+               "FORMAT_VOLUME_NOT_FOUND", "FORMAT_UNMOUNT_FAILED", "FORMAT_FAILED",
+               "FORMAT_REMOUNT_FAILED", "FORMAT_TYPE_MISMATCH", "FORMAT_INIT_FAILED"):
     if f'"{reason}"' not in sdmon or reason not in html:
         raise SystemExit(f"installer must expose detailed board error {reason}")
 

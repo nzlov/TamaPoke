@@ -4,6 +4,7 @@
 #include "content.h"
 #include <FS.h>
 #include <SD_MMC.h>
+#include <ff.h>
 
 bool sdReady = false;
 bool sdDirty = false;
@@ -155,7 +156,7 @@ bool sdBegin() {
 //   LS\n                                   -> listado de /packs
 //   INFO\n                                 -> firmware + id/revision/tamano/ruta
 //   RM <ruta>\n                            -> borra un paquete de /packs
-//   FORMAT\n                              -> vacia la tarjeta y recrea /packs
+//   FORMAT\n                              -> reformatea FAT32 y recrea /packs
 // Usar con tools/send_sd.py
 // ---------------------------------------------------------------------------
 
@@ -171,20 +172,6 @@ static bool isPackPath(String path) {
 // /packs-relative paths. Remove this normalization if File::path() becomes canonical.
 static String serialPackPath(File &entry) {
   return String("/packs/") + entry.name();
-}
-
-// GLUE: content parsing owns the pack format while Arduino FS owns the open
-// handle. Remove these callbacks if both layers adopt a shared stream type.
-static bool seekOpenPack(void *context, uint32_t offset) {
-  return static_cast<File *>(context)->seek(offset);
-}
-
-static size_t readOpenPack(void *context, uint8_t *out, size_t length) {
-  return static_cast<File *>(context)->read(out, length);
-}
-
-static ContentPackSource openPackSource(File &file) {
-  return { &file, (uint32_t)file.size(), seekOpenPack, readOpenPack };
 }
 
 static void sdSerialError(const char *reason) {
@@ -205,20 +192,36 @@ static const char *packValidationError(ContentPackValidation validation) {
   }
 }
 
-static bool emptyDirectory(const String &path, bool removeDirectory) {
-  bool ok = true;
-  while (ok) {
-    File dir = SD_MMC.open(path);
-    if (!dir || !dir.isDirectory()) return false;
-    File entry = dir.openNextFile();
-    if (!entry) { dir.close(); break; }
-    String child = entry.path();
-    bool directory = entry.isDirectory();
-    entry.close();
-    dir.close();
-    ok = directory ? emptyDirectory(child, true) : SD_MMC.remove(child);
+static const char *formatFat32() {
+  FATFS *filesystem = nullptr;
+  DWORD freeClusters = 0;
+  char drive[] = "0:";
+  for (BYTE volume = 0; volume < FF_VOLUMES; volume++) {
+    drive[0] = (char)('0' + volume);
+    FATFS *candidate = nullptr;
+    if (f_getfree(drive, &freeClusters, &candidate) == FR_OK && candidate) {
+      filesystem = candidate;
+      break;
+    }
   }
-  return ok && (!removeDirectory || SD_MMC.rmdir(path));
+  if (!filesystem) return "FORMAT_VOLUME_NOT_FOUND";
+
+  if (f_mount(nullptr, drive, 0) != FR_OK) return "FORMAT_UNMOUNT_FAILED";
+
+  MKFS_PARM options{};
+  options.fmt = FM_FAT32;
+  options.n_fat = 2;
+  options.au_size = 4096;
+  static uint8_t work[FF_MAX_SS];
+  FRESULT formatResult = f_mkfs(drive, &options, work, sizeof(work));
+  FRESULT mountResult = f_mount(filesystem, drive, 1);
+  sdReady = mountResult == FR_OK;
+  if (formatResult != FR_OK) return "FORMAT_FAILED";
+  if (!sdReady) return "FORMAT_REMOUNT_FAILED";
+  if (filesystem->fs_type != FS_FAT32) return "FORMAT_TYPE_MISMATCH";
+  if (!SD_MMC.mkdir("/packs") && !SD_MMC.exists("/packs"))
+    return "FORMAT_INIT_FAILED";
+  return nullptr;
 }
 
 void sdSerialPackInfo() {
@@ -231,8 +234,7 @@ void sdSerialPackInfo() {
     uint32_t size = (uint32_t)entry.size();
     ContentPackInfo info{};
     if (!entry.isDirectory() && isPackPath(path)) {
-      ContentPackSource source = openPackSource(entry);
-      if (contentReadPackInfo(source, info)) {
+      if (contentReadPackInfo(path.c_str(), info)) {
         Serial.printf("PACK\t%s\t%lu\t%u\t%s\n", info.id,
                       (unsigned long)info.revision, size, path.c_str());
       } else {
@@ -279,18 +281,15 @@ bool sdSerialCommand(const String &line) {
       Serial.println("#");  // ack: listo para el siguiente bloque
     }
     f.flush();
+    f.close();
     Serial.setTimeout(1000);
     bool valid = failure == nullptr && remaining == 0;
     ContentPackValidation validation = CONTENT_PACK_VALID;
-    if (valid) {
-      ContentPackSource source = openPackSource(f);
-      validation = contentValidatePackSource(source);
-      if (validation != CONTENT_PACK_VALID) {
-        valid = false;
-        failure = packValidationError(validation);
-      }
+    if (valid &&
+        (validation = contentValidatePackFile(tempPath.c_str())) != CONTENT_PACK_VALID) {
+      valid = false;
+      failure = packValidationError(validation);
     }
-    f.close();
     if (valid) {
       String backupPath = path + ".bak";
       SD_MMC.remove(backupPath);
@@ -339,12 +338,8 @@ bool sdSerialCommand(const String &line) {
     return true;
   } else if (line == "FORMAT") {
     if (!sdReady) { sdSerialError("SD_NOT_READY"); return true; }
-    if (!emptyDirectory("/", false)) {
-      sdSerialError("FORMAT_ERASE_FAILED"); return true;
-    }
-    if (!SD_MMC.mkdir("/packs")) {
-      sdSerialError("FORMAT_INIT_FAILED"); return true;
-    }
+    const char *failure = formatFat32();
+    if (failure) { sdSerialError(failure); return true; }
     sdDirty = true;
     Serial.println("DONE");
     return true;
