@@ -29,6 +29,8 @@
 #include "avatars.h"
 #include <stdarg.h>
 #include "party.h"
+#include "inventory.h"
+#include "wild.h"
 #include "save.h"
 #include "pet.h"
 #include "quiz.h"
@@ -152,6 +154,60 @@ public:
     return (int16_t)(glyphs * 6 * textScale);
   }
 
+  bool textInkBounds(const char *text, int16_t *left, int16_t *top,
+                     int16_t *right, int16_t *bottom) {
+    if (!text || !*text) return false;
+    int16_t minX = 0, minY = 0, maxX = 0, maxY = 0, cursor = 0;
+    bool haveInk = false;
+    const char *at = text;
+    while (*at) {
+      uint32_t codepoint = nextUtf8(at);
+      if (codepoint == '\n') break;
+      int16_t glyphLeft = cursor, glyphTop = 0, glyphRight = cursor, glyphBottom = 0;
+      if (fontActive && fontVector) {
+        uint8_t pixelSize = uiFontPixelSize(textScale);
+        const RuntimeFontGlyph *glyph = runtimeFontGlyph(codepoint, pixelSize);
+        if (!glyph) glyph = runtimeFontGlyph('?', pixelSize);
+        if (!glyph) continue;
+        glyphLeft = cursor + glyph->left;
+        glyphTop = pixelSize - glyph->top;
+        glyphRight = glyphLeft + glyph->width;
+        glyphBottom = glyphTop + glyph->height;
+        cursor += glyph->advance;
+      } else if (fontActive) {
+        uint8_t scale = packScale(textScale);
+        const UiFontGlyph *glyph = uiFontGlyph(codepoint);
+        if (!glyph) glyph = uiFontGlyph('?');
+        if (!glyph) continue;
+        glyphLeft = cursor + glyph->xOffset * scale;
+        glyphRight = glyphLeft + glyph->width * scale;
+        glyphBottom = glyph->height * scale;
+        cursor += glyph->advance * scale;
+      } else {
+        glyphLeft = cursor;
+        glyphRight = cursor + 5 * textScale;
+        glyphBottom = 8 * textScale;
+        cursor += 6 * textScale;
+      }
+      if (glyphRight <= glyphLeft || glyphBottom <= glyphTop) continue;
+      if (!haveInk) {
+        minX = glyphLeft; minY = glyphTop; maxX = glyphRight; maxY = glyphBottom;
+        haveInk = true;
+      } else {
+        if (glyphLeft < minX) minX = glyphLeft;
+        if (glyphTop < minY) minY = glyphTop;
+        if (glyphRight > maxX) maxX = glyphRight;
+        if (glyphBottom > maxY) maxY = glyphBottom;
+      }
+    }
+    if (!haveInk) return false;
+    if (left) *left = minX;
+    if (top) *top = minY;
+    if (right) *right = maxX;
+    if (bottom) *bottom = maxY;
+    return true;
+  }
+
 private:
   static uint16_t blend565(uint16_t background, uint16_t foreground, uint8_t alpha) {
     if (!alpha) return background;
@@ -272,6 +328,18 @@ static int16_t uiRightX(const char *text, int16_t right) {
   return right - gfx->textWidth(text);
 }
 
+static void uiDrawCenteredIn(const char *text, int16_t x, int16_t y,
+                             int16_t width, int16_t height) {
+  int16_t left, top, right, bottom;
+  if (!gfx->textInkBounds(text, &left, &top, &right, &bottom)) {
+    gfx->setCursor(uiCenterIn(text, x, width), y);
+  } else {
+    gfx->setCursor(x + (width - (right - left)) / 2 - left,
+                   y + (height - (bottom - top)) / 2 - top);
+  }
+  gfx->print(text);
+}
+
 TouchDrvCST92xx touch;
 Pet pet;
 QuizRuntime quiz;
@@ -352,6 +420,7 @@ bool menuOpen = false;
 // either taps someone to replace or lets it go.
 bool partyOpen = false;
 bool partyPick = false;
+PartyMon partyPending;
 uint8_t partyDetail = 0;   // 0 = the grid, else slot + 1
 // The box, reached from the party screen. `boxSwapFrom` is the party slot
 // waiting for something to trade with, 0 when nothing is pending.
@@ -366,6 +435,15 @@ char partyBannerName[32] = "";
 #define PARTY_CELL_H 70
 #define PARTY_GRID_X 78
 #define PARTY_GRID_Y 88
+
+// Bag inventory. Item identities and labels come from the move pack; the UI
+// only pages opaque inventory stacks.
+bool bagOpen = false;
+uint8_t bagPage = 0;
+ItemKey bagDetailKey = ITEM_KEY_NONE;
+#define BAG_PER_PAGE 5
+#define BAG_ROW_Y(i) (92 + (i) * 52)
+#define BAG_ROW_H 44
 
 bool clockOpen = false;       // pantalla de ajuste de hora (deslizar abajo)
 int clockH = 12, clockM = 0;  // hora en edicion
@@ -474,7 +552,7 @@ enum : uint8_t {
   SCR_QUIZ = 0, SCR_STARTER, SCR_REGION, SCR_GALLERY, SCR_DEXPICK, SCR_MOVEPICK, SCR_BOX,
   SCR_PARTY, SCR_KEYBOARD, SCR_CARD, SCR_PLAYER, SCR_CLOCK, SCR_GYM, SCR_GYMPICK,
   SCR_LAN, SCR_PICK, SCR_BATTLE, SCR_WIN, SCR_LEARN, SCR_TRAIN, SCR_MENU,
-  SCR_GAME, SCR_MAIN, SCR_COUNT
+  SCR_GAME, SCR_MAIN, SCR_BAG, SCR_CAPTURE, SCR_COUNT
 };
 extern const char *const SCREEN_NAME[SCR_COUNT];   // const is internal linkage in C++
 
@@ -495,17 +573,29 @@ void settleCareInteraction(const CareAction &action, uint8_t percent, bool corre
 void startBathAnimation(uint32_t now);
 void renderQuiz();
 void quizTap(int16_t x, int16_t y);
+void renderBag();
+void bagTap(int16_t x, int16_t y);
+void renderCapture();
+void captureTap(int16_t x, int16_t y);
+void startWildBattle(uint8_t region, bool hard);
+void drawBattleCenterTeamButton();
+bool battleCenterTeamTap(int16_t x, int16_t y);
 uint32_t pmdActTotalMs(const PmdAct &action);
 const char *const SCREEN_NAME[SCR_COUNT] = {
   "quiz", "starter", "region", "gallery", "dexpick", "movepick", "box",
   "party", "keyboard", "card", "player", "clock", "gym", "gympick",
   "lan", "pick", "battle", "win", "learn", "train", "menu",
-  "minigame", "main"
+  "minigame", "main", "bag", "capture"
 };
 
 Combatant btlYou, btlFoe;
 bool btlOver = false;
 bool btlWon = false;
+bool btlWild = false;
+PartyMon btlWildMon;
+bool captureOpen = false;
+uint8_t capturePage = 0;
+PartyMon capturedMon;
 bool btlNewBadge = false;
 uint32_t btlWinUntil = 0;   // the win screen is up
 // A trainer fight is a run of 1v1s: both sides queue their squad and the next
@@ -676,8 +766,10 @@ uint32_t btlEnterUntil[2] = { 0, 0 };
 int8_t btlSwapWho = -1;        // 0 = your side, 1 = the foe's, -1 = nothing due
 #define BTL_FAINT_MS 700
 #define BTL_ENTER_MS 420
-// battle menu: 0 = FIGHT/POKEMON, 1 = the moves, 2 = the switch list
+// battle menu: root, moves, switch, direct warehouse view, revive target
 uint8_t btlMenu = 0;
+uint8_t btlItemPage = 0;
+ItemKey btlPendingItem = ITEM_KEY_NONE;
 #define BTL_LUNGE_MS 260
 #define BTL_HIT_MS 420
 char btlMsg[6][96];
@@ -935,6 +1027,7 @@ void setup() {
 
   pet.begin();
   party.begin();
+  inventory.begin();
   loadUserBrightness();
   loadLang();
   gfx->setPackFont(contentHasUi());
@@ -951,6 +1044,7 @@ void setup() {
     Serial.println("RTC sin hora: sembrado, sin progresion offline esta vez");
   }
   pet.syncClock(e);
+  inventory.ensureDailySupply(e / 86400UL);
 
   audioBegin();  // ES8311 + I2S + amplificador (suena un jingle de arranque)
 
@@ -984,6 +1078,7 @@ void loop() {
   }
   uint32_t now = millis();
   pet.update(now);
+  inventory.ensureDailySupply(pet.lastSeenEpoch / 86400UL);
   updateQuiz(now);
 
   // The link is pumped here rather than from the LAN screen, because it has to
@@ -1017,13 +1112,14 @@ void loop() {
   // to the party screen to choose who it replaces, or to let it go.
   if (pet.endedKind != CER_NONE && !partyPick) {
     // party first, then the box; only a full box makes it your choice
-    if (party.add(pet.endedMon) || party.boxAdd(pet.endedMon)) {
+    if (party.store(pet.endedMon) != PARTY_STORE_FULL) {
       snprintf(partyBannerName, sizeof(partyBannerName), "%s",
                displaySpeciesName(pet.endedMon.dex, pet.endedMon.nick));
       partyBannerUntil = now + 3500;
       pet.endedKind = CER_NONE;
       sfxPlay(SFX_MEDAL);
     } else {
+      partyPending = pet.endedMon;
       partyPick = true;
       partyOpen = true;
       menuOpen = false;
@@ -1478,6 +1574,7 @@ void onSwipeV(int dir) {
     return;
   }
   if (moveInfoOpen) { moveInfoOpen = false; return; }
+  if (captureOpen) return;
   if (pet.awaitingStarter()) return;  // bloqueado durante la eleccion de inicial
   if (uiCurrentScreen() == SCR_DEXPICK || uiCurrentScreen() == SCR_GYMPICK)
     return;                 // on the chooser, vertical does nothing: pick a row
@@ -1485,6 +1582,18 @@ void onSwipeV(int dir) {
   if (battleOpen) return;   // no swiping out of a fight
   if (pickOpen) { pickOpen = false; return; }
   if (lanOpen) { lanLeave(); lanOpen = false; return; }
+  if (bagOpen) {
+    if (bagDetailKey) { bagDetailKey = ITEM_KEY_NONE; return; }
+    bagOpen = false;
+    return;
+  }
+  if (boxOpen) { boxOpen = false; boxSel = 0; return; }
+  if (partyOpen) {
+    if (partyDetail) { partyDetail = 0; return; }
+    if (partyPick) { partyPick = false; partyPending = PartyMon(); pet.endedKind = CER_NONE; }
+    partyOpen = false;
+    return;
+  }
   if (gymOpen) {
     // Same gesture as the Pokedex: vertical changes region, horizontal pages.
     uint8_t regions = regionAll();
@@ -1496,13 +1605,6 @@ void onSwipeV(int dir) {
   if (playerOpen) { playerOpen = false; return; }
   if (trainOpen) { trainOpen = false; return; }
   if (movePickOpen) { movePickOpen = false; return; }
-  if (boxOpen) { boxOpen = false; boxSel = 0; return; }   // vertical backs out
-  if (partyOpen) {
-    if (partyDetail) { partyDetail = 0; return; }
-    if (partyPick) { partyPick = false; pet.endedKind = CER_NONE; }
-    partyOpen = false;
-    return;
-  }
   // Either minigame exits on a swipe. A swipe cannot be confused with a ball
   // hit -- the gesture resolver separates them -- which the header tap no
   // longer can now that the ball is hittable up there.
@@ -1534,6 +1636,198 @@ void onSwipeV(int dir) {
   }
 }
 
+// This is the only item store. Battle actions query and consume the same
+// Inventory directly; there is no carried subset or second battle bag.
+void renderBag() {
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(3);
+  gfx->setCursor(uiCenterX(T(S_BAG)), 42);
+  gfx->print(T(S_BAG));
+
+  if (bagDetailKey) {
+    const ItemEntry *item = itemByKey(bagDetailKey);
+    if (!item || !inventory.count(bagDetailKey)) {
+      bagDetailKey = ITEM_KEY_NONE;
+      renderBag();
+      return;
+    }
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(3);
+    gfx->setCursor(uiCenterX(itemName(item->key)), 104);
+    gfx->print(itemName(item->key));
+    char meta[32];
+    char rarity[5] = "****";
+    rarity[item->rarity < 4 ? item->rarity : 4] = 0;
+    snprintf(meta, sizeof(meta), "x%u  %s", inventory.count(item->key), rarity);
+    gfx->setTextColor(UI_BAR_WARN);
+    gfx->setTextSize(2);
+    gfx->setCursor(uiCenterX(meta), 146);
+    gfx->print(meta);
+    const char *description = itemDescription(item->key, uiActiveLocaleCode());
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(2);
+    drawWrappedText(description ? description : "?", 76, 196, 314, 5);
+    gfx->setTextColor(UI_MUTED);
+    gfx->setTextSize(2);
+    gfx->setCursor(uiCenterX(T(S_ITEM_CANT_USE)), 350);
+    gfx->print(T(S_ITEM_CANT_USE));
+    gfx->setCursor(uiCenterX(T(S_BACK)), 400);
+    gfx->print(T(S_BACK));
+    gfx->flush();
+    return;
+  }
+
+  uint8_t stackCount = inventory.stackCount();
+  if (!stackCount) {
+    gfx->setTextColor(UI_MUTED);
+    gfx->setTextSize(2);
+    gfx->setCursor(uiCenterX(T(S_ITEM_EMPTY)), 220);
+    gfx->print(T(S_ITEM_EMPTY));
+  }
+  for (uint8_t row = 0; row < BAG_PER_PAGE; row++) {
+    uint8_t index = (uint8_t)(bagPage * BAG_PER_PAGE + row);
+    const InventoryStack *stack = inventory.stackAt(index);
+    if (!stack) break;
+    const ItemEntry *item = itemByKey(stack->key);
+    if (!item) continue;
+    int y = BAG_ROW_Y(row);
+    gfx->fillRoundRect(70, y, 326, BAG_ROW_H, 10, UI_BG_DAY);
+    gfx->drawRoundRect(70, y, 326, BAG_ROW_H, 10, UI_INK);
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(2);
+    gfx->setCursor(84, y + 13);
+    gfx->print(itemName(item->key));
+    char count[8];
+    snprintf(count, sizeof(count), "x%u", stack->count);
+    gfx->setCursor(uiRightX(count, 382), y + 13);
+    gfx->print(count);
+  }
+  uint8_t pages = stackCount ? (uint8_t)((stackCount + BAG_PER_PAGE - 1) / BAG_PER_PAGE) : 1;
+  for (uint8_t i = 0; i < pages; i++) {
+    int dx = CX - (pages - 1) * 10 + i * 20;
+    if (i == bagPage) gfx->fillCircle(dx, 372, 4, UI_INK);
+    else gfx->drawCircle(dx, 372, 4, UI_TRACK);
+  }
+  gfx->setTextColor(UI_MUTED);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(T(S_CLOSE)), 402);
+  gfx->print(T(S_CLOSE));
+  gfx->flush();
+}
+
+void bagTap(int16_t x, int16_t y) {
+  if (bagDetailKey) {
+    bagDetailKey = ITEM_KEY_NONE;
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  for (uint8_t row = 0; row < BAG_PER_PAGE; row++) {
+    uint8_t index = (uint8_t)(bagPage * BAG_PER_PAGE + row);
+    const InventoryStack *stack = inventory.stackAt(index);
+    if (!stack) break;
+    int top = BAG_ROW_Y(row);
+    if (x >= 70 && x <= 396 && y >= top && y <= top + BAG_ROW_H) {
+      bagDetailKey = stack->key;
+      sfxPlay(SFX_TAP);
+      return;
+    }
+  }
+  if (y >= 380) {
+    bagOpen = false;
+    sfxPlay(SFX_TAP);
+  }
+}
+
+void renderCapture() {
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  gfx->setTextColor(UI_BAR_OK);
+  gfx->setTextSize(3);
+  gfx->setCursor(uiCenterX(T(S_CAUGHT)), 38);
+  gfx->print(T(S_CAUGHT));
+  char head[48];
+  snprintf(head, sizeof(head), "%s%s Lv.%u", capturedMon.shiny ? "*" : "",
+           speciesName(capturedMon.dex), (unsigned)capturedMon.level);
+  gfx->setTextColor(dexEntry(capturedMon.dex).accent);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(head), 72);
+  gfx->print(head);
+
+  if (capturePage == 0) {
+    char line[64];
+    snprintf(line, sizeof(line), T(S_NATURE_FMT), natureName(capturedMon.nature));
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(1);
+    gfx->setCursor(uiCenterX(line), 112);
+    gfx->print(line);
+    snprintf(line, sizeof(line), "IV %u/%u/%u/%u", capturedMon.ivAtk,
+             capturedMon.ivDef, capturedMon.ivSpe, capturedMon.ivHp);
+    gfx->setCursor(uiCenterX(line), 138);
+    gfx->print(line);
+    snprintf(line, sizeof(line), "ATK %u  DEF %u", party.atkOf(capturedMon),
+             party.defOf(capturedMon));
+    gfx->setTextSize(2);
+    gfx->setCursor(uiCenterX(line), 180);
+    gfx->print(line);
+    snprintf(line, sizeof(line), "SPA %u  SPD %u", party.spaOf(capturedMon),
+             party.spdOf(capturedMon));
+    gfx->setCursor(uiCenterX(line), 216);
+    gfx->print(line);
+    snprintf(line, sizeof(line), "SPE %u  HP %u", party.speOf(capturedMon),
+             party.vitOf(capturedMon));
+    gfx->setCursor(uiCenterX(line), 252);
+    gfx->print(line);
+  } else {
+    for (uint8_t i = 0; i < MOVE_SLOTS; i++)
+      drawMoveRow(100 + i * 54, capturedMon.moves[i], false, capturedMon.dex);
+  }
+  gfx->setTextColor(UI_MUTED);
+  gfx->setTextSize(1);
+  gfx->setCursor(uiCenterX(capturePage ? "2/2" : "1/2"), 330);
+  gfx->print(capturePage ? "2/2" : "1/2");
+  gfx->fillRoundRect(72, 354, 150, 44, 11, UI_BAR_BAD);
+  gfx->drawRoundRect(72, 354, 150, 44, 11, UI_INK);
+  gfx->fillRoundRect(244, 354, 150, 44, 11, UI_BAR_OK);
+  gfx->drawRoundRect(244, 354, 150, 44, 11, UI_INK);
+  gfx->setTextColor(UI_WHITE);
+  gfx->setTextSize(2);
+  uiDrawCenteredIn(T(S_PARTY_LETGO), 72, 354, 150, 44);
+  uiDrawCenteredIn(T(S_JOIN), 244, 354, 150, 44);
+  gfx->flush();
+}
+
+void captureTap(int16_t x, int16_t y) {
+  if (y < 354 || y > 398) return;
+  bool join = x >= 244 && x <= 394;
+  bool release = x >= 72 && x <= 222;
+  if (!join && !release) return;
+  audioMusic(MUS_NONE);
+  captureOpen = false;
+  btlWild = false;
+  if (release) {
+    capturedMon = PartyMon();
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  if (party.store(capturedMon) != PARTY_STORE_FULL) {
+    snprintf(partyBannerName, sizeof(partyBannerName), "%s",
+             displaySpeciesName(capturedMon.dex, capturedMon.nick));
+    partyBannerUntil = millis() + 3500;
+    capturedMon = PartyMon();
+    sfxPlay(SFX_MEDAL);
+    return;
+  }
+  partyPending = capturedMon;
+  capturedMon = PartyMon();
+  partyPick = true;
+  partyOpen = true;
+  partyDetail = 0;
+  boxOpen = false;
+  sfxPlay(SFX_TAP);
+}
+
 // party screen: pick a slot (when a newcomer is waiting) or just leave
 // A banked creature's sheet: its moves above all, since typing alone does not
 // tell you whether that Lapras still has ICE BEAM -- and in hard mode that is
@@ -1554,7 +1848,7 @@ void renderPartyDetail() {
   char ty[24];
   if (d.type2 == T_NONE) snprintf(ty, sizeof(ty), "%s", typeName(d.type1));
   else snprintf(ty, sizeof(ty), "%s/%s", typeName(d.type1), typeName(d.type2));
-  gfx->setTextColor(UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(1);
   gfx->setCursor(uiCenterX(ty), 64);
   gfx->print(ty);
@@ -1571,7 +1865,7 @@ void renderPartyDetail() {
   gfx->print(st);
   char natureLine[48];
   snprintf(natureLine, sizeof(natureLine), T(S_NATURE_FMT), natureName(m.nature));
-  gfx->setTextColor(UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
   gfx->setCursor(uiCenterX(natureLine), 318);
   gfx->print(natureLine);
   // Bringing one back is only offered while an egg is waiting. Otherwise it
@@ -1582,15 +1876,14 @@ void renderPartyDetail() {
   gfx->drawRoundRect(126, 340, 214, 38, 10, UI_INK);
   gfx->setTextColor(canRevive ? UI_BG_DAY : 0x8410);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(T(S_REVIVE)), 351);
-  gfx->print(T(S_REVIVE));
+  uiDrawCenteredIn(T(S_REVIVE), 126, 340, 214, 38);
   if (!canRevive) {
-    gfx->setTextColor(UI_TRACK);
+    gfx->setTextColor(UI_MUTED);
     gfx->setTextSize(1);
     gfx->setCursor(uiCenterX(T(S_REVIVE_EGG)), 384);
     gfx->print(T(S_REVIVE_EGG));
   }
-  gfx->setTextColor(UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(T(S_BACK)), 404);
   gfx->print(T(S_BACK));
@@ -1686,6 +1979,7 @@ void partyTap(int16_t x, int16_t y) {
   if ((y >= 372 && y <= 416 && x >= 133 && x <= 333) || y < 34) {
     if (partyPick) {                 // declined the swap: the pet is let go
       partyPick = false;
+      partyPending = PartyMon();
       pet.endedKind = CER_NONE;
     }
     partyOpen = false;
@@ -1715,12 +2009,13 @@ void partyTap(int16_t x, int16_t y) {
       sfxPlay(SFX_TAP);
       return;
     }
-    party.replaceAt(i, pet.endedMon);
+    party.replaceAt(i, partyPending);
     snprintf(partyBannerName, sizeof(partyBannerName), "%s",
-             displaySpeciesName(pet.endedMon.dex, pet.endedMon.nick));
+             displaySpeciesName(partyPending.dex, partyPending.nick));
     partyBannerUntil = millis() + 3500;
     pet.endedKind = CER_NONE;
     partyPick = false;
+    partyPending = PartyMon();
     partyOpen = false;
     sfxPlay(SFX_MEDAL);
     return;
@@ -1731,6 +2026,10 @@ void partyTap(int16_t x, int16_t y) {
 void onSwipe(int dir) {
   if (quizBlocking()) return;
   if (moveInfoOpen) { moveInfoOpen = false; return; }
+  if (captureOpen) {
+    capturePage = dir < 0 ? 1 : 0;
+    return;
+  }
   // The region chooser pages, and it is checked before everything else because
   // it sits on TOP of the starter/gallery/gym screens -- each of which has its
   // own horizontal handler that would otherwise swallow the gesture. Paging a
@@ -1738,7 +2037,13 @@ void onSwipe(int dir) {
   if (rpickSwipe(dir)) return;
   if (pet.awaitingStarter()) return;  // bloqueado durante la eleccion de inicial
   if (menuOpen) { menuOpen = false; return; }   // any swipe closes the menu
-  if (battleOpen) return;   // no swiping out of a fight
+  if (battleOpen) {
+    if (btlMenu == 3) {
+      int p = (int)btlItemPage + (dir > 0 ? -1 : 1);
+      if (p >= 0) btlItemPage = (uint8_t)p;
+    }
+    return;
+  }
   if (pickOpen) {   // horizontal pages the candidates, as everywhere else
     uint8_t pages = (pickCandidates() + PICK_PER_PAGE - 1) / PICK_PER_PAGE;
     if (!pages) pages = 1;
@@ -1747,8 +2052,30 @@ void onSwipe(int dir) {
     else pickPage = (uint8_t)p;
     return;
   }
+  if (bagOpen) {
+    if (bagDetailKey) { bagDetailKey = ITEM_KEY_NONE; return; }
+    uint8_t pages = inventory.stackCount()
+        ? (inventory.stackCount() + BAG_PER_PAGE - 1) / BAG_PER_PAGE : 1;
+    int p = (int)bagPage + (dir > 0 ? -1 : 1);
+    if (p < 0 || p >= pages) bagOpen = false;
+    else bagPage = (uint8_t)p;
+    return;
+  }
+  if (boxOpen) {   // the box is nested inside partyOpen, so handle it first
+    uint8_t pages = BOX_SLOTS / BOX_PER_PAGE;
+    int p = (int)boxPage + (dir > 0 ? -1 : 1);
+    if (p < 0 || p >= pages) { boxOpen = false; boxSel = 0; }
+    else boxPage = (uint8_t)p;
+    return;
+  }
+  if (partyOpen) {
+    if (partyDetail) { partyDetail = 0; return; }
+    if (partyPick) { partyPick = false; partyPending = PartyMon(); pet.endedKind = CER_NONE; }
+    partyOpen = false;
+    return;
+  }
   if (gymOpen) {   // horizontal pages the ladder; vertical backs out
-    uint8_t pages = (regionBattleInfo(gymRegion).trainerCount + GYM_ROWS - 1) / GYM_ROWS;
+    uint8_t pages = (regionBattleInfo(gymRegion).trainerCount + 1 + GYM_ROWS - 1) / GYM_ROWS;
     int p = (int)gymPage + (dir > 0 ? -1 : 1);
     if (p < 0 || p >= pages) { gymPick = true; rpickPage = 0; }  // back to the chooser
     else gymPage = (uint8_t)p;
@@ -1770,19 +2097,6 @@ void onSwipe(int dir) {
     else movePickPage = (uint8_t)p;
     return;
   }
-  if (boxOpen) {   // horizontal pages the box, as every other paged screen
-    uint8_t pages = BOX_SLOTS / BOX_PER_PAGE;
-    int p = (int)boxPage + (dir > 0 ? -1 : 1);
-    if (p < 0 || p >= pages) { boxOpen = false; boxSel = 0; }
-    else boxPage = (uint8_t)p;
-    return;
-  }
-  if (partyOpen) {
-    if (partyDetail) { partyDetail = 0; return; }
-    if (partyPick) { partyPick = false; pet.endedKind = CER_NONE; }
-    partyOpen = false;
-    return;
-  }
   if (gameOpen) { leaveGame(); return; }   // swipe out, keeping what you earned
   if (spdOpen) { leaveSpeed(); return; }
   if (kbOpen || clockOpen) return;
@@ -1792,12 +2106,13 @@ void onSwipe(int dir) {
     return;
   }
   if (!galleryOpen) {
-    // Swipe LEFT is the gym ladder, RIGHT is the party. The Pokedex lost this
+    // Swipe LEFT is the battle centre, RIGHT is the bag. The party now lives
+    // behind the team icon in the battle centre.
     // gesture: it has a menu row, and gestures are worth more spent on screens
     // without one.
     if (!pet.ceremony && !confirmUntil) {
       if (dir < 0) { gymOpen = true; gymPick = true; gymPage = 0; rpickPage = 0; }
-      else partyOpen = true;
+      else { bagOpen = true; bagPage = 0; bagDetailKey = ITEM_KEY_NONE; }
     }
     return;
   }
@@ -1855,6 +2170,14 @@ void onTap(int16_t x, int16_t y) {
     }
     return;
   }
+  if (captureOpen) {
+    captureTap(x, y);
+    return;
+  }
+  if (bagOpen) {
+    bagTap(x, y);
+    return;
+  }
   if (battleOpen) {
     battleTap(x, y);
     return;
@@ -1883,6 +2206,11 @@ void onTap(int16_t x, int16_t y) {
     lanTap(x, y);
     return;
   }
+  if (partyOpen) {
+    partyTap(x, y);
+    return;
+  }
+  if (gymOpen && battleCenterTeamTap(x, y)) return;
   if (gymOpen && gymPick) {
     int r = regionPickTap(x, y, RPICK_FOR_GYMS);
     if (r >= 0) {
@@ -1917,10 +2245,16 @@ void onTap(int16_t x, int16_t y) {
       return;
     }
     for (int i = 0; i < GYM_ROWS; i++) {
-      uint8_t idx = gymPage * GYM_ROWS + i;
-      if (idx >= regionBattleInfo(gymRegion).trainerCount) break;
+      uint8_t entry = gymPage * GYM_ROWS + i;
+      if (entry > regionBattleInfo(gymRegion).trainerCount) break;
       int ry = GYM_ROW_Y(i);
       if (x < 70 || x > 396 || y < ry || y > ry + 44) continue;
+      if (entry == 0) {
+        sfxPlay(SFX_TAP);
+        startWildBattle(gymRegion, gymHard);
+        return;
+      }
+      uint8_t idx = entry - 1;
       if (!gymUnlocked(idx, gymHard)) { sfxPlay(SFX_DENY); return; }
       sfxPlay(SFX_TAP);
       gymOpen = false;
@@ -2010,10 +2344,6 @@ void onTap(int16_t x, int16_t y) {
       return;
     }
     movePickOpen = false;   // tap anywhere else = back to the moves page
-    return;
-  }
-  if (partyOpen) {
-    partyTap(x, y);
     return;
   }
   if (galleryOpen) {
@@ -2321,6 +2651,8 @@ uint8_t uiCurrentScreen() {
   if (moveInfoOpen) return SCR_MOVEPICK;
   if (galleryOpen) return galleryPick ? SCR_DEXPICK : SCR_GALLERY;
   if (movePickOpen) return SCR_MOVEPICK;
+  if (captureOpen) return SCR_CAPTURE;
+  if (bagOpen) return SCR_BAG;
   if (partyOpen) return boxOpen ? SCR_BOX : SCR_PARTY;
   if (kbOpen) return SCR_KEYBOARD;
   if (cardOpen) return SCR_CARD;
@@ -2400,6 +2732,14 @@ void render() {
   }
   if (movePickOpen) {
     renderMovePick();
+    return;
+  }
+  if (captureOpen) {
+    renderCapture();
+    return;
+  }
+  if (bagOpen) {
+    renderBag();
     return;
   }
   if (partyOpen) {
@@ -2563,11 +2903,9 @@ void render() {
       gfx->print(q);
       gfx->fillRoundRect(118, 252, 100, 52, 12, UI_BAR_OK);
       gfx->setTextColor(UI_WHITE);
-      gfx->setCursor(uiCenterIn(T(S_YES), 118, 100), 270);
-      gfx->print(T(S_YES));
+      uiDrawCenteredIn(T(S_YES), 118, 252, 100, 52);
       gfx->fillRoundRect(248, 252, 100, 52, 12, UI_BAR_BAD);
-      gfx->setCursor(uiCenterIn(T(S_NO), 248, 100), 270);
-      gfx->print(T(S_NO));
+      uiDrawCenteredIn(T(S_NO), 248, 252, 100, 52);
     }
   }
 
@@ -2588,8 +2926,7 @@ void render() {
       gfx->drawRoundRect(53, 176, 360, 74, 16, UI_INK);
       gfx->setTextColor(UI_WHITE);
       gfx->setTextSize(2);
-      gfx->setCursor(uiCenterX(b), 206);
-      gfx->print(b);
+      uiDrawCenteredIn(b, 53, 176, 360, 74);
     }
   }
 
@@ -3064,8 +3401,7 @@ void drawClockBtn(int x, int y, const char *l) {
   gfx->drawRoundRect(x, y, 58, 58, 12, UI_INK);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(4);
-  gfx->setCursor(uiCenterIn(l, x, 58), y + 13);
-  gfx->print(l);
+  uiDrawCenteredIn(l, x, y, 58, 58);
 }
 
 // pildoras de idioma centradas en y; rellena la activa
@@ -3100,7 +3436,7 @@ void renderClock() {
   drawClockBtn(252, 190, "-");  // min -
   drawClockBtn(318, 190, "+");  // min +
   gfx->setTextSize(2);
-  gfx->setTextColor(UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
   gfx->setCursor(uiCenterIn(T(S_HOUR), 104, 124), 256);
   gfx->print(T(S_HOUR));
   gfx->setCursor(uiCenterIn(T(S_MIN), 252, 124), 256);
@@ -3128,8 +3464,7 @@ void renderClock() {
   gfx->drawRoundRect(34, LANG_PILL_Y, 96, LANG_PILL_H, 8, UI_INK);
   gfx->setTextColor(snd ? UI_BG_DAY : UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterIn(sl, 34, 96), LANG_PILL_Y + 8);
-  gfx->print(sl);
+  uiDrawCenteredIn(sl, 34, LANG_PILL_Y, 96, LANG_PILL_H);
 
   // volume: a level, not a toggle. The sound switch beside it is still the
   // master -- this is how loud it is when it is on, and 0 is silent.
@@ -3143,8 +3478,7 @@ void renderClock() {
       gfx->drawRoundRect(bx, LANG_PILL_Y, VOL_BTN_W, LANG_PILL_H, 8, UI_INK);
       gfx->setTextColor(live ? UI_INK : 0x8410);
       gfx->setTextSize(2);
-      gfx->setCursor(uiCenterIn(i ? "+" : "-", bx, VOL_BTN_W), LANG_PILL_Y + 8);
-      gfx->print(i ? "+" : "-");
+      uiDrawCenteredIn(i ? "+" : "-", bx, LANG_PILL_Y, VOL_BTN_W, LANG_PILL_H);
     }
     char vl[12];
     snprintf(vl, sizeof(vl), T(S_VOL_FMT), v);
@@ -3164,16 +3498,14 @@ void renderClock() {
   snprintf(lp, sizeof(lp), "%s >", langLabel(gLang));
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterIn(lp, LANG_PILL_X, LANG_PILL_W), LANG_PILL_Y + 8);
-  gfx->print(lp);
+  uiDrawCenteredIn(lp, LANG_PILL_X, LANG_PILL_Y, LANG_PILL_W, LANG_PILL_H);
 
   gfx->fillRoundRect(133, 340, 200, 48, 14, UI_BAR_OK);
   gfx->setTextColor(UI_BG_DAY);
   gfx->setTextSize(3);
-  gfx->setCursor(uiCenterX("OK"), 352);
-  gfx->print("OK");
+  uiDrawCenteredIn("OK", 133, 340, 200, 48);
 
-  gfx->setTextColor(UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(T(S_CLOCK_CANCEL)), 410);
   gfx->print(T(S_CLOCK_CANCEL));
@@ -3272,8 +3604,7 @@ void drawMedalBadge(int x, int y, int i) {
   if (!got) gfx->drawRoundRect(x, y, 100, 24, 6, UI_TRACK);
   gfx->setTextColor(got ? UI_BG_DAY : 0x9492);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterIn(medalLabel(i), x, 100), y + 5);
-  gfx->print(medalLabel(i));
+  uiDrawCenteredIn(medalLabel(i), x, y, 100, 24);
 }
 
 // pagina 0: perfil (retrato grande, identidad, racha, vinculo, baya)
@@ -3293,7 +3624,7 @@ void renderCardProfile() {
   if (pet.nick[0]) {  // especie real bajo el apodo
     char species[64];
     snprintf(species, sizeof(species), "(%s)", speciesName(pet.speciesId));
-    gfx->setTextColor(UI_TRACK);
+    gfx->setTextColor(UI_MUTED);
     gfx->setTextSize(2);
     gfx->setCursor(uiCenterX(species), 64);
     gfx->print(species);
@@ -3334,7 +3665,7 @@ void renderCardProfile() {
   gfx->setCursor(uiCenterX(natureLine), 322);
   gfx->print(natureLine);
 
-  gfx->setTextColor(UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
   gfx->setCursor(uiCenterX(T(S_RENAME_HINT)), 350);
   gfx->print(T(S_RENAME_HINT));
 }
@@ -3388,10 +3719,9 @@ void drawMoveRow(int y, MoveId mv, bool highlight, int16_t dex) {
   gfx->fillRoundRect(70, y, 326, MOVE_ROW_H, 12, highlight ? UI_BAR_WARN : UI_BG_DAY);
   gfx->drawRoundRect(70, y, 326, MOVE_ROW_H, 12, UI_INK);
   if (!mv) {
-    gfx->setTextColor(UI_TRACK);
+    gfx->setTextColor(UI_MUTED);
     gfx->setTextSize(2);
-    gfx->setCursor(uiCenterX(T(S_MOVE_EMPTY)), y + 17);
-    gfx->print(T(S_MOVE_EMPTY));
+    uiDrawCenteredIn(T(S_MOVE_EMPTY), 70, y, 326, MOVE_ROW_H);
     return;
   }
   const MoveEntry &m = moveEntry(mv);
@@ -3445,7 +3775,7 @@ void renderCardMoves() {
   gfx->setCursor(uiCenterX(T(S_MOVES)), 44);
   gfx->print(T(S_MOVES));
   for (int i = 0; i < MOVE_SLOTS; i++) drawMoveRow(MOVE_ROW_Y(i), pet.moves[i], false, pet.speciesId);
-  gfx->setTextColor(UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(1);
   gfx->setCursor(uiCenterX(T(S_MOVE_TAP)), 340);
   gfx->print(T(S_MOVE_TAP));
@@ -3514,9 +3844,8 @@ void renderMoveInfo() {
   gfx->drawRoundRect(93, changeY, 280, 52, 12, UI_INK);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(T(S_MOVE_CHANGE)), changeY + 17);
-  gfx->print(T(S_MOVE_CHANGE));
-  gfx->setTextColor(UI_TRACK);
+  uiDrawCenteredIn(T(S_MOVE_CHANGE), 93, changeY, 280, 52);
+  gfx->setTextColor(UI_MUTED);
   gfx->setCursor(uiCenterX(T(S_BACK)), 402);
   gfx->print(T(S_BACK));
   gfx->flush();
@@ -3545,7 +3874,7 @@ void renderMovePick() {
     if (i == movePickPage) gfx->fillCircle(CX - (pages - 1) * 13 + i * 26, 380, 5, UI_INK);
     else gfx->drawCircle(CX - (pages - 1) * 13 + i * 26, 380, 4, UI_INK);
   }
-  gfx->setTextColor(UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(T(S_BACK)), 402);
   gfx->print(T(S_BACK));
@@ -3705,6 +4034,7 @@ void startLinkBattle() {
   if (!btlSquadN) return;
   btlYou = btlSquad[0];
   btlLink = true;
+  btlWild = false;
   btlLinkHost = lan.isHost;
   btlTrainer = -1;
   btlHard = false;
@@ -3745,6 +4075,7 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   buildSquad(top, hard ? tr.count : TRAINER_TEAM_MAX, squadMask);
   if (!btlSquadN) return;
   btlRegion = region;
+  btlWild = false;
   btlTrainer = (int8_t)idx;
   btlHard = hard;
   btlFoeAt = 0;
@@ -3783,10 +4114,82 @@ void startBattle(int16_t dex, uint8_t lvl) {
   foe.ageMinutes = (uint32_t)(lvl ? lvl - 1 : 0) * MINUTES_PER_LEVEL;
   foe.relearnFromLevel();
   combatantFromPet(btlFoe, foe);
+  btlWild = false;
   btlMsgCount = 0;
   btlOver = false;
   btlWon = false;
   btlMenu = 0;
+  btlWinUntil = 0;
+  btlSwapWho = -1;
+  btlFaintUntil[0] = btlFaintUntil[1] = 0;
+  btlEnterUntil[0] = btlEnterUntil[1] = 0;
+  btlHpShown[0] = btlYou.maxHp;
+  btlHpShown[1] = btlFoe.maxHp;
+  btlSyncSprite(0, btlYou);
+  btlSyncSprite(1, btlFoe);
+  audioMusic(MUS_BATTLE);
+  btlLungeUntil[0] = btlLungeUntil[1] = 0;
+  btlHitUntil[0] = btlHitUntil[1] = 0;
+  battleOpen = true;
+}
+
+static SpeciesId wildSpecies(uint8_t region) {
+  if (region >= regionAll()) return SPECIES_NONE;
+  const RegionInfo &info = regionInfo(region);
+  bool legends = regionBattleInfo(region).trainerCount &&
+      pet.hasBadge(region, regionBattleInfo(region).trainerCount - 1, true);
+  uint32_t total = 0;
+  for (SpeciesId dex = info.lo; dex <= info.hi && dex <= dexCount(); dex++) {
+    uint8_t rarity = dexEntry(dex).rarity;
+    if (rarity == R_LEGENDARIO && !legends) continue;
+    total += rarity == R_LEGENDARIO ? 1 : rarity == R_RARO ? 12 : rarity == R_EVO ? 22 : 60;
+  }
+  if (!total) return SPECIES_NONE;
+  uint32_t pick = (uint32_t)random((long)total);
+  for (SpeciesId dex = info.lo; dex <= info.hi && dex <= dexCount(); dex++) {
+    uint8_t rarity = dexEntry(dex).rarity;
+    if (rarity == R_LEGENDARIO && !legends) continue;
+    uint16_t weight = rarity == R_LEGENDARIO ? 1 : rarity == R_RARO ? 12 : rarity == R_EVO ? 22 : 60;
+    if (pick < weight) return dex;
+    pick -= weight;
+  }
+  return SPECIES_NONE;
+}
+
+void startWildBattle(uint8_t region, bool hard) {
+  if (pet.isEgg() || pet.ceremony != CER_NONE || region >= regionAll()) return;
+  SpeciesId dex = wildSpecies(region);
+  if (!dex) return;
+  buildSquad(0, TRAINER_TEAM_MAX, 0xFFFF);
+  if (!btlSquadN) return;
+  uint8_t level = pet.level();
+  int adjusted = (int)level + (hard ? 2 : 0) + (int)random(5) - 2;
+  level = adjusted < 1 ? 1 : adjusted > 100 ? 100 : (uint8_t)adjusted;
+  const RegionBattleInfo &battle = regionBattleInfo(region);
+  uint8_t ivBase = hard ? battle.hardIv : battle.easyIv;
+  Pet foe;
+  foe.dbgHatchAs(dex, random(4096) == 0);
+  auto rollIv = [ivBase]() -> uint8_t {
+    int value = (int)ivBase + (int)random(7) - 3;
+    return value < 0 ? 0 : value > 31 ? 31 : (uint8_t)value;
+  };
+  foe.ivAtk = rollIv(); foe.ivDef = rollIv(); foe.ivSpe = rollIv(); foe.ivHp = rollIv();
+  foe.ageMinutes = (uint32_t)(level - 1) * MINUTES_PER_LEVEL;
+  foe.relearnFromLevel();
+  btlWildMon = foe.toPartyMon();
+  combatantFromParty(btlFoe, btlWildMon);
+  btlRegion = region;
+  btlTrainer = -1;
+  btlHard = hard;
+  btlWild = true;
+  btlLink = false;
+  btlFoeAt = 0;
+  btlMsgCount = 0;
+  btlOver = false;
+  btlWon = false;
+  btlMenu = 0;
+  btlItemPage = 0;
+  btlPendingItem = ITEM_KEY_NONE;
   btlWinUntil = 0;
   btlSwapWho = -1;
   btlFaintUntil[0] = btlFaintUntil[1] = 0;
@@ -4008,7 +4411,11 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent) {
     if (btlLink && btlLinkHost) lan.sendEnd(btlWon);
     if (btlLink) { btlSay("%s", btlWon ? T(S_BTL_WIN) : T(S_BTL_LOSE)); return; }
     if (btlWon && btlTrainer >= 0) { btlWinUntil = millis() + 60000; return; }
-    btlSay("%s", T(S_BTL_LOSE));
+    btlSay("%s", btlWon ? T(S_BTL_WIN) : T(S_BTL_LOSE));
+    if (btlWon && btlWild) {
+      ItemKey drop = inventory.grantWeightedDrop((uint32_t)random(0x7FFFFFFF));
+      if (drop) btlSay(T(S_ITEM_FOUND_FMT), itemName(drop));
+    }
   }
 }
 
@@ -4169,17 +4576,61 @@ void renderWin() {
     gfx->setCursor(uiCenterX(l), 344);
     gfx->print(l);
   } else if (btlIvReward == GYM_IV_MAXED) {
-    gfx->setTextColor(UI_TRACK);
+    gfx->setTextColor(UI_MUTED);
     gfx->setTextSize(1);
     gfx->setCursor(uiCenterX(T(S_WIN_MAXED)), 348);
     gfx->print(T(S_WIN_MAXED));
   }
 
-  gfx->setTextColor(UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(T(S_BACK)), 380);
   gfx->print(T(S_BACK));
   gfx->flush();
+}
+
+static Combatant *btlMember(uint8_t index) {
+  if (index >= btlSquadN) return nullptr;
+  return index == btlSquadAt ? &btlYou : &btlSquad[index];
+}
+
+static bool btlWarehouseEffect(const ItemEntry &item) {
+  if (btlLink) return false;
+  return item.effect == ITEM_EFFECT_CATCH || item.effect == ITEM_EFFECT_HEAL_HP ||
+         item.effect == ITEM_EFFECT_CURE_STATUS || item.effect == ITEM_EFFECT_REVIVE;
+}
+
+static uint8_t btlWarehouseCount() {
+  uint8_t count = 0;
+  for (uint8_t i = 0; i < inventory.stackCount(); i++) {
+    const InventoryStack *stack = inventory.stackAt(i);
+    const ItemEntry *item = stack ? itemByKey(stack->key) : nullptr;
+    if (item && btlWarehouseEffect(*item)) count++;
+  }
+  return count;
+}
+
+static const InventoryStack *btlWarehouseAt(uint8_t index) {
+  for (uint8_t i = 0; i < inventory.stackCount(); i++) {
+    const InventoryStack *stack = inventory.stackAt(i);
+    const ItemEntry *item = stack ? itemByKey(stack->key) : nullptr;
+    if (!item || !btlWarehouseEffect(*item)) continue;
+    if (!index--) return stack;
+  }
+  return nullptr;
+}
+
+static bool btlItemUsable(const ItemEntry &item) {
+  if (item.effect == ITEM_EFFECT_CATCH)
+    return btlWild && !btlFoe.fainted();
+  if (item.effect == ITEM_EFFECT_HEAL_HP || item.effect == ITEM_EFFECT_CURE_STATUS)
+    return itemCanApplyToCombatant(item, btlYou);
+  if (item.effect == ITEM_EFFECT_REVIVE)
+    for (uint8_t i = 0; i < btlSquadN; i++) {
+      Combatant *member = btlMember(i);
+      if (member && itemCanApplyToCombatant(item, *member)) return true;
+    }
+  return false;
 }
 
 void renderBattle() {
@@ -4205,7 +4656,7 @@ void renderBattle() {
   if (lanWait && !btlMsgCount) {
     gfx->fillRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_WHITE);
     gfx->drawRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_INK);
-    gfx->setTextColor(UI_TRACK);
+    gfx->setTextColor(UI_MUTED);
     gfx->setTextSize(1);
     const char *w = T(S_LAN_WAITFOE);
     gfx->setCursor(uiCenterX(w), BTL_GRID_Y + 40);
@@ -4219,29 +4670,64 @@ void renderBattle() {
       gfx->setCursor(uiCenterX(btlMsg[i]), BTL_GRID_Y + 14 + i * 18);
       gfx->print(btlMsg[i]);
     }
-    gfx->setTextColor(UI_TRACK);
+    gfx->setTextColor(UI_MUTED);
     gfx->setCursor(CX - 30, BTL_GRID_Y + 84);
     gfx->print("tap...");
   } else if (btlMenu == 0) {
-    // FIGHT across the top, then POKEMON and RUN side by side. Three full-width
-    // rows do not fit: the panel is round, and at that depth the chord is only
-    // ~250 px. The lower two reuse the move grid's cells, so they inherit its
-    // padded hit areas -- which is what made POKEMON hard to press before.
-    gfx->fillRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H, 10, UI_BG_DAY);
-    gfx->drawRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H, 10, UI_INK);
-    gfx->setTextColor(UI_INK);
-    gfx->setTextSize(2);
-    gfx->setCursor(uiCenterX(T(S_FIGHT)), BTL_GRID_Y + 14);
-    gfx->print(T(S_FIGHT));
-    const char *low[2] = { T(S_BTL_SWITCH), T(S_BTL_RUN) };
-    for (int i = 0; i < 2; i++) {
-      int x = BTL_CELL_X(i + 2), y = BTL_CELL_Y(i + 2);
+    const char *actions[4] = { T(S_FIGHT), T(S_BAG), T(S_BTL_SWITCH), T(S_BTL_RUN) };
+    for (int i = 0; i < 4; i++) {
+      int x = BTL_CELL_X(i), y = BTL_CELL_Y(i);
       gfx->fillRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, UI_TRACK);
       gfx->drawRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, UI_INK);
       gfx->setTextColor(UI_INK);
       gfx->setTextSize(2);
-      gfx->setCursor(uiCenterIn(low[i], x, BTL_CELL_W), y + 14);
-      gfx->print(low[i]);
+      uiDrawCenteredIn(actions[i], x, y, BTL_CELL_W, BTL_CELL_H);
+    }
+  } else if (btlMenu == 3) {
+    drawBtlBack();
+    uint8_t count = btlWarehouseCount();
+    uint8_t pages = count ? (uint8_t)((count + 3) / 4) : 1;
+    if (btlItemPage >= pages) btlItemPage = pages - 1;
+    for (uint8_t i = 0; i < 4; i++) {
+      const InventoryStack *stack = btlWarehouseAt((uint8_t)(btlItemPage * 4 + i));
+      if (!stack) break;
+      const ItemEntry *item = itemByKey(stack->key);
+      bool usable = item && btlItemUsable(*item);
+      int x = BTL_CELL_X(i), y = BTL_CELL_Y(i);
+      gfx->fillRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, usable ? UI_BG_DAY : UI_TRACK);
+      gfx->drawRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, usable ? UI_INK : 0x8410);
+      gfx->setTextColor(usable ? UI_INK : 0x8410);
+      gfx->setTextSize(1);
+      gfx->setCursor(x + 10, y + 11);
+      gfx->print(itemName(item->key));
+      char amount[8];
+      snprintf(amount, sizeof(amount), "x%u", stack->count);
+      gfx->setCursor(x + 10, y + 28);
+      gfx->print(amount);
+    }
+    if (pages > 1)
+      for (uint8_t page = 0; page < pages; page++) {
+        int px = CX - (pages - 1) * 8 + page * 16;
+        if (page == btlItemPage) gfx->fillCircle(px, 376, 3, UI_INK);
+        else gfx->drawCircle(px, 376, 3, UI_TRACK);
+      }
+  } else if (btlMenu == 4) {
+    drawBtlBack();
+    const ItemEntry *item = itemByKey(btlPendingItem);
+    for (uint8_t i = 0; item && i < btlSquadN && i < 4; i++) {
+      Combatant *member = btlMember(i);
+      bool usable = member && itemCanApplyToCombatant(*item, *member);
+      int x = BTL_CELL_X(i), y = BTL_CELL_Y(i);
+      gfx->fillRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, usable ? UI_BG_DAY : UI_TRACK);
+      gfx->drawRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, usable ? UI_INK : 0x8410);
+      gfx->setTextColor(usable ? UI_INK : 0x8410);
+      gfx->setTextSize(1);
+      gfx->setCursor(x + 10, y + 10);
+      gfx->print(member ? displayCombatantName(*member) : "-");
+      char hp[20];
+      snprintf(hp, sizeof(hp), "%u/%u", member ? member->hp : 0, member ? member->maxHp : 0);
+      gfx->setCursor(x + 10, y + 28);
+      gfx->print(hp);
     }
   } else if (btlMenu == 2) {
     drawBtlBack();
@@ -4375,8 +4861,7 @@ static void drawBtlBack() {
   gfx->drawRoundRect(BTL_BACK_X, BTL_BACK_Y, BTL_BACK_W, BTL_BACK_H, 11, UI_INK);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(T(S_BACK)), BTL_BACK_Y + 14);
-  gfx->print(T(S_BACK));
+  uiDrawCenteredIn(T(S_BACK), BTL_BACK_X, BTL_BACK_Y, BTL_BACK_W, BTL_BACK_H);
 }
 
 static bool btlBackTap(int16_t x, int16_t y) {
@@ -4396,7 +4881,46 @@ static void btlRun() {
   audioMusic(MUS_NONE);
   if (btlLink) { lanLeave(); btlLink = false; lanOpen = true; }
   battleOpen = false;
+  btlWild = false;
   btlMenu = 0;
+}
+
+static void btlSpendItemTurn(const ItemEntry &item, Combatant &target) {
+  if (!itemApplyToCombatant(item, target) || !inventory.consume(item.key)) {
+    sfxPlay(SFX_DENY);
+    return;
+  }
+  sfxPlay(SFX_TAP);
+  btlMenu = 0;
+  btlPendingItem = ITEM_KEY_NONE;
+  btlResolve(0, 100);
+}
+
+static void btlThrowBall(const ItemEntry &item) {
+  if (!btlWild || item.effect != ITEM_EFFECT_CATCH || !inventory.consume(item.key)) {
+    sfxPlay(SFX_DENY);
+    return;
+  }
+  uint8_t chance = wildCaptureChance(dexEntry(btlFoe.dex).rarity, btlFoe.hp,
+                                     btlFoe.maxHp,
+                                     btlFoe.ailment != AIL_NONE || btlFoe.confuseTurns,
+                                     item.param > 0 ? (uint16_t)item.param : 100);
+  if ((uint8_t)random(100) < chance) {
+    capturedMon = btlWildMon;
+    pet.registerCaught(capturedMon.dex);
+    capturePage = 0;
+    captureOpen = true;
+    battleOpen = false;
+    btlOver = true;
+    btlWon = true;
+    btlFreeSprites();
+    audioMusic(MUS_VICTORY);
+    sfxPlay(SFX_VICTORY);
+    return;
+  }
+  btlMenu = 0;
+  btlSay("%s", itemName(item.key));
+  btlResolve(0, 100);
 }
 
 void battleTap(int16_t x, int16_t y) {
@@ -4413,6 +4937,7 @@ void battleTap(int16_t x, int16_t y) {
     if (btlOver) {
       btlFreeSprites();
       battleOpen = false;
+      btlWild = false;
       // Back to the LAN screen rather than all the way out: that is where a
       // rematch is offered, and re-pairing for every fight would be tedious.
       if (btlLink) { btlLink = false; lanOpen = true; }
@@ -4422,14 +4947,53 @@ void battleTap(int16_t x, int16_t y) {
     return;
   }
   if (btlMenu == 0) {
-    if (x >= BTL_GRID_X - BTL_HIT_PAD && x <= BTL_GRID_X + 328 + BTL_HIT_PAD &&
-        y >= BTL_HIT_Y0(0) && y <= BTL_HIT_Y1(0)) {
+    if (btlCellHit(0, x, y)) {
       sfxPlay(SFX_TAP);
       btlMenu = 1;                       // FIGHT
       return;
     }
+    if (btlCellHit(1, x, y)) {
+      sfxPlay(SFX_TAP);
+      btlItemPage = 0;
+      btlMenu = 3;
+      return;
+    }
     if (btlCellHit(2, x, y)) { sfxPlay(SFX_TAP); btlMenu = 2; return; }
     if (btlCellHit(3, x, y)) { btlRun(); return; }
+    return;
+  }
+  if (btlMenu == 3) {
+    if (btlBackTap(x, y)) return;
+    for (uint8_t i = 0; i < 4; i++) {
+      if (!btlCellHit(i, x, y)) continue;
+      const InventoryStack *stack = btlWarehouseAt((uint8_t)(btlItemPage * 4 + i));
+      const ItemEntry *item = stack ? itemByKey(stack->key) : nullptr;
+      if (!item || !btlItemUsable(*item)) { sfxPlay(SFX_DENY); return; }
+      if (item->effect == ITEM_EFFECT_CATCH) { btlThrowBall(*item); return; }
+      if (item->effect == ITEM_EFFECT_REVIVE) {
+        btlPendingItem = item->key;
+        btlMenu = 4;
+        sfxPlay(SFX_TAP);
+        return;
+      }
+      btlSpendItemTurn(*item, btlYou);
+      return;
+    }
+    return;
+  }
+  if (btlMenu == 4) {
+    if (btlBackTap(x, y)) { btlPendingItem = ITEM_KEY_NONE; return; }
+    const ItemEntry *item = itemByKey(btlPendingItem);
+    for (uint8_t i = 0; item && i < btlSquadN && i < 4; i++) {
+      if (!btlCellHit(i, x, y)) continue;
+      Combatant *member = btlMember(i);
+      if (!member || !itemCanApplyToCombatant(*item, *member)) {
+        sfxPlay(SFX_DENY);
+        return;
+      }
+      btlSpendItemTurn(*item, *member);
+      return;
+    }
     return;
   }
   if (btlMenu == 2) {
@@ -4581,7 +5145,7 @@ static void renderPlayerMedals() {
   }
   char tot[28];
   snprintf(tot, sizeof(tot), T(S_MEDALS_TOTAL_FMT), pet.totalMedals);
-  gfx->setTextColor(UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(1);
   gfx->setCursor(uiCenterX(tot), 344);
   gfx->print(tot);
@@ -4598,7 +5162,7 @@ void renderPlayer() {
     if (i == playerPage) gfx->fillCircle(dx, 366, 5, UI_INK);
     else gfx->drawCircle(dx, 366, 4, UI_INK);
   }
-  gfx->setTextColor(UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(T(S_BACK)), 392);
   gfx->print(T(S_BACK));
@@ -4848,17 +5412,13 @@ void renderPick() {
   gfx->drawRoundRect(PICK_BACK_X, PICK_GO_Y, PICK_BTN_W, PICK_BTN_H, 12, UI_INK);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterIn(T(S_BACK), PICK_BACK_X, PICK_BTN_W),
-                 PICK_GO_Y + 14);
-  gfx->print(T(S_BACK));
+  uiDrawCenteredIn(T(S_BACK), PICK_BACK_X, PICK_GO_Y, PICK_BTN_W, PICK_BTN_H);
   gfx->fillRoundRect(PICK_GO_X, PICK_GO_Y, PICK_BTN_W, PICK_BTN_H, 12,
                      ok ? UI_BAR_OK : UI_TRACK);
   gfx->drawRoundRect(PICK_GO_X, PICK_GO_Y, PICK_BTN_W, PICK_BTN_H, 12, UI_INK);
   gfx->setTextColor(ok ? UI_BG_DAY : 0x8410);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterIn(T(S_FIGHT), PICK_GO_X, PICK_BTN_W),
-                 PICK_GO_Y + 14);
-  gfx->print(T(S_FIGHT));
+  uiDrawCenteredIn(T(S_FIGHT), PICK_GO_X, PICK_GO_Y, PICK_BTN_W, PICK_BTN_H);
   gfx->flush();
 }
 
@@ -4941,8 +5501,7 @@ void renderLan() {
       gfx->drawRoundRect(90, y, 286, 56, 12, UI_INK);
       gfx->setTextColor(UI_INK);
       gfx->setTextSize(2);
-      gfx->setCursor(uiCenterX(lab[i]), y + 20);
-      gfx->print(lab[i]);
+      uiDrawCenteredIn(lab[i], 90, y, 286, 56);
     }
   } else if (lan.state == LINK_READY) {
     char l[40];
@@ -4960,8 +5519,7 @@ void renderLan() {
     gfx->fillRoundRect(120, 220, 226, 56, 12, UI_BAR_OK);
     gfx->drawRoundRect(120, 220, 226, 56, 12, UI_INK);
     gfx->setTextColor(UI_BG_DAY);
-    gfx->setCursor(uiCenterX(T(S_FIGHT)), 240);
-    gfx->print(T(S_FIGHT));
+    uiDrawCenteredIn(T(S_FIGHT), 120, 220, 226, 56);
   } else if (lan.state == LINK_DONE) {
     // Both squads are still in hand on both devices, so going again costs one
     // packet -- there is nothing to re-exchange.
@@ -4975,10 +5533,9 @@ void renderLan() {
     gfx->drawRoundRect(120, 220, 226, 56, 12, UI_INK);
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(2);
-    gfx->setCursor(uiCenterX(T(S_LAN_REMATCH)), 240);
-    gfx->print(T(S_LAN_REMATCH));
+    uiDrawCenteredIn(T(S_LAN_REMATCH), 120, 220, 226, 56);
   }
-  gfx->setTextColor(UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(T(S_BACK)), 392);
   gfx->print(T(S_BACK));
@@ -5052,38 +5609,75 @@ void lanTap(int16_t x, int16_t y) {
 }
 
 // ---------- gym list ----------
+#define TEAMBTN_X 306
+#define TEAMBTN_Y 40
+#define TEAMBTN_W 42
+#define TEAMBTN_H 42
+
+void drawBattleCenterTeamButton() {
+  gfx->fillRoundRect(TEAMBTN_X, TEAMBTN_Y, TEAMBTN_W, TEAMBTN_H, 10, UI_BG_DAY);
+  gfx->drawRoundRect(TEAMBTN_X, TEAMBTN_Y, TEAMBTN_W, TEAMBTN_H, 10, UI_INK);
+  gfx->fillCircle(TEAMBTN_X + 17, TEAMBTN_Y + 15, 5, UI_INK);
+  gfx->fillCircle(TEAMBTN_X + 31, TEAMBTN_Y + 15, 5, UI_INK);
+  gfx->drawRoundRect(TEAMBTN_X + 9, TEAMBTN_Y + 24, 30, 9, 4, UI_INK);
+}
+
+bool battleCenterTeamTap(int16_t x, int16_t y) {
+  if (x < TEAMBTN_X || x > TEAMBTN_X + TEAMBTN_W ||
+      y < TEAMBTN_Y || y > TEAMBTN_Y + TEAMBTN_H) return false;
+  partyOpen = true;
+  partyDetail = 0;
+  boxOpen = false;
+  boxSel = 0;
+  boxSwapFrom = 0;
+  sfxPlay(SFX_TAP);
+  return true;
+}
+
 void renderGyms() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
-  // The ladder's own region in the title, since a vertical swipe moves between
-  // three of them and "GYMS" alone would not say which you are looking at.
-  char title[28];
-  snprintf(title, sizeof(title), "%s %s", regionName(gymRegion),
-           T(S_GYMS));
+  const char *title = T(S_BATTLE_CENTER);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(title), 42);
+  gfx->setCursor(uiCenterIn(title, 48, 290), 42);
   gfx->print(title);
+  drawBattleCenterTeamButton();
   // The badge count used to sit here, directly behind the difficulty pill. The
   // region chooser already shows it per region, which is where you are choosing
   // from, so it was both redundant and in the way.
   // difficulty pill: hard caps YOUR team to the leader's size and level, so it
   // is a different ladder with its own badges rather than a damage multiplier
-  const char *dif = T(gymHard ? S_HARD : S_EASY);
+  char dif[32];
+  snprintf(dif, sizeof(dif), "%s %s", regionName(gymRegion),
+           T(gymHard ? S_HARD : S_EASY));
   int dw = gfx->textWidth(dif) + 48;      // wider as well as taller
   if (dw < 120) dw = 120;
   gfx->fillRoundRect(CX - dw / 2, GYMDIF_Y, dw, GYMDIF_H, 12,
                      gymHard ? UI_BAR_BAD : UI_TRACK);
   gfx->setTextColor(gymHard ? UI_BG_DAY : UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(dif), GYMDIF_Y + 14);
-  gfx->print(dif);
+  uiDrawCenteredIn(dif, CX - dw / 2, GYMDIF_Y, dw, GYMDIF_H);
 
   for (int i = 0; i < GYM_ROWS; i++) {
-    uint8_t idx = gymPage * GYM_ROWS + i;
-    if (idx >= regionBattleInfo(gymRegion).trainerCount) break;
-    const Trainer &t = trainerInfo(gymRegion, idx);
+    uint8_t entry = gymPage * GYM_ROWS + i;
+    if (entry > regionBattleInfo(gymRegion).trainerCount) break;
     int y = GYM_ROW_Y(i);
+    if (entry == 0) {
+      gfx->fillRoundRect(70, y, 326, 44, 10, UI_BG_DAY);
+      gfx->drawRoundRect(70, y, 326, 44, 10, UI_BAR_OK);
+      gfx->setTextColor(UI_BAR_OK);
+      gfx->setTextSize(2);
+      gfx->setCursor(84, y + 8);
+      gfx->print(T(S_WILD));
+      gfx->setTextColor(UI_MUTED);
+      gfx->setTextSize(1);
+      gfx->setCursor(84, y + 28);
+      gfx->print(regionName(gymRegion));
+      continue;
+    }
+    uint8_t idx = entry - 1;
+    const Trainer &t = trainerInfo(gymRegion, idx);
     bool done = pet.hasBadge(gymRegion, idx, gymHard);
     uint8_t ivReward = idx < regionBattleInfo(gymRegion).gymCount
                          ? pet.gymIvRewardAt(gymRegion, idx) : 0;
@@ -5095,7 +5689,7 @@ void renderGyms() {
     gfx->setCursor(84, y + 8);
     gfx->print(trainerName(gymRegion, idx));
     gfx->setTextSize(1);
-    gfx->setTextColor(UI_TRACK);
+    gfx->setTextColor(UI_MUTED);
     gfx->setCursor(84, y + 28);
     gfx->print(open_ ? trainerPlace(gymRegion, idx) : T(S_LOCKED));
     // the level of the strongest creature: the honest measure of the wall
@@ -5125,7 +5719,7 @@ void renderGyms() {
       gfx->print(ivMark);
     }
   }
-  uint8_t pages = (regionBattleInfo(gymRegion).trainerCount + GYM_ROWS - 1) / GYM_ROWS;
+  uint8_t pages = (regionBattleInfo(gymRegion).trainerCount + 1 + GYM_ROWS - 1) / GYM_ROWS;
   for (uint8_t i = 0; i < pages; i++) {
     int dx = CX - (pages - 1) * 13 + i * 26;
     if (i == gymPage) gfx->fillCircle(dx, 366, 5, UI_INK);
@@ -5136,8 +5730,7 @@ void renderGyms() {
   gfx->drawRoundRect(148, 380, 170, 32, 9, UI_INK);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(T(S_LAN)), 388);
-  gfx->print(T(S_LAN));
+  uiDrawCenteredIn(T(S_LAN), 148, 380, 170, 32);
   gfx->flush();
 }
 
@@ -5167,9 +5760,8 @@ static void drawEggRegion() {
   gfx->drawRoundRect(EGGREG_X, EGGREG_Y, EGGREG_W, EGGREG_H, 10, UI_INK);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterIn(l, EGGREG_X, EGGREG_W), EGGREG_Y + 9);
-  gfx->print(l);
-  gfx->setTextColor(UI_TRACK);
+  uiDrawCenteredIn(l, EGGREG_X, EGGREG_Y, EGGREG_W, EGGREG_H);
+  gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(1);
   gfx->setCursor(uiCenterX(T(S_EGG_REGION)), EGGREG_Y + EGGREG_H + 6);
   gfx->print(T(S_EGG_REGION));
@@ -5272,12 +5864,13 @@ static void renderRegionPick(uint8_t mode) {
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
   char ttl[40];
   if (mode == RPICK_FOR_START) snprintf(ttl, sizeof(ttl), "%s", T(S_CHOOSE_REGION));
-  else if (forGyms) snprintf(ttl, sizeof(ttl), "%s", T(S_GYMS));
+  else if (forGyms) snprintf(ttl, sizeof(ttl), "%s", T(S_BATTLE_CENTER));
   else snprintf(ttl, sizeof(ttl), T(S_POKEDEX_FMT), pet.registeredCount(), dexCount());
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(ttl), 48);
+  gfx->setCursor(forGyms ? uiCenterIn(ttl, 48, 290) : uiCenterX(ttl), 48);
   gfx->print(ttl);
+  if (forGyms) drawBattleCenterTeamButton();
 
   for (uint8_t row = 0; row < RPICK_PER_PAGE; row++) {
     uint8_t i = (uint8_t)(first + row);
@@ -5308,7 +5901,7 @@ static void renderRegionPick(uint8_t mode) {
                pet.registeredCountIn(regionInfo(i).lo, regionInfo(i).hi),
                (unsigned)(regionInfo(i).hi - regionInfo(i).lo + 1));
     if (sub[0]) {
-      gfx->setTextColor(UI_TRACK);
+      gfx->setTextColor(UI_MUTED);
       gfx->setTextSize(2);
       gfx->setCursor(uiRightX(sub, RPICK_X + RPICK_W - 18), y + 22);
       gfx->print(sub);
@@ -5319,8 +5912,7 @@ static void renderRegionPick(uint8_t mode) {
     gfx->drawRoundRect(LANBTN_X, LANBTN_Y, LANBTN_W, LANBTN_H, 11, UI_INK);
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(2);
-    gfx->setCursor(uiCenterX(T(S_LAN)), LANBTN_Y + 14);
-    gfx->print(T(S_LAN));
+    uiDrawCenteredIn(T(S_LAN), LANBTN_X, LANBTN_Y, LANBTN_W, LANBTN_H);
   }
   if (pages > 1) {                        // dots: which page of regions this is
     int total = pages * 16 - 8;
@@ -5332,7 +5924,7 @@ static void renderRegionPick(uint8_t mode) {
     }
   }
   if (mode != RPICK_FOR_START) {          // first boot has nowhere to go back to
-    gfx->setTextColor(UI_TRACK);
+    gfx->setTextColor(UI_MUTED);
     gfx->setTextSize(2);
     gfx->setCursor(uiCenterX(T(S_BACK)), forGyms ? GYM_PICK_BACK_Y : RPICK_BACK_Y);
     gfx->print(T(S_BACK));
@@ -5395,8 +5987,7 @@ void renderLearn() {
   gfx->drawRoundRect(70, LEARN_SKIP_Y, 326, 44, 12, UI_INK);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(T(S_LEARN_SKIP)), LEARN_SKIP_Y + 14);
-  gfx->print(T(S_LEARN_SKIP));
+  uiDrawCenteredIn(T(S_LEARN_SKIP), 70, LEARN_SKIP_Y, 326, 44);
   gfx->flush();
 }
 
@@ -5460,7 +6051,7 @@ void renderCardProgress() {
   gfx->print(nx);
 
   // estado de evolucion
-  gfx->setTextColor(UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
   gfx->setCursor(uiCenterX(T(S_EVO_LABEL)), 230);
   gfx->print(T(S_EVO_LABEL));
   char evoBuf[28];
@@ -5517,7 +6108,7 @@ void renderCard() {
     if (i == cardPage) gfx->fillCircle(dx, 374, 5, UI_INK);
     else gfx->drawCircle(dx, 374, 4, UI_INK);
   }
-  gfx->setTextColor(UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(T(S_BACK)), 398);
   gfx->print(T(S_BACK));
@@ -5557,8 +6148,7 @@ void drawMenu() {
     menuRowLabel(i, lbl, sizeof(lbl));
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(2);
-    gfx->setCursor(uiCenterX(lbl), y + MENU_ROW_H / 2 - 8);
-    gfx->print(lbl);
+    uiDrawCenteredIn(lbl, MENU_X + 18, y, MENU_W - 36, MENU_ROW_H);
   }
 }
 
@@ -5646,10 +6236,9 @@ void renderBox() {
                        m.empty() ? UI_TRACK : UI_WHITE);
     gfx->drawRoundRect(x, y, PARTY_CELL_W, PARTY_CELL_H, 10, UI_INK);
     if (m.empty()) {
-      gfx->setTextColor(0x8410);
-      gfx->setTextSize(1);
-      gfx->setCursor(x + PARTY_CELL_W / 2 - 18, y + PARTY_CELL_H / 2 - 4);
-      gfx->print(T(S_PARTY_EMPTY));
+    gfx->setTextColor(0x8410);
+    gfx->setTextSize(1);
+    uiDrawCenteredIn(T(S_PARTY_EMPTY), x, y, PARTY_CELL_W, PARTY_CELL_H);
       continue;
     }
     const uint8_t *th = thumbs.get(m.dex);
@@ -5669,7 +6258,7 @@ void renderBox() {
     if (i == boxPage) gfx->fillCircle(dx, 366, 5, UI_INK);
     else gfx->drawCircle(dx, 366, 4, UI_INK);
   }
-  gfx->setTextColor(UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(T(S_BACK)), 392);
   gfx->print(T(S_BACK));
@@ -5723,9 +6312,7 @@ void drawPartySlot(int i, int x, int y) {
   if (m.empty()) {
     gfx->setTextColor(0x8410);
     gfx->setTextSize(2);
-    gfx->setCursor(uiCenterIn(T(S_PARTY_EMPTY), x, PARTY_CELL_W),
-                   y + PARTY_CELL_H / 2 - 8);
-    gfx->print(T(S_PARTY_EMPTY));
+    uiDrawCenteredIn(T(S_PARTY_EMPTY), x, y, PARTY_CELL_W, PARTY_CELL_H);
     return;
   }
   const uint8_t *th = thumbs.get(m.dex);
@@ -5771,8 +6358,7 @@ void renderParty() {
     gfx->drawRoundRect(BOXBTN_X, BOXBTN_Y, BOXBTN_W, BOXBTN_H, 10, UI_INK);
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(2);
-    gfx->setCursor(uiCenterX(bl), BOXBTN_Y + 12);
-    gfx->print(bl);
+    uiDrawCenteredIn(bl, BOXBTN_X, BOXBTN_Y, BOXBTN_W, BOXBTN_H);
   }
 
   if (boxSel) {
@@ -5807,8 +6393,7 @@ void renderParty() {
   gfx->drawRoundRect(PARTYCLOSE_X, PARTYCLOSE_Y, PARTYCLOSE_W, PARTYCLOSE_H, 12, UI_INK);
   gfx->setTextColor(partyPick ? UI_WHITE : UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(ex), PARTYCLOSE_Y + 14);
-  gfx->print(ex);
+  uiDrawCenteredIn(ex, PARTYCLOSE_X, PARTYCLOSE_Y, PARTYCLOSE_W, PARTYCLOSE_H);
   gfx->flush();
 }
 
@@ -5816,10 +6401,10 @@ void renderParty() {
 
 static const char KB_KEYS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ.-";  // 28 + DEL + OK = 30
 #define KB_COLS 6
-#define KB_X 40
-#define KB_Y 150
-#define KB_W 64
-#define KB_H 52
+#define KB_X 68
+#define KB_Y 148
+#define KB_W 55
+#define KB_H 48
 
 // The keyboard is shared, so it has to be told what it is naming. It used to
 // hardcode pet.rename() on commit, which is why a second caller needed this.
@@ -5855,12 +6440,11 @@ void renderKeyboard() {
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(2);
     if (i < 28) {
-      gfx->setCursor(x + KB_W / 2 - 9, y + KB_H / 2 - 10);
-      gfx->print(KB_KEYS[i]);
+      char label[2] = { KB_KEYS[i], 0 };
+      uiDrawCenteredIn(label, x, y, KB_W - 6, KB_H - 6);
     } else {
       const char *lab = (i == 28) ? "<-" : "OK";
-      gfx->setCursor(x + KB_W / 2 - 15, y + KB_H / 2 - 10);
-      gfx->print(lab);
+      uiDrawCenteredIn(lab, x, y, KB_W - 6, KB_H - 6);
     }
   }
   gfx->flush();
@@ -6094,8 +6678,7 @@ void renderQuiz() {
     gfx->drawRoundRect(70, 154, 326, 40, 10, UI_INK);
     gfx->setTextSize(2);
     const char *answer = quiz.input[0] ? quiz.input : T(S_QUIZ_ANSWER);
-    gfx->setCursor(uiCenterX(answer), 165);
-    gfx->print(answer);
+    uiDrawCenteredIn(answer, 70, 154, 326, 40);
     static const char *keys[4][4] = {
       { "7", "8", "9", "<" },
       { "4", "5", "6", "-" },
@@ -6113,8 +6696,7 @@ void renderQuiz() {
                            disabled ? UI_TRACK : (column == 3 && row == 3 ? UI_BAR_OK : 0xEF7D));
         gfx->drawRoundRect(left, top, width, height, 9, UI_INK);
         gfx->setTextColor(disabled ? UI_WHITE : UI_INK);
-        gfx->setCursor(uiCenterIn(keys[row][column], left, width), top + 13);
-        gfx->print(keys[row][column]);
+        uiDrawCenteredIn(keys[row][column], left, top, width, height);
       }
     }
   }
@@ -6161,7 +6743,7 @@ void renderGallery() {
                   true, !reg, description ? 4 : 6);
     } else {
       const uint8_t *t = thumbs.get(galleryDetail);
-      if (t) drawThumb(t, CX - GAL_CELL, description ? 105 : 135, 4, !reg);
+      if (t) drawThumb(t, CX - GAL_CELL / 2, description ? 105 : 135, 4, !reg);
     }
     if (description) {
       gfx->setTextColor(UI_INK);
@@ -6213,7 +6795,7 @@ void renderGallery() {
       } else {
         char num[6];
         snprintf(num, sizeof(num), "%d", dex);
-        gfx->setTextColor(UI_TRACK);
+        gfx->setTextColor(UI_MUTED);
         gfx->setTextSize(2);
         gfx->setCursor(x + 24, y + 32);
         gfx->print(num);
@@ -6225,7 +6807,7 @@ void renderGallery() {
   // them to find where you are is worse than reading the number.
   char pg[12];
   snprintf(pg, sizeof(pg), "%d/%d", galleryPage + 1, (int)GAL_PAGES);
-  gfx->setTextColor(UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(pg), 428);
   gfx->print(pg);
@@ -6380,12 +6962,10 @@ void drawChoiceDialog() {
   }
   gfx->fillRoundRect(CHOICE_BTN_X, CHOICE_BTN1_Y, CHOICE_BTN_W, CHOICE_BTN_H, 12, c1);
   gfx->setTextColor(t1);
-  gfx->setCursor(uiCenterX(o1), CHOICE_BTN1_Y + 18);
-  gfx->print(o1);
+  uiDrawCenteredIn(o1, CHOICE_BTN_X, CHOICE_BTN1_Y, CHOICE_BTN_W, CHOICE_BTN_H);
   gfx->fillRoundRect(CHOICE_BTN_X, CHOICE_BTN2_Y, CHOICE_BTN_W, CHOICE_BTN_H, 12, c2);
   gfx->setTextColor(t2);
-  gfx->setCursor(uiCenterX(o2), CHOICE_BTN2_Y + 18);
-  gfx->print(o2);
+  uiDrawCenteredIn(o2, CHOICE_BTN_X, CHOICE_BTN2_Y, CHOICE_BTN_W, CHOICE_BTN_H);
 }
 
 void choiceDialogVerticals(int *titleBottom, int *costTop, int *costBottom,
@@ -6411,8 +6991,7 @@ void drawEvolveButton() {
   gfx->setTextColor(UI_WHITE);
   gfx->setTextSize(3);
   const char *t = T(S_EVO_TAP);
-  gfx->setCursor(uiCenterX(t), y + h / 2 - 11);
-  gfx->print(t);
+  uiDrawCenteredIn(t, x, y, w, h);
 }
 
 // boton-CTA dorado de despedida: "<nombre> quiere decirte algo..."
@@ -6427,8 +7006,7 @@ void drawFarewellButton() {
   snprintf(buf, sizeof(buf), T(S_FAREWELL_BTN), nm);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(buf), y + h / 2 - 8);
-  gfx->print(buf);
+  uiDrawCenteredIn(buf, x, y, w, h);
 }
 
 // boton-CTA sombrio de escapada por abandono: "<nombre> se siente abandonado..."
@@ -6444,8 +7022,7 @@ void drawRunawayButton() {
   snprintf(buf, sizeof(buf), T(S_RUNAWAY_BTN), nm);
   gfx->setTextColor(C565(0xc8, 0xd2, 0xe0));
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(buf), y + h / 2 - 8);
-  gfx->print(buf);
+  uiDrawCenteredIn(buf, x, y, w, h);
 }
 
 // animacion epica de evolucion: halo radial + rayos giratorios + parpadeo del

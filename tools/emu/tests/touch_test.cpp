@@ -52,6 +52,7 @@ extern Combatant btlSquad[7];
 extern int8_t btlSwapWho;
 extern bool btlHard;
 extern bool gymOpen, gymHard; extern uint8_t gymPage;
+extern bool partyOpen;
 extern bool pickOpen, pickHard; extern uint8_t pickTrainer; extern uint16_t squadMask;
 uint8_t squadCap(uint8_t idx, bool hard);
 uint8_t pickChosen(); uint8_t pickCandidates(); void pickDefault(uint8_t);
@@ -321,6 +322,7 @@ int main(int argc, char **argv) {
       continue;
     }
     if (btlMsgCount) { click(233, 320); continue; }   // clear narration
+    if (btlMenu == 0) { click(BTL_CELL_X(0) + 40, BTL_CELL_Y(0) + 20); continue; }
     int slot = bestMoveSlot();
     if (slot < 0) break;
     click(BTL_CELL_X(slot) + 40, BTL_CELL_Y(slot) + 20);
@@ -352,6 +354,7 @@ int main(int argc, char **argv) {
       continue;
     }
     if (btlMsgCount) { click(233, 320); continue; }
+    if (btlMenu == 0) { click(BTL_CELL_X(0) + 40, BTL_CELL_Y(0) + 20); continue; }
     int slot = bestMoveSlot();
     if (slot < 0) break;
     click(BTL_CELL_X(slot) + 40, BTL_CELL_Y(slot) + 20);
@@ -462,24 +465,29 @@ int main(int argc, char **argv) {
   battleOpen = false; pickOpen = false;
   pet.badges = 0;                       // nothing beaten yet
   gymOpen = true; gymHard = false; gymPage = 0;
-  click(233, 110 + 1 * 50 + 20);        // MISTY, the second row
+  click(233, 110 + 2 * 50 + 20);        // MISTY, after the WILD row and BROCK
   if (pickOpen || battleOpen) { printf("FAIL: a locked leader was enterable\n"); return 1; }
   printf("PASS: a locked leader cannot be entered\n");
-  click(233, 110 + 0 * 50 + 20);        // BROCK, the first
+  click(233, 110 + 1 * 50 + 20);        // BROCK, after the WILD row
   if (!pickOpen) { printf("FAIL: the first leader was not enterable\n"); return 1; }
   printf("PASS: the first leader is always open\n");
   pickOpen = false;
   pet.badges = 1;                       // Brock beaten
   gymOpen = true; gymPage = 0;
-  click(233, 110 + 1 * 50 + 20);        // MISTY again
+  click(233, 110 + 2 * 50 + 20);        // MISTY again
   if (!pickOpen) { printf("FAIL: beating one did not unlock the next\n"); return 1; }
   printf("PASS: beating a leader unlocks the next\n");
   pickOpen = false;
   // and the hard ladder is its own run
   gymOpen = true; gymHard = true; gymPage = 0;
-  click(233, 110 + 1 * 50 + 20);
+  click(233, 110 + 2 * 50 + 20);
   if (pickOpen) { printf("FAIL: easy progress unlocked the hard ladder\n"); return 1; }
   printf("PASS: hard mode keeps its own unlock order\n");
+  gymOpen = true; partyOpen = false;
+  click(327, 61);
+  if (!partyOpen || !gymOpen) { printf("FAIL: battle-centre team icon did not open the party in context\n"); return 1; }
+  printf("PASS: battle-centre team icon opens the party without losing context\n");
+  partyOpen = false;
   gymHard = false; gymOpen = false; pet.badges = 0;
 
   // ---- a live pet plus a FULL party is 7 candidates against a cap of 6. The

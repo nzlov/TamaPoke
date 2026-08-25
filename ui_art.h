@@ -12,6 +12,7 @@
 #define UI_INK 0x2946  // #2a2a36
 #define UI_INK_NIGHT 0xDEFE  // #d8dcf0
 #define UI_TRACK 0xDE97  // #d8d2bd
+#define UI_MUTED 0x738D  // #74706b; secondary text on the light panel
 #define UI_BAR_OK 0x5DCD  // #58b868
 #define UI_BAR_WARN 0xED07  // #e8a23c
 #define UI_BAR_BAD 0xEA87  // #e8503a
@@ -305,4 +306,3 @@ static const char* const SPR_HEART[32] = {  // 32x32
   "................................",
   "................................",
 };
-

@@ -120,6 +120,13 @@ static uint8_t *gMoveLocales = nullptr;
 static uint32_t gMoveLocalesSize = 0;
 static uint8_t *gMoveLocalizedNames = nullptr;
 static uint32_t gMoveLocalizedNamesSize = 0;
+static ItemEntry *gItems = nullptr;
+static uint16_t gItemCount = 0;
+static char *gItemNames = nullptr;
+static uint8_t *gItemLocalizedNames = nullptr;
+static uint32_t gItemLocalizedNamesSize = 0;
+static uint8_t *gItemLocales = nullptr;
+static uint32_t gItemLocalesSize = 0;
 static uint8_t *gTypeLocalizedNames = nullptr;
 static uint32_t gTypeLocalizedNamesSize = 0;
 static uint8_t gTypeChart[TYPE_COUNT * TYPE_COUNT] = {};
@@ -604,11 +611,67 @@ static bool loadMovePack(uint8_t packIndex) {
   uint8_t *localizedNames = readSection(pack, "LNAM", &localizedNamesSize);
   uint32_t localizedTypeNamesSize = 0;
   uint8_t *localizedTypeNames = readSection(pack, "TLNM", &localizedTypeNamesSize);
+
+  uint32_t itemSize = 0, itemRecords = 0, itemNamesSize = 0;
+  uint8_t *rawItems = readSection(pack, "ITEM", &itemSize, &itemRecords);
+  uint8_t *itemNames = readSection(pack, "INAM", &itemNamesSize);
+  uint32_t itemLocalizedNamesSize = 0, itemLocalesSize = 0;
+  uint32_t itemLocalizedNameCount = 0, itemLocaleCount = 0;
+  uint8_t *itemLocalizedNames = readSection(
+      pack, "ILNM", &itemLocalizedNamesSize, &itemLocalizedNameCount);
+  uint8_t *itemLocales = readSection(pack, "ILOC", &itemLocalesSize, &itemLocaleCount);
+  if (!rawItems || !itemNames || !itemLocalizedNames || !itemLocales || !itemRecords ||
+      itemRecords > CONTENT_MAX_ITEMS || itemSize != itemRecords * 16u ||
+      itemLocalizedNameCount != itemRecords || itemLocaleCount != itemRecords) {
+    free(rawItems); free(itemNames); free(itemLocalizedNames); free(itemLocales);
+    free(locales); free(localizedNames); free(localizedTypeNames);
+    free(typeNames); free(offsets); free(entries); free(names); free(table);
+    return false;
+  }
+  ItemEntry *items = (ItemEntry *)contentAlloc(sizeof(ItemEntry) * itemRecords);
+  if (!items) {
+    free(rawItems); free(itemNames); free(itemLocalizedNames); free(itemLocales);
+    free(locales); free(localizedNames); free(localizedTypeNames);
+    free(typeNames); free(offsets); free(entries); free(names); free(table);
+    return false;
+  }
+  for (uint32_t i = 0; i < itemRecords; i++) {
+    const uint8_t *row = rawItems + i * 16;
+    ItemKey key = rd16(row);
+    uint32_t nameOffset = rd32(row + 12);
+    if (!key || row[2] < ITEM_CATEGORY_BALL || row[2] > ITEM_CATEGORY_EVOLUTION ||
+        row[3] < ITEM_EFFECT_CATCH || row[3] > ITEM_EFFECT_EVOLVE ||
+        !row[4] || row[4] > 4 || row[10] > ITEM_STACK_LIMIT ||
+        !validString(itemNames, itemNamesSize, nameOffset)) {
+      free(rawItems); free(itemNames); free(itemLocalizedNames); free(itemLocales); free(items);
+      free(locales); free(localizedNames); free(localizedTypeNames);
+      free(typeNames); free(offsets); free(entries); free(names); free(table);
+      return false;
+    }
+    for (uint32_t previous = 0; previous < i; previous++)
+      if (items[previous].key == key) {
+        free(rawItems); free(itemNames); free(itemLocalizedNames); free(itemLocales); free(items);
+        free(locales); free(localizedNames); free(localizedTypeNames);
+        free(typeNames); free(offsets); free(entries); free(names); free(table);
+        return false;
+      }
+    ItemEntry &item = items[i];
+    item.key = key; item.name = (const char *)(itemNames + nameOffset);
+    item.category = row[2]; item.effect = row[3]; item.rarity = row[4];
+    item.flags = row[5]; item.param = (int16_t)rd16(row + 6);
+    item.dropWeight = rd16(row + 8); item.dailyMin = row[10];
+  }
+  free(rawItems);
+
   gMovesTable = table; gMoveCount = (uint16_t)moveRecords; gMoveNames = (char *)names;
   gLearnOffsets = offsets; gLearnOffsetCount = offsetCount;
   gLearnEntries = entries; gLearnEntryCount = learnCountValue;
   gMoveLocales = locales; gMoveLocalesSize = localesSize;
   gMoveLocalizedNames = localizedNames; gMoveLocalizedNamesSize = localizedNamesSize;
+  gItems = items; gItemCount = (uint16_t)itemRecords; gItemNames = (char *)itemNames;
+  gItemLocalizedNames = itemLocalizedNames;
+  gItemLocalizedNamesSize = itemLocalizedNamesSize;
+  gItemLocales = itemLocales; gItemLocalesSize = itemLocalesSize;
   gTypeLocalizedNames = localizedTypeNames;
   gTypeLocalizedNamesSize = localizedTypeNamesSize;
   gTypeNames = (char *)typeNames;
@@ -1174,6 +1237,15 @@ bool regionPackAvailable(uint8_t index) {
 uint16_t moveCount() { ensureContent(); return gMoveCount; }
 bool moveValid(MoveId id) { ensureContent(); return id < gMoveCount && gMovesTable && gMovesTable[id].name; }
 const MoveEntry &moveEntry(MoveId id) { return moveValid(id) ? gMovesTable[id] : MISSING_MOVE; }
+uint16_t itemCount() { ensureContent(); return gItemCount; }
+const ItemEntry *itemAt(uint16_t index) {
+  ensureContent(); return index < gItemCount ? &gItems[index] : nullptr;
+}
+const ItemEntry *itemByKey(ItemKey key) {
+  ensureContent();
+  for (uint16_t i = 0; i < gItemCount; i++) if (gItems[i].key == key) return &gItems[i];
+  return nullptr;
+}
 uint16_t learnCount(SpeciesId species) {
   ensureContent();
   if (!species || (uint32_t)species + 1u >= gLearnOffsetCount) return 0;
@@ -1343,6 +1415,14 @@ const char *moveDescription(MoveId move, const char *locale) {
   if (!moveValid(move)) return nullptr;
   return localizedAt(gMoveLocales, gMoveLocalesSize, locale, move);
 }
+const char *itemDescription(ItemKey key, const char *locale) {
+  const ItemEntry *item = itemByKey(key);
+  if (!item) return nullptr;
+  uint32_t index = (uint32_t)(item - gItems);
+  const char *localized = localizedAt(gItemLocales, gItemLocalesSize, locale, index);
+  return localized ? localized
+                   : localizedAt(gItemLocales, gItemLocalesSize, "en-US", index);
+}
 
 const char *speciesName(SpeciesId species) {
   if (!dexValid(species)) return MISSING_SPECIES.name;
@@ -1362,6 +1442,15 @@ const char *moveName(MoveId move) {
                     uiActiveLocaleCode(), move)
       : nullptr;
   return localized && *localized ? localized : gMovesTable[move].name;
+}
+const char *itemName(ItemKey key) {
+  const ItemEntry *item = itemByKey(key);
+  if (!item) return "?";
+  const char *localized = gUiActive < gUiCount
+      ? localizedAt(gItemLocalizedNames, gItemLocalizedNamesSize,
+                    uiActiveLocaleCode(), (uint32_t)(item - gItems))
+      : nullptr;
+  return localized && *localized ? localized : item->name;
 }
 
 uint8_t typeEffectTenth(uint8_t attack, uint8_t defense) {

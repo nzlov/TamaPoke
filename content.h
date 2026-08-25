@@ -3,6 +3,7 @@
 #include <stddef.h>
 
 #include "dex.h"
+#include "items.h"
 #include "moves.h"
 
 constexpr uint16_t CONTENT_PACK_ABI = 2;
@@ -126,8 +127,14 @@ bool uiFontLoadData(uint8_t **out, uint32_t *size);
 
 const char *speciesDescription(SpeciesId species, const char *locale);
 const char *moveDescription(MoveId move, const char *locale);
+const char *itemDescription(ItemKey key, const char *locale);
 const char *speciesName(SpeciesId species);
 const char *moveName(MoveId move);
+const char *itemName(ItemKey key);
+
+uint16_t itemCount();
+const ItemEntry *itemAt(uint16_t index);
+const ItemEntry *itemByKey(ItemKey key);
 
 uint8_t typeEffectTenth(uint8_t attack, uint8_t defense);
 const char *packedTypeName(uint8_t type);

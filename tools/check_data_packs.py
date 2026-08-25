@@ -19,7 +19,7 @@ REQUIRED_SECTIONS = {
     2: {b"SPEC", b"EVOS", b"NAME", b"LNAM", b"REGN", b"RLNM", b"SPRI", b"SBLB", b"THMB",
         b"LOCL", b"BTTL", b"TRNR", b"GSTR", b"BADG", b"BBLB"},
     3: {b"MOVE", b"NAME", b"LNAM", b"LOFS", b"LERN", b"TYPS", b"TSTR", b"TLNM",
-        b"CHRT", b"LOCL"},
+        b"CHRT", b"LOCL", b"ITEM", b"INAM", b"ILNM", b"ILOC"},
     4: {b"QLOC", b"QIDX", b"QDAT"},
 }
 
@@ -167,6 +167,23 @@ def validate(path: Path, expected: dict) -> None:
         validate_ui_font(sections[b"FONT"], section_counts[b"FONT"])
     elif kind == 2:
         validate_localized_strings(sections[b"RLNM"], section_counts[b"RLNM"])
+    elif kind == 3:
+        item_record = struct.Struct("<HBBBBhHBBI")
+        item_count = section_counts[b"ITEM"]
+        if not item_count or len(sections[b"ITEM"]) != item_count * item_record.size:
+            raise ValueError("invalid item table size")
+        keys = []
+        for offset in range(0, len(sections[b"ITEM"]), item_record.size):
+            key, category, effect, rarity, _flags, _param, _weight, daily, reserved, _name = \
+                item_record.unpack_from(sections[b"ITEM"], offset)
+            if not key or not 1 <= category <= 5 or not 1 <= effect <= 5 or \
+                    not 1 <= rarity <= 4 or daily > 99 or reserved:
+                raise ValueError("invalid item record")
+            keys.append(key)
+        if len(keys) != len(set(keys)):
+            raise ValueError("duplicate item key")
+        validate_localized_strings(sections[b"ILNM"], item_count)
+        validate_localized_strings(sections[b"ILOC"], item_count)
     elif kind == 4:
         validate_quiz(sections, section_counts)
     if kind in (2, 3) and mechanics_hash == 0:

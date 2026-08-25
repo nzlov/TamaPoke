@@ -15,6 +15,12 @@
 #define BOX_SLOTS 18
 #define MOVE_SLOTS 4    // the same four every trainer gets in the real games
 
+enum PartyStoreResult : uint8_t {
+  PARTY_STORE_PARTY = 1,
+  PARTY_STORE_BOX,
+  PARTY_STORE_FULL,
+};
+
 // One byte per real gym, stored with the creature. 0 means unclaimed; the
 // other values say which IV that win raised, so the same array is both the
 // claim record and the reward history shown by the gym screen.
@@ -60,6 +66,7 @@ public:
   bool isFull() const { return count() >= PARTY_SLOTS; }
   int firstFree() const;        // index of the first empty slot, -1 if full
   bool add(const PartyMon &m);  // into the first free slot; false if full
+  PartyStoreResult store(const PartyMon &m);  // party first, then box
   void replaceAt(uint8_t i, const PartyMon &m);
   void releaseAt(uint8_t i);    // free a slot again
   void save();

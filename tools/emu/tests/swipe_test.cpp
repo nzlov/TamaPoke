@@ -18,6 +18,7 @@ void setup(); void render(); void onSwipe(int dir); void onSwipeV(int dir);
 extern Pet pet;
 extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyOpen, partyPick;
 extern bool trainOpen, movePickOpen, battleOpen, gymOpen, playerOpen, boxOpen, pickOpen;
+extern bool bagOpen, captureOpen;
 extern uint8_t cardPage, gymPage, playerPage, movePickPage, boxPage, pickPage, partyDetail;
 extern int galleryPage; extern bool galleryDirty; extern uint8_t galleryDetail;
 extern uint8_t galleryRegion;
@@ -44,6 +45,7 @@ static void clearAll(){
   gymPick=galleryPick=false;
   cardOpen=galleryOpen=clockOpen=kbOpen=menuOpen=partyOpen=partyPick=false;
   trainOpen=movePickOpen=battleOpen=gymOpen=playerOpen=boxOpen=pickOpen=false;
+  bagOpen=captureOpen=false;
   partyDetail=0; boxSel=boxSwapFrom=0;
 }
 // swipe left; the page must advance and the screen must stay open
@@ -158,6 +160,11 @@ int main(){
     onSwipe(1);
     if (!galleryPick || !galleryOpen) { printf("FAIL  gallery    paging back does not return to the chooser\n"); bad++; }
     else printf("PASS  %-10s paging back returns to the chooser\n", "gallery");
+
+    clearAll();
+    onSwipe(1);                        // swipe right from the main screen
+    if (!bagOpen || partyOpen) { printf("FAIL  bag        right swipe did not open the bag\n"); bad++; }
+    else printf("PASS  %-10s opens without opening the party\n", "bag");
   }
 
   // THE REGION CHOOSER IS PAGED NOW, and every paged screen in this sketch has

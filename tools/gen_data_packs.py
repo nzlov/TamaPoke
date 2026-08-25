@@ -40,6 +40,7 @@ from dex_presentation import BIOME_OVERRIDE, TYPE_BIOME, rgb565  # noqa: E402
 
 NAME_LOCALES = json.loads((HERE / "name_locales.json").read_text(encoding="utf-8"))
 REGION_LOCALES = json.loads((HERE / "region_locales.json").read_text(encoding="utf-8"))
+ITEM_DATA = json.loads((HERE / "item_data.json").read_text(encoding="utf-8"))
 
 TYPE_COLORS = [
     0xAD4F, 0xF406, 0x6C9E, 0xFE86, 0x7E4A, 0x9EDB,
@@ -500,6 +501,7 @@ def required_ui_codepoints() -> set[int]:
         species_descriptions(DEX),
         move_descriptions(list(MOVES)),
         localized_type_names(),
+        ITEM_DATA,
     ]
     return set(range(32, 127)) | {
         ord(char)
@@ -543,7 +545,31 @@ def build_move_pack(manifest: list[dict]) -> None:
     locales = localized_strings(move_descriptions(list(MOVES)), len(move_rows))
     localized_names = localized_strings(move_names(), len(move_rows))
     type_locales = localized_strings(localized_type_names(), len(TYPE_ORDER))
-    mechanics_hash = binascii.crc32(move_blob + learn + offset_blob + chart) & 0xFFFFFFFF
+
+    item_keys = [int(item["key"]) for item in ITEM_DATA]
+    if len(item_keys) != len(set(item_keys)) or any(not 0 < key <= 0xFFFF for key in item_keys):
+        raise ValueError("item keys must be unique non-zero uint16 values")
+    item_names, item_name_offsets = string_pool([item["names"]["en-US"] for item in ITEM_DATA])
+    item_record = struct.Struct("<HBBBBhHBBI")
+    item_blob = bytearray()
+    for item, name_offset in zip(ITEM_DATA, item_name_offsets):
+        item_blob.extend(item_record.pack(
+            item["key"], item["category"], item["effect"], item["rarity"],
+            item.get("flags", 0), item.get("param", 0), item.get("dropWeight", 0),
+            item.get("dailyMin", 0), 0, name_offset,
+        ))
+    item_localized_names = localized_strings({
+        locale: [item["names"][locale] for item in ITEM_DATA]
+        for locale in ("en-US", "zh-CN")
+    }, len(ITEM_DATA))
+    item_localized_descriptions = localized_strings({
+        locale: [item["descriptions"][locale] for item in ITEM_DATA]
+        for locale in ("en-US", "zh-CN")
+    }, len(ITEM_DATA))
+
+    mechanics_hash = binascii.crc32(
+        move_blob + learn + offset_blob + chart + item_blob
+    ) & 0xFFFFFFFF
     blob = pack(KIND_MOVE, "moves-core", mechanics_hash, [
         ("MOVE", bytes(move_blob), len(move_rows)),
         ("NAME", names_blob, len(move_rows)),
@@ -555,6 +581,10 @@ def build_move_pack(manifest: list[dict]) -> None:
         ("TLNM", type_locales, len(TYPE_ORDER)),
         ("CHRT", bytes(chart), len(chart)),
         ("LOCL", locales, len(move_rows)),
+        ("ITEM", bytes(item_blob), len(ITEM_DATA)),
+        ("INAM", item_names, len(ITEM_DATA)),
+        ("ILNM", item_localized_names, len(ITEM_DATA)),
+        ("ILOC", item_localized_descriptions, len(ITEM_DATA)),
     ])
     path = WEB_PACKS / "moves-core.tmove"
     path.write_bytes(blob)
@@ -597,8 +627,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sprite-dir", type=Path, default=HERE / "sdcard" / "mons",
                         help="directory containing pNNN.bin, psNNN.bin and thumbs.bin sources")
+    parser.add_argument("--move-only", action="store_true",
+                        help="rebuild only moves-core.tmove without requiring regional art")
     args = parser.parse_args()
     WEB_PACKS.mkdir(parents=True, exist_ok=True)
+    if args.move_only:
+        manifest: list[dict] = []
+        build_move_pack(manifest)
+        print(f"wrote {WEB_PACKS / 'moves-core.tmove'}")
+        return 0
     for pattern in ("*.tui", "*.tmove", "*.tpet", "*.tquiz"):
         for obsolete in WEB_PACKS.glob(pattern):
             obsolete.unlink()

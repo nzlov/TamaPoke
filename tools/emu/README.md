@@ -61,8 +61,14 @@ tools/emu/tamapoke-emu --shot battle --lang zh-CN --lvl 73 --iv 31 --dex 149 --o
 sips -s format png shot.ppm --out shot.png     # macOS; or use ImageMagick
 ```
 
-`--shot` accepts `main`, `battle`, `profile`, `medals`, `progress`, `gallery`,
-`clock`, `menu`, `party`, `partyfull`, `egg`, `starter`, `dexdetail`, `moveinfo`.
+`--shot` accepts the normal pages plus their actionable overlays and result
+states. Representative names include `main`, `evolvecta`, `farewellcta`,
+`runawaycta`, `sleep`, `feedmenu`,
+`releaseconfirm`, `choiceevolve`, `bath`, `keyboard`, `battle`, `btlmoves`,
+`btlrevive`, `profile`, `gallery`, `clock`, `menu`, `party`, `boxreplace`, `bag`,
+`bagdetail`, `train`, `ballgame`, `sack`, `speed`, `quiz`, `quizcorrect`,
+`battlecenter`, `wildfight`, `wilditems`, `capture`, `capturemoves`, `egg`,
+`starter`, `dexdetail`, and `moveinfo`.
 `--lvl`, `--iv` and
 `--dex` set up the pet first.
 

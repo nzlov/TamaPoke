@@ -33,6 +33,8 @@ const SaveField SAVE_FIELDS[] = {
   { "ghi", SK_U16 },    { "shi", SK_U16 },    { "qhi", SK_U16 },
   // the banked creatures
   { "party", SK_BYTES }, { "box", SK_BYTES },
+  // the bag. Keys inside the blob are opaque identities owned by the move pack.
+  { "items", SK_BYTES }, { "itemday", SK_U32 }, { "iteminit", SK_BOOL },
   // settings, so a restored device plays the way it did
   { "locale", SK_STR }, { "snd", SK_BOOL },   { "vol", SK_U8 },
 };

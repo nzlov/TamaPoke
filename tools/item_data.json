@@ -1,0 +1,79 @@
+[
+  {
+    "key": 1001,
+    "category": 1,
+    "effect": 1,
+    "rarity": 1,
+    "param": 100,
+    "dropWeight": 50,
+    "dailyMin": 5,
+    "names": {"en-US": "POKE BALL", "zh-CN": "精灵球"},
+    "descriptions": {"en-US": "A basic ball for catching wild Pokemon.", "zh-CN": "用于捕捉野生宝可梦的基础精灵球。"}
+  },
+  {
+    "key": 1002,
+    "category": 1,
+    "effect": 1,
+    "rarity": 2,
+    "param": 150,
+    "dropWeight": 20,
+    "dailyMin": 2,
+    "names": {"en-US": "GREAT BALL", "zh-CN": "超级球"},
+    "descriptions": {"en-US": "A better ball with a 1.5x catch modifier.", "zh-CN": "捕获修正为1.5倍的高性能精灵球。"}
+  },
+  {
+    "key": 1003,
+    "category": 1,
+    "effect": 1,
+    "rarity": 3,
+    "param": 200,
+    "dropWeight": 6,
+    "dailyMin": 1,
+    "names": {"en-US": "ULTRA BALL", "zh-CN": "高级球"},
+    "descriptions": {"en-US": "A high-grade ball with a 2x catch modifier.", "zh-CN": "捕获修正为2倍的高等级精灵球。"}
+  },
+  {
+    "key": 1101,
+    "category": 2,
+    "effect": 2,
+    "rarity": 1,
+    "param": 20,
+    "dropWeight": 35,
+    "dailyMin": 0,
+    "names": {"en-US": "POTION", "zh-CN": "伤药"},
+    "descriptions": {"en-US": "Restores 20 HP during battle.", "zh-CN": "在战斗中回复20点HP。"}
+  },
+  {
+    "key": 1102,
+    "category": 2,
+    "effect": 2,
+    "rarity": 2,
+    "param": 60,
+    "dropWeight": 14,
+    "dailyMin": 0,
+    "names": {"en-US": "SUPER POTION", "zh-CN": "好伤药"},
+    "descriptions": {"en-US": "Restores 60 HP during battle.", "zh-CN": "在战斗中回复60点HP。"}
+  },
+  {
+    "key": 1201,
+    "category": 3,
+    "effect": 3,
+    "rarity": 2,
+    "param": 127,
+    "dropWeight": 12,
+    "dailyMin": 0,
+    "names": {"en-US": "FULL HEAL", "zh-CN": "万灵药"},
+    "descriptions": {"en-US": "Cures any battle status condition.", "zh-CN": "治愈战斗中的任意异常状态。"}
+  },
+  {
+    "key": 1301,
+    "category": 4,
+    "effect": 4,
+    "rarity": 3,
+    "param": 50,
+    "dropWeight": 5,
+    "dailyMin": 0,
+    "names": {"en-US": "REVIVE", "zh-CN": "活力碎片"},
+    "descriptions": {"en-US": "Revives a fainted team member with half HP.", "zh-CN": "让倒下的队伍成员以一半HP复活。"}
+  }
+]

@@ -280,27 +280,28 @@ void Pet::reviveFrom(const PartyMon &m) {
   save();
 }
 
+PartyMon Pet::toPartyMon() const {
+  PartyMon out;
+  if (isEgg()) return out;
+  out.dex = speciesId;
+  out.level = level();
+  out.medals = medals;
+  out.ivAtk = ivAtk; out.ivDef = ivDef; out.ivSpe = ivSpe; out.ivHp = ivHp;
+  out.trAtk = trMaxAtk(); out.trDef = trMaxDef(); out.trSpe = trMaxSpe();
+  out.shiny = shiny ? 1 : 0;
+  out.nature = nature;
+  for (int i = 0; i < MOVE_SLOTS; i++) out.moves[i] = moves[i];
+  memcpy(out.gymIvRewards, gymIvRewards, sizeof(gymIvRewards));
+  strncpy(out.nick, nick, sizeof(out.nick) - 1);
+  out.nick[sizeof(out.nick) - 1] = 0;
+  return out;
+}
+
 void Pet::snapshotForParty() {
   endedKind = CER_NONE;
   if (isEgg()) return;
   if (ceremony != CER_FAREWELL && ceremony != CER_RELEASE) return;
-  endedMon = PartyMon();
-  endedMon.dex = speciesId;
-  endedMon.level = level();
-  endedMon.medals = medals;
-  endedMon.ivAtk = ivAtk;
-  endedMon.ivDef = ivDef;
-  endedMon.ivSpe = ivSpe;
-  endedMon.ivHp = ivHp;
-  endedMon.trAtk = trMaxAtk();
-  endedMon.trDef = trMaxDef();
-  endedMon.trSpe = trMaxSpe();
-  endedMon.shiny = shiny ? 1 : 0;
-  endedMon.nature = nature;
-  for (int i = 0; i < MOVE_SLOTS; i++) endedMon.moves[i] = moves[i];  // frozen too
-  memcpy(endedMon.gymIvRewards, gymIvRewards, sizeof(gymIvRewards));
-  strncpy(endedMon.nick, nick, sizeof(endedMon.nick) - 1);
-  endedMon.nick[sizeof(endedMon.nick) - 1] = 0;
+  endedMon = toPartyMon();
   endedKind = ceremony;
 }
 

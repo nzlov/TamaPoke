@@ -8,6 +8,8 @@
 #include "pet.h"
 #include "party.h"
 #include "battle.h"
+#include "inventory.h"
+#include "content.h"
 #include "i18n.h"
 #include "quiz.h"
 #include <chrono>
@@ -171,18 +173,37 @@ extern uint8_t pickTrainer, pickPage;
 void pickDefault(uint8_t cap);
 extern bool pickHard;
 void startSpeedGame();
+void startGame();
+void startSack();
+void startBathAnimation(uint32_t now);
+void openKeyboard();
+void openKeyboardFor(uint8_t target);
 void setup();
 void loop();
 void render();
 extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyOpen, partyPick, trainOpen, movePickOpen;
+extern bool bagOpen, captureOpen;
+extern bool btlWild;
+extern uint8_t capturePage;
+extern PartyMon capturedMon;
 extern uint8_t cardPage;
 extern int16_t galleryDetail;
 extern bool moveInfoOpen;
 extern uint8_t movePickSlot;
 extern QuizRuntime quiz;
-
+extern uint32_t feedMenuUntil, confirmUntil, choiceUntil, bathUntil;
+extern uint8_t choiceKind;
+extern uint32_t partyBannerUntil;
+extern char partyBannerName[32];
+extern bool gameOpen, gameNewHi, sackOpen, sackNewHi, spdOpen, spdNewHi;
+extern uint32_t gameOverUntil, sackOverUntil, spdOverUntil;
+extern uint8_t gameScore, gameMisses, sackGain, spdGain;
+extern uint16_t sackHits, spdHits;
+extern ItemKey bagDetailKey, btlPendingItem;
+extern uint8_t bagPage, boxSel, btlItemPage, btlSquadN;
+extern Combatant btlSquad[];
 #define PANEL 466
 
 // Headless capture, so the layout can be checked without a display. Writes a
@@ -203,6 +224,13 @@ static void writePPM(const char *path) {
   }
   fclose(f);
   printf("wrote %s\n", path);
+}
+
+static void expireShotCelebrations() {
+  emuSetTimeScale(1000);
+  usleep(5000);
+  millis();
+  emuSetTimeScale(1);
 }
 
 static int shotMode(const char *screen, const char *out, int lvl, int iv, int dex,
@@ -243,7 +271,27 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   for (int i = 0; i < 2; i++) loop();          // pick up the sprite for the new species
   cardOpen = galleryOpen = clockOpen = kbOpen = false;
   menuOpen = partyOpen = partyPick = trainOpen = movePickOpen = false;
-  if (!strcmp(screen, "battle"))      { cardOpen = true; cardPage = 1; }
+  bagOpen = captureOpen = false;
+  if (!strcmp(screen, "main")) pet.ageMinutes = 0;
+  else if (!strcmp(screen, "evolvecta")) {
+    pet.dbgHatchAs(1, false);
+    pet.ageMinutes = 19UL * MINUTES_PER_LEVEL;
+    while (pet.hasLearnOffer()) pet.declineLearn();
+  }
+  else if (!strcmp(screen, "farewellcta")) {
+    pet.dbgHatchAs(3, false);
+    expireShotCelebrations();
+    pet.ageMinutes = 73UL * MINUTES_PER_LEVEL;
+    while (pet.hasLearnOffer()) pet.declineLearn();
+  }
+  else if (!strcmp(screen, "runawaycta")) {
+    pet.dbgHatchAs(3, false);
+    expireShotCelebrations();
+    pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
+    pet.dbgRunawayReady();
+    while (pet.hasLearnOffer()) pet.declineLearn();
+  }
+  else if (!strcmp(screen, "battle"))      { cardOpen = true; cardPage = 1; }
   else if (!strcmp(screen, "profile")){ cardOpen = true; cardPage = 0; }
   else if (!strcmp(screen, "medals")) { cardOpen = true; cardPage = 3; }
   else if (!strcmp(screen, "progress")){cardOpen = true; cardPage = 4; }
@@ -267,24 +315,149 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   else if (!strcmp(screen, "clock"))   clockOpen = true;
   else if (!strcmp(screen, "menu"))    menuOpen = true;
   else if (!strcmp(screen, "train"))   trainOpen = true;
+  // GLUE: screenshot fixtures set the same UI state that touch handlers would;
+  // remove these assignments if the emulator gains scripted touch journeys.
+  else if (!strcmp(screen, "sleep"))   pet.sleeping = true;
+  else if (!strcmp(screen, "feedmenu")) feedMenuUntil = millis() + 5000;
+  else if (!strcmp(screen, "releaseconfirm")) confirmUntil = millis() + 5000;
+  else if (!strcmp(screen, "choiceevolve")) { choiceKind = 1; choiceUntil = millis() + 5000; }
+  else if (!strcmp(screen, "choicefarewell")) { choiceKind = 2; choiceUntil = millis() + 5000; }
+  else if (!strcmp(screen, "choiceretire")) { choiceKind = 3; choiceUntil = millis() + 5000; }
+  else if (!strcmp(screen, "bath")) startBathAnimation(millis());
+  else if (!strcmp(screen, "joined")) {
+    snprintf(partyBannerName, sizeof(partyBannerName), "%s", speciesName(pet.speciesId));
+    partyBannerUntil = millis() + 5000;
+  }
+  else if (!strcmp(screen, "ceremonyfarewell")) pet.startFarewell();
+  else if (!strcmp(screen, "ceremonyrunaway")) pet.startRunaway();
+  else if (!strcmp(screen, "ceremonyrelease")) pet.release();
+  else if (!strcmp(screen, "keyboard")) openKeyboard();
+  else if (!strcmp(screen, "trainerkeyboard")) openKeyboardFor(1);
+  else if (!strcmp(screen, "ballgame") || !strcmp(screen, "ballresult")) {
+    startGame();
+    gameScore = 12; gameMisses = 1;
+    if (!strcmp(screen, "ballresult")) {
+      gameNewHi = true;
+      gameOverUntil = millis() + 5000;
+    }
+  }
+  else if (!strcmp(screen, "sack") || !strcmp(screen, "sackresult")) {
+    startSack();
+    sackHits = 28;
+    if (!strcmp(screen, "sackresult")) {
+      sackGain = 5; sackNewHi = true;
+      sackOverUntil = millis() + 5000;
+    }
+  }
+  else if (!strcmp(screen, "speedresult")) {
+    startSpeedGame();
+    spdHits = 19; spdGain = 4; spdNewHi = true;
+    spdOverUntil = millis() + 5000;
+  }
   else if (!strcmp(screen, "quiz")) {
     quiz.config.choiceWeight = 0;
     quiz.begin(locale ? locale : "en-US");
   }
+  else if (!strcmp(screen, "quizcorrect") || !strcmp(screen, "quizwrong")) {
+    quiz.config.questionTypes = QUIZ_TYPE_ARITHMETIC;
+    quiz.config.choiceWeight = 0;
+    if (quiz.begin(locale ? locale : "en-US")) {
+      quiz.markRendered(millis());
+      snprintf(quiz.input, sizeof(quiz.input), "%s",
+               !strcmp(screen, "quizcorrect") ? quiz.expected
+                 : (strcmp(quiz.expected, "0") ? "0" : "1"));
+      quiz.submit(millis());
+    }
+  }
   else if (!strcmp(screen, "moves"))   { cardOpen = true; cardPage = 2; }
   else if (!strcmp(screen, "moveinfo")) { movePickSlot = 0; moveInfoOpen = true; }
   else if (!strcmp(screen, "movepick")) { movePickOpen = true; }
+  else if (!strcmp(screen, "bag")) {
+    for (uint16_t i = 0; i < itemCount(); i++) {
+      const ItemEntry *item = itemAt(i);
+      if (item) inventory.add(item->key, (uint8_t)(i + 3));
+    }
+    bagOpen = true;
+  }
+  else if (!strcmp(screen, "bagdetail")) {
+    for (uint16_t i = 0; i < itemCount(); i++) {
+      const ItemEntry *item = itemAt(i);
+      if (!item) continue;
+      inventory.add(item->key, 3);
+      if (!bagDetailKey) bagDetailKey = item->key;
+    }
+    bagOpen = true;
+  }
+  else if (!strcmp(screen, "capture") || !strcmp(screen, "capturemoves")) {
+    Pet caught;
+    caught.dbgHatchAs(25, true);
+    caught.ageMinutes = 41UL * MINUTES_PER_LEVEL;
+    caught.ivAtk = 31; caught.ivDef = 24; caught.ivSpe = 29; caught.ivHp = 27;
+    caught.relearnFromLevel();
+    capturedMon = caught.toPartyMon();
+    capturePage = !strcmp(screen, "capturemoves") ? 1 : 0;
+    captureOpen = true;
+  }
   else if (!strcmp(screen, "battle2")) { startBattle(9, 50); }
   else if (!strcmp(screen, "btlmenu")) { startTrainerBattle(3, false); }
-  else if (!strcmp(screen, "btlswitch")) { startTrainerBattle(3, false); btlMenu = 2; }
+  else if (!strcmp(screen, "btlswitch")) {
+    for (int i = 0; i < 2; i++) {
+      PartyMon m; m.dex = i ? 25 : 9; m.level = 48 + i * 3;
+      m.ivAtk = m.ivDef = m.ivSpe = m.ivHp = 25;
+      party.replaceAt(i, m);
+    }
+    startTrainerBattle(3, false); btlMenu = 2;
+  }
   else if (!strcmp(screen, "btlmoves")) { startTrainerBattle(3, false); btlMenu = 1; }
+  else if (!strcmp(screen, "btlitems2")) {
+    startTrainerBattle(3, false);
+    for (uint16_t i = 0; i < itemCount(); i++) {
+      const ItemEntry *item = itemAt(i);
+      if (item) inventory.add(item->key, 3);
+    }
+    btlMenu = 3; btlItemPage = 1;
+  }
+  else if (!strcmp(screen, "btlrevive")) {
+    static const int fill[] = { 9, 25, 143 };
+    for (int i = 0; i < 3; i++) {
+      PartyMon m; m.dex = fill[i]; m.level = 45 + i * 3;
+      m.ivAtk = m.ivDef = m.ivSpe = m.ivHp = 25;
+      party.replaceAt(i, m);
+    }
+    startTrainerBattle(3, false);
+    for (uint16_t i = 0; i < itemCount(); i++) {
+      const ItemEntry *item = itemAt(i);
+      if (!item || item->effect != ITEM_EFFECT_REVIVE) continue;
+      inventory.add(item->key, 2);
+      btlPendingItem = item->key;
+      break;
+    }
+    if (btlSquadN > 1) btlSquad[1].hp = 0;
+    btlMenu = 4;
+  }
   else if (!strcmp(screen, "battleanim")) {
     startBattle(9, 50);
     btlFoe.hp = btlFoe.maxHp / 3;      // bar mid-drain
     btlLungeUntil[0] = millis() + 130; // you mid-lunge
     btlHitUntil[1] = millis() + 300;   // foe flinching
   }
-  else if (!strcmp(screen, "gyms")) { gymOpen = true; }
+  else if (!strcmp(screen, "gyms") || !strcmp(screen, "battlecenter")) { gymOpen = true; }
+  else if (!strcmp(screen, "wildfight") || !strcmp(screen, "wilditems")) {
+    // Use two installed fixture sprites so the capture is visually complete;
+    // wild mechanics themselves are exercised by wild_test.
+    pet.dbgHatchAs(1, false);
+    pet.ageMinutes = 41UL * MINUTES_PER_LEVEL;
+    pet.relearnFromLevel();
+    startBattle(25, 42);
+    btlWild = true;
+    if (!strcmp(screen, "wilditems")) {
+      for (uint16_t i = 0; i < itemCount(); i++) {
+        const ItemEntry *item = itemAt(i);
+        if (item) inventory.add(item->key, (uint8_t)(i + 2));
+      }
+      btlMenu = 3;
+    }
+  }
   else if (!strcmp(screen, "gympick")) { gymOpen = true; gymPick = true; }
   else if (!strcmp(screen, "dexpick")) {
     for (int d = 1; d <= 200; d++) pet.dbgHatchAs(d, false);
@@ -351,6 +524,18 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     party.boxSave();
     partyOpen=true; boxOpen=true; boxSwapFrom=1;
   }
+  else if (!strcmp(screen, "boxreplace")) {
+    static const int fill[] = { 9, 25, 143, 94, 131, 3 };
+    for (int i = 0; i < 6; i++) {
+      PartyMon m; m.dex = fill[i]; m.level = 40 + i * 5;
+      m.ivAtk = m.ivDef = m.ivSpe = m.ivHp = 25;
+      party.replaceAt(i, m);
+    }
+    PartyMon stored; stored.dex = 6; stored.level = 58;
+    stored.ivAtk = stored.ivDef = stored.ivSpe = stored.ivHp = 27;
+    party.box[0] = stored;
+    partyOpen = true; boxOpen = false; boxSel = 1;
+  }
   else if (!strcmp(screen, "win")) {
     startTrainerBattle(2, true);
     btlNewBadge = true; btlWinUntil = 60000; pet.badgesHard = 0x07;
@@ -387,7 +572,10 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.badgesX[0] = 0x3F; pet.badgesHardX[0] = 0x05;   // Johto
     playerOpen = true; playerPage = 1;
   }
-  else if (!strcmp(screen, "medals2")) { pet.medals = 0x5B; pet.totalMedals = 12; playerOpen = true; playerPage = 1; }
+  else if (!strcmp(screen, "medals2") || !strcmp(screen, "playermedals")) {
+    pet.medals = 0x5B; pet.totalMedals = 12;
+    playerOpen = true; playerPage = regionAll();
+  }
   else if (!strcmp(screen, "gymfight")) { startTrainerBattle(0, false); }
   else if (!strcmp(screen, "learn")) {
     // fill the four slots, then cross a gate so the offer has to be answered

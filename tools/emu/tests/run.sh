@@ -68,13 +68,13 @@ fi
 
 # Arrays, not a string: the pack directory has to reach the compiler still
 # quoted, and passing these through eval silently strips it.
-CORE=("$ROOT/gbsynth.cpp" "$ROOT/content.cpp" "$ROOT/font_engine.cpp" "$ROOT/nature.cpp" "$ROOT/pet.cpp" "$ROOT/quiz.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp")
+CORE=("$ROOT/gbsynth.cpp" "$ROOT/content.cpp" "$ROOT/font_engine.cpp" "$ROOT/nature.cpp" "$ROOT/pet.cpp" "$ROOT/quiz.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/inventory.cpp" "$ROOT/items.cpp" "$ROOT/wild.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp")
 read -r -a FT_CFLAGS <<< "$(pkg-config --cflags freetype2)"
 read -r -a FT_LIBS <<< "$(pkg-config --libs freetype2)"
 FLAGS=(-std=c++17 -O1 -w -I"$EMU" -I"$ROOT" "${FT_CFLAGS[@]}" "$FW_DEFINE" -DCONTENT_DIR="\"$ROOT/web/packs\"")
 
 # these drive setup()/loop()/render(), so they need the sketch itself
-needs_sketch() { case "$1" in touch_test|flush_test|joy_test|anim_test|swipe_test|lan_test|console_test|hit_test|brightness_test|starter_test|recovery_test) return 0;; *) return 1;; esac; }
+needs_sketch() { case "$1" in touch_test|flush_test|joy_test|anim_test|swipe_test|lan_test|console_test|hit_test|brightness_test|starter_test|recovery_test|navigation_test) return 0;; *) return 1;; esac; }
 
 # and these are standalone: gbsynth.cpp has no Arduino dependency at all, which
 # is the point of it -- linking the game core in would only demand stubs for

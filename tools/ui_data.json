@@ -209,7 +209,16 @@
         "Amable",
         "Grosera",
         "Cauta",
-        "Rara"
+        "Rara",
+        "MOCHILA",
+        "CENTRO DE COMBATE",
+        "USAR",
+        "SIN OBJETOS",
+        "NO SE PUEDE USAR",
+        "SALVAJE",
+        "CAPTURADO",
+        "UNIR",
+        "ENCONTRADO: %s"
       ],
       "medalNames": [
         "Nv.10",
@@ -454,7 +463,16 @@
         "Gentle",
         "Sassy",
         "Careful",
-        "Quirky"
+        "Quirky",
+        "BAG",
+        "BATTLE CENTER",
+        "USE",
+        "NO ITEMS",
+        "CANNOT USE",
+        "WILD",
+        "CAUGHT",
+        "JOIN",
+        "FOUND: %s"
       ],
       "medalNames": [
         "Lv.10",
@@ -699,7 +717,16 @@
         "Gentil",
         "Malpoli",
         "Prudent",
-        "Bizarre"
+        "Bizarre",
+        "SAC",
+        "CENTRE DE COMBAT",
+        "UTILISER",
+        "AUCUN OBJET",
+        "INUTILISABLE",
+        "SAUVAGE",
+        "CAPTURE",
+        "REJOINDRE",
+        "TROUVE : %s"
       ],
       "medalNames": [
         "Niv.10",
@@ -944,7 +971,16 @@
         "Zart",
         "Forsch",
         "Sacht",
-        "Kauzig"
+        "Kauzig",
+        "BEUTEL",
+        "KAMPFZENTRUM",
+        "NUTZEN",
+        "KEINE ITEMS",
+        "NICHT NUTZBAR",
+        "WILDNIS",
+        "GEFANGEN",
+        "AUFNEHMEN",
+        "GEFUNDEN: %s"
       ],
       "medalNames": [
         "Lv.10",
@@ -1189,7 +1225,16 @@
         "Gentile",
         "Vivace",
         "Cauta",
-        "Furba"
+        "Furba",
+        "BORSA",
+        "CENTRO LOTTA",
+        "USA",
+        "NESSUN OGGETTO",
+        "NON UTILIZZABILE",
+        "SELVATICO",
+        "CATTURATO",
+        "UNISCI",
+        "TROVATO: %s"
       ],
       "medalNames": [
         "Lv.10",
@@ -1434,7 +1479,16 @@
         "Gentil",
         "Atrevida",
         "Cuidadosa",
-        "Excentrica"
+        "Excentrica",
+        "MOCHILA",
+        "CENTRO DE BATALHA",
+        "USAR",
+        "SEM ITENS",
+        "NAO UTILIZAVEL",
+        "SELVAGEM",
+        "CAPTURADO",
+        "JUNTAR",
+        "ENCONTRADO: %s"
       ],
       "medalNames": [
         "Niv.10",
@@ -1685,7 +1739,16 @@
         "温顺",
         "自大",
         "慎重",
-        "浮躁"
+        "浮躁",
+        "背包",
+        "对战中心",
+        "使用",
+        "没有道具",
+        "当前无法使用",
+        "野外",
+        "已捕获",
+        "入队",
+        "获得：%s"
       ],
       "medalNames": [
         "10级",

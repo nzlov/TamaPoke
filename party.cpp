@@ -157,6 +157,12 @@ bool Party::add(const PartyMon &m) {
   return true;
 }
 
+PartyStoreResult Party::store(const PartyMon &m) {
+  if (add(m)) return PARTY_STORE_PARTY;
+  if (boxAdd(m)) return PARTY_STORE_BOX;
+  return PARTY_STORE_FULL;
+}
+
 void Party::replaceAt(uint8_t i, const PartyMon &m) {
   if (i >= PARTY_SLOTS) return;
   slots[i] = m;

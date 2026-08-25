@@ -221,6 +221,8 @@ public:
   // level() working untouched rather than needing a second source of truth.
   bool frozen = false;
   void reviveFrom(const PartyMon &m);
+  PartyMon toPartyMon() const;
+  void registerCaught(SpeciesId dex) { registerSpecies(dex); save(); }
 
   // The player's own name, alongside the badges and the streak: it belongs to
   // whoever is playing, not to the creature, so newEgg() must never clear it.
