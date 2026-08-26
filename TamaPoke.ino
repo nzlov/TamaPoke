@@ -451,6 +451,7 @@ char partyBannerName[32] = "";
 #define PARTY_THUMB_X_OFF -14
 #define PARTY_THUMB_Y_OFF 3
 #define PARTY_THUMB_SCALE 2
+static constexpr int THUMB_CELL = 80;
 #define PARTY_TEXT_X_OFF 52
 
 // Bag inventory. Item identities and labels come from the move pack; the UI
@@ -582,7 +583,7 @@ enum : uint8_t {
   SCR_QUIZ = 0, SCR_STARTER, SCR_REGION, SCR_GALLERY, SCR_DEXPICK, SCR_MOVEPICK, SCR_BOX,
   SCR_KEYBOARD, SCR_CARD, SCR_PLAYER, SCR_CLOCK, SCR_GYM, SCR_GYMPICK,
   SCR_LAN, SCR_PICK, SCR_BATTLE, SCR_WIN, SCR_LEARN, SCR_TRAIN, SCR_MENU,
-  SCR_GAME, SCR_MAIN, SCR_BAG, SCR_CAPTURE, SCR_COUNT
+  SCR_GAME, SCR_MAIN, SCR_BAG, SCR_COUNT
 };
 extern const char *const SCREEN_NAME[SCR_COUNT];   // const is internal linkage in C++
 
@@ -605,8 +606,9 @@ void renderQuiz();
 void quizTap(int16_t x, int16_t y);
 void renderBag();
 void bagTap(int16_t x, int16_t y);
-void renderCapture();
-void captureTap(int16_t x, int16_t y);
+static void btlDismissWin();
+void btlCompleteCapture();
+void btlFinish(bool won);
 void startWildBattle(uint8_t region, bool hard);
 void drawSparkleParticles(int cx, int groundY, uint32_t now, uint8_t scale = 1);
 uint32_t pmdActTotalMs(const PmdAct &action);
@@ -614,7 +616,7 @@ const char *const SCREEN_NAME[SCR_COUNT] = {
   "quiz", "starter", "region", "gallery", "dexpick", "movepick", "box",
   "keyboard", "card", "player", "clock", "gym", "gympick",
   "lan", "pick", "battle", "win", "learn", "train", "menu",
-  "minigame", "main", "bag", "capture"
+  "minigame", "main", "bag"
 };
 
 Combatant btlYou, btlFoe;
@@ -626,10 +628,7 @@ bool btlFoeDetailOpen = false;
 uint8_t btlFoeDetailPage = 0;
 #define BTL_FOE_DETAIL_PAGES 3
 PartyMon btlWildMon;
-bool captureOpen = false;
-uint8_t capturePage = 0;
 PartyMon capturedMon;
-ItemKey captureDrop = ITEM_KEY_NONE;
 
 const char *rareMarks(bool color, bool sparkle) {
   if (color && sparkle) return "*%";
@@ -638,6 +637,20 @@ const char *rareMarks(bool color, bool sparkle) {
 }
 bool btlNewBadge = false;
 uint32_t btlWinUntil = 0;   // the win screen is up
+uint16_t btlRewardTraining[3] = { 0, 0, 0 };
+ItemKey btlRewardItems[2] = { ITEM_KEY_NONE, ITEM_KEY_NONE };
+uint8_t btlRewardItemCount = 0;
+
+static void btlResetRewardSummary() {
+  btlRewardTraining[0] = btlRewardTraining[1] = btlRewardTraining[2] = 0;
+  btlRewardItems[0] = btlRewardItems[1] = ITEM_KEY_NONE;
+  btlRewardItemCount = 0;
+}
+
+static void btlRememberRewardItem(ItemKey item) {
+  if (item && btlRewardItemCount < 2)
+    btlRewardItems[btlRewardItemCount++] = item;
+}
 // A trainer fight is a run of 1v1s: both sides queue their squad and the next
 // one steps up when the current one faints. This is the whole difficulty curve
 // -- no gating, just attrition, so one strong creature sweeps Brock and dies
@@ -1640,7 +1653,7 @@ void onSwipeV(int dir) {
     return;
   }
   if (moveInfoOpen) { moveInfoOpen = false; return; }
-  if (captureOpen) return;
+  if (btlWinUntil) return;
   if (pet.awaitingStarter()) return;  // bloqueado durante la eleccion de inicial
   if (uiCurrentScreen() == SCR_DEXPICK || uiCurrentScreen() == SCR_GYMPICK)
     return;                 // on the chooser, vertical does nothing: pick a row
@@ -1897,104 +1910,6 @@ static void buryTap(int16_t x, int16_t y) {
   sfxPlay(SFX_BYE);
 }
 
-void renderCapture() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
-  gfx->setTextColor(UI_BAR_OK);
-  gfx->setTextSize(3);
-  gfx->setCursor(uiCenterX(T(S_CAUGHT)), 38);
-  gfx->print(T(S_CAUGHT));
-  char head[48];
-  snprintf(head, sizeof(head), "%s%s Lv.%u",
-           rareMarks(capturedMon.shiny, capturedMon.sparkle),
-           speciesName(capturedMon.dex), (unsigned)capturedMon.level);
-  gfx->setTextColor(dexEntry(capturedMon.dex).accent);
-  gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(head), 72);
-  gfx->print(head);
-
-  if (capturePage == 0) {
-    char line[64];
-    snprintf(line, sizeof(line), T(S_NATURE_FMT), natureName(capturedMon.nature));
-    gfx->setTextColor(UI_INK);
-    gfx->setTextSize(1);
-    gfx->setCursor(uiCenterX(line), 112);
-    gfx->print(line);
-    snprintf(line, sizeof(line), "IV %u/%u/%u/%u", capturedMon.ivAtk,
-             capturedMon.ivDef, capturedMon.ivSpe, capturedMon.ivHp);
-    gfx->setCursor(uiCenterX(line), 138);
-    gfx->print(line);
-    snprintf(line, sizeof(line), "ATK %u  DEF %u", party.atkOf(capturedMon),
-             party.defOf(capturedMon));
-    gfx->setTextSize(2);
-    gfx->setCursor(uiCenterX(line), 180);
-    gfx->print(line);
-    snprintf(line, sizeof(line), "SPA %u  SPD %u", party.spaOf(capturedMon),
-             party.spdOf(capturedMon));
-    gfx->setCursor(uiCenterX(line), 216);
-    gfx->print(line);
-    snprintf(line, sizeof(line), "SPE %u  HP %u", party.speOf(capturedMon),
-             party.vitOf(capturedMon));
-    gfx->setCursor(uiCenterX(line), 252);
-    gfx->print(line);
-    if (captureDrop) {
-      snprintf(line, sizeof(line), T(S_ITEM_FOUND_FMT), itemName(captureDrop));
-      gfx->setTextColor(UI_BAR_OK);
-      gfx->setTextSize(1);
-      gfx->setCursor(uiCenterX(line), 292);
-      gfx->print(line);
-    }
-  } else {
-    for (uint8_t i = 0; i < MOVE_SLOTS; i++)
-      drawMoveRow(100 + i * 54, capturedMon.moves[i], false, capturedMon.dex);
-  }
-  gfx->setTextColor(UI_MUTED);
-  gfx->setTextSize(1);
-  gfx->setCursor(uiCenterX(capturePage ? "2/2" : "1/2"), 330);
-  gfx->print(capturePage ? "2/2" : "1/2");
-  gfx->fillRoundRect(72, 354, 150, 44, 11, UI_BAR_BAD);
-  gfx->drawRoundRect(72, 354, 150, 44, 11, UI_INK);
-  gfx->fillRoundRect(244, 354, 150, 44, 11, UI_BAR_OK);
-  gfx->drawRoundRect(244, 354, 150, 44, 11, UI_INK);
-  gfx->setTextColor(UI_WHITE);
-  gfx->setTextSize(2);
-  uiDrawCenteredIn(T(S_PARTY_LETGO), 72, 354, 150, 44);
-  uiDrawCenteredIn(T(S_JOIN), 244, 354, 150, 44);
-  gfx->flush();
-}
-
-void captureTap(int16_t x, int16_t y) {
-  if (y < 354 || y > 398) return;
-  bool join = x >= 244 && x <= 394;
-  bool release = x >= 72 && x <= 222;
-  if (!join && !release) return;
-  audioMusic(MUS_NONE);
-  captureOpen = false;
-  btlWild = false;
-  if (release) {
-    capturedMon = PartyMon();
-    captureDrop = ITEM_KEY_NONE;
-    sfxPlay(SFX_TAP);
-    return;
-  }
-  if (party.store(capturedMon) != PARTY_STORE_FULL) {
-    snprintf(partyBannerName, sizeof(partyBannerName), "%s",
-             displaySpeciesName(capturedMon.dex, capturedMon.nick));
-    partyBannerUntil = millis() + 3500;
-    capturedMon = PartyMon();
-    captureDrop = ITEM_KEY_NONE;
-    sfxPlay(SFX_MEDAL);
-    return;
-  }
-  partyPending = capturedMon;
-  capturedMon = PartyMon();
-  captureDrop = ITEM_KEY_NONE;
-  partyPick = true;
-  boxOpen = true;
-  boxSel = 0;
-  sfxPlay(SFX_TAP);
-}
-
 // Every primary button's height, so a test can hold them all to UI_TAP_MIN
 // instead of waiting for somebody to report the next one by hand.
 void uiButtonHeights(int *out, int max, int *n) {
@@ -2041,10 +1956,7 @@ void gymHeaderRects(int *pillTop, int *pillBot, int *rowTop) {
 void onSwipe(int dir) {
   if (quizBlocking()) return;
   if (moveInfoOpen) { moveInfoOpen = false; return; }
-  if (captureOpen) {
-    capturePage = dir < 0 ? 1 : 0;
-    return;
-  }
+  if (btlWinUntil) return;
   // The region chooser pages, and it is checked before everything else because
   // it sits on TOP of the starter/gallery/gym screens -- each of which has its
   // own horizontal handler that would otherwise swallow the gesture. Paging a
@@ -2240,8 +2152,8 @@ void onTap(int16_t x, int16_t y) {
     }
     return;
   }
-  if (captureOpen) {
-    captureTap(x, y);
+  if (btlWinUntil) {
+    btlDismissWin();
     return;
   }
   if (bagOpen) {
@@ -2726,7 +2638,7 @@ uint8_t uiCurrentScreen() {
   if (moveInfoOpen) return SCR_MOVEPICK;
   if (galleryOpen) return galleryPick ? SCR_DEXPICK : SCR_GALLERY;
   if (movePickOpen) return SCR_MOVEPICK;
-  if (captureOpen) return SCR_CAPTURE;
+  if (btlWinUntil) return SCR_WIN;
   if (bagOpen) return SCR_BAG;
   if (boxOpen) return SCR_BOX;
   if (kbOpen) return SCR_KEYBOARD;
@@ -2734,7 +2646,6 @@ uint8_t uiCurrentScreen() {
   if (playerOpen) return SCR_PLAYER;
   if (clockOpen) return SCR_CLOCK;
   if (navMenuOpen) return SCR_MENU;
-  if (btlWinUntil) return SCR_WIN;
   if (battleOpen) return SCR_BATTLE;
   if (pickOpen) return SCR_PICK;
   if (lanOpen) return SCR_LAN;
@@ -2810,8 +2721,8 @@ void render() {
     renderMovePick();
     return;
   }
-  if (captureOpen) {
-    renderCapture();
+  if (btlWinUntil) {
+    renderBattle();
     return;
   }
   if (bagOpen) {
@@ -4734,20 +4645,35 @@ static bool btlFoeHasReplacement() {
          btlFoeAt + 1 < trainerInfo(btlRegion, btlTrainer).count;
 }
 
-static ItemKey btlGrantWildRewards() {
+static void btlGrantWildRewards() {
   uint8_t rosterMask = 0;
   for (uint8_t i = 0; i < btlSquadN; i++) {
     int8_t source = btlSquadSource[i];
     if ((btlEnteredMask & (1u << i)) && source >= 0 && source < PARTY_SLOTS)
       rosterMask |= (uint8_t)(1u << source);
   }
+  party.captureActive(pet, false);
+  uint8_t before[PARTY_SLOTS][3];
+  for (uint8_t i = 0; i < PARTY_SLOTS; i++) {
+    before[i][0] = party.slots[i].trAtk;
+    before[i][1] = party.slots[i].trDef;
+    before[i][2] = party.slots[i].trSpe;
+  }
   party.rewardRandomTraining(rosterMask, pet, 10);
-  return inventory.grantWeightedDrop((uint32_t)random(0x7FFFFFFF));
+  for (uint8_t i = 0; i < PARTY_SLOTS; i++) {
+    if (!(rosterMask & (1u << i))) continue;
+    btlRewardTraining[0] += party.slots[i].trAtk - before[i][0];
+    btlRewardTraining[1] += party.slots[i].trDef - before[i][1];
+    btlRewardTraining[2] += party.slots[i].trSpe - before[i][2];
+  }
+  ItemKey drop = inventory.grantWeightedDrop((uint32_t)random(0x7FFFFFFF));
+  btlRememberRewardItem(drop);
 }
 
-static void btlFinish(bool won) {
+void btlFinish(bool won) {
   btlOver = true;
   btlWon = won;
+  btlResetRewardSummary();
   btlNewBadge = false;
   btlIvReward = GYM_IV_NONE;
   if (btlWon && btlTrainer >= 0 && !pet.hasBadge(btlRegion, btlTrainer, btlHard)) {
@@ -4762,14 +4688,15 @@ static void btlFinish(bool won) {
   if (btlLink && btlLinkHost) lan.sendEnd(btlWon);
   if (btlLink) { btlSay("%s", btlWon ? T(S_BTL_WIN) : T(S_BTL_LOSE)); return; }
   if (btlWon && btlTrainer >= 0) { btlWinUntil = millis() + 60000; return; }
-  btlSay("%s", btlWon ? T(S_BTL_WIN) : T(S_BTL_LOSE));
   if (btlWon && btlWild) {
-    ItemKey drop = btlGrantWildRewards();
-    if (drop) btlSay(T(S_ITEM_FOUND_FMT), itemName(drop));
+    btlGrantWildRewards();
     ItemKey mechanicDrop = inventory.grantMechanicReward(
         (ItemMechanicKind)btlWildMechanic);
-    if (mechanicDrop) btlSay(T(S_ITEM_FOUND_FMT), itemName(mechanicDrop));
+    btlRememberRewardItem(mechanicDrop);
+    btlWinUntil = millis() + 60000;
+    return;
   }
+  btlSay("%s", btlWon ? T(S_BTL_WIN) : T(S_BTL_LOSE));
 }
 
 static void btlHandleFaints() {
@@ -5067,7 +4994,6 @@ static void btlEaseBars() {
 // The moment the ladder builds toward. It used to be one more line in the same
 // message box as "It's super effective!", with the badge awarded silently.
 void renderWin() {
-  const Trainer &t = trainerInfo(btlRegion, btlTrainer);
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
 
@@ -5075,6 +5001,74 @@ void renderWin() {
   gfx->setTextSize(3);
   gfx->setCursor(uiCenterX(T(S_BTL_WIN)), 54);
   gfx->print(T(S_BTL_WIN));
+
+  if (btlTrainer < 0) {
+    const bool caught = !capturedMon.empty();
+    if (caught) {
+      gfx->fillRoundRect(83, 78, 300, 130, 12, UI_WHITE);
+      const uint8_t *thumb = thumbs.get(capturedMon.dex);
+      char name[48];
+      snprintf(name, sizeof(name), "%s%s",
+               rareMarks(capturedMon.shiny, capturedMon.sparkle),
+               speciesName(capturedMon.dex));
+      gfx->setTextSize(2);
+      uint8_t nameSize = gfx->textWidth(name) > 260 ? 1 : 2;
+      char level[16];
+      snprintf(level, sizeof(level), "Lv.%u", (unsigned)capturedMon.level);
+      gfx->setTextColor(UI_BAR_OK);
+      gfx->setTextSize(1);
+      gfx->setCursor(uiCenterX(T(S_CAUGHT)), 84);
+      gfx->print(T(S_CAUGHT));
+      if (thumb) drawThumb(thumb, CX - THUMB_CELL / 2, 105, 3, false);
+      gfx->setTextColor(dexEntry(capturedMon.dex).accent);
+      gfx->setTextSize(nameSize);
+      gfx->setCursor(uiCenterX(name), 166);
+      gfx->print(name);
+      gfx->setTextColor(UI_INK);
+      gfx->setTextSize(1);
+      gfx->setCursor(uiCenterX(level), 190);
+      gfx->print(level);
+    }
+
+    const int rewardTitleY = caught ? 214 : 98;
+    const int rewardRowY = caught ? 238 : 132;
+    const int rewardRowH = caught ? 26 : 40;
+    const int rewardRowStep = caught ? 29 : 48;
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(2);
+    gfx->setCursor(uiCenterX(T(S_REWARDS)), rewardTitleY);
+    gfx->print(T(S_REWARDS));
+
+    static const StrId STAT_NAMES[3] = { S_STAT_ATK, S_STAT_DEF, S_STAT_SPE };
+    uint8_t row = 0;
+    char line[64];
+    for (uint8_t i = 0; i < 3; i++) {
+      if (!btlRewardTraining[i]) continue;
+      snprintf(line, sizeof(line), T(S_WIN_TRAINING_FMT), T(STAT_NAMES[i]),
+               (unsigned)btlRewardTraining[i]);
+      int y = rewardRowY + row * rewardRowStep;
+      gfx->fillRoundRect(83, y, 300, rewardRowH, 10, UI_WHITE);
+      gfx->setTextColor(UI_BAR_OK);
+      gfx->setTextSize(2);
+      uiDrawCenteredIn(line, 83, y, 300, rewardRowH);
+      row++;
+    }
+    for (uint8_t i = 0; i < btlRewardItemCount && row < 5; i++) {
+      snprintf(line, sizeof(line), T(S_ITEM_FOUND_FMT), itemName(btlRewardItems[i]));
+      int y = rewardRowY + row * rewardRowStep;
+      gfx->fillRoundRect(83, y, 300, rewardRowH, 10, UI_WHITE);
+      gfx->setTextColor(UI_BAR_WARN);
+      gfx->setTextSize(1);
+      uiDrawCenteredIn(line, 83, y, 300, rewardRowH);
+      row++;
+    }
+    gfx->setTextColor(UI_MUTED);
+    gfx->setTextSize(2);
+    gfx->setCursor(uiCenterX(T(S_BACK)), 390);
+    gfx->print(T(S_BACK));
+    gfx->flush();
+    return;
+  }
 
   char l[40];
   snprintf(l, sizeof(l), T(S_BTL_BEAT), trainerName(btlRegion, btlTrainer));
@@ -5629,6 +5623,26 @@ static void btlSpendItemTurn(const ItemEntry &item, uint8_t targetIndex) {
   btlResolve(0, 100);
 }
 
+void btlCompleteCapture() {
+  capturedMon = btlWildMon;
+  pet.registerCaught(capturedMon.dex, capturedMon.shiny);
+  btlResetRewardSummary();
+  btlGrantWildRewards();
+  if (party.store(capturedMon) == PARTY_STORE_FULL) {
+    partyPending = capturedMon;
+    partyPick = true;
+    boxOpen = true;
+    boxSel = 0;
+  }
+  battleOpen = false;
+  btlOver = true;
+  btlWon = true;
+  btlWinUntil = millis() + 60000;
+  btlFreeSprites();
+  audioMusic(MUS_VICTORY);
+  sfxPlay(SFX_VICTORY);
+}
+
 static void btlThrowBall(const ItemEntry &item) {
   if (!btlWild || item.effect != ITEM_EFFECT_CATCH || !inventory.consume(item.key)) {
     sfxPlay(SFX_DENY);
@@ -5639,17 +5653,7 @@ static void btlThrowBall(const ItemEntry &item) {
                                      btlFoe.ailment != AIL_NONE || btlFoe.confuseTurns,
                                      item.param > 0 ? (uint16_t)item.param : 100);
   if ((uint8_t)random(100) < chance) {
-    capturedMon = btlWildMon;
-    pet.registerCaught(capturedMon.dex, capturedMon.shiny);
-    captureDrop = btlGrantWildRewards();
-    capturePage = 0;
-    captureOpen = true;
-    battleOpen = false;
-    btlOver = true;
-    btlWon = true;
-    btlFreeSprites();
-    audioMusic(MUS_VICTORY);
-    sfxPlay(SFX_VICTORY);
+    btlCompleteCapture();
     return;
   }
   btlMenu = 0;
@@ -5657,13 +5661,24 @@ static void btlThrowBall(const ItemEntry &item) {
   btlResolve(0, 100);
 }
 
+static void btlDismissWin() {
+  if (!capturedMon.empty() && !partyPick) {
+    snprintf(partyBannerName, sizeof(partyBannerName), "%s",
+             displaySpeciesName(capturedMon.dex, capturedMon.nick));
+    partyBannerUntil = millis() + 3500;
+  }
+  capturedMon = PartyMon();
+  btlWinUntil = 0;
+  btlFreeSprites();
+  audioMusic(MUS_NONE);
+  battleOpen = false;
+  btlWild = false;
+  if (btlLink) { btlLink = false; lanOpen = true; }
+}
+
 static bool btlDispatchTap(int16_t x, int16_t y) {
   if (btlWinUntil) {          // dismiss the win screen and leave the fight
-    btlWinUntil = 0;
-    btlFreeSprites();
-    audioMusic(MUS_NONE);
-    battleOpen = false;
-    if (btlLink) { btlLink = false; lanOpen = true; }
+    btlDismissWin();
     return true;
   }
   if (btlFoeDetailOpen) {
@@ -7295,7 +7310,7 @@ void keyboardTap(int16_t x, int16_t y) {
 
 #define GAL_X 73
 #define GAL_Y 84
-#define GAL_CELL 80
+#define GAL_CELL THUMB_CELL
 
 // dibuja una miniatura centrada en su celda; sil=true la pinta en tinta
 void drawThumb(const uint8_t *b, int x, int y, int s, bool sil) {

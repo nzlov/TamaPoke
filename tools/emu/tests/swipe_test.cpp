@@ -21,7 +21,7 @@ void navMenuButtonPoint(uint8_t index, int *x, int *y);
 extern Pet pet;
 extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyPick;
 extern bool trainOpen, movePickOpen, battleOpen, gymOpen, playerOpen, boxOpen, pickOpen;
-extern bool bagOpen, captureOpen, navMenuOpen;
+extern bool bagOpen, navMenuOpen;
 extern uint8_t cardPage, gymPage, playerPage, movePickPage, boxPage, pickPage;
 extern int galleryPage; extern bool galleryDirty; extern uint8_t galleryDetail;
 extern uint8_t galleryRegion;
@@ -48,7 +48,7 @@ static void clearAll(){
   gymPick=galleryPick=false;
   cardOpen=galleryOpen=clockOpen=kbOpen=menuOpen=partyPick=false;
   trainOpen=movePickOpen=battleOpen=gymOpen=playerOpen=boxOpen=pickOpen=false;
-  bagOpen=captureOpen=navMenuOpen=false;
+  bagOpen=navMenuOpen=false;
   boxSel=0;
 }
 // swipe left; the page must advance and the screen must stay open

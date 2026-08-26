@@ -152,6 +152,8 @@ enum StrId : uint8_t {
   S_FIELD_ELECTRIC, S_FIELD_GRASSY, S_FIELD_MISTY, S_FIELD_PSYCHIC,
   S_BTL_FIELD_BEGAN, S_BTL_FIELD_ENDED, S_BTL_FIELD_BLOCKED,
   S_BTL_SAND_HURT,
+  S_REWARDS,        // battle victory settlement title
+  S_WIN_TRAINING_FMT, // "%s TRAINING +%u" -- decayable wild-battle reward
   STR_COUNT
 };
 

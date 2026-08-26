@@ -304,6 +304,9 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 - A wild capture uses a free cultivation slot first, then a free Box slot. If both
   are full, the player explicitly chooses a replacement or lets it go; nothing
   is overwritten silently.
+- After a wild victory, a settlement page lists every item and training-stat gain.
+  A successful capture adds the caught creature to that same page and stores it
+  automatically. Only a full collection continues to the replace-or-release picker.
 - Gym and linked battles select from exactly the six cultivation slots.
 
 ### Three ways a creature leaves

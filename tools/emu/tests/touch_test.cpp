@@ -40,7 +40,7 @@ void setup();
 void loop();
 extern Pet pet;   // defined in the sketch
 extern bool trainOpen, sackOpen, gameOpen, menuOpen, cardOpen, moveInfoOpen, movePickOpen, spdOpen;
-extern bool captureOpen, bagOpen, boxOpen, playerOpen, lanOpen, galleryOpen, kbOpen, clockOpen;
+extern bool bagOpen, boxOpen, playerOpen, lanOpen, galleryOpen, kbOpen, clockOpen;
 extern uint8_t movePickSlot, movePickPage;
 extern bool battleOpen, btlOver, btlWon, btlWild;
 extern bool btlFoeDetailOpen;
@@ -686,7 +686,7 @@ int main(int argc, char **argv) {
   }
   trainOpen = sackOpen = gameOpen = menuOpen = cardOpen = false;
   moveInfoOpen = movePickOpen = spdOpen = false;
-  captureOpen = bagOpen = playerOpen = lanOpen = galleryOpen = false;
+  bagOpen = playerOpen = lanOpen = galleryOpen = false;
   kbOpen = clockOpen = gymOpen = boxOpen = pickOpen = false;
   while (pet.hasLearnOffer()) pet.declineLearn();
   reviveBefore = inventory.count(revive->key);

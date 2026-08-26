@@ -149,6 +149,11 @@ extern uint16_t btlHpShown[2];
 extern BattleSideMechanics btlYourMechanics;
 extern BattleMechanic btlPendingMechanic;
 extern BattleField btlField;
+extern int8_t btlTrainer;
+extern uint32_t btlWinUntil;
+extern uint16_t btlRewardTraining[3];
+extern ItemKey btlRewardItems[2];
+extern uint8_t btlRewardItemCount;
 void startTrainerBattle(uint8_t idx, bool hard);
 void onTap(int16_t x, int16_t y);   // the first-boot shots tap their way in
 void refreshUiFont();
@@ -189,9 +194,8 @@ void ensureMon();
 extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyPick, trainOpen, movePickOpen;
-extern bool bagOpen, captureOpen;
+extern bool bagOpen;
 extern bool btlWild;
-extern uint8_t capturePage;
 extern PartyMon capturedMon;
 extern uint8_t cardPage;
 extern int16_t galleryDetail;
@@ -277,7 +281,8 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   cardOpen = galleryOpen = clockOpen = kbOpen = false;
   menuOpen = navMenuOpen = partyPick = trainOpen = movePickOpen = false;
   boxOpen = false;
-  bagOpen = captureOpen = false;
+  bagOpen = false;
+  capturedMon = PartyMon();
   if (!strcmp(screen, "main")) pet.ageMinutes = 0;
   else if (!strcmp(screen, "sparkle")) {
     pet.shiny = false;
@@ -437,20 +442,31 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     }
     bagOpen = true;
   }
-  else if (!strcmp(screen, "capture") || !strcmp(screen, "capturemoves") ||
-           !strcmp(screen, "captureboth")) {
-    Pet caught;
-    caught.dbgHatchAs(25, true);
-    caught.sparkle = !strcmp(screen, "captureboth");
-    caught.ageMinutes = 41UL * MINUTES_PER_LEVEL;
-    caught.ivAtk = caught.sparkle ? 41 : 31;
-    caught.ivDef = caught.sparkle ? 34 : 24;
-    caught.ivSpe = caught.sparkle ? 39 : 29;
-    caught.ivHp = caught.sparkle ? 37 : 27;
-    caught.relearnFromLevel();
-    capturedMon = caught.toPartyMon();
-    capturePage = !strcmp(screen, "capturemoves") ? 1 : 0;
-    captureOpen = true;
+  else if (!strcmp(screen, "capture") || !strcmp(screen, "reward")) {
+    if (!strcmp(screen, "capture")) {
+      Pet caught;
+      caught.dbgHatchAs(25, true);
+      caught.sparkle = true;
+      caught.ageMinutes = 41UL * MINUTES_PER_LEVEL;
+      caught.ivAtk = 41;
+      caught.ivDef = 34;
+      caught.ivSpe = 39;
+      caught.ivHp = 37;
+      caught.relearnFromLevel();
+      capturedMon = caught.toPartyMon();
+    }
+    btlTrainer = -1;
+    btlRewardTraining[0] = 4;
+    btlRewardTraining[1] = 3;
+    btlRewardTraining[2] = 3;
+    for (uint16_t i = 0; i < itemCount(); i++) {
+      const ItemEntry *item = itemAt(i);
+      if (!item) continue;
+      btlRewardItems[0] = item->key;
+      btlRewardItemCount = 1;
+      break;
+    }
+    btlWinUntil = 60000;
   }
   else if (!strcmp(screen, "battle2")) { startBattle(9, 50); }
   else if (!strcmp(screen, "btlmenu")) { startTrainerBattle(3, false); }

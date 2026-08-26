@@ -68,7 +68,7 @@ states. Representative names include `main`, `evolvecta`, `farewellcta`,
 `btlmechanics`, `btlzmove`, `btlnormal`, `btldynamax`, `btlmega`,
 `btlrevive`, `profile`, `gallery`, `clock`, `menu`, `navmenu`, `mainroster`, `box`, `boxreplace`, `boxwithdraw`, `boxdeposit`, `bag`,
 `bagdetail`, `train`, `ballgame`, `sack`, `speed`, `quiz`, `quizcorrect`,
-`battlecenter`, `wildfight`, `wilditems`, `capture`, `capturemoves`, `captureboth`,
+`battlecenter`, `wildfight`, `wilditems`, `capture`, `reward`,
 `sparkle`, `color`, `bothrare`, `egg`,
 `starter`, `dexdetail`, and `moveinfo`.
 `--lvl`, `--iv` and

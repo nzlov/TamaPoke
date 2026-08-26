@@ -241,7 +241,9 @@
         "%s comenzo!",
         "%s termino!",
         "El campo bloqueo el movimiento!",
-        "%s sufre por la arena"
+        "%s sufre por la arena",
+        "RECOMPENSAS",
+        "%s ENT. +%u"
       ],
       "medalNames": [
         "Nv.10",
@@ -518,7 +520,9 @@
         "%s began!",
         "%s faded!",
         "The field blocked the move!",
-        "%s is hurt by sand"
+        "%s is hurt by sand",
+        "REWARDS",
+        "%s TRAINING +%u"
       ],
       "medalNames": [
         "Lv.10",
@@ -795,7 +799,9 @@
         "%s commence!",
         "%s se dissipe!",
         "Le terrain bloque la capacite!",
-        "%s souffre du sable"
+        "%s souffre du sable",
+        "RECOMPENSES",
+        "%s ENTR. +%u"
       ],
       "medalNames": [
         "Niv.10",
@@ -1072,7 +1078,9 @@
         "%s begann!",
         "%s endete!",
         "Das Feld blockiert die Attacke!",
-        "%s leidet im Sand"
+        "%s leidet im Sand",
+        "BELOHNUNGEN",
+        "%s TRAIN. +%u"
       ],
       "medalNames": [
         "Lv.10",
@@ -1349,7 +1357,9 @@
         "%s comincia!",
         "%s svanisce!",
         "Il campo blocca la mossa!",
-        "%s soffre per la sabbia"
+        "%s soffre per la sabbia",
+        "RICOMPENSE",
+        "%s ALL. +%u"
       ],
       "medalNames": [
         "Lv.10",
@@ -1626,7 +1636,9 @@
         "%s comecou!",
         "%s terminou!",
         "O campo bloqueou o golpe!",
-        "%s sofre com a areia"
+        "%s sofre com a areia",
+        "RECOMPENSAS",
+        "%s TREINO +%u"
       ],
       "medalNames": [
         "Niv.10",
@@ -1909,7 +1921,9 @@
         "%s开始了！",
         "%s消散了！",
         "场地使招式无法使用！",
-        "%s受到沙暴伤害"
+        "%s受到沙暴伤害",
+        "战利品",
+        "%s训练值 +%u"
       ],
       "medalNames": [
         "10级",

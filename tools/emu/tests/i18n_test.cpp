@@ -120,6 +120,10 @@ int main() {
            T(S_FIELD_RAIN), T(S_FIELD_ELECTRIC));
     bad++;
   }
+  if (strcmp(T(S_WIN_TRAINING_FMT), "%s TRAINING +%u")) {
+    printf("WRONG TRAINING REWARD  en-US: %s\n", T(S_WIN_TRAINING_FMT));
+    bad++;
+  }
   int8_t chinese = uiFindLocale("zh-CN");
   if (chinese >= 0) {
     setLang((Lang)chinese);
@@ -134,6 +138,10 @@ int main() {
     if (strcmp(T(S_FIELD_RAIN), "雨天") || strcmp(T(S_FIELD_ELECTRIC), "电气场地")) {
       printf("WRONG FIELD LABELS  zh-CN: %s / %s\n",
              T(S_FIELD_RAIN), T(S_FIELD_ELECTRIC));
+      bad++;
+    }
+    if (strcmp(T(S_WIN_TRAINING_FMT), "%s训练值 +%u")) {
+      printf("WRONG TRAINING REWARD  zh-CN: %s\n", T(S_WIN_TRAINING_FMT));
       bad++;
     }
   }
