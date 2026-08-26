@@ -58,7 +58,7 @@ uint16_t natureStatValue(NatureId nature, NatureStat stat,
 
 uint8_t natureTrainingDecayPercent(NatureId nature, NatureTraining training) {
   int8_t effect = trainingEffect(nature, training);
-  return effect > 0 ? 9 : effect < 0 ? 11 : 10;
+  return effect > 0 ? 3 : effect < 0 ? 7 : 5;
 }
 
 NatureId natureForLegacy(int16_t dex, uint8_t ivAtk, uint8_t ivDef,

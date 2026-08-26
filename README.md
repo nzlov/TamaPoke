@@ -362,13 +362,13 @@ its hourly decay:
 
 | Nature | Training contribution | Hourly loss for affected training |
 |---|---|---|
-| Hardy | ATK +10% | ATK: 9% of its cap |
-| Docile | DEF +10% | DEF: 9% of its cap |
-| Serious | SPEED +10% | SPEED: 9% of its cap |
-| Bashful | DEF +10%, ATK -10% | DEF: 9%; ATK: 11% (of each cap) |
-| Quirky | ATK +10%, DEF -10% | ATK: 9%; DEF: 11% (of each cap) |
+| Hardy | ATK +10% | ATK: 3% of its cap |
+| Docile | DEF +10% | DEF: 3% of its cap |
+| Serious | SPEED +10% | SPEED: 3% of its cap |
+| Bashful | DEF +10%, ATK -10% | DEF: 3%; ATK: 7% (of each cap) |
+| Quirky | ATK +10%, DEF -10% | ATK: 3%; DEF: 7% (of each cap) |
 
-Unaffected training loses 10% of its IV-based cap per complete hour. Every loss
+Unaffected training loses 5% of its IV-based cap per complete hour. Every loss
 uses the cap rather than the current value and rounds up, both live and offline.
 ATK training is also the special-attack training contribution; DEF training is
 also the special-defence contribution. There are no separate special training

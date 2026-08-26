@@ -32,17 +32,17 @@ int main(){
     ck(p.trAtk==100 && p.trDef==100 && p.trSpe==100,
        "training does not decay before a complete hour");
     p.dbgTick();
-    ck(p.trAtk==90 && p.trDef==90 && p.trSpe==90,
-       "one live hour subtracts ten percent of the cap");
+    ck(p.trAtk==95 && p.trDef==95 && p.trSpe==95,
+       "one live hour subtracts five percent of the cap");
     for(int i=0;i<60;i++) p.dbgTick();
-    ck(p.trAtk==80 && p.trDef==80 && p.trSpe==80,
+    ck(p.trAtk==90 && p.trDef==90 && p.trSpe==90,
        "hourly decay stays based on the cap instead of compounding");
   }
 
   {
     Pet p; ready(p); p.trAtk=p.trDef=p.trSpe=50;
     for(int i=0;i<60;i++) p.dbgTick();
-    ck(p.trAtk==40 && p.trDef==40 && p.trSpe==40,
+    ck(p.trAtk==45 && p.trDef==45 && p.trSpe==45,
        "decay uses the cap even when current training is lower");
   }
 
@@ -50,41 +50,47 @@ int main(){
     Pet p; ready(p);
     p.dbgSetSeen(1000);
     p.syncClock(1000 + 120*60);
-    ck(p.trAtk==80 && p.trDef==80 && p.trSpe==80,
+    ck(p.trAtk==90 && p.trDef==90 && p.trSpe==90,
        "two offline hours apply the same two decay steps");
   }
 
-  // The training natures use 9% for a strengthened channel and 11% for a
+  // The training natures use 3% for a strengthened channel and 7% for a
   // weakened one. Each loss is rounded UP from the IV-based cap.
   {
     Pet p; ready(p); p.nature=NATURE_HARDY;
     for(int i=0;i<60;i++) p.dbgTick();
-    ck(p.trAtk==91 && p.trDef==90 && p.trSpe==90,
+    ck(p.trAtk==97 && p.trDef==95 && p.trSpe==95,
        "Hardy slows attack-training decay");
+  }
+  {
+    Pet p; ready(p); p.nature=NATURE_DOCILE;
+    for(int i=0;i<60;i++) p.dbgTick();
+    ck(p.trAtk==95 && p.trDef==97 && p.trSpe==95,
+       "Docile slows defence-training decay");
   }
   {
     Pet p; ready(p); p.nature=NATURE_BASHFUL;
     for(int i=0;i<60;i++) p.dbgTick();
-    ck(p.trAtk==89 && p.trDef==91 && p.trSpe==90,
+    ck(p.trAtk==93 && p.trDef==97 && p.trSpe==95,
        "Bashful speeds attack decay and slows defence decay");
   }
   {
     Pet p; ready(p); p.nature=NATURE_QUIRKY;
     for(int i=0;i<60;i++) p.dbgTick();
-    ck(p.trAtk==91 && p.trDef==89 && p.trSpe==90,
+    ck(p.trAtk==97 && p.trDef==93 && p.trSpe==95,
        "Quirky slows attack decay and speeds defence decay");
   }
   {
     Pet p; ready(p); p.nature=NATURE_SERIOUS;
     p.dbgSetSeen(1000); p.syncClock(1000+60*60);
-    ck(p.trAtk==90 && p.trDef==90 && p.trSpe==91,
+    ck(p.trAtk==95 && p.trDef==95 && p.trSpe==97,
        "offline catch-up applies the same slower speed decay");
   }
 
   {
     Pet p; ready(p); p.ivAtk=8; p.trAtk=77; p.nature=NATURE_HARDY;
     for(int i=0;i<60;i++) p.dbgTick();
-    ck(p.trAtk==70,"a 9-percent loss from cap 77 rounds up to seven");
+    ck(p.trAtk==74,"a 3-percent loss from cap 77 rounds up to three");
   }
 
   {

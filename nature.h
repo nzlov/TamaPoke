@@ -35,7 +35,7 @@ bool natureValid(NatureId nature);
 uint16_t natureStatValue(NatureId nature, NatureStat stat,
                          uint16_t untrained, uint8_t training);
 
-// 9 for a strengthened training channel, 11 for a weakened one, otherwise 10.
+// 3 for a strengthened training channel, 7 for a weakened one, otherwise 5.
 // Pet uses this against the IV-based maximum for fixed hourly decay.
 uint8_t natureTrainingDecayPercent(NatureId nature, NatureTraining training);
 
