@@ -92,8 +92,12 @@ int main() {
      strstr(moveDescription(dragonDance, "en-US"), "Attack and Speed by 1 stage.") &&
      strstr(moveDescription(recover, "en-US"), "Restores 50%"),
      "English move descriptions explain targets, stats and healing without internal codes");
-  ck(speciesDescription(1, "es-ES") == nullptr && moveDescription(1, "es-ES") == nullptr,
-     "missing description locales stay hidden");
+  ck(speciesDescription(25, "es-ES") != nullptr &&
+     speciesDescription(25, "fr-FR") != nullptr &&
+     speciesDescription(25, "pt-PT") != nullptr,
+     "species descriptions follow every installed UI language");
+  ck(moveDescription(1, "es-ES") == nullptr,
+     "content without a translated move description stays hidden");
 
   bool chineseGlyphs = chinese >= 0 && uiActivateLocale((uint8_t)chinese);
   ck(chineseGlyphs && !strcmp(speciesName(25), "皮卡丘") &&

@@ -43,6 +43,9 @@ extern bool trainOpen, sackOpen, gameOpen, menuOpen, cardOpen, moveInfoOpen, mov
 extern bool captureOpen, bagOpen, boxOpen, playerOpen, lanOpen, galleryOpen, kbOpen, clockOpen;
 extern uint8_t movePickSlot, movePickPage;
 extern bool battleOpen, btlOver, btlWon, btlWild;
+extern bool btlFoeDetailOpen;
+extern uint8_t btlFoeDetailPage;
+extern PartyMon btlWildMon;
 extern Combatant btlYou, btlFoe;
 extern QuizRuntime quiz;
 extern uint8_t btlMsgCount;
@@ -53,6 +56,7 @@ bool btlAttemptRun(uint8_t roll);
 bool btlAttemptFoeRun(uint8_t roll);
 void startTrainerBattle(uint8_t idx, bool hard);
 void battleTap(int16_t x, int16_t y);
+void onSwipe(int dir);
 extern uint8_t btlFoeAt, btlSquadN, btlSquadAt, btlMenu;
 extern uint8_t btlTargetPage;
 extern ItemKey btlPendingItem;
@@ -319,6 +323,45 @@ int main(int argc, char **argv) {
   if (!battleOpen) { printf("FAIL: battle did not start\n"); return 1; }
   printf("PASS: BATTLE opens (%s L%u vs %s L%u)\n",
          btlYou.name, btlYou.level, btlFoe.name, btlFoe.level);
+
+  click(330, 100);
+  if (btlFoeDetailOpen) {
+    printf("FAIL: a non-wild opponent exposed the wild detail card\n");
+    return 1;
+  }
+  btlWild = true;
+  btlWildMon.nature = NATURE_ADAMANT;
+  int16_t detailDex = btlFoe.dex;
+  uint16_t detailHp = btlFoe.hp;
+  MoveId detailMoves[MOVE_SLOTS];
+  memcpy(detailMoves, btlFoe.moves, sizeof(detailMoves));
+  click(330, 100);
+  if (!btlFoeDetailOpen || btlFoeDetailPage != 0) {
+    printf("FAIL: tapping the wild opponent did not open its Pokedex page\n");
+    return 1;
+  }
+  printf("PASS: tapping the wild opponent opens its Pokedex description\n");
+  onSwipe(-1);
+  if (!btlFoeDetailOpen || btlFoeDetailPage != 1 ||
+      btlWildMon.nature != NATURE_ADAMANT) {
+    printf("FAIL: wild opponent stats page lost the individual nature\n");
+    return 1;
+  }
+  printf("PASS: wild opponent stats include the individual's nature\n");
+  onSwipe(-1);
+  if (btlFoeDetailPage != 2) {
+    printf("FAIL: wild opponent moves page was not reachable\n");
+    return 1;
+  }
+  printf("PASS: wild opponent moves are reachable on the third page\n");
+  click(233, 410);
+  if (btlFoeDetailOpen || btlFoe.dex != detailDex || btlFoe.hp != detailHp ||
+      memcmp(detailMoves, btlFoe.moves, sizeof(detailMoves)) != 0 || btlMenu != 0) {
+    printf("FAIL: closing wild detail changed battle state\n");
+    return 1;
+  }
+  printf("PASS: wild opponent detail is read-only and returns to the same turn\n");
+  btlWild = false;
 
   uint16_t foeHp0 = btlFoe.hp;
   int turns = 0;

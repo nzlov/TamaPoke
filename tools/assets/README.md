@@ -3,7 +3,7 @@
 Los sprites NO se editan a mano ni se guardan aquí: se **descargan de sus
 fuentes y se empaquetan** con los scripts de `tools/`. Esta carpeta es
 principalmente documentación del flujo. La excepción es
-`fonts/NotoSansCJKsc-Medium-subset.otf`: es la entrada OpenType del paquete
+`fonts/NotoSansCJKsc-Medium-subset.otf`: es la entrada OpenType Noto Sans SC del paquete
 chino `.tui`, no una fuente incorporada al firmware. Se regenera con
 `tools/subset_ui_font.py`; `fonts/OFL-NotoSansCJK.txt` conserva su licencia.
 

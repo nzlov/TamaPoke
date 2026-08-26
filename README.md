@@ -536,13 +536,15 @@ and badge data. No regional intermediate bundle is created.
 ```bash
 python3 tools/pack_pmd.py       # fetch + pack the current catalogue + shiny inputs
 python3 tools/make_thumbs.py    # Pokédex thumbnails (from the PMD sprites) -> thumbs.bin
+python3 tools/fetch_species_descriptions.py # append descriptions for newly added dex numbers
 python3 tools/gen_data_packs.py # web/packs/*.tui, *.tmove, *.tregion, *.tquiz + index.json
 python3 tools/check_data_packs.py
 ```
 
 The checked-in Chinese font subset already covers every string, species, move,
 type and regional description in the catalogue. When localized content gains
-characters, rebuild it from Noto Sans CJK SC Medium with FontTools before
+characters, rebuild it from Noto Sans SC Medium (or the compatible CJK SC face)
+with FontTools before
 regenerating the packs:
 
 ```bash

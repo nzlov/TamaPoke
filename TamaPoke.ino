@@ -612,6 +612,9 @@ Combatant btlYou, btlFoe;
 bool btlOver = false;
 bool btlWon = false;
 bool btlWild = false;
+bool btlFoeDetailOpen = false;
+uint8_t btlFoeDetailPage = 0;
+#define BTL_FOE_DETAIL_PAGES 3
 PartyMon btlWildMon;
 bool captureOpen = false;
 uint8_t capturePage = 0;
@@ -2059,6 +2062,13 @@ void onSwipe(int dir) {
   if (navMenuOpen) { navMenuOpen = false; return; }
   if (menuOpen) { menuOpen = false; return; }   // any swipe closes the menu
   if (battleOpen) {
+    if (btlFoeDetailOpen) {
+      int p = (int)btlFoeDetailPage + (dir > 0 ? -1 : 1);
+      if (p < 0) p = 0;
+      if (p >= BTL_FOE_DETAIL_PAGES) p = BTL_FOE_DETAIL_PAGES - 1;
+      btlFoeDetailPage = (uint8_t)p;
+      return;
+    }
     if (btlMenu == 3) {
       int p = (int)btlItemPage + (dir > 0 ? -1 : 1);
       if (p >= 0) btlItemPage = (uint8_t)p;
@@ -4178,6 +4188,8 @@ void startLinkBattle() {
   btlMsgCount = 0;
   btlOver = false;
   btlWon = false;
+  btlFoeDetailOpen = false;
+  btlFoeDetailPage = 0;
   btlMenu = 0;
   btlWinUntil = 0;
   btlSwapWho = -1;
@@ -4217,6 +4229,8 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   btlMsgCount = 0;
   btlOver = false;
   btlWon = false;
+  btlFoeDetailOpen = false;
+  btlFoeDetailPage = 0;
   btlMenu = 0;
   btlWinUntil = 0;
   btlSwapWho = -1;
@@ -4252,6 +4266,8 @@ void startBattle(int16_t dex, uint8_t lvl) {
   btlMsgCount = 0;
   btlOver = false;
   btlWon = false;
+  btlFoeDetailOpen = false;
+  btlFoeDetailPage = 0;
   btlMenu = 0;
   btlWinUntil = 0;
   btlSwapWho = -1;
@@ -4322,6 +4338,8 @@ void startWildBattle(uint8_t region, bool hard) {
   btlMsgCount = 0;
   btlOver = false;
   btlWon = false;
+  btlFoeDetailOpen = false;
+  btlFoeDetailPage = 0;
   btlMenu = 0;
   btlItemPage = 0;
   btlPendingItem = ITEM_KEY_NONE;
@@ -4831,8 +4849,98 @@ static bool btlItemUsable(const ItemEntry &item) {
   return false;
 }
 
+static bool btlFoeDetailHit(int16_t x, int16_t y) {
+  return x >= 60 && x <= 406 && y >= 28 && y <= 150;
+}
+
+static void renderBattleFoeDetail() {
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  const DexEntry &entry = dexEntry(btlFoe.dex);
+
+  if (btlFoeDetailPage == 0) {
+    char head[64];
+    snprintf(head, sizeof(head), T(S_NAME_FMT), btlFoe.shiny ? "*" : "",
+             speciesName(btlFoe.dex), btlFoe.level);
+    gfx->setTextColor(entry.accent);
+    gfx->setTextSize(3);
+    int titleSize = gfx->textWidth(head) <= 250 ? 3 : 2;
+    gfx->setTextSize(titleSize);
+    gfx->setCursor(uiCenterX(head), titleSize == 3 ? 38 : 44);
+    gfx->print(head);
+
+    char type[24];
+    if (entry.type2 == T_NONE) snprintf(type, sizeof(type), "%s", typeName(entry.type1));
+    else snprintf(type, sizeof(type), "%s/%s", typeName(entry.type1), typeName(entry.type2));
+    gfx->setTextColor(entry.accent);
+    gfx->setTextSize(2);
+    gfx->setCursor(uiCenterX(type), 70);
+    gfx->print(type);
+
+    if (btlPmd[1].loaded)
+      drawPmdActM(btlPmd[1], PMD_IDLE, CX, 198, millis(), true, false, 3);
+    else {
+      const uint8_t *thumb = thumbs.get(btlFoe.dex);
+      if (thumb) drawThumb(thumb, CX - 48, 98, 3, false);
+    }
+
+    const char *description = speciesDescription(btlFoe.dex, uiActiveLocaleCode());
+    if (description && description[0]) {
+      gfx->setTextColor(UI_INK);
+      gfx->setTextSize((uint8_t)uiLayoutMetric(UI_LAYOUT_DETAIL_DESCRIPTION_TEXT_SIZE, 1));
+      drawWrappedText(description, uiLayoutMetric(UI_LAYOUT_DETAIL_DESCRIPTION_X, 78),
+                      220, uiLayoutMetric(UI_LAYOUT_DETAIL_DESCRIPTION_WIDTH, 310), 6);
+    }
+  } else if (btlFoeDetailPage == 1) {
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(3);
+    gfx->setCursor(uiCenterX(T(S_STATS)), 36);
+    gfx->print(T(S_STATS));
+
+    char type[24];
+    if (entry.type2 == T_NONE) snprintf(type, sizeof(type), "%s", typeName(entry.type1));
+    else snprintf(type, sizeof(type), "%s/%s", typeName(entry.type1), typeName(entry.type2));
+    gfx->setTextColor(entry.accent);
+    gfx->setTextSize(2);
+    gfx->setCursor(uiCenterX(type), 68);
+    gfx->print(type);
+
+    char nature[48];
+    snprintf(nature, sizeof(nature), T(S_NATURE_FMT), natureName(btlWildMon.nature));
+    gfx->setTextColor(UI_INK);
+    gfx->setCursor(uiCenterX(nature), 94);
+    gfx->print(nature);
+
+    drawCardStat(122, T(S_STAT_ATK), btlFoe.base[SI_ATK], 800, UI_BAR_BAD, btlWildMon.ivAtk);
+    drawCardStat(154, T(S_STAT_DEF), btlFoe.base[SI_DEF], 800, 0x4C98, btlWildMon.ivDef);
+    drawCardStat(186, "Sp.A", btlFoe.base[SI_SPA], 800, UI_BAR_BAD, btlWildMon.ivAtk);
+    drawCardStat(218, "Sp.D", btlFoe.base[SI_SPD], 800, 0x4C98, btlWildMon.ivDef);
+    drawCardStat(250, T(S_STAT_SPE), btlFoe.base[SI_SPE], 800, UI_BAR_WARN, btlWildMon.ivSpe);
+    drawCardStat(282, T(S_STAT_VIT), btlFoe.maxHp, 800, UI_BAR_OK, btlWildMon.ivHp);
+  } else {
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(3);
+    gfx->setCursor(uiCenterX(T(S_MOVES)), 44);
+    gfx->print(T(S_MOVES));
+    for (int i = 0; i < MOVE_SLOTS; i++)
+      drawMoveRow(MOVE_ROW_Y(i), btlFoe.moves[i], false, btlFoe.dex);
+  }
+
+  for (uint8_t i = 0; i < BTL_FOE_DETAIL_PAGES; i++) {
+    int x = CX - (BTL_FOE_DETAIL_PAGES - 1) * 13 + i * 26;
+    if (i == btlFoeDetailPage) gfx->fillCircle(x, 374, 5, UI_INK);
+    else gfx->drawCircle(x, 374, 4, UI_INK);
+  }
+  gfx->setTextColor(UI_MUTED);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(T(S_DETAIL_BACK)), 398);
+  gfx->print(T(S_DETAIL_BACK));
+  gfx->flush();
+}
+
 void renderBattle() {
   if (btlWinUntil) { renderWin(); return; }
+  if (btlFoeDetailOpen) { renderBattleFoeDetail(); return; }
   btlEaseBars();
   gfx->fillScreen(RGB565_BLACK);
   drawBattleBack();
@@ -5165,6 +5273,19 @@ void battleTap(int16_t x, int16_t y) {
     audioMusic(MUS_NONE);
     battleOpen = false;
     if (btlLink) { btlLink = false; lanOpen = true; }
+    return;
+  }
+  if (btlFoeDetailOpen) {
+    if (y >= 370) {
+      btlFoeDetailOpen = false;
+      sfxPlay(SFX_TAP);
+    }
+    return;
+  }
+  if (btlWild && !btlOver && btlFoeDetailHit(x, y)) {
+    btlFoeDetailOpen = true;
+    btlFoeDetailPage = 0;
+    sfxPlay(SFX_TAP);
     return;
   }
   if (btlMsgCount) {          // a tap clears the narration and returns the menu

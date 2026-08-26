@@ -13,6 +13,7 @@ import json
 import re
 import struct
 import sys
+import unicodedata
 from pathlib import Path
 
 
@@ -45,6 +46,12 @@ from dex_presentation import BIOME_OVERRIDE, TYPE_BIOME, rgb565  # noqa: E402
 NAME_LOCALES = json.loads((HERE / "name_locales.json").read_text(encoding="utf-8"))
 REGION_LOCALES = json.loads((HERE / "region_locales.json").read_text(encoding="utf-8"))
 ITEM_DATA = json.loads((HERE / "item_data.json").read_text(encoding="utf-8"))
+SPECIES_DESCRIPTION_DATA = json.loads(
+    (HERE / "species_descriptions.json").read_text(encoding="utf-8")
+)
+SPECIES_DESCRIPTION_LOCALES = sorted(
+    SPECIES_DESCRIPTION_DATA.get("species", [{}])[0].get("descriptions", {})
+)
 
 TYPE_COLORS = [
     0xAD4F, 0xF406, 0x6C9E, 0xFE86, 0x7E4A, 0x9EDB,
@@ -239,21 +246,34 @@ def rarity_rows() -> dict[int, int]:
     return result
 
 
+def bitmap_font_text(value: str) -> str:
+    """Keep official Latin wording readable on the existing ASCII bitmap UI."""
+    # GLUE: Latin UI packs still use the ASCII-only 5x7 face. Remove this
+    # transliteration when those packs move to a Unicode font.
+    punctuation = str.maketrans({
+        "’": "'", "‘": "'", "“": '"', "”": '"', "–": "-", "—": "-",
+        "…": "...", "¡": "!", "¿": "?", "♀": " female", "♂": " male",
+        "œ": "oe", "Œ": "OE", "ß": "ss",
+    })
+    normalized = unicodedata.normalize("NFKD", value.translate(punctuation))
+    return normalized.encode("ascii", "ignore").decode("ascii")
+
+
 def species_descriptions(rows: list[tuple]) -> dict[str, list[str]]:
-    english, chinese = [], []
-    for number, _slug, _display, _accent_type, evolves_to, evolve_level in rows:
-        t1, t2 = TYPES[number]
-        type_en = t1.title() + (f"/{t2.title()}" if t2 else "")
-        type_zh = TYPE_ZH[t1] + (f"/{TYPE_ZH[t2]}" if t2 else "")
-        hp, atk, defense, speed, spa, spd = BASE_STATS[number]
-        stats_en = f"HP {hp}, ATK {atk}, DEF {defense}, SPA {spa}, SPD {spd}, SPE {speed}."
-        stats_zh = f"生命{hp}，攻击{atk}，防御{defense}，特攻{spa}，特防{spd}，速度{speed}。"
-        targets = EVOLUTION_BRANCHES.get(number, [evolves_to] if evolves_to else [])
-        evo_en = f" Evolves at level {evolve_level}." if targets else " Final form."
-        evo_zh = f" {evolve_level}级进化。" if targets else " 最终形态。"
-        english.append(f"{type_en} species. {stats_en}{evo_en}")
-        chinese.append(f"{type_zh}属性。{stats_zh}{evo_zh}")
-    return {"en-US": english, "zh-CN": chinese}
+    species = SPECIES_DESCRIPTION_DATA.get("species", [])
+    if SPECIES_DESCRIPTION_DATA.get("schema") != 2 or not species:
+        raise ValueError("unsupported species description catalogue")
+    by_dex = {entry["dex"]: entry["descriptions"] for entry in species}
+    locales = sorted(species[0]["descriptions"])
+    result = {locale: [] for locale in locales}
+    for row in rows:
+        descriptions = by_dex.get(row[0])
+        if descriptions is None or set(descriptions) != set(locales):
+            raise ValueError(f"species {row[0]} description catalogue is incomplete")
+        for locale in locales:
+            value = descriptions[locale]["text"]
+            result[locale].append(value if locale == "zh-CN" else bitmap_font_text(value))
+    return result
 
 
 def species_names(rows: list[tuple]) -> dict[str, list[str]]:
@@ -294,7 +314,9 @@ def regional_names(region_name: str, battle: dict) -> dict[str, list[str]]:
 
 def append_region_manifest(manifest: list[dict], path: Path, region_name: str,
                            lo: int, hi: int, battle: dict) -> None:
-    item = pack_manifest(path, "region", f"region-{region_name.lower()}", ["en-US", "zh-CN"])
+    item = pack_manifest(
+        path, "region", f"region-{region_name.lower()}", SPECIES_DESCRIPTION_LOCALES
+    )
     item["label"] = region_name.title()
     item["region"] = region_name
     item["range"] = [lo, hi]

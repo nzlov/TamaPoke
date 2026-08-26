@@ -25,7 +25,8 @@ This project is not affiliated with or endorsed by any of those companies.
 | Resource | Source | Use in the project |
 |---|---|---|
 | **All sprites** (idle, walk, sleep, eat, hurt, attack…) | [PMD Sprite Collaboration (PMDCollab/SpriteCollab)](https://github.com/PMDCollab/SpriteCollab) | Mystery-Dungeon-style animated sprites used everywhere: main screen, stat card, minigame, and the Pokédex grid + detail view |
-| **Base stats and learnsets** | [PokéAPI](https://pokeapi.co) | Real stats and level-up moves for the current 1025-species catalogue |
+| **Base stats, learnsets and Pokédex flavor text** | [PokéAPI](https://pokeapi.co) | Real stats, level-up moves and the newest available main-series description per supported language for the current 1025-species catalogue |
+| **Simplified-Chinese Pokédex text** | [The official Pokémon Website in China](https://dex.pokemon.cn/play/pokedex) | Official Chinese descriptions used when PokéAPI has no `zh-hans` entry |
 | **Simplified-Chinese species and move names** | [42arch/pokemon-dataset-zh](https://github.com/42arch/pokemon-dataset-zh) | Pack authoring data in `tools/name_locales.json`, emitted as localized-name sections in region and move packs — © 2024 42arch, **MIT**; the source dataset credits 52Poké Wiki |
 | **Gym badges** | [SteGriff/pokemon-badges](https://github.com/SteGriff/pokemon-badges) | Kanto through Unova pack data — Stephen Griffiths 2011, **CC BY 3.0**, traced from Bulbapedia |
 | **Gym leader teams** (Johto, Hoenn) | [pret/pokecrystal](https://github.com/pret/pokecrystal), [pret/pokeemerald](https://github.com/pret/pokeemerald) | Verified against the games' own trainer tables by `tools/verify_rosters.py` — no art is taken, only the team data |
@@ -54,7 +55,7 @@ Huge thanks to that whole community for an enormous amount of work.
 | Web installer | [ESP Web Tools](https://esphome.github.io/esp-web-tools/) (Nabu Casa) |
 | 5x7 bitmap font in `tools/emu/font.cpp` | [Adafruit_GFX](https://github.com/adafruit/Adafruit-GFX-Library) © 2012 Adafruit Industries, BSD licence |
 | Runtime OpenType engine | [FreeType](https://freetype.org/) 2.14.3, FreeType Project License; ESP32 port structure follows the official [Espressif component](https://components.espressif.com/components/espressif/freetype) |
-| Chinese UI-pack font | [Noto Sans CJK SC Medium](https://github.com/notofonts/noto-cjk), Google / Adobe, SIL Open Font License 1.1 |
+| Chinese UI-pack font | [Noto Sans SC Medium](https://fonts.google.com/noto/specimen/Noto+Sans+SC), Google / Adobe, SIL Open Font License 1.1 |
 
 TamaPoke's own code (firmware and tools) is original work by Quique Tortosa and
 the contributors to this fork, MIT licensed. It contains no decompiled or
