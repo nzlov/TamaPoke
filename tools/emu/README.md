@@ -64,10 +64,11 @@ sips -s format png shot.ppm --out shot.png     # macOS; or use ImageMagick
 `--shot` accepts the normal pages plus their actionable overlays and result
 states. Representative names include `main`, `evolvecta`, `farewellcta`,
 `runawaycta`, `sleep`, `feedmenu`,
-`releaseconfirm`, `choiceevolve`, `bath`, `keyboard`, `battle`, `btlmoves`,
+`choicerelease`, `choicefarewell`, `choiceevolve`, `bath`, `keyboard`, `battle`, `btlmoves`,
 `btlrevive`, `profile`, `gallery`, `clock`, `menu`, `navmenu`, `mainroster`, `box`, `boxreplace`, `boxdeposit`, `bag`,
 `bagdetail`, `train`, `ballgame`, `sack`, `speed`, `quiz`, `quizcorrect`,
-`battlecenter`, `wildfight`, `wilditems`, `capture`, `capturemoves`, `egg`,
+`battlecenter`, `wildfight`, `wilditems`, `capture`, `capturemoves`, `captureboth`,
+`sparkle`, `color`, `bothrare`, `egg`,
 `starter`, `dexdetail`, and `moveinfo`.
 `--lvl`, `--iv` and
 `--dex` set up the pet first.

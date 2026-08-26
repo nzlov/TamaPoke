@@ -18,6 +18,7 @@
 #include "i18n.h"
 #include "quiz.h"
 #include <cstdio>
+#include <cstring>
 uint32_t g_seed=4; FakeSerial Serial; FakeESP ESP; FakeWire Wire;
 volatile int g_touchX=0,g_touchY=0; volatile bool g_touchDown=false;
 void FakeESP::restart(){exit(0);}
@@ -28,6 +29,7 @@ void setup(); void render(); void battleTap(int16_t,int16_t);
 void updateQuiz(uint32_t now);
 bool beginBattleQuiz(uint8_t moveSlot);
 extern Pet pet;
+extern Arduino_Canvas *gfx;
 extern QuizRuntime quiz;
 extern bool battleOpen;
 extern uint8_t choiceKind;
@@ -42,9 +44,11 @@ void gymPickerFooterRects(int *rowBottom, int *lanTop, int *lanBottom,
 void moveRowVerticals(int *rowBottom, int *nameTop, int *nameBottom,
                       int *chipTop, int *chipBottom,
                       int *metaTop, int *metaBottom);
-void choiceDialogVerticals(int *titleBottom, int *costTop, int *costBottom,
-                           int *button1Top, int *button1Bottom,
+void choiceDialogVerticals(int *titleBottom, int *button1Top, int *button1Bottom,
                            int *button2Top, int *button2Bottom);
+void drawSparkleParticles(int cx, int groundY, uint32_t now, uint8_t scale);
+const char *rareMarks(bool color, bool sparkle);
+const char *statusMsg();
 int uiSleepButton(int *cx, int *cy);
 void uiEggPillRect(int *x, int *y, int *w, int *h, bool hitArea);
 bool uiButtonDisabled(int i);
@@ -91,6 +95,17 @@ int main(){
   pet.relearnFromLevel();
   while (pet.hasLearnOffer()) pet.declineLearn();
   quiz.config.choiceWeight = 0;
+
+  ck(!strcmp(rareMarks(false, true), "*"), "an asterisk marks sparkle");
+  ck(!strcmp(rareMarks(true, false), "%"), "a percent sign marks alternate color");
+  ck(!strcmp(rareMarks(true, true), "*%"), "both independent traits keep both marks");
+  pet.sparkle = true;
+  pet.raisedMinutes = 0;
+  pet.fullness = pet.joy = pet.energy = pet.hygiene = 100;
+  pet.weight = 0;
+  ck(!strcmp(statusMsg(), T(S_HAPPY)),
+     "sparkle does not replace the main-screen mood text");
+  pet.sparkle = false;
 
   // Sweep the whole grid area and record which cell each pixel belongs to.
   const int X0 = 40, X1 = 430, Y0 = 258, Y1 = 410;
@@ -221,13 +236,12 @@ int main(){
   }
 
   {
-    int tb, ct, cb, b1t, b1b, b2t, b2b;
-    choiceDialogVerticals(&tb, &ct, &cb, &b1t, &b1b, &b2t, &b2b);
-    ck(tb <= ct, "the retirement explanation starts below its title");
-    ck(cb < b1t, "the retirement explanation does not overlap its first button");
-    ck(b1b < b2t, "the retirement buttons do not overlap");
-    printf("      choice dialog: title..%d, cost %d..%d, buttons %d..%d %d..%d\n",
-           tb, ct, cb, b1t, b1b, b2t, b2b);
+    int tb, b1t, b1b, b2t, b2b;
+    choiceDialogVerticals(&tb, &b1t, &b1b, &b2t, &b2b);
+    ck(tb < b1t, "the exit question does not overlap its first button");
+    ck(b1b < b2t, "the exit buttons do not overlap");
+    printf("      choice dialog: title..%d, buttons %d..%d %d..%d\n",
+           tb, b1t, b1b, b2t, b2b);
   }
 
   // While the pet sleeps only ONE home icon works, and it must be the LIGHT.
@@ -350,6 +364,15 @@ int main(){
     ck(pet.canRunawayNow(), "total neglect really does make it ready to leave");
     onTap(233, 200);
     ck(pet.ceremony != CER_NONE, "and the tap lets it go, without asking");
+  }
+
+  {
+    gfx->fillScreen(RGB565_BLACK);
+    drawSparkleParticles(233, 300, millis(), 1);
+    int lit = 0;
+    for (int i = 0; i < 466 * 466; i++)
+      if (gfx->buffer()[i] != RGB565_BLACK) lit++;
+    ck(lit > 0, "sparkle draws its persistent particle layer");
   }
 
   printf("%s\n", bad?"FAILURES":"all good");

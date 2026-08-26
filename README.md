@@ -38,7 +38,7 @@ and complete them all (shinies included).
 ## Latest release and package split
 
 The supplied regional packs cover Kanto, Johto, Hoenn and Sinnoh and their
-shiny forms, with a complete Simplified Chinese UI, names and
+alternate-color forms, with a complete Simplified Chinese UI, names and
 descriptions. The recommended installation path is the **[web
 installer](https://nzlov.github.io/TamaPoke/web/)**: flash the firmware,
 then deploy the selected languages and regions to the microSD. Arduino IDE is
@@ -56,7 +56,7 @@ content without recompiling the firmware:
 |---|---|---|
 | UI (`.tui`) | UI strings, layout metrics and fonts; Simplified Chinese is `ui-zh-CN.tui` | At least one |
 | Moves (`.tmove`) | Move mechanics, learnsets, type chart, names and descriptions | Yes |
-| Region (`.tregion`) | Species data, names and descriptions, animated/shiny sprites, thumbnails, trainers, gyms and badges | At least one |
+| Region (`.tregion`) | Species data, names and descriptions, animated/alternate-color sprites, thumbnails, trainers, gyms and badges | At least one |
 | Questions (`.tquiz`) | Locale-indexed multiple-choice questions; records are read directly by random index | No; arithmetic is the fallback only when enabled |
 
 The installer reads `web/packs/index.json` and checks each selection's
@@ -155,7 +155,7 @@ way. Same reasoning that makes Hoenn Emerald throughout.
 Running on hardware. Implemented: installed species + shinies animated from
 regional packs; six persistent cultivation slots and a 24-slot Box; the full
 life cycle
-(egg by rarity → evolution → farewell/release/runaway); bred-Pokédex with
+(starter egg → evolution → farewell/release/runaway); bred-Pokédex with
 gallery; turn-based trainer, wild and LAN battles; wild capture and shared item
 inventory; battle stats (IVs + training); retention hooks (streak / bond /
 medals / name); biome + real-time backgrounds; three training minigames;
@@ -174,9 +174,9 @@ A quick reference to how the game really works (values straight from the code).
 - **1 real minute = 1 in-game minute.** Your Pokémon gains **+1 level every hour**
   of real time. Leveling is purely time-based — caring well doesn't speed it up,
   but neglect *delays evolution*.
-- **Level caps at 100**, reached at 4 days 3 hours. Farewell is only *offered* at
-  3 days (level 73) — **not a deadline**: your Pokémon is still growing, and
-  declining it to reach 100 is a real choice. Declining re-offers a day later.
+- **Level caps at 100**, reached 4 days 3 hours after level 1. Once a final form
+  has actually been cultivated by this player for 3 days, the menu's Release
+  row becomes Farewell. A wild creature's pre-capture age does not count.
 - It keeps **aging while powered off** (the RTC runs), catching up to **2 weeks** max.
 
 ### The four stats (0–100)
@@ -243,25 +243,25 @@ the answering side keeps the link alive, and the host settles once both actions 
   of the day you are not expected to be around. The light
   button beats both: a creature you sent to bed stays there.
 
-### Eggs & who you get (spawn odds)
+### Eggs & who you get
 - **First ever pet:** you pick a starter — **Bulbasaur / Charmander / Squirtle**.
 - Hatch the egg: tap it **3×** (or wait — it hatches on its own).
-- Every later egg rolls a **rarity tier** (over the ~79 base forms that come from eggs):
+- A safety egg rolls a **rarity tier** over the ~79 base forms that come from eggs:
 
-| Tier | Base chance | After a proper goodbye | # species |
-|---|---|---|---|
-| ✨ Legendary | ~3 %\* | ~10 % | 5 |
-| 🔵 Rare | ~27 % | ~45 % | 27 |
-| ⚪ Common | the rest | the rest | 47 |
+| Tier | Base chance | # species |
+|---|---|---|
+| ✨ Legendary | ~3 %\* | 5 |
+| 🔵 Rare | ~27 % | 27 |
+| ⚪ Common | the rest | 47 |
 
   \* Legendaries only start appearing once you've **registered ≥ 25** Pokémon.
 - A daily **streak** and high **bond** push rare/legendary odds higher.
-- A clean **goodbye blesses** the next egg; a **run-away curses** it (forces Common).
 - Within a tier it favors species whose **evolution line you haven't finished** (so
   every species in installed region packs is completable).
-- **Shiny:** base **1 / 48** (→ **1 / 24** right after a goodbye), improved by
-  streak/bond down to a best of **1 / 8**. Tracked separately in the dex.
 - Every hatch rolls unique **IVs** (see below) — no two are identical.
+- Endings normally create no egg. One safety egg is made only when all six
+  cultivation slots and all 24 Box slots are empty; if the team is empty but
+  the Box is not, its first creature is withdrawn instead.
 
 ### Evolution
 
@@ -301,30 +301,35 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
   vertically centred in each row.
 - A **runaway does not join.** It's the one ending with a cost, and letting a
   neglected pet come back on the team would remove it.
-- A newcomer uses a free cultivation slot first, then a free Box slot. If both
+- A wild capture uses a free cultivation slot first, then a free Box slot. If both
   are full, the player explicitly chooses a replacement or lets it go; nothing
   is overwritten silently.
 - Gym and linked battles select from exactly the six cultivation slots.
 
-### The three endings (you choose & witness each — none auto-fire)
-- 💛 **Farewell** — when it's a **final form** that has lived **3 days**. A button
-  appears; triggering it **blesses your next egg**. You can **postpone** ("stay
-  together", re-offered in a day). The good ending.
+### Three ways a creature leaves
+- 💛 **Farewell** — after a final form has actually been cultivated by this
+  player for **3 days**, the menu's Release row becomes Farewell. It adds
+  **1 percentage point** to both wild color and sparkle odds, or **2 points**
+  when the creature is level 100.
 - 💔 **Run-away** — if you let **all four stats sit at 0 for a full hour**. A single
-  act of care cancels it. It **curses the next egg** (forces Common). The sad ending.
-- 👋 **Release** — long-press the creature to let it go on your terms (neutral).
+  act of care cancels it. It subtracts **2 points** from the shared wild rare
+  bonus, never below zero.
+- 👋 **Release** — the menu action before Farewell is earned; neutral.
 
-After any ending, a **new egg** appears.
+The shared bonus is clamped to **0–15 percentage points**. After one leaves, the
+next cultivation member is shown, then the first Box member; only a completely
+empty roster receives a safety egg.
 
 ### Bonds, streaks, medals, Pokédex
 - **Streak** (player-wide, survives across pets): first care each real day; milestones
   at **3 / 7 / 30 / 100** days; skipping a day breaks it.
 - **Bond** (per pet, resets on hatch): grows with affection (**cap +20/day**), cools on
-  neglect. Both streak & bond improve egg/shiny odds — **and the IVs of your next pet**.
+  neglect. Streak and bond still improve a safety egg's rarity and IVs, but do
+  not enter either wild color/sparkle roll.
 - **8 medals** (Lv10/25/50, favorite berry found, 7-day streak, max bond, final form,
   "fit" = weight 0 & no slip-ups), per-pet + a global counter.
 - **Pokédex:** raising a species registers it; completion covers every species
-  and shiny supplied by the installed region packs. Browse **one installed
+  and alternate-color form supplied by the installed region packs. Browse **one installed
   region at a time**, swiping horizontally to page within it.
 - **Region:** the pill under a waiting egg picks which generation it comes from —
   **Kanto / Johto / Hoenn / Sinnoh / All**. A first egg gives that region's starter.
@@ -332,32 +337,30 @@ After any ending, a **new egg** appears.
   out of the egg pool. A partial data-pack install is a supported state.
 
 ### Battle stats & IVs
-Every pet rolls four **IVs** (individual values, 0–31) at hatch — ATK / DEF / SPD /
-VIT — that never change and make each one genuinely unique:
+Every creature has four **IVs** — ATK / DEF / SPD / VIT:
 
 ```
 stat = base + level + (IV × level)/100 + training
 ```
 
-The `(IV × level)/100` term is the **real formula from Gen III onward** — a perfect
-IV is worth +31 at level 100. But IVs do a second job here that they don't do in
-the games: **they cap training.**
+The `(IV × level)/100` term is the **real formula from Gen III onward**. 31 remains
+the traditional maximum for ordinary rolls, but is no longer a system cap:
+sparkle and gym rewards may continue above it. IVs also cap training.
 
 | | Effect |
 |---|---|
-| Innate bonus | up to **+22** at level 73 (end of a normal life) |
+| Innate bonus | IV 31 contributes **+22** at level 73; higher IV keeps scaling |
 | Training ceiling | `70 + (30 × IV)/31` → **77** at IV 8, **100** at IV 31 |
 | Total spread | ~**40 points**, about **15 %** between a great and a poor individual |
 
-- **Rolls are 8–31, never 0.** In the real games a 0 IV is survivable because you can
-  breed hundreds of eggs; here a pet lives 3 days, so a dud would just be a punishment.
-- **Streak + bond bias the roll upward** (up to +7) — using the *previous* pet's care
-  score. Raising one well genuinely improves the next.
-- **Legendaries hatch with 3 of 4 IVs perfect**, exactly as they're guaranteed 3
-  perfect IVs in the games.
-- **Shinies floor every IV at 20** — a nod to Gen 2, where shininess *was* a DV
-  pattern and a shiny was never mediocre.
-- IVs are shown on the Battle page of the stat card; a perfect 31 is highlighted.
+- Hatch rolls are **8–31**; streak and bond may still bias a safety egg upward.
+- Each ordinary wild IV is rolled independently at the current region/difficulty
+  baseline **±3**.
+- Wild **color variants** floor every IV at 20. Independent wild **sparkle** then
+  adds **10 to every IV**, with no 31 cap.
+- Each gym can reward a given creature once. It picks any of the four IVs
+  uniformly and adds **+1**, even when that IV is already 31 or higher.
+- IVs are shown on the Battle page of the stat card; 31 and above are highlighted.
 
 Training: **STRENGTH** ← the bag, **SPEED** ← the reaction test, **DEFENSE** ← the
 ball game (and still 1 h of wellbeing passively). **VIT** can't be trained. All three
@@ -390,34 +393,33 @@ table. A **level 1 Squirtle opened with SURF and BLIZZARD and could beat Brock.*
 
 One number rather than a curve: the first five leaders sit at **14–43**, so you
 fight the early ladder on what your species actually learns, and TMs arrive as you
-enter the back half. A creature retires at 73 and caps at 100.
+enter the back half. A creature may qualify for farewell after three cultivated
+days and caps at 100.
 
 That only works because the move table now carries the **cheap early attacks** —
 SCRATCH, PECK, POISON STING, BUBBLE, ABSORB, SPARK, FURY ATTACK and the rest. Before
 them, ~15 % of species reached level 15 with no attacking move at all and were
 quietly leaning on TMs to fill the gap.
 
-**Gym wins train too**, which is what makes the ladder worth replaying rather than
-a checklist you tick once:
+**Gym wins train too**: each gym raises one random IV for the current creature.
+Changing difficulty or rematching cannot claim it twice for that creature, but
+a different creature has its own claim map.
 
-### Retiring a creature early
+### Wild color and sparkle
 
-The farewell is only *offered* at final form and three days. **RETIRE** on the
-menu ends a creature whenever you like -- it uses the same ceremony and storage
-flow as farewell: a free cultivation slot first, then the Box, with an explicit
-replacement choice only when both are full.
+Wild encounters make two separate rolls, so color and sparkle may appear alone
+or together:
 
-| | |
-|---|---|
-| Retiring one that has earned its farewell | free |
-| Retiring one that has not | the **next** creature evolves a day later |
+| Trait | Base | At shared bonus +15 | Appearance and stats |
+|---|---:|---:|---|
+| Color | 5% | 20% | Alternate sprite; every IV at least 20 |
+| Sparkle | 1% | 16% | Persistent gold/white particles; every IV +10 without a 31 cap |
 
-The penalty is `EVO_PENALTY_LEVELS` (24 at `MINUTES_PER_LEVEL 60`) added to
-every evolution threshold, the same sum `careMistakes` moves. It lands on the
-creature that hatches next, is spent by hatching it, and does **not** compound:
-three early retires in a row still cost one day. The creature's card says
-"evolves a day later" while it carries the debt, and the confirm dialog says the
-price before you accept it.
+Both rolls use the same farewell bonus but are evaluated independently, never
+as one combined rarity-category roll. Lists mark sparkle with `*`, color with
+`%`, and both with `*%`. The main screen keeps its normal mood text instead of
+announcing sparkle. The traits persist separately through cultivation,
+Box storage, saves, battle and LAN transfer.
 
 ### Choosing your egg's region
 
@@ -534,7 +536,7 @@ directly and combines them with UI, species, move, description, trainer, battle
 and badge data. No regional intermediate bundle is created.
 
 ```bash
-python3 tools/pack_pmd.py       # fetch + pack the current catalogue + shiny inputs
+python3 tools/pack_pmd.py       # fetch + pack the current catalogue + color inputs
 python3 tools/make_thumbs.py    # Pokédex thumbnails (from the PMD sprites) -> thumbs.bin
 python3 tools/fetch_species_descriptions.py # append descriptions for newly added dex numbers
 python3 tools/gen_data_packs.py # web/packs/*.tui, *.tmove, *.tregion, *.tquiz + index.json
@@ -579,8 +581,8 @@ If one bottoms out it counts as a *slip-up*.
 - 🫧 **Bath** → a foam scene that cleans up the poops.
 
 **Touch gestures:**
-- **Tap the name** at the top = the **menu** (stats / Pokédex / Settings / early
-  retirement). Close it
+- **Tap the name** at the top = the **menu** (stats / Pokédex / Settings /
+  Release or Farewell). Close it
   with the CLOSE row, by tapping anywhere outside the panel, or with any swipe.
 - Tap the occupied-slot indicators above the name to open the Box.
 - Tap the creature = pet it (+happiness, bond).
@@ -589,22 +591,20 @@ If one bottoms out it counts as a *slip-up*.
   Progress; swipe between them; tap the name on Profile to rename; on Battle the
   "Train strength" button opens the bag).
 - Swipe down = open the **bag / battle centre / badges** navigation page.
-- Long press (3 s) on the creature = **release** dialog.
 
 **Physical PWR button:** short = screen on/off · long (4 s) = full power-off
 (the RTC stays alive, so time passes even while it's off).
 
 ## Decisions: you choose, and you watch
 
-The three life-cycle endings and evolution **don't happen on their own** — when
-the conditions are met a button appears and you tap it (so you're present to
-witness it), each opening a two-option dialog:
+Evolution, Farewell and Release **don't happen on their own**; a button or menu
+row opens their confirmation dialog:
 
 - **Evolution** (red button): *Evolve* (epic animation: halo, rays, sparkles and
   a **flicker between the old and new form**) or *Keep form* (re-offered next level).
-- **Farewell** (gold button, final form + 3 days): *Say goodbye* (warm farewell,
-  rising hearts → new egg) or *Stay together* (keep your companion; re-offered in
-  a day). Tension: a maxed-out friend vs. completing the Pokédex.
+- **Farewell** (menu, final form + 3 cultivated days): a warm rising-heart scene,
+  then +1 point to both wild rare odds, or +2 at level 100. Before qualification,
+  the same menu row is the neutral **Release** action.
 - **Runaway** (dark button, total neglect for 1 h): a somber "feels abandoned"
   ending in the rain — caring for the creature cancels it.
 
@@ -687,8 +687,8 @@ LAN battle damage.
 
 ## Battle stats and training
 
-Each creature has ATK/DEF/SPD/VIT = **base stat** + level + **IV** (0–31, rolled
-at hatch, `IV × level/100` exactly as in the real games) + **training**, followed
+Each creature has ATK/DEF/SPD/VIT = **base stat** + level + **IV** (ordinary
+rolls stop at 31; sparkle and gyms may exceed it; `IV × level/100`) + **training**, followed
 by its nature modifier (see [Battle stats & IVs](#battle-stats--ivs)):
 - SPEED ← the **reaction test** (~2 reactions = one score step)
 - DEFENSE ← the ball game (~2 rallies = one score step), plus 1 h of wellbeing = +1
@@ -741,20 +741,21 @@ and burns off with training.
   a global counter. Medals page of the stat card.
 - **Name**: touch keyboard; the nickname rules the header and the card.
 
-High streak and bond **improve the egg roll** (rarity and shiny): caring well
-always pays off.
+High streak and bond improve a safety egg's rarity and IVs. Wild color and
+sparkle use only the shared farewell bonus.
 
-## Life cycle, eggs by rarity, languages
+## Life cycle, wild rare traits, languages
 
-The life cycle lasts **3 days** of play. Three endings (all leave a new egg):
-**farewell** (final form + 3 days), **release** (long press), **runaway** (all 4
-bars at zero for 1 h). Each bred species is recorded in the **bred Pokédex**
-(normal and shiny separately).
+After a final form has been cultivated for **3 days**, it may Farewell; before
+that it may be Released from the menu. All four bars at zero for 1 h causes a
+Runaway. Farewell adds +1 point to both wild rare odds (+2 at level 100), Runaway
+subtracts 2, and Release is neutral; the shared bonus is clamped to 0–15.
 
-The egg rolls rarity over the ~79 base forms (47 common / 27 rare / 5 legendary),
-**biased towards the lines you're missing** (installed regions are completable), blessed by
-a farewell and punished by a runaway. Legendaries only with 25+ registered.
-**Shiny** 1/48 (better with streak/bond/farewell).
+Wild color starts at 5% and sparkle at 1%. They are rolled independently and may
+coexist. Color uses the alternate sprite and floors IVs at 20; sparkle has
+persistent particles and adds 10 to every IV without a cap. Endings remove the
+creature instead of banking it, and create a safety egg only if team and Box are
+both empty.
 
 **Languages:** the supplied pack set includes English (default), Spanish, French,
 German, Italian, Portuguese and Simplified Chinese. The firmware does not hardcode
@@ -784,7 +785,7 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
   `sprites.py` (workshop), `pack_pmd.py` / `make_thumbs.py`,
   `gen_data_packs.py`, `quiz_pack.py`, validators and `touch_log.py`
 - `tools/emu/` — desktop emulator (real firmware + stubbed hardware, SDL)
-- `tools/sdcard/mons/` — generated sprite inputs (animated, shiny, PMD, thumbnails)
+- `tools/sdcard/mons/` — generated sprite inputs (animated, alternate-color, PMD, thumbnails)
 - `web/packs/` — deployable UI, move, region and question packs plus their dynamic catalogue
 - `web/` — the browser installer and question-bank editor (ESP Web Tools + Web Serial deployment/configuration)
 
@@ -792,9 +793,9 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
 
 `STATS` (full state) · `SPEC <dex>` (change species) · `LVL <n>` ·
 `IV <atk> <def> <spd> <vit>` (force individual values) · `HATCH` ·
-`EGG <dex> [shiny]` (hatch a chosen species — the only way to test the
-legendary/shiny IV guarantees, which apply at hatch) ·
-`SHINY` · `NICK <x>` · `BYE` / `RUN` (farewell / runaway) · `ABANDON` (force the
+`EGG <dex> [color]` (hatch a chosen species for debugging) ·
+`SHINY` (toggle color) · `SPARKLE` (toggle sparkle) · `NICK <x>` ·
+`BYE` / `RUN` (farewell / runaway) · `ABANDON` (force the
 runaway-ready state) · `WIPE` (factory reset → new game) · `BEEP` (audio test) ·
 `REG` (Pokédex) · `EGGS` (simulate 20 eggs) · `GAL` (gallery) · `CAREDAY` ·
 `PARTY` / `PARTY <dex>` / `PARTY CLEAR` (inspect and fill the party) ·

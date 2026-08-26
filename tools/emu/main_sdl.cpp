@@ -180,6 +180,7 @@ void openKeyboardFor(uint8_t target);
 void setup();
 void loop();
 void render();
+void ensureMon();
 extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyPick, trainOpen, movePickOpen;
@@ -192,7 +193,7 @@ extern int16_t galleryDetail;
 extern bool moveInfoOpen;
 extern uint8_t movePickSlot;
 extern QuizRuntime quiz;
-extern uint32_t feedMenuUntil, confirmUntil, choiceUntil, bathUntil;
+extern uint32_t feedMenuUntil, choiceUntil, bathUntil;
 extern uint8_t choiceKind;
 extern uint32_t partyBannerUntil;
 extern char partyBannerName[32];
@@ -273,6 +274,24 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   boxOpen = false;
   bagOpen = captureOpen = false;
   if (!strcmp(screen, "main")) pet.ageMinutes = 0;
+  else if (!strcmp(screen, "sparkle")) {
+    pet.shiny = false;
+    pet.sparkle = true;
+    pet.ageMinutes = 0;
+    ensureMon();
+  }
+  else if (!strcmp(screen, "color")) {
+    pet.shiny = true;
+    pet.sparkle = false;
+    pet.ageMinutes = 0;
+    ensureMon();
+  }
+  else if (!strcmp(screen, "bothrare")) {
+    pet.shiny = true;
+    pet.sparkle = true;
+    pet.ageMinutes = 0;
+    ensureMon();
+  }
   else if (!strcmp(screen, "mainroster")) {
     pet.ageMinutes = 0;
     party.captureActive(pet, false);
@@ -293,6 +312,8 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.dbgHatchAs(3, false);
     expireShotCelebrations();
     pet.ageMinutes = 73UL * MINUTES_PER_LEVEL;
+    pet.raisedMinutes = FAREWELL_AGE_MIN;
+    menuOpen = true;
     while (pet.hasLearnOffer()) pet.declineLearn();
   }
   else if (!strcmp(screen, "runawaycta")) {
@@ -331,16 +352,27 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   // remove these assignments if the emulator gains scripted touch journeys.
   else if (!strcmp(screen, "sleep"))   pet.sleeping = true;
   else if (!strcmp(screen, "feedmenu")) feedMenuUntil = millis() + 5000;
-  else if (!strcmp(screen, "releaseconfirm")) confirmUntil = millis() + 5000;
+  else if (!strcmp(screen, "releaseconfirm") || !strcmp(screen, "choicerelease") ||
+           !strcmp(screen, "choiceretire")) {
+    choiceKind = 3; choiceUntil = millis() + 5000;
+  }
   else if (!strcmp(screen, "choiceevolve")) { choiceKind = 1; choiceUntil = millis() + 5000; }
-  else if (!strcmp(screen, "choicefarewell")) { choiceKind = 2; choiceUntil = millis() + 5000; }
-  else if (!strcmp(screen, "choiceretire")) { choiceKind = 3; choiceUntil = millis() + 5000; }
+  else if (!strcmp(screen, "choicefarewell")) {
+    pet.dbgHatchAs(3, false);
+    pet.raisedMinutes = FAREWELL_AGE_MIN;
+    while (pet.hasLearnOffer()) pet.declineLearn();
+    choiceKind = 3; choiceUntil = millis() + 5000;
+  }
   else if (!strcmp(screen, "bath")) startBathAnimation(millis());
   else if (!strcmp(screen, "joined")) {
     snprintf(partyBannerName, sizeof(partyBannerName), "%s", speciesName(pet.speciesId));
     partyBannerUntil = millis() + 5000;
   }
-  else if (!strcmp(screen, "ceremonyfarewell")) pet.startFarewell();
+  else if (!strcmp(screen, "ceremonyfarewell")) {
+    pet.dbgHatchAs(3, false);
+    pet.raisedMinutes = FAREWELL_AGE_MIN;
+    pet.startFarewell();
+  }
   else if (!strcmp(screen, "ceremonyrunaway")) pet.startRunaway();
   else if (!strcmp(screen, "ceremonyrelease")) pet.release();
   else if (!strcmp(screen, "keyboard")) openKeyboard();
@@ -400,11 +432,16 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     }
     bagOpen = true;
   }
-  else if (!strcmp(screen, "capture") || !strcmp(screen, "capturemoves")) {
+  else if (!strcmp(screen, "capture") || !strcmp(screen, "capturemoves") ||
+           !strcmp(screen, "captureboth")) {
     Pet caught;
     caught.dbgHatchAs(25, true);
+    caught.sparkle = !strcmp(screen, "captureboth");
     caught.ageMinutes = 41UL * MINUTES_PER_LEVEL;
-    caught.ivAtk = 31; caught.ivDef = 24; caught.ivSpe = 29; caught.ivHp = 27;
+    caught.ivAtk = caught.sparkle ? 41 : 31;
+    caught.ivDef = caught.sparkle ? 34 : 24;
+    caught.ivSpe = caught.sparkle ? 39 : 29;
+    caught.ivHp = caught.sparkle ? 37 : 27;
     caught.relearnFromLevel();
     capturedMon = caught.toPartyMon();
     capturePage = !strcmp(screen, "capturemoves") ? 1 : 0;

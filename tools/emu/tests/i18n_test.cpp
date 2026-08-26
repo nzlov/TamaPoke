@@ -106,6 +106,19 @@ int main() {
       }
     }
   }
+  setLang((Lang)english);
+  if (strcmp(T(S_RETIRE), "RELEASE")) {
+    printf("WRONG EXIT LABEL  en-US: %s\n", T(S_RETIRE));
+    bad++;
+  }
+  int8_t chinese = uiFindLocale("zh-CN");
+  if (chinese >= 0) {
+    setLang((Lang)chinese);
+    if (strcmp(T(S_RETIRE), "放生")) {
+      printf("WRONG EXIT LABEL  zh-CN: %s\n", T(S_RETIRE));
+      bad++;
+    }
+  }
   runtimeFontEnd();
   printf("%s: %u languages x %d strings\n", bad ? "FAIL" : "PASS", langCount(), STR_COUNT);
   return bad ? 1 : 0;

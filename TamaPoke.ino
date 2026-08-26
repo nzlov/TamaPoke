@@ -411,14 +411,14 @@ bool menuOpen = false;
 #define MENU_H 316
 #define MENU_ROW_H 52
 #define MENU_ROW_GAP 6
-// 5 rows: STATS / POKEDEX / SETTINGS / RETIRE / CLOSE. At MENU_Y 75 the panel
-// spans 75..391 and the round display gives a half-width of 171 there against
+// 5 rows: STATS / POKEDEX / SETTINGS / RELEASE-or-FAREWELL / CLOSE. At MENU_Y
+// 75 the panel spans 75..391 and the round display gives a half-width of 171 there against
 // the 160 a row needs, so the corners stay on glass.
 #define MENU_ROWS 5
 #define MENU_ROW_Y(i) (MENU_Y + 16 + (i) * (MENU_ROW_H + MENU_ROW_GAP))
 
 // Swipe-down navigation is deliberately separate from the name-band menu.
-// The latter remains the only route to Pokedex, settings and retirement; this
+// The latter remains the only route to Pokedex, settings and creature exit; this
 // full page is the requested fast route to the three player-wide destinations.
 bool navMenuOpen = false;
 #define NAVMENU_BTN_X 85
@@ -431,7 +431,7 @@ bool navMenuOpen = false;
 // Box is the only cultivation-management screen. Selecting any Box cell opens
 // its embedded cultivation picker: an empty cell deposits the chosen creature,
 // while an occupied cell exchanges it. `partyPick` reuses that picker when a
-// captured or retiring creature needs a replacement slot.
+// captured creature needs a replacement slot.
 bool partyPick = false;
 PartyMon partyPending;
 #define BURY_TARGET_NONE  -2
@@ -600,6 +600,7 @@ void bagTap(int16_t x, int16_t y);
 void renderCapture();
 void captureTap(int16_t x, int16_t y);
 void startWildBattle(uint8_t region, bool hard);
+void drawSparkleParticles(int cx, int groundY, uint32_t now, uint8_t scale = 1);
 uint32_t pmdActTotalMs(const PmdAct &action);
 const char *const SCREEN_NAME[SCR_COUNT] = {
   "quiz", "starter", "region", "gallery", "dexpick", "movepick", "box",
@@ -620,6 +621,12 @@ bool captureOpen = false;
 uint8_t capturePage = 0;
 PartyMon capturedMon;
 ItemKey captureDrop = ITEM_KEY_NONE;
+
+const char *rareMarks(bool color, bool sparkle) {
+  if (color && sparkle) return "*%";
+  if (sparkle) return "*";
+  return color ? "%" : "";
+}
 bool btlNewBadge = false;
 uint32_t btlWinUntil = 0;   // the win screen is up
 // A trainer fight is a run of 1v1s: both sides queue their squad and the next
@@ -958,9 +965,7 @@ uint32_t lastRender = 0;
 uint32_t lastInteract = 0;
 uint8_t dimStage = 0;        // 0 despierto, 1 atenuado (90s), 2 casi apagado (5min)
 bool swallowGesture = false; // el toque que despierta no acciona nada
-uint32_t holdStart = 0;     // pulsacion larga sobre el bicho
-uint32_t confirmUntil = 0;  // dialogo "soltar?" activo hasta este millis
-uint8_t choiceKind = 0;     // dialogo de decision: 0 ninguno, 1 evolucion, 2 despedida
+uint8_t choiceKind = 0;     // decision dialog: 0 none, 1 evolution, 3 farewell/release
 uint32_t choiceUntil = 0;   // se cierra solo a este millis
 #define CHOICE_BTN_X 93
 #define CHOICE_BTN_W 280
@@ -969,7 +974,6 @@ uint32_t choiceUntil = 0;   // se cierra solo a este millis
 #define CHOICE_BTN2_Y 278
 int16_t tX0, tY0, tXl, tYl; // gesto en curso (inicio y ultima posicion)
 uint32_t tStart = 0;
-bool holdFired = false;
 bool recoveryMode = false;
 
 void renderBootSplash() {
@@ -1142,26 +1146,6 @@ void loop() {
   updateQuiz(millis());
   handleSerial();
   ensureMon();
-
-  // A farewell or release just finished: the creature is waiting for a slot.
-  // With both cultivation and Box storage full, the Box-owned cultivation
-  // picker chooses who it replaces, or lets it go.
-  if (pet.endedKind != CER_NONE && !partyPick) {
-    // party first, then the box; only a full box makes it your choice
-    if (party.store(pet.endedMon) != PARTY_STORE_FULL) {
-      snprintf(partyBannerName, sizeof(partyBannerName), "%s",
-               displaySpeciesName(pet.endedMon.dex, pet.endedMon.nick));
-      partyBannerUntil = now + 3500;
-      pet.endedKind = CER_NONE;
-      sfxPlay(SFX_MEDAL);
-    } else {
-      partyPending = pet.endedMon;
-      partyPick = true;
-      boxOpen = true;
-      boxSel = 0;
-      menuOpen = false;
-    }
-  }
 
   // pulsacion corta del PWR: pantalla on/off
   static uint32_t lastPwr = 0;
@@ -1377,15 +1361,13 @@ void handleSerial() {
     Serial.println();
     Serial.println("DONE");
   } else if (line.startsWith("EGG ")) {
-    // EGG <dex> [shiny]: hatch a chosen species right now. The legendary and
-    // shiny IV guarantees only apply at hatch time, so this is the only way to
-    // exercise them on hardware (SHINY below just toggles the flag afterwards).
+    // EGG <dex> [color]: hatch a chosen species immediately for hardware tests.
     int dex = 0, sh = 0;
     int n = sscanf(line.c_str() + 4, "%d %d", &dex, &sh);
     if (n >= 1 && dex >= 1 && dex <= dexCount()) {
       pet.dbgHatchAs(dex, sh != 0);
       Serial.printf("%s%s iv=%u/%u/%u/%u\n", speciesName(dex),
-                    pet.shiny ? " *SHINY*" : "", pet.ivAtk, pet.ivDef,
+                    pet.shiny ? " *COLOR*" : "", pet.ivAtk, pet.ivDef,
                     pet.ivSpe, pet.ivHp);
     }
     Serial.println("DONE");
@@ -1403,6 +1385,10 @@ void handleSerial() {
   } else if (line == "SHINY") {  // alterna shiny del actual (pruebas)
     pet.shiny = !pet.shiny;
     Serial.printf("shiny=%d\n", pet.shiny);
+    Serial.println("DONE");
+  } else if (line == "SPARKLE") {
+    pet.sparkle = !pet.sparkle;
+    Serial.printf("sparkle=%d\n", pet.sparkle);
     Serial.println("DONE");
   } else if (line.startsWith("NICK ")) {
     pet.rename(line.substring(5).c_str());
@@ -1499,7 +1485,8 @@ void handleSerial() {
       const PartyMon &m = party.slots[i];
       if (m.empty()) Serial.print(" -");
       else if (m.isEgg()) Serial.print(" EGG");
-      else Serial.printf(" %s%s(nv%u)", speciesName(m.dex), m.shiny ? "*" : "", m.level);
+      else Serial.printf(" %s%s(nv%u)", speciesName(m.dex),
+                         rareMarks(m.shiny, m.sparkle), m.level);
     }
     Serial.println();
     Serial.println("DONE");
@@ -1532,9 +1519,9 @@ void handleSerial() {
                   pet.trAtk, pet.trDef, pet.trSpe,
                   pet.trMinAtk, pet.trMinDef, pet.trMinSpe,
                   pet.trMaxAtk(), pet.trMaxDef(), pet.trMaxSpe());
-    Serial.printf("shiny=%d streak=%u/%u bond=%u medals=0x%X(%u) nick=%s\n",
-                  pet.shiny, pet.streak, pet.bestStreak, pet.bond, pet.medals,
-                  pet.totalMedals, pet.nick);
+    Serial.printf("color=%d sparkle=%d wildBonus=%u streak=%u/%u bond=%u medals=0x%X(%u) nick=%s\n",
+                  pet.shiny, pet.sparkle, pet.wildRareBonus, pet.streak,
+                  pet.bestStreak, pet.bond, pet.medals, pet.totalMedals, pet.nick);
     Serial.println("DONE");
   }
 }
@@ -1594,7 +1581,6 @@ void handleTouch() {
     tX0 = tXl = x;
     tY0 = tYl = y;
     tStart = millis();
-    holdFired = false;
     swallowGesture = (dimStage > 0) || screenOff;  // si estaba a oscuras, solo despierta
     if (screenOff) pet.setScreenOff(false);        // waking the screen wakes it
     screenOff = false;
@@ -1609,16 +1595,6 @@ void handleTouch() {
     if (brightnessDrag) {
       setUserBrightness(brightnessLevelAt(x), false);
     }
-    // pulsacion larga sin moverse sobre el bicho -> dialogo de soltar
-    else if (!holdFired && !swallowGesture && !quizBlocking() &&
-        !galleryOpen && !cardOpen && !kbOpen && !clockOpen && !navMenuOpen &&
-        millis() - tStart > 3000 &&
-        abs(tXl - tX0) < 30 && abs(tYl - tY0) < 30 && inPetZone(tX0, tY0) &&
-        !inPetNavZone(tX0, tY0) &&
-        !pet.isEgg() && !pet.isDead() && !confirmUntil && !pet.ceremony) {
-      confirmUntil = millis() + 10000;
-      holdFired = true;
-    }
   } else if (wasPressed) {  // levanta el dedo: resolver gesto
     lastInteract = millis();
     int dx = tXl - tX0, dy = tYl - tY0;
@@ -1626,7 +1602,7 @@ void handleTouch() {
     if (brightnessDrag) {
       setUserBrightness(brightnessLevelAt(tXl), true);
       brightnessDrag = false;
-    } else if (!holdFired && !swallowGesture) {
+    } else if (!swallowGesture) {
       if (abs(dx) > 80 && abs(dy) < 70 && dt < 800) onSwipe(dx > 0 ? 1 : -1);
       else if (abs(dy) > 80 && abs(dx) < 70 && dt < 800) onSwipeV(dy > 0 ? 1 : -1);
       else if (dt < 1500 && abs(dx) < 40 && abs(dy) < 40) onTap(tX0, tY0);
@@ -1667,7 +1643,6 @@ void onSwipeV(int dir) {
     if (partyPick) {
       partyPick = false;
       partyPending = PartyMon();
-      pet.endedKind = CER_NONE;
     }
     boxOpen = false;
     return;
@@ -1706,8 +1681,8 @@ void onSwipeV(int dir) {
   // Swipe down opens the player-wide navigation page; swipe up remains the
   // current creature's card.
   if (dir > 0) {
-    if (!confirmUntil && !feedMenuUntil) navMenuOpen = true;
-  } else if (!pet.isEgg() && !confirmUntil && !feedMenuUntil) {
+    if (!feedMenuUntil) navMenuOpen = true;
+  } else if (!pet.isEgg() && !feedMenuUntil) {
     cardOpen = true;                // deslizar arriba: ficha
     cardPage = 0;
   }
@@ -1914,7 +1889,8 @@ void renderCapture() {
   gfx->setCursor(uiCenterX(T(S_CAUGHT)), 38);
   gfx->print(T(S_CAUGHT));
   char head[48];
-  snprintf(head, sizeof(head), "%s%s Lv.%u", capturedMon.shiny ? "*" : "",
+  snprintf(head, sizeof(head), "%s%s Lv.%u",
+           rareMarks(capturedMon.shiny, capturedMon.sparkle),
            speciesName(capturedMon.dex), (unsigned)capturedMon.level);
   gfx->setTextColor(dexEntry(capturedMon.dex).accent);
   gfx->setTextSize(2);
@@ -2138,7 +2114,7 @@ void onSwipe(int dir) {
   }
   if (!galleryOpen) {
     // The main horizontal gesture moves through occupied cultivation slots.
-    if (!pet.ceremony && !confirmUntil) {
+    if (!pet.ceremony) {
       if (party.activateNext(dir < 0 ? 1 : -1, pet)) sfxPlay(SFX_TAP);
     }
     return;
@@ -2395,7 +2371,7 @@ void onTap(int16_t x, int16_t y) {
       else if (i == 1) { galleryOpen = true; galleryPick = true; galleryPage = 0; rpickPage = 0; galleryDetail = 0; galleryDirty = true; }
       else if (i == 2) { openClock(); }
       else if (i == 3) {
-        if (!pet.canRetireNow()) { sfxPlay(SFX_DENY); return; }
+        if (!pet.canExitNow()) { sfxPlay(SFX_DENY); return; }
         choiceKind = 3; choiceUntil = millis() + 12000;
       }
       return;                                     // i == 4 is CLOSE: just shut
@@ -2487,21 +2463,13 @@ void onTap(int16_t x, int16_t y) {
     if (choiceKind == 1) {                 // evolucion
       if (b1) { int16_t old = pet.speciesId; pet.evolve(); evoPmd.load(old, pet.shiny); }
       else if (b2) pet.declineEvolve();
-    } else if (choiceKind == 3) {          // retirada a peticion
-      if (b1) pet.startRetire();
-      // b2 is simply "no": nothing to decline, the row is always there
-    } else if (choiceKind == 2) {          // despedida
-      if (b1) pet.startFarewell();
-      else if (b2) pet.declineFarewell();
+    } else if (choiceKind == 3) {          // contextual farewell / release
+      if (b1) {
+        if (pet.canFarewellNow()) pet.startFarewell();
+        else pet.release();
+      }
     }
     choiceKind = 0;
-    return;
-  }
-  if (confirmUntil) {        // dialogo "soltar?": SI / NO
-    if (millis() < confirmUntil && x >= 118 && x <= 218 && y >= 252 && y <= 304) {
-      pet.release();
-    }
-    confirmUntil = 0;
     return;
   }
   if (feedMenuUntil) {       // selector de comida
@@ -2541,7 +2509,7 @@ void onTap(int16_t x, int16_t y) {
     choiceKind = 1; choiceUntil = millis() + 12000;
     return;
   }
-  // botones de final (mismo recuadro): escapada directa; despedida abre dialogo.
+  // The neglect CTA triggers runaway directly; farewell/release live in menu.
   //
   // The runaway does NOT ask, deliberately. A pet you have to authorise to
   // leave is not really at stake, and neglect having teeth is the whole premise.
@@ -2551,7 +2519,6 @@ void onTap(int16_t x, int16_t y) {
   if (x >= FAR_BTN_X && x <= FAR_BTN_X + FAR_BTN_W &&
       y >= FAR_BTN_Y && y <= FAR_BTN_Y + FAR_BTN_H) {
     if (pet.canRunawayNow()) { pet.startRunaway(); return; }
-    if (pet.wantFarewellButton()) { choiceKind = 2; choiceUntil = millis() + 12000; return; }
   }
   for (int i = 0; i < BTN_COUNT; i++) {
     int dx = x - buttons[i].cx, dy = y - buttons[i].cy;
@@ -2960,7 +2927,8 @@ void render() {
     const DexEntry &d = dexEntry(pet.speciesId);
     char name[64];
     const char *base = displaySpeciesName(pet.speciesId, pet.nick);
-    snprintf(name, sizeof(name), T(S_NAME_FMT), pet.shiny ? "*" : "", base, pet.level());
+    snprintf(name, sizeof(name), T(S_NAME_FMT), rareMarks(pet.shiny, pet.sparkle),
+             base, pet.level());
     drawHeader(name, gNight ? UI_INK_NIGHT : d.accent, statusMsg());
     drawStreakBadge();
     drawPet();
@@ -2973,7 +2941,6 @@ void render() {
     drawCelebration();
     if (pet.wantEvolveButton()) drawEvolveButton();        // CTA rojo: evolucionar
     else if (pet.canRunawayNow()) drawRunawayButton();     // CTA sombrio: escapada (abandono)
-    else if (pet.wantFarewellButton()) drawFarewellButton();  // CTA dorado: despedida
   }
 
   drawPetNav();
@@ -2999,34 +2966,13 @@ void render() {
     }
   }
 
-  // dialogo "soltar?" (pulsacion larga sobre el bicho)
-  if (confirmUntil) {
-    if (millis() > confirmUntil) {
-      confirmUntil = 0;
-    } else {
-      gfx->fillRoundRect(94, 168, 278, 152, 16, UI_WHITE);
-      gfx->drawRoundRect(94, 168, 278, 152, 16, UI_INK);
-      char q[64];
-      snprintf(q, sizeof(q), T(S_RELEASE_FMT), speciesName(pet.speciesId));
-      gfx->setTextColor(UI_INK);
-      gfx->setTextSize(2);
-      gfx->setCursor(uiCenterX(q), 196);
-      gfx->print(q);
-      gfx->fillRoundRect(118, 252, 100, 52, 12, UI_BAR_OK);
-      gfx->setTextColor(UI_WHITE);
-      uiDrawCenteredIn(T(S_YES), 118, 252, 100, 52);
-      gfx->fillRoundRect(248, 252, 100, 52, 12, UI_BAR_BAD);
-      uiDrawCenteredIn(T(S_NO), 248, 252, 100, 52);
-    }
-  }
-
   // dialogo de decision (evolucionar/mantener, despedirse/quedaros)
   if (choiceKind) {
     if (millis() > choiceUntil) choiceKind = 0;
     else drawChoiceDialog();
   }
 
-  // "<name> joined the party!" after a farewell or release
+  // "<name> joined the party!" after a wild capture
   if (partyBannerUntil) {
     if (millis() > partyBannerUntil) {
       partyBannerUntil = 0;
@@ -3481,7 +3427,8 @@ void drawCardStat(int y, const char *label, uint16_t val, uint16_t maxBar,
   if (iv != IV_NONE) {
     char b[10];
     snprintf(b, sizeof(b), T(S_IV_FMT), iv);
-    // un IV perfecto se resalta: es el golpe de suerte que el jugador busca
+    // Keep the traditional perfect-IV threshold visible even though sparkle
+    // and gym rewards may now continue above it.
     gfx->setTextColor(iv >= 31 ? UI_BAR_WARN : UI_TRACK);
     gfx->setCursor(344, y);
     gfx->print(b);
@@ -3723,7 +3670,8 @@ void renderCardProfile() {
   const DexEntry &d = dexEntry(pet.speciesId);
   const char *nm = displaySpeciesName(pet.speciesId, pet.nick);
   char head[64];
-  snprintf(head, sizeof(head), T(S_NAME_FMT), pet.shiny ? "*" : "", nm, pet.level());
+  snprintf(head, sizeof(head), T(S_NAME_FMT), rareMarks(pet.shiny, pet.sparkle),
+           nm, pet.level());
   gfx->setTextColor(d.accent);
   // auto-encoge: a tamano 3 los nombres largos no caben en la franja estrecha de
   // arriba de la pantalla redonda, asi que se cortaban por el borde
@@ -4319,13 +4267,20 @@ void startWildBattle(uint8_t region, bool hard) {
   const RegionBattleInfo &battle = regionBattleInfo(region);
   uint8_t ivBase = hard ? battle.hardIv : battle.easyIv;
   Pet foe;
-  foe.dbgHatchAs(dex, random(4096) == 0);
+  foe.dbgHatchAs(dex, false);
   auto rollIv = [ivBase]() -> uint8_t {
     int value = (int)ivBase + (int)random(7) - 3;
     return value < 0 ? 0 : value > 31 ? 31 : (uint8_t)value;
   };
   foe.ivAtk = rollIv(); foe.ivDef = rollIv(); foe.ivSpe = rollIv(); foe.ivHp = rollIv();
+  WildTraits traits = wildTraitsForRolls((uint8_t)random(100),
+                                         (uint8_t)random(100),
+                                         pet.wildRareBonus);
+  foe.shiny = traits.color;
+  foe.sparkle = traits.sparkle;
+  wildApplyTraits(traits, foe.ivAtk, foe.ivDef, foe.ivSpe, foe.ivHp);
   foe.ageMinutes = (uint32_t)(level - 1) * MINUTES_PER_LEVEL;
+  foe.raisedMinutes = 0;
   foe.relearnFromLevel();
   btlWildMon = foe.toPartyMon();
   combatantFromParty(btlFoe, btlWildMon);
@@ -4711,13 +4666,16 @@ static void btlSide(int tx, int ty, int sx, int sy, const Combatant &c, uint8_t 
     } else if (now < btlLungeUntil[who] && btlPmd[who].has(PMD_ATTACK)) {
       act = PMD_ATTACK; loop = false; t = now - (btlLungeUntil[who] - BTL_LUNGE_MS);
     }
-    drawPmdActM(btlPmd[who], act, sx + 24 + ox, sy + 78 + oy, t, loop, false, 4);
+    int cx = sx + 24 + ox, ground = sy + 78 + oy;
+    drawPmdActM(btlPmd[who], act, cx, ground, t, loop, false, 4);
+    if (c.sparkle) drawSparkleParticles(cx, ground, now);
     return;
   }
   const uint8_t *th = thumbs.get(c.dex);
   if (!th) return;
   if (now < btlHitUntil[who]) flash = ((btlHitUntil[who] - now) / 60) % 2 == 0;
   drawThumb(th, sx + ox, sy + oy, 3, flash);
+  if (c.sparkle) drawSparkleParticles(sx + 24 + ox, sy + 78 + oy, now);
 }
 
 // Bars drain rather than snap: a hit that removes half your health should be
@@ -5249,7 +5207,7 @@ static void btlThrowBall(const ItemEntry &item) {
                                      item.param > 0 ? (uint16_t)item.param : 100);
   if ((uint8_t)random(100) < chance) {
     capturedMon = btlWildMon;
-    pet.registerCaught(capturedMon.dex);
+    pet.registerCaught(capturedMon.dex, capturedMon.shiny);
     captureDrop = btlGrantWildRewards();
     capturePage = 0;
     captureOpen = true;
@@ -5692,13 +5650,13 @@ void pickDefault(uint8_t cap) {
 static void drawPickCell(uint8_t n, int x, int y, uint8_t capLvl) {
   bool usable = pickUsable(n);
   bool on = usable && (squadMask & (1 << n)) != 0;
-  int16_t dex; uint16_t lvl; const char *nm; bool shiny;
+  int16_t dex; uint16_t lvl; const char *nm; bool shiny, sparkle;
   if (n == party.activeIndex()) {
-    dex = pet.speciesId; lvl = pet.level(); shiny = pet.shiny;
+    dex = pet.speciesId; lvl = pet.level(); shiny = pet.shiny; sparkle = pet.sparkle;
     nm = displaySpeciesName(dex, pet.nick);
   } else {
     const PartyMon &m = party.slots[n];
-    dex = m.dex; lvl = m.level; shiny = m.shiny;
+    dex = m.dex; lvl = m.level; shiny = m.shiny; sparkle = m.sparkle;
     nm = displaySpeciesName(dex, m.nick);
   }
   if (capLvl && lvl > capLvl) lvl = capLvl;   // show the level it will FIGHT at
@@ -5711,7 +5669,7 @@ static void drawPickCell(uint8_t n, int x, int y, uint8_t capLvl) {
   gfx->setCursor(x + 54, y + 14);
   gfx->print(nm);
   char l[16];
-  snprintf(l, sizeof(l), "Lv.%u%s", (unsigned)lvl, shiny ? " *" : "");
+  snprintf(l, sizeof(l), "Lv.%u %s", (unsigned)lvl, rareMarks(shiny, sparkle));
   gfx->setCursor(x + 54, y + 30);
   gfx->print(usable ? l : T(S_DEAD));
   // its typing is the whole reason you are on this screen
@@ -6053,7 +6011,8 @@ void renderGyms() {
     }
     if (ivReward) {
       char ivMark[8];
-      if (ivReward == GYM_IV_REWARD_MAXED) snprintf(ivMark, sizeof(ivMark), "IV MAX");
+      if (ivReward == GYM_IV_REWARD_LEGACY_CLAIMED)
+        snprintf(ivMark, sizeof(ivMark), "IV+?");
       else {
         static const char stat[] = "ADSH";
         snprintf(ivMark, sizeof(ivMark), "IV+%c", stat[ivReward - 1]);
@@ -6404,10 +6363,7 @@ void renderCardProgress() {
   if (!evolutionAvailable(pet.speciesId)) {
     evo = T(S_FINAL_FORM);
   } else {
-    // The SAME sum canEvolveNow() uses -- including the day owed for retiring
-    // the previous creature early. A card that left evoPenalty() out would
-    // promise an evolution that then does not happen.
-    int needed = d.evolveLevel + pet.careMistakes + pet.evoPenalty();
+    int needed = d.evolveLevel + pet.careMistakes;
     if (pet.level() >= needed) {
       if (pet.lowestStat() >= 40) { evo = T(S_EVO_READY); evoCol = UI_BAR_OK; }
       else { evo = T(S_EVO_BLOCKED); evoCol = UI_BAR_BAD; }
@@ -6419,16 +6375,6 @@ void renderCardProgress() {
   gfx->setTextColor(evoCol);
   gfx->setCursor(uiCenterX(evo), 256);
   gfx->print(evo);
-
-  // the day inherited from an early retire, said out loud -- otherwise this
-  // creature simply evolves late and the player has no way to know why
-  if (pet.evoPenalty()) {
-    gfx->setTextSize(1);
-    gfx->setTextColor(UI_BAR_WARN);
-    gfx->setCursor(uiCenterX(T(S_EVO_SLOW)), 286);
-    gfx->print(T(S_EVO_SLOW));
-    gfx->setTextSize(2);
-  }
 
   // descuidos (retrasan la evolucion)
   char ms[24];
@@ -6467,7 +6413,8 @@ static void menuRowLabel(int i, char *out, size_t n) {
     case 0: snprintf(out, n, "%s", T(S_STATS)); break;
     case 1: snprintf(out, n, T(S_POKEDEX_FMT), pet.registeredCount(), dexCount()); break;
     case 2: snprintf(out, n, "%s", T(S_SETTINGS)); break;
-    case 3: snprintf(out, n, "%s", T(S_RETIRE)); break;
+    case 3: snprintf(out, n, "%s",
+                     pet.canFarewellNow() ? T(S_FAR_GO) : T(S_RETIRE)); break;
     default: snprintf(out, n, "%s", T(S_CLOSE)); break;
   }
 }
@@ -6484,7 +6431,7 @@ void drawMenu() {
   for (int i = 0; i < MENU_ROWS; i++) {
     int y = MENU_ROW_Y(i);
     bool close = (i == MENU_ROWS - 1);
-    bool dead = (i == 3 && !pet.canRetireNow());   // an egg or a companion
+    bool dead = (i == 3 && !pet.canExitNow());   // an egg or sleeping companion
     gfx->fillRoundRect(MENU_X + 18, y, MENU_W - 36, MENU_ROW_H, 12,
                        close || dead ? UI_TRACK : UI_BG_DAY);
     gfx->drawRoundRect(MENU_X + 18, y, MENU_W - 36, MENU_ROW_H, 12, UI_INK);
@@ -6620,10 +6567,10 @@ static void drawCultivationSlot(uint8_t slot, int x, int y) {
   gfx->setTextSize(1);
   gfx->setCursor(x + PARTY_TEXT_X_OFF, y + 18);
   gfx->print(nm);
-  if (m.shiny) {
+  if (m.shiny || m.sparkle) {
     gfx->setTextColor(UI_BAR_WARN);
     gfx->setCursor(x + PARTY_TEXT_X_OFF + gfx->textWidth(nm) + 3, y + 18);
-    gfx->print("*");
+    gfx->print(rareMarks(m.shiny, m.sparkle));
   }
   char lv[12];
   snprintf(lv, sizeof(lv), T(S_LVL_FMT), (unsigned)m.level);
@@ -6708,8 +6655,8 @@ void renderBox() {
     gfx->setCursor(x + PARTY_TEXT_X_OFF, y + 16);
     gfx->print(displaySpeciesName(m.dex, m.nick));
     char level[16];
-    snprintf(level, sizeof(level), "Lv.%u%s", (unsigned)m.level,
-             m.shiny ? " *" : "");
+    snprintf(level, sizeof(level), "Lv.%u %s", (unsigned)m.level,
+             rareMarks(m.shiny, m.sparkle));
     gfx->setCursor(x + PARTY_TEXT_X_OFF, y + 34);
     gfx->setTextColor(m.dead() ? UI_BAR_BAD : UI_INK);
     gfx->print(m.dead() ? T(S_DEAD) : level);
@@ -6737,15 +6684,10 @@ void boxTap(int16_t x, int16_t y) {
       if (x < cx0 || x > cx0 + PARTY_CELL_W ||
           y < cy0 || y > cy0 + PARTY_CELL_H) continue;
       if (partyPick) {
-        if (pet.endedKind != CER_NONE && slot == party.activeIndex()) {
-          sfxPlay(SFX_DENY);
-          return;
-        }
         party.replaceAt((uint8_t)slot, partyPending);
         snprintf(partyBannerName, sizeof(partyBannerName), "%s",
                  displaySpeciesName(partyPending.dex, partyPending.nick));
         partyBannerUntil = millis() + 3500;
-        pet.endedKind = CER_NONE;
         partyPick = false;
         partyPending = PartyMon();
         boxOpen = false;
@@ -6768,7 +6710,6 @@ void boxTap(int16_t x, int16_t y) {
       if (partyPick) {
         partyPick = false;
         partyPending = PartyMon();
-        pet.endedKind = CER_NONE;
         boxOpen = false;
       } else {
         boxSel = 0;
@@ -7336,16 +7277,21 @@ void drawCeremony() {
     drawMap(SPR_HEART, 32, x + 50, y - 190, 2, false);
 }
 
-// dialogo de decision (2 botones apilados): evolucionar/mantener o despedirse/quedaros
+// Two stacked actions: evolve/keep or the contextual farewell/release.
 void drawChoiceDialog() {
   const char *q, *o1, *o2;
+  char contextual[64];
   uint16_t c1, c2, t1, t2;
   if (choiceKind == 1) {  // evolucion
     q = T(S_EVO_Q); o1 = T(S_EVO_TAP); o2 = T(S_EVO_KEEP);
     c1 = UI_BAR_BAD; t1 = UI_WHITE; c2 = UI_TRACK; t2 = UI_INK;
-  } else if (choiceKind == 3) {   // retirada a peticion
-    q = T(S_RETIRE_Q); o1 = T(S_FAR_GO); o2 = T(S_FAR_STAY);
+  } else if (choiceKind == 3 && pet.canFarewellNow()) {
+    q = T(S_FAR_Q); o1 = T(S_FAR_GO); o2 = T(S_FAR_STAY);
     c1 = UI_BAR_WARN; t1 = UI_INK; c2 = UI_BAR_OK; t2 = UI_WHITE;
+  } else if (choiceKind == 3) {
+    snprintf(contextual, sizeof(contextual), T(S_RELEASE_FMT), speciesName(pet.speciesId));
+    q = contextual; o1 = T(S_RETIRE); o2 = T(S_NO);
+    c1 = UI_BAR_BAD; t1 = UI_WHITE; c2 = UI_BAR_OK; t2 = UI_WHITE;
   } else {                // despedida
     q = T(S_FAR_Q); o1 = T(S_FAR_GO); o2 = T(S_FAR_STAY);
     c1 = UI_BAR_WARN; t1 = UI_INK; c2 = UI_BAR_OK; t2 = UI_WHITE;
@@ -7356,17 +7302,6 @@ void drawChoiceDialog() {
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(q), 176);
   gfx->print(q);
-  // The price, spelled out, and only when there is one: retiring a creature
-  // that has already earned its farewell costs nothing and must not claim to.
-  if (choiceKind == 3 && !pet.retireIsFree()) {
-    const char *cost = T(S_RETIRE_COST);
-    gfx->setTextSize(1);
-    gfx->setTextColor(UI_BAR_BAD);
-    gfx->setCursor(uiCenterX(cost), 194);
-    gfx->print(cost);
-    gfx->setTextSize(2);
-    gfx->setTextColor(UI_INK);
-  }
   gfx->fillRoundRect(CHOICE_BTN_X, CHOICE_BTN1_Y, CHOICE_BTN_W, CHOICE_BTN_H, 12, c1);
   gfx->setTextColor(t1);
   uiDrawCenteredIn(o1, CHOICE_BTN_X, CHOICE_BTN1_Y, CHOICE_BTN_W, CHOICE_BTN_H);
@@ -7375,12 +7310,9 @@ void drawChoiceDialog() {
   uiDrawCenteredIn(o2, CHOICE_BTN_X, CHOICE_BTN2_Y, CHOICE_BTN_W, CHOICE_BTN_H);
 }
 
-void choiceDialogVerticals(int *titleBottom, int *costTop, int *costBottom,
-                           int *button1Top, int *button1Bottom,
+void choiceDialogVerticals(int *titleBottom, int *button1Top, int *button1Bottom,
                            int *button2Top, int *button2Bottom) {
   if (titleBottom) *titleBottom = 176 + 16;
-  if (costTop) *costTop = 194;
-  if (costBottom) *costBottom = 194 + 16;
   if (button1Top) *button1Top = CHOICE_BTN1_Y;
   if (button1Bottom) *button1Bottom = CHOICE_BTN1_Y + CHOICE_BTN_H;
   if (button2Top) *button2Top = CHOICE_BTN2_Y;
@@ -7399,21 +7331,6 @@ void drawEvolveButton() {
   gfx->setTextSize(3);
   const char *t = T(S_EVO_TAP);
   uiDrawCenteredIn(t, x, y, w, h);
-}
-
-// boton-CTA dorado de despedida: "<nombre> quiere decirte algo..."
-void drawFarewellButton() {
-  uint32_t now = millis();
-  int p = (int)(4 * sinf(now * 0.005f));
-  int x = FAR_BTN_X - p, y = FAR_BTN_Y - p, w = FAR_BTN_W + 2 * p, h = FAR_BTN_H + 2 * p;
-  gfx->fillRoundRect(x, y, w, h, 16, UI_BAR_WARN);
-  gfx->drawRoundRect(x, y, w, h, 16, UI_INK);
-  char buf[52];
-  const char *nm = displaySpeciesName(pet.speciesId, pet.nick);
-  snprintf(buf, sizeof(buf), T(S_FAREWELL_BTN), nm);
-  gfx->setTextColor(UI_INK);
-  gfx->setTextSize(2);
-  uiDrawCenteredIn(buf, x, y, w, h);
 }
 
 // boton-CTA sombrio de escapada por abandono: "<nombre> se siente abandonado..."
@@ -7466,6 +7383,20 @@ void drawEvolveFX(uint32_t now) {
   }
   // fogonazo final antes de revelar la forma nueva
   if (t > 0.9f) gfx->fillCircle(cx, cy, (int)(300 * (t - 0.9f) / 0.1f), UI_WHITE);
+}
+
+void drawSparkleParticles(int cx, int groundY, uint32_t now, uint8_t scale) {
+  int rx = 68 * scale;
+  int ry = 145 * scale;
+  for (int i = 0; i < 8; i++) {
+    if (((now / 110) + i) % 4 == 0) continue;
+    int px = cx - rx + (int)((i * 47UL + now / 18) % (uint32_t)(rx * 2 + 1));
+    int py = groundY - 24 - (int)((i * 67UL + now / 13) % (uint32_t)ry);
+    int arm = 2 + (i & 1);
+    uint16_t color = (i & 1) ? UI_WHITE : C565(0xff, 0xd9, 0x4a);
+    gfx->drawFastHLine(px - arm, py, arm * 2 + 1, color);
+    gfx->drawFastVLine(px, py - arm, arm * 2 + 1, color);
+  }
 }
 
 void drawPet() {
@@ -7652,6 +7583,8 @@ void drawPetPMD() {
 
   drawPmdAct(act, (int)beh.x, PET_GROUND, now - beh.t0, loop || act == PMD_IDLE, false, 5);
 
+  if (pet.sparkle) drawSparkleParticles((int)beh.x, PET_GROUND, now);
+
   if (pet.showHeart()) drawMap(SPR_HEART, 32, (int)beh.x + 50, PET_GROUND - 190, 2, false);
 }
 
@@ -7709,7 +7642,6 @@ const char *statusMsg() {
   if (pet.energy < 25) return T(S_EXHAUSTED);
   if (pet.joy < 25) return T(S_SAD);
   if (pet.weight > 60) return T(S_CHUBBY);
-  if (pet.shiny && pet.ageMinutes < 15) return T(S_IS_SHINY);
   return T(S_HAPPY);
 }
 

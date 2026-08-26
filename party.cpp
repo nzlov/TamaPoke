@@ -154,21 +154,31 @@ void Party::sanitize(PartyMon &m, bool boxed) {
     m.learnQueue[i] = MOVE_NONE;
   m.learnQCount = queued;
   for (uint8_t &reward : m.gymIvRewards)
-    if (reward > GYM_IV_REWARD_HP && reward != GYM_IV_REWARD_MAXED) reward = 0;
+    if (reward > GYM_IV_REWARD_HP &&
+        reward != GYM_IV_REWARD_LEGACY_CLAIMED) reward = 0;
   if (m.dex > 0 && !natureValid(m.nature))
     m.nature = natureForLegacy(m.dex, m.ivAtk, m.ivDef, m.ivSpe, m.ivHp);
   m.state &= PARTY_MON_DEAD;
   if (m.dex <= 0) m.state = 0;
   m.nick[sizeof(m.nick) - 1] = 0;
-  if (m.stateVersion != 1 && m.stateVersion != 2) {
+  uint8_t version = m.stateVersion;
+  if (version != 1 && version != 2 && version != 3) {
     m.fullness = m.joy = m.energy = 80; m.hygiene = 100;
     m.ageMinutes = (uint32_t)(m.level ? m.level - 1 : 0) * MINUTES_PER_LEVEL;
     m.lastLearnLevel = (uint8_t)(m.level > MAX_LEVEL ? MAX_LEVEL : m.level);
     m.eggTarget = 1;
+    version = 0;
   }
-  if (m.stateVersion != 2)
+  if (version < 2)
     m.trMinAtk = m.trMinDef = m.trMinSpe = 0;
-  m.stateVersion = 2;
+  if (version < 3) {
+    // v2 used these exact bytes for early-retirement state. Existing pets were
+    // all raised from eggs, so their age is valid cultivated time; future wild
+    // captures explicitly start raisedMinutes at zero.
+    m.sparkle = 0;
+    m.raisedMinutes = m.ageMinutes;
+  }
+  m.stateVersion = 3;
   auto sanitizeTraining = [](uint8_t &training, uint8_t &floor, uint8_t iv) {
     uint8_t cap = Pet::trMaxFor(iv);
     if (floor > cap) floor = cap;
@@ -428,6 +438,36 @@ void Party::rewardRandomTraining(uint8_t slotMask, Pet &pet, uint8_t points) {
     pet.trDef = slots[active].trDef;
     pet.trSpe = slots[active].trSpe;
   }
+  saveTeam();
+}
+
+void Party::removeActiveAndEnsurePlayable(Pet &pet) {
+  if (active < PARTY_SLOTS) slots[active] = PartyMon();
+
+  for (uint8_t i = 0; i < PARTY_SLOTS; i++) {
+    if (slots[i].empty()) continue;
+    active = i;
+    pet.importState(slots[i]);
+    saveTeam();
+    pet.saveNow();
+    return;
+  }
+
+  for (uint8_t i = 0; i < BOX_SLOTS; i++) {
+    if (box[i].empty()) continue;
+    active = 0;
+    slots[active] = box[i];
+    box[i] = PartyMon();
+    pet.importState(slots[active]);
+    saveTeam();
+    saveBoxPage(i / BOX_PAGE_SLOTS);
+    pet.saveNow();
+    return;
+  }
+
+  active = 0;
+  pet.newEgg();
+  pet.exportState(slots[active]);
   saveTeam();
 }
 

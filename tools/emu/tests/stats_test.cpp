@@ -33,7 +33,7 @@ int main() {
   p.ivAtk = p.ivDef = p.ivSpe = p.ivHp = 31;
   p.trAtk = p.trDef = p.trSpe = 0;
 
-  // --- level cap. 3 days = 73 (first farewell offer), 4d3h = 100, and the
+  // --- level cap. 3 days = 73, 4d3h = 100, and the
   // RTC's two-week catch-up used to compute 337 and wrap to 81.
   p.ageMinutes = 3UL * 24 * 60;
   ck(p.level() == 73, "3 days -> level 73");

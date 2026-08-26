@@ -10,7 +10,8 @@ const SaveField SAVE_FIELDS[] = {
   { "savev", SK_U16 }, { "init", SK_BOOL },  { "full", SK_U8 },
   { "joy", SK_U8 },
   { "ene", SK_U8 },     { "hyg", SK_U8 },     { "poop", SK_U8 },
-  { "wgt", SK_U8 },     { "age", SK_U32 },    { "dexn", SK_I16 },
+  { "wgt", SK_U8 },     { "age", SK_U32 },    { "raise", SK_U32 },
+  { "dexn", SK_I16 },
   { "eggT2", SK_I16 },  { "crack", SK_U8 },   { "mist", SK_U8 },
   { "sleep", SK_BOOL }, { "lend", SK_U8 },    { "seen", SK_U32 },
   { "bond", SK_U8 },    { "nick", SK_STR },   { "froz", SK_BOOL },
@@ -23,14 +24,16 @@ const SaveField SAVE_FIELDS[] = {
   // moves
   { "mvs", SK_BYTES },  { "mvlv", SK_U8 },
   // flags
-  { "bk", SK_BOOL },    { "shy", SK_BOOL },   { "eshy", SK_BOOL },
+  { "bk", SK_BOOL },    { "shy", SK_BOOL },   { "spkl", SK_BOOL },
+  { "eshy", SK_BOOL },
   { "stpk", SK_BOOL },  { "evop", SK_U8 },    { "slpa", SK_U8 },    { "rtpn", SK_BOOL },
   // the player: outlives every creature, which is exactly why it must be here
   { "tnam", SK_STR },   { "avtr", SK_U8 },    { "badg", SK_U16 },
   { "reg", SK_U8 },     { "eggR", SK_BYTES },
   { "badgX", SK_BYTES },{ "badhX", SK_BYTES },
   { "badh", SK_U16 },   { "dexreg", SK_BYTES }, { "dexsh", SK_BYTES },
-  { "strk", SK_U16 },   { "bstrk", SK_U16 },  { "cday", SK_U32 },
+  { "strk", SK_U16 },   { "bstrk", SK_U16 },  { "wrbon", SK_U8 },
+  { "cday", SK_U32 },
   { "medal", SK_U16 },  { "tmedal", SK_U16 }, { "mstone", SK_U16 },
   { "ghi", SK_U16 },    { "shi", SK_U16 },    { "qhi", SK_U16 },
   // the six cultivation slots and four frozen Box pages. The two legacy blobs

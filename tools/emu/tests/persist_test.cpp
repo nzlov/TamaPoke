@@ -33,7 +33,7 @@ int main(){
   award(p);
   ck(intact(p), "progress is set");
 
-  // 1. a new egg (what every ending eventually calls)
+  // 1. an explicit safety egg
   p.newEgg();
   ck(intact(p), "survives newEgg()");
 
@@ -45,9 +45,10 @@ int main(){
   const char *names[] = {"farewell","runaway","release"};
   for (int e=0;e<3;e++){
     Pet r; r.begin();
-    if (r.isEgg()) r.dbgHatchAs(4,false);
+    r.dbgHatchAs(e == 0 ? 6 : 4, false);
     award(r);
     r.ageMinutes = 4UL*24*60;
+    r.raisedMinutes = 4UL*24*60;
     if (e==0) r.startFarewell(); else if (e==1) r.startRunaway(); else r.release();
     g_ms += 60000;                       // let the ceremony expire
     r.update(g_ms);

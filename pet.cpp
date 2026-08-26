@@ -4,6 +4,7 @@
 #include "moves.h"
 #include "audio.h"
 #include "save.h"
+#include "wild.h"
 
 void Pet::begin() {
   prefs.begin("tamapoke", false);
@@ -47,14 +48,11 @@ void Pet::newEgg() {
   eggTarget = pickEggSpecies();  // especie oculta segun rareza y pokedex
   eggByRegion[region % regionCount()] = eggTarget;
   starterPick = (registeredCount() == 0);  // primera partida: el jugador elige inicial
-  // sorteo shiny: 1/48 base, mejor con despedida y con racha/vinculo altos
-  int shinyBase = (lastEnd == CER_FAREWELL ? 24 : 48) - careBonus();
-  if (shinyBase < 8) shinyBase = 8;
-  eggShiny = (random(shinyBase) == 0);
-  // The debt lands on the creature about to hatch, and is spent doing so --
-  // it is a one-day penalty, not a running total that compounds each retire.
-  evoPen = retirePending ? EVO_PENALTY_LEVELS : 0;
-  retirePending = false;
+  // Rare color and sparkle now belong to wild encounters. A safety egg is
+  // deliberately neutral rather than another route into the wild economy.
+  shiny = false;
+  sparkle = false;
+  eggShiny = false;
   eggTaps = 0;
   fullness = 80;
   joy = 80;
@@ -62,6 +60,7 @@ void Pet::newEgg() {
   hygiene = 100;
   poops = 0;
   ageMinutes = 0;
+  raisedMinutes = 0;
   careMistakes = 0;
   mistakeCooldown = 0;
   sleeping = false;
@@ -81,6 +80,7 @@ static uint8_t dropTo(uint8_t v, uint8_t d, uint8_t fl) {
 void Pet::advanceAgeMinute() {
   if (frozen) return;
   ageMinutes++;
+  if (!isEgg()) raisedMinutes++;
   if (!isEgg() && ageMinutes % 60 == 0) {
     auto decay = [](uint8_t value, uint8_t cap, uint8_t percent, uint8_t floor) {
       if (value <= floor) return value;
@@ -153,10 +153,21 @@ void Pet::syncClockFrom(uint32_t nowEpoch, uint32_t seenEpoch, bool persist) {
 }
 
 void Pet::update(uint32_t nowMs) {
-  // fin de ceremonia: la criatura se va y queda un huevo nuevo
+  // Finish the lifecycle at the roster boundary. Normal endings never create
+  // an egg; Party only does that when both cultivation and Box are empty.
   if (ceremony != CER_NONE && millis() > ceremonyUntil) {
-    snapshotForParty();  // hand it over BEFORE newEgg() erases everything
-    newEgg();
+    uint8_t ending = ceremony;
+    if (ending == CER_FAREWELL) {
+      uint8_t gain = level() >= 100 ? 2 : 1;
+      uint16_t next = (uint16_t)wildRareBonus + gain;
+      wildRareBonus = next > WILD_RARE_BONUS_MAX ? WILD_RARE_BONUS_MAX : next;
+    } else if (ending == CER_RUNAWAY) {
+      wildRareBonus = wildRareBonus > 2 ? (uint8_t)(wildRareBonus - 2) : 0;
+    }
+    lastEnd = ending;
+    ceremony = CER_NONE;
+    if (roster) roster->removeActiveAndEnsurePlayable(*this);
+    else newEgg();
     return;
   }
   while (nowMs - lastTick >= PET_TICK_MS) {
@@ -240,8 +251,8 @@ void Pet::tick() {
     neglectTicks = 0;  // un solo cuidado la salva
   }
 
-  // ciclo completo (forma final + 7 dias): la despedida NO salta sola; queda
-  // lista (canFarewellNow) y la dispara el usuario con el boton, para que la vea
+  // A final form becomes farewell-ready after three player-raised days. It is
+  // still a menu action, never an automatic ending.
 
   // autoguardado periodico: NO escribir a flash aqui (corre dentro del loop,
   // mientras se anima); solo marcar y dejar que el loop lo vuelque al atenuar
@@ -257,10 +268,6 @@ void Pet::advanceBackgroundMinute() {
   ticksSinceSave = 0;
 }
 
-// Copies the creature into endedMon so it can be offered a party slot, since
-// newEgg() is about to wipe every field. Only the two endings the player CHOSE
-// qualify: a runaway ran off after an hour of total neglect, and letting it
-// come back on the team would remove the cost from the one ending that has any.
 // GLUE: PartyMon is the versioned persistence record while Pet remains the
 // behavioural runtime used throughout the sketch. Keep all field mapping in
 // these two functions; remove them only when Pet directly owns CreatureState.
@@ -270,6 +277,7 @@ void Pet::importState(const PartyMon &m) {
   speciesId = m.dex;
   prevSpeciesId = -1;
   shiny = m.shiny != 0;
+  sparkle = m.sparkle != 0;
   nature = natureValid(m.nature) ? m.nature
                                  : natureForLegacy(m.dex, m.ivAtk, m.ivDef,
                                                    m.ivSpe, m.ivHp);
@@ -280,6 +288,7 @@ void Pet::importState(const PartyMon &m) {
   for (int i = 0; i < MOVE_SLOTS; i++) moves[i] = m.moves[i];
   ageMinutes = m.stateVersion ? m.ageMinutes
                               : (uint32_t)(m.level ? m.level - 1 : 0) * MINUTES_PER_LEVEL;
+  raisedMinutes = m.stateVersion >= 3 ? m.raisedMinutes : ageMinutes;
   lastLearnLevel = m.stateVersion ? m.lastLearnLevel : (uint8_t)m.level;
   learnQCount = m.learnQCount > sizeof(learnQueue) / sizeof(learnQueue[0])
                   ? sizeof(learnQueue) / sizeof(learnQueue[0]) : m.learnQCount;
@@ -299,10 +308,7 @@ void Pet::importState(const PartyMon &m) {
   eggShiny = m.eggShiny != 0;
   eggTaps = m.eggTaps;
   starterPick = m.starterPick != 0;
-  evoPen = m.evoPen;
-  retirePending = m.retirePending != 0;
   evoDeclinedLv = m.evoDeclinedLv;
-  farDeclinedAge = m.farDeclinedAge;
   neglectTicks = m.neglectTicks;
   goodTicks = m.goodTicks;
   memcpy(eggByRegion, m.eggByRegion, sizeof(eggByRegion));
@@ -310,8 +316,6 @@ void Pet::importState(const PartyMon &m) {
   dead = m.dead();
   strncpy(nick, m.nick, sizeof(nick) - 1);
   nick[sizeof(nick) - 1] = 0;
-  endedMon = PartyMon();
-  endedKind = CER_NONE;
   pendingSave = false;
   ticksSinceSave = 0;
   lastTick = millis();
@@ -326,13 +330,14 @@ void Pet::exportState(PartyMon &out) const {
   out.trAtk = trAtk; out.trDef = trDef; out.trSpe = trSpe;
   out.trMinAtk = trMinAtk; out.trMinDef = trMinDef; out.trMinSpe = trMinSpe;
   out.shiny = shiny ? 1 : 0;
+  out.sparkle = sparkle ? 1 : 0;
   out.nature = nature;
   out.setDead(dead);
   for (int i = 0; i < MOVE_SLOTS; i++) out.moves[i] = moves[i];
   memcpy(out.gymIvRewards, gymIvRewards, sizeof(gymIvRewards));
   strncpy(out.nick, nick, sizeof(out.nick) - 1);
   out.nick[sizeof(out.nick) - 1] = 0;
-  out.stateVersion = 2;
+  out.stateVersion = 3;
   out.fullness = fullness; out.joy = joy; out.energy = energy; out.hygiene = hygiene;
   out.poops = poops; out.weight = weight;
   out.berryKnown = berryKnown ? 1 : 0;
@@ -340,10 +345,10 @@ void Pet::exportState(PartyMon &out) const {
   out.sleeping = sleeping ? 1 : 0; out.sleepAuto = sleepAuto;
   out.lastEnd = lastEnd; out.bond = bond;
   out.ageMinutes = ageMinutes;
+  out.raisedMinutes = raisedMinutes;
   out.eggTarget = eggTarget; out.eggShiny = eggShiny ? 1 : 0; out.eggTaps = eggTaps;
-  out.starterPick = starterPick ? 1 : 0; out.evoPen = evoPen;
-  out.retirePending = retirePending ? 1 : 0;
-  out.evoDeclinedLv = evoDeclinedLv; out.farDeclinedAge = farDeclinedAge;
+  out.starterPick = starterPick ? 1 : 0;
+  out.evoDeclinedLv = evoDeclinedLv;
   out.mistakeCooldown = mistakeCooldown; out.neglectTicks = neglectTicks;
   out.bondToday = bondToday; out.goodTicks = goodTicks;
   out.lastLearnLevel = lastLearnLevel;
@@ -355,7 +360,7 @@ void Pet::exportState(PartyMon &out) const {
 void Pet::reviveFrom(const PartyMon &m) {
   importState(m);
   if (!m.empty()) {
-    registerSpecies(speciesId);
+    registerSpecies(speciesId, shiny);
     save();
   }
 }
@@ -370,6 +375,7 @@ void Pet::copySharedFrom(const Pet &other) {
   memcpy(dexReg, other.dexReg, sizeof(dexReg));
   memcpy(dexShinyReg, other.dexShinyReg, sizeof(dexShinyReg));
   streak = other.streak; bestStreak = other.bestStreak;
+  wildRareBonus = other.wildRareBonus;
   lastCareDay = other.lastCareDay;
   totalMedals = other.totalMedals;
   lastMilestone = other.lastMilestone;
@@ -386,14 +392,6 @@ void Pet::copySharedFrom(const Pet &other) {
 
 void Pet::mergeSharedFrom(const Pet &other) {
   copySharedFrom(other);
-}
-
-void Pet::snapshotForParty() {
-  endedKind = CER_NONE;
-  if (isEgg()) return;
-  if (ceremony != CER_FAREWELL && ceremony != CER_RELEASE) return;
-  endedMon = toPartyMon();
-  endedKind = ceremony;
 }
 
 // vuelca el guardado periodico pendiente (lo llama el loop en un momento sin
@@ -441,8 +439,7 @@ uint8_t Pet::eggRarity() const {
   return (eggTarget >= 1 && eggTarget <= dexCount()) ? dexEntry(eggTarget).rarity : R_COMUN;
 }
 
-// elige la especie del huevo: tirada de rareza (mejorada por una despedida
-// completa, castigada por una escapada) y sesgo hacia lineas incompletas
+// Pick the safety egg species by rarity, biased toward incomplete lines.
 
 uint16_t gRegionArt = 0xFFFF;   // everything, until the SD narrows it
 
@@ -510,14 +507,11 @@ int16_t Pet::pickEggSpecies() {
   }
 
   uint8_t tier = R_COMUN;
-  if (lastEnd != CER_RUNAWAY) {
-    bool blessed = (lastEnd == CER_FAREWELL);
-    int rare = (blessed ? 45 : 27) + careBonus();
-    int leg = (registeredCount() >= 25) ? (blessed ? 10 : 3) + careBonus() / 3 : 0;
-    int r = random(100);
-    if (r < leg) tier = R_LEGENDARIO;
-    else if (r < leg + rare) tier = R_RARO;
-  }
+  int rare = 27 + careBonus();
+  int leg = (registeredCount() >= 25) ? 3 + careBonus() / 3 : 0;
+  int r = random(100);
+  if (r < leg) tier = R_LEGENDARIO;
+  else if (r < leg + rare) tier = R_RARO;
 
   // candidatos del tier con linea incompleta; si no hay, baja de tier;
   // si la pokedex del tier esta completa, vale cualquiera del tier
@@ -573,10 +567,10 @@ void Pet::setRegion(uint8_t r) {
   save();
 }
 
-void Pet::registerSpecies(int16_t dex) {
+void Pet::registerSpecies(int16_t dex, bool color) {
   if (dex < 1 || dex > dexCount()) return;
   dexReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
-  if (shiny) dexShinyReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
+  if (color) dexShinyReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
 }
 
 void Pet::setDead(bool value) {
@@ -748,7 +742,8 @@ bool Pet::knowsMove(MoveId mv) const {
 // of them felt like anything. A single number is explainable in one sentence and
 // lands on a seam the game already has: the first five leaders sit at 14-43, so
 // you fight the early ladder on what your species actually learns, and TMs
-// arrive as you enter the back half. A creature retires at 73 and caps at 100.
+// arrive as you enter the back half. A creature may qualify for farewell after
+// three cultivated days and caps at 100.
 //
 // It only works because dex_moves.py now carries the cheap early attacks --
 // SCRATCH, PECK, POISON STING, BUBBLE and the rest. Without those, gating TMs
@@ -957,12 +952,11 @@ uint16_t Pet::registeredCount() const {
   return n;
 }
 
-// forma final que ya cumplio su ciclo (7 dias): lista para despedirse. La
-// despedida la dispara el usuario con el boton (no salta sola, para que la vea)
+// Final form with three player-raised days: the menu may offer farewell.
 bool Pet::canFarewellNow() const {
   if (frozen || dead) return false;
   return !isEgg() && !sleeping && ceremony == CER_NONE &&
-         !evolutionAvailable(speciesId) && ageMinutes >= FAREWELL_AGE_MIN;
+         !evolutionAvailable(speciesId) && raisedMinutes >= FAREWELL_AGE_MIN;
 }
 
 // abandono total durante 1h: lista para escaparse. La dispara el usuario con el
@@ -980,23 +974,13 @@ bool Pet::canRunawayNow() const {
          neglectTicks >= RUNAWAY_TICKS && inTotalNeglect();
 }
 
-bool Pet::canRetireNow() const {
+bool Pet::canExitNow() const {
   if (frozen || dead) return false;
   return !isEgg() && !sleeping && ceremony == CER_NONE && !starterPick;
 }
 
-// The ceremony is the same one; only the debt differs. Marked BEFORE the
-// ceremony starts and spent by newEgg(), so a reset mid-ceremony loses the
-// penalty rather than applying it to a creature that never got retired.
-void Pet::startRetire() {
-  if (!canRetireNow()) return;
-  retirePending = !canFarewellNow();
-  save();
-  startFarewell();
-}
-
 void Pet::startFarewell() {
-  if (isEgg() || ceremony != CER_NONE) return;
+  if (!canFarewellNow()) return;
   lastEnd = CER_FAREWELL;
   ceremony = CER_FAREWELL;
   ceremonyUntil = millis() + CEREMONY_MS;
@@ -1015,7 +999,7 @@ void Pet::startRunaway() {
 }
 
 void Pet::release() {
-  if (isEgg() || ceremony != CER_NONE) return;
+  if (!canExitNow() || canFarewellNow()) return;
   lastEnd = CER_RELEASE;
   ceremony = CER_RELEASE;
   ceremonyUntil = millis() + CEREMONY_MS;
@@ -1028,12 +1012,14 @@ void Pet::hatch() {
   speciesId = eggTarget;
   dead = false;
   shiny = eggShiny;
+  sparkle = false;
   // IV del individuo (cada crianza es unica). Se tiran ANTES de resetear el
   // vinculo a proposito: el careBonus que los empuja es el del bicho anterior.
   rollIVs();
   nature = (NatureId)random(NATURE_COUNT);
   trAtk = trDef = trSpe = 0;
   trMinAtk = trMinDef = trMinSpe = 0;
+  raisedMinutes = 0;
   goodTicks = 0;
   berryKnown = false;
   bond = 0;          // vinculo, medallas y nombre son del individuo
@@ -1041,7 +1027,7 @@ void Pet::hatch() {
   medals = 0;
   newMedal = 0;
   nick[0] = 0;
-  registerSpecies(speciesId);  // criado = registrado en la pokedex
+  registerSpecies(speciesId, shiny);  // criado = registrado en la pokedex
   // Start empty: checkLearnGates() fills the level-1 moves. Seeding from TMs
   // instead would hand a newborn FIRE BLAST, which no level 1 creature knows.
   for (int i = 0; i < MOVE_SLOTS; i++) moves[i] = 0;
@@ -1062,10 +1048,7 @@ bool Pet::canEvolveNow() const {
   if (isEgg() || sleeping || ceremony != CER_NONE) return false;
   const DexEntry &d = dexEntry(speciesId);
   if (!evolutionAvailable(speciesId)) return false;
-  // evoPen is the day owed for retiring the PREVIOUS creature early. It rides
-  // on the same threshold careMistakes already moves, so there is one rule for
-  // "this creature evolves later" rather than two that can disagree.
-  return level() >= (uint16_t)(d.evolveLevel + careMistakes + evoPen) &&
+  return level() >= (uint16_t)(d.evolveLevel + careMistakes) &&
          lowestStat() >= 40;
 }
 
@@ -1085,7 +1068,7 @@ void Pet::evolve() {
     }
   SpeciesId next = options[random(optionCount)];
   speciesId = next;
-  registerSpecies(speciesId);
+  registerSpecies(speciesId, shiny);
   checkLearnGates();   // the new form may gate a move at this very level
   sfxPlay(SFX_EVOLVE);
   evolveUntil = millis() + EVOLVE_ANIM_MS;
@@ -1288,17 +1271,7 @@ GymIvReward Pet::rewardGymIv(uint8_t region, uint8_t gym, uint8_t &which) {
   size_t at = (size_t)region * GYM_IV_GYMS_PER_REGION + gym;
   if (gymIvRewards[at] != GYM_IV_REWARD_UNCLAIMED) return GYM_IV_NONE;
 
-  uint8_t room[4], n = 0;
-  if (ivAtk < 31) room[n++] = 0;
-  if (ivDef < 31) room[n++] = 1;
-  if (ivSpe < 31) room[n++] = 2;
-  if (ivHp < 31) room[n++] = 3;
-  if (!n) {
-    gymIvRewards[at] = GYM_IV_REWARD_MAXED;
-    save();
-    return GYM_IV_MAXED;
-  }
-  which = room[random(n)];
+  which = (uint8_t)random(4);
   switch (which) {
     case 0: ivAtk++; break;
     case 1: ivDef++; break;
@@ -1441,13 +1414,13 @@ void Pet::save() {
   prefs.putUShort("badh", badgesHard);
   prefs.putBool("bk", berryKnown);
   prefs.putBool("shy", shiny);
+  prefs.putBool("spkl", sparkle);
   prefs.putBool("eshy", eggShiny);
   prefs.putBool("stpk", starterPick);
-  prefs.putUChar("evop", evoPen);
   prefs.putUChar("slpa", sleepAuto);
-  prefs.putBool("rtpn", retirePending);
   prefs.putBytes("dexsh", dexShinyReg, sizeof(dexShinyReg));
   prefs.putUInt("age", ageMinutes);
+  prefs.putUInt("raise", raisedMinutes);
   prefs.putShort("dexn", speciesId);
   prefs.putShort("eggT2", eggTarget);
   prefs.putUChar("crack", eggTaps);
@@ -1458,6 +1431,7 @@ void Pet::save() {
   prefs.putBytes("dexreg", dexReg, sizeof(dexReg));
   prefs.putUShort("strk", streak);
   prefs.putUShort("bstrk", bestStreak);
+  prefs.putUChar("wrbon", wildRareBonus);
   prefs.putUInt("cday", lastCareDay);
   prefs.putUChar("bond", bond);
   prefs.putUShort("medal", medals);
@@ -1490,7 +1464,8 @@ void Pet::load() {
   if (prefs.getBytesLength("giv") == sizeof(gymIvRewards))
     prefs.getBytes("giv", gymIvRewards, sizeof(gymIvRewards));
   for (uint8_t &reward : gymIvRewards)
-    if (reward > GYM_IV_REWARD_HP && reward != GYM_IV_REWARD_MAXED) reward = 0;
+    if (reward > GYM_IV_REWARD_HP &&
+        reward != GYM_IV_REWARD_LEGACY_CLAIMED) reward = 0;
   // un guardado antiguo puede traer entrenamiento por encima del nuevo tope
   if (trAtk > trMaxAtk()) trAtk = trMaxAtk();
   if (trDef > trMaxDef()) trDef = trMaxDef();
@@ -1503,13 +1478,13 @@ void Pet::load() {
   if (trSpe < trMinSpe) trSpe = trMinSpe;
   berryKnown = prefs.getBool("bk", false);
   shiny = prefs.getBool("shy", false);
+  sparkle = prefs.getBool("spkl", false);
   eggShiny = prefs.getBool("eshy", false);
   starterPick = prefs.getBool("stpk", false);
-  evoPen = prefs.getUChar("evop", 0);
   sleepAuto = prefs.getUChar("slpa", SLEEP_NONE);
-  retirePending = prefs.getBool("rtpn", false);
   prefs.getBytes("dexsh", dexShinyReg, sizeof(dexShinyReg));
   ageMinutes = prefs.getUInt("age", 0);
+  raisedMinutes = prefs.isKey("raise") ? prefs.getUInt("raise", 0) : ageMinutes;
   speciesId = prefs.getShort("dexn", -1);
   nature = (NatureId)prefs.getUChar("nat", NATURE_UNKNOWN);
   if (!natureValid(nature) && speciesId >= 1)
@@ -1522,6 +1497,8 @@ void Pet::load() {
   prefs.getBytes("dexreg", dexReg, sizeof(dexReg));
   streak = prefs.getUShort("strk", 0);
   bestStreak = prefs.getUShort("bstrk", 0);
+  wildRareBonus = prefs.getUChar("wrbon", 0);
+  if (wildRareBonus > WILD_RARE_BONUS_MAX) wildRareBonus = WILD_RARE_BONUS_MAX;
   lastCareDay = prefs.getUInt("cday", 0);
   bond = prefs.getUChar("bond", 0);
   medals = prefs.getUShort("medal", 0);
@@ -1551,5 +1528,5 @@ void Pet::load() {
   badgesHard = prefs.getUShort("badh", 0);
   learnQCount = 0;      // rebuilt from lastLearnLevel by the next tick
   checkLearnGates();
-  if (speciesId >= 1) registerSpecies(speciesId);
+  if (speciesId >= 1) registerSpecies(speciesId, shiny);
 }

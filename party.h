@@ -34,7 +34,9 @@ enum : uint8_t {
   GYM_IV_REWARD_DEF = 2,
   GYM_IV_REWARD_SPE = 3,
   GYM_IV_REWARD_HP = 4,
-  GYM_IV_REWARD_MAXED = 0xFF,
+  // Compatibility marker written by builds that refused rewards at IV 31.
+  // New rewards always choose a stat and increment it, so this is read-only.
+  GYM_IV_REWARD_LEGACY_CLAIMED = 0xFF,
 };
 
 // One persistent creature. The original combat-only prefix stays byte-exact so
@@ -50,7 +52,7 @@ struct PartyMon {
   uint16_t medals = 0;  // what it earned in life
   uint8_t ivAtk = 0, ivDef = 0, ivSpe = 0, ivHp = 0;
   uint8_t trAtk = 0, trDef = 0, trSpe = 0;
-  uint8_t shiny = 0;
+  uint8_t shiny = 0;  // color variant
   char nick[12] = "";
   // Moves travel with the creature through team and Box exchanges. 0 is an
   // empty move slot (moveEntry(0) is the "-" filler).
@@ -59,8 +61,9 @@ struct PartyMon {
   // Appended to preserve every previous field offset in the raw NVS record.
   NatureId nature = NATURE_UNKNOWN;
   // Full cultivation state. v0 identifies a migrated combat-only record; v1
-  // has cultivation state but predates the permanent training floors in v2.
-  uint8_t stateVersion = 2;
+  // predates permanent training floors, and v2 predates wild sparkle and
+  // player-raised time.
+  uint8_t stateVersion = 3;
   uint8_t fullness = 80, joy = 80, energy = 80, hygiene = 100;
   uint8_t poops = 0, weight = 0;
   uint8_t berryKnown = 0;
@@ -71,9 +74,11 @@ struct PartyMon {
   uint32_t ageMinutes = 0;
   int16_t eggTarget = 1;
   uint8_t eggShiny = 0, eggTaps = 0;
-  uint8_t starterPick = 0, evoPen = 0, retirePending = 0;
+  // legacyEvoPen keeps the byte occupied by the removed early-retirement debt
+  // so the raw v2 record remains byte-compatible.
+  uint8_t starterPick = 0, legacyEvoPen = 0, sparkle = 0;
   uint8_t evoDeclinedLv = 0;
-  uint32_t farDeclinedAge = 0;
+  uint32_t raisedMinutes = 0;
   uint8_t mistakeCooldown = 0, neglectTicks = 0, bondToday = 0;
   // These occupy alignment bytes from the v1 raw record, keeping its size and
   // every later field offset stable while making training floors per-creature.
@@ -130,6 +135,10 @@ public:
   void setDeadAt(uint8_t i, bool dead);
   // Randomly distributes current (decayable) training without raising floors.
   void rewardRandomTraining(uint8_t slotMask, Pet &pet, uint8_t points);
+  // Removes the active member after farewell/release/runaway. Another team
+  // member takes over, then the first Box member, and only an empty total
+  // roster receives a safety egg.
+  void removeActiveAndEnsurePlayable(Pet &pet);
   void save();
   uint8_t boxCount() const;
   int boxFirstFree() const;

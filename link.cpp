@@ -42,6 +42,7 @@ void linkMonFrom(LinkMon &out, const Combatant &c) {
   for (int i = 0; i < SI_COUNT; i++) out.base[i] = c.base[i];
   for (int i = 0; i < MOVE_SLOTS; i++) out.moves[i] = c.moves[i];
   out.shiny = c.shiny ? 1 : 0;
+  out.sparkle = c.sparkle ? 1 : 0;
   snprintf(out.name, sizeof(out.name), "%s", c.name);
 }
 
@@ -58,6 +59,7 @@ void linkMonTo(Combatant &out, const LinkMon &m) {
   for (int i = 0; i < SI_COUNT; i++) out.base[i] = m.base[i] ? m.base[i] : 1;
   for (int i = 0; i < MOVE_SLOTS; i++) out.moves[i] = linkSafeMove(m.moves[i]);
   out.shiny = m.shiny != 0;
+  out.sparkle = m.sparkle != 0;
   // NOT snprintf("%s"): a name off the wire need not be terminated, and reading
   // it as a C string would run off the end of the struct.
   uint8_t n = sizeof(out.name) - 1;

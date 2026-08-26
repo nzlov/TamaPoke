@@ -48,36 +48,39 @@ int main(){
     ck(p.ivAtk+p.ivDef+p.ivSpe+p.ivHp==sum, "switching difficulty cannot duplicate it");
   }
 
-  // --- capped IVs are skipped rather than wasting the claim
+  // --- IV 31 is no longer a ceiling: every unclaimed gym picks any stat
   {
     Pet p; p.begin(); p.dbgHatchAs(6,false);
     p.ivAtk=p.ivDef=p.ivSpe=31; p.ivHp=20;
     uint8_t which=0;
-    ck(p.rewardGymIv(0, 2, which)==GYM_IV_GAINED, "a creature with one open IV gains it");
-    ck(which==3 && p.ivHp==21, "the reward lands on the only IV below 31");
+    uint16_t before = p.ivAtk+p.ivDef+p.ivSpe+p.ivHp;
+    ck(p.rewardGymIv(0, 2, which)==GYM_IV_GAINED, "a creature above the old cap still gains an IV");
+    ck(which<4 && p.ivAtk+p.ivDef+p.ivSpe+p.ivHp==before+1,
+       "the reward chooses freely among all four IVs");
   }
 
-  // --- a perfect creature still records the claim, but cannot exceed 31
+  // --- a perfect creature also crosses 31 and records which stat increased
   {
     Pet p; p.begin(); p.dbgHatchAs(6,false);
     p.ivAtk=p.ivDef=p.ivSpe=p.ivHp=31;
     uint8_t which=0;
-    ck(p.rewardGymIv(0, 1, which)==GYM_IV_MAXED, "a perfect creature reports no headroom");
+    ck(p.rewardGymIv(0, 1, which)==GYM_IV_GAINED, "a perfect creature receives the gym reward");
     ck(p.gymIvClaimed(0, 1), "the completed gym is still remembered");
-    ck(p.gymIvRewardAt(0, 1)==GYM_IV_REWARD_MAXED,
-       "a perfect claim has its own byte value");
+    ck(p.gymIvRewardAt(0, 1)==which+1,
+       "the claim records the randomly increased IV rather than MAX");
+    ck(p.ivAtk+p.ivDef+p.ivSpe+p.ivHp==125,
+       "one of four perfect IVs becomes thirty-two");
   }
 
-  // --- with room everywhere the random choice reaches all four stats
+  // --- deterministic RNG seeds exercise all four random branches
   {
-    Pet p; p.begin(); p.dbgHatchAs(6,false);
+    Pet p; p.begin(); p.newEgg(); p.dbgHatchAs(6,false);
     bool hit[4] = {false,false,false,false};
-    for (int i = 0; i < 72; i++) {
-      p.dbgHatchAs(6, false);
-      p.ivAtk=p.ivDef=p.ivSpe=p.ivHp=8;
+    for (uint32_t seed = 1; seed <= 4; seed++) {
+      g_seed = seed;
       uint8_t which=0;
-      p.rewardGymIv(0, (uint8_t)(i % GYM_IV_GYMS_PER_REGION), which);
-      if (which<4) hit[which]=true;
+      if (p.rewardGymIv(0, (uint8_t)(seed - 1), which) == GYM_IV_GAINED)
+        hit[which]=true;
     }
     ck(hit[0]&&hit[1]&&hit[2]&&hit[3], "different gyms can reach all four IVs");
   }

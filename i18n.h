@@ -119,7 +119,7 @@ enum StrId : uint8_t {
   S_WIN_TRAIN_FMT,  // "%s IV +%u" -- the innate reward from this gym
   S_WIN_MAXED,      // ... or that all four IVs were already maxed
   S_CHOOSE_REGION,  // first boot: pick the region your starter comes from
-  S_RETIRE,         // menu row: retire the creature on demand
+  S_RETIRE,         // menu row: release before farewell is earned
   S_RETIRE_Q,       // ...and the confirmation
   S_RETIRE_COST,    // what retiring early costs the next creature
   S_EVO_SLOW,       // shown on the card while a creature carries that debt

@@ -96,7 +96,7 @@ int main(){
   for (int i=0;i<BOX_SLOTS;i++) p.box[i]=mk(19,5);
   ck(p.boxFirstFree()==-1 && !p.boxAdd(mk(1,1)), "a full box refuses more");
 
-  // a farewell with a full party must reach the box rather than being stuck
+  // a captured newcomer with a full party must reach the box rather than being stuck
   { Party r; r.begin();
     for (int i=0;i<PARTY_SLOTS;i++) r.slots[i]=mk(1+i,40);
     for (int i=0;i<BOX_SLOTS;i++) r.box[i]=PartyMon();

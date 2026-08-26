@@ -49,19 +49,25 @@ int main(){
   A.send=toB; B.send=toA;
   A.begin(true,"HOST"); B.begin(false,"GUEST");
   A.id=0x1111; B.id=0x2222;
-  A.addMon(mon(6,50,"BLAZE")); A.addMon(mon(9,50,"SHELL"));
+  LinkMon rare = mon(6,50,"BLAZE");
+  rare.shiny = 1;
+  rare.sparkle = 1;
+  A.addMon(rare); A.addMon(mon(9,50,"SHELL"));
   B.addMon(mon(65,50,"SPOON"));
   A.start();
   ck(A.state==LINK_READY && B.state==LINK_READY, "both reach READY from one hello");
   ck(B.theirsN==2 && A.theirsN==1, "each ends up with the other's squad");
   ck(B.theirs[0].dex==6 && A.theirs[0].dex==65, "and the right creatures in it");
   ck(!strcmp(B.theirs[1].name,"SHELL"), "names survive the wire");
+  ck(B.theirs[0].shiny && B.theirs[0].sparkle,
+     "color and sparkle survive independently on the wire");
   ck(A.isHost && !B.isHost, "the roles stay as they were offered");
 
   // a creature restored from the wire must fight identically
   Combatant back; linkMonTo(back, B.theirs[0]);
   ck(back.dex==6 && back.level==50 && back.hp==back.maxHp,
      "a wire creature restores at full health");
+  ck(back.shiny && back.sparkle, "the restored combatant keeps both rare traits");
   ck(back.base[SI_ATK]==A.mine[0].base[SI_ATK], "with its stats intact");
 
   // --- the turn flow

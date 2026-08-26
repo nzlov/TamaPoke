@@ -23,6 +23,35 @@ uint8_t wildFoeEscapeChance(uint16_t hp, uint16_t maxHp) {
   return (uint8_t)(10U + belowForty * 20U / ((uint32_t)maxHp * 30U));
 }
 
+static uint8_t rareBonus(uint8_t bonus) {
+  return bonus > WILD_RARE_BONUS_MAX ? WILD_RARE_BONUS_MAX : bonus;
+}
+
+uint8_t wildColorChance(uint8_t bonus) {
+  return WILD_COLOR_BASE_CHANCE + rareBonus(bonus);
+}
+
+uint8_t wildSparkleChance(uint8_t bonus) {
+  return WILD_SPARKLE_BASE_CHANCE + rareBonus(bonus);
+}
+
+WildTraits wildTraitsForRolls(uint8_t colorRoll, uint8_t sparkleRoll,
+                              uint8_t bonus) {
+  WildTraits out;
+  out.color = colorRoll < wildColorChance(bonus);
+  out.sparkle = sparkleRoll < wildSparkleChance(bonus);
+  return out;
+}
+
+void wildApplyTraits(const WildTraits &traits, uint8_t &ivAtk, uint8_t &ivDef,
+                     uint8_t &ivSpe, uint8_t &ivHp) {
+  uint8_t *ivs[] = { &ivAtk, &ivDef, &ivSpe, &ivHp };
+  for (uint8_t *iv : ivs) {
+    if (traits.color && *iv < 20) *iv = 20;
+    if (traits.sparkle) *iv = (uint8_t)(*iv + 10);
+  }
+}
+
 uint8_t wildCaptureChance(uint8_t rarity, uint16_t hp, uint16_t maxHp,
                           bool hasStatus, uint16_t ballMultiplier) {
   if (!maxHp || !ballMultiplier) return 0;

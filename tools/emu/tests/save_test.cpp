@@ -28,13 +28,16 @@ int main(){
   Pet pet;
   pet.begin();
   pet.dbgHatchAs(6,true);
+  pet.sparkle = true;
+  pet.raisedMinutes = 1234;
+  pet.wildRareBonus = 15;
   pet.ageMinutes = 72UL*MINUTES_PER_LEVEL;
   pet.ivAtk=31; pet.ivDef=7; pet.ivSpe=22; pet.ivHp=19;
   pet.trAtk=64; pet.trDef=31; pet.trSpe=90;
   pet.trMinAtk=40; pet.trMinDef=20; pet.trMinSpe=70;
   pet.nature=NATURE_MODEST;
   pet.gymIvRewards[0]=GYM_IV_REWARD_DEF;
-  pet.gymIvRewards[71]=GYM_IV_REWARD_MAXED;
+  pet.gymIvRewards[71]=GYM_IV_REWARD_LEGACY_CLAIMED;
   pet.relearnFromLevel();
   while (pet.hasLearnOffer()) pet.declineLearn();
   pet.rename("SCORCH");
@@ -49,7 +52,8 @@ int main(){
   for (int i=1;i<PARTY_SLOTS;i++){ PartyMon m; m.dex=20+i*7; m.level=40+i;
     m.ageMinutes=(uint32_t)(m.level-1)*MINUTES_PER_LEVEL;
     m.nature=(NatureId)(i%NATURE_COUNT);
-    m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20+i; m.shiny=(i==2);
+    m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20+i; m.shiny=(i==2); m.sparkle=(i==3);
+    m.raisedMinutes=300+i;
     m.gymIvRewards[i]=GYM_IV_REWARD_ATK;
     snprintf(m.nick,sizeof(m.nick),"P%d",i);
     m.moves[0]=1+i; m.moves[1]=9; party.replaceAt(i,m); }
@@ -120,8 +124,11 @@ int main(){
 
   Pet p2; Party q2;
   p2.begin(); q2.begin(); q2.attach(p2);
-  ck(p2.speciesId==6 && p2.shiny, "the creature is back, shiny and all");
+  ck(p2.speciesId==6 && p2.shiny && p2.sparkle,
+     "the creature is back with color and sparkle independently");
   ck(p2.isDead(), "the active creature's death state is restored");
+  ck(p2.raisedMinutes==1234 && p2.wildRareBonus==15,
+     "cultivation time and the player-wide wild bonus survive");
   ck(p2.ageMinutes==72UL*MINUTES_PER_LEVEL, "at the age it was");
   ck(p2.ivAtk==31 && p2.ivDef==7 && p2.ivSpe==22 && p2.ivHp==19, "with its IVs");
   ck(p2.trAtk==64 && p2.trDef==31 && p2.trSpe==90, "and its training");
@@ -129,7 +136,7 @@ int main(){
      "and its permanent training floors");
   ck(p2.nature==NATURE_MODEST,"and its nature");
   ck(p2.gymIvRewards[0]==GYM_IV_REWARD_DEF &&
-     p2.gymIvRewards[71]==GYM_IV_REWARD_MAXED, "and its gym IV reward bytes");
+     p2.gymIvRewards[71]==GYM_IV_REWARD_LEGACY_CLAIMED, "and its gym IV reward bytes");
   ck(!strcmp(p2.trainerName,"DYLAN"), "the trainer name survives");
   ck(!strcmp(p2.nick,"SCORCH"), "so does the nickname");
   ck(p2.avatar==6, "and the avatar, including one past the original four");
@@ -167,6 +174,8 @@ int main(){
   ck(party_ok, "with every level, moveset and nickname");
   ck(q2.slots[2].shiny, "and a banked shiny is still shiny");
   ck(q2.slots[1].dead(), "and a party creature's death state is restored");
+  ck(q2.slots[3].sparkle && q2.slots[3].raisedMinutes==303,
+     "and banked sparkle and cultivation time survive");
   ck(q2.boxCount()==BOX_SLOTS, "the box comes back full");
   ck(q2.box[7].dex==1+7*3 && q2.box[7].level==17, "with the right creatures in it");
   ck(q2.box[7].gymIvRewards[7]==GYM_IV_REWARD_SPE,
