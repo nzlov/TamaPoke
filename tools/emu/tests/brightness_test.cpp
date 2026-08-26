@@ -19,12 +19,15 @@ String FakeSerial::readStringUntil(char) { return String(""); }
 void loadUserBrightness();
 void clockTap(int16_t x, int16_t y);
 void handleTouch();
+void onSwipeV(int dir);
 void updateBrightness(uint32_t now);
 void setUserBrightness(uint8_t level, bool persist);
 extern uint8_t userBrightness;
 extern uint32_t lastInteract;
 extern bool screenOff;
 extern bool clockOpen;
+extern bool cardOpen;
+extern bool navMenuOpen;
 extern volatile bool gTouchIrq;
 extern Pet pet;
 extern Arduino_CO5300 *panel;
@@ -78,6 +81,37 @@ int main() {
   lastInteract = 1000;
   updateBrightness(1000);
   ck(panel->brightness == 250, "maximum normal brightness reaches the panel");
+
+  pet.speciesId = 1;
+  if (pet.awaitingStarter()) pet.chooseStarter(1);
+  pet.sleeping = true;
+  updateBrightness(1000);
+  ck(panel->brightness == 25, "sleep dims only the main screen");
+
+  onSwipeV(-1);
+  updateBrightness(1000);
+  ck(cardOpen && panel->brightness == 250,
+     "swiping up restores brightness on the pet card");
+  lastInteract = 0;
+  updateBrightness(90001);
+  ck(panel->brightness == 60,
+     "sleep does not change idle protection away from the main screen");
+  lastInteract = 1000;
+  onSwipeV(-1);
+  updateBrightness(1000);
+  ck(!cardOpen && panel->brightness == 25,
+     "returning from the pet card dims the sleeping main screen again");
+
+  onSwipeV(1);
+  updateBrightness(1000);
+  ck(navMenuOpen && panel->brightness == 250,
+     "swiping down restores brightness on the navigation menu");
+  onSwipeV(1);
+  updateBrightness(1000);
+  ck(!navMenuOpen && panel->brightness == 25,
+     "returning from the navigation menu dims the sleeping main screen again");
+
+  pet.sleeping = false;
 
   lastInteract = 0;
   updateBrightness(90001);

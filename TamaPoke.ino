@@ -1216,9 +1216,10 @@ void updateBrightness(uint32_t now) {
   dimStage = (idle > 300000) ? 2 : (idle > 90000) ? 1 : 0;
   // El nivel 7 conserva los valores historicos: 180 con USB, 145 con bateria.
   uint8_t target = 15 + ((usbPresent() ? 235 : 185) * userBrightness + 5) / 10;
-  if (pet.sleeping && target > 25) target = 25;
+  bool sleepingOnMain = pet.sleeping && uiCurrentScreen() == SCR_MAIN;
+  if (sleepingOnMain && target > 25) target = 25;
   if (dimStage == 1) {
-    uint8_t dimTarget = pet.sleeping ? 10 : 60;
+    uint8_t dimTarget = sleepingOnMain ? 10 : 60;
     if (target > dimTarget) target = dimTarget;
   }
   else if (dimStage == 2) target = 8;
