@@ -147,7 +147,7 @@ extern uint8_t btlMenu;
 void startTrainerBattle(uint8_t idx, bool hard);
 void onTap(int16_t x, int16_t y);   // the first-boot shots tap their way in
 void refreshUiFont();
-extern bool gymOpen, playerOpen;
+extern bool gymOpen, playerOpen, navMenuOpen;
 extern bool galleryDirty;
 extern uint8_t galleryRegion;
 extern uint8_t gymRegion;
@@ -270,7 +270,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   if (!strcmp(screen, "starterj")) onTap(233, 108 + 72 + 30);  // JOHTO
   for (int i = 0; i < 2; i++) loop();          // pick up the sprite for the new species
   cardOpen = galleryOpen = clockOpen = kbOpen = false;
-  menuOpen = partyOpen = partyPick = trainOpen = movePickOpen = false;
+  menuOpen = navMenuOpen = partyOpen = partyPick = trainOpen = movePickOpen = false;
   bagOpen = captureOpen = false;
   if (!strcmp(screen, "main")) pet.ageMinutes = 0;
   else if (!strcmp(screen, "evolvecta")) {
@@ -314,6 +314,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   }
   else if (!strcmp(screen, "clock"))   clockOpen = true;
   else if (!strcmp(screen, "menu"))    menuOpen = true;
+  else if (!strcmp(screen, "navmenu")) navMenuOpen = true;
   else if (!strcmp(screen, "train"))   trainOpen = true;
   // GLUE: screenshot fixtures set the same UI state that touch handlers would;
   // remove these assignments if the emulator gains scripted touch journeys.
@@ -591,6 +592,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     for (int i = 0; i < n; i++) {
       PartyMon m;
       m.dex = fill[i]; m.level = 40 + i * 7; m.shiny = (i == 2);
+      m.ageMinutes = (uint32_t)(m.level - 1) * MINUTES_PER_LEVEL;
       m.ivAtk = m.ivDef = m.ivSpe = m.ivHp = 25;
       snprintf(m.nick, sizeof(m.nick), "%s", nk[i]);
       party.replaceAt(i, m);

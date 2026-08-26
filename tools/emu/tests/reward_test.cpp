@@ -53,7 +53,7 @@ int main(){
     Pet p; p.begin(); p.dbgHatchAs(6,false);
     p.ivAtk=p.ivDef=p.ivSpe=31; p.ivHp=20;
     uint8_t which=0;
-    ck(p.rewardGymIv(1, 2, which)==GYM_IV_GAINED, "a creature with one open IV gains it");
+    ck(p.rewardGymIv(0, 2, which)==GYM_IV_GAINED, "a creature with one open IV gains it");
     ck(which==3 && p.ivHp==21, "the reward lands on the only IV below 31");
   }
 
@@ -62,9 +62,9 @@ int main(){
     Pet p; p.begin(); p.dbgHatchAs(6,false);
     p.ivAtk=p.ivDef=p.ivSpe=p.ivHp=31;
     uint8_t which=0;
-    ck(p.rewardGymIv(2, 1, which)==GYM_IV_MAXED, "a perfect creature reports no headroom");
-    ck(p.gymIvClaimed(2, 1), "the completed gym is still remembered");
-    ck(p.gymIvRewardAt(2, 1)==GYM_IV_REWARD_MAXED,
+    ck(p.rewardGymIv(0, 1, which)==GYM_IV_MAXED, "a perfect creature reports no headroom");
+    ck(p.gymIvClaimed(0, 1), "the completed gym is still remembered");
+    ck(p.gymIvRewardAt(0, 1)==GYM_IV_REWARD_MAXED,
        "a perfect claim has its own byte value");
   }
 
@@ -73,10 +73,10 @@ int main(){
     Pet p; p.begin(); p.dbgHatchAs(6,false);
     bool hit[4] = {false,false,false,false};
     for (int i = 0; i < 72; i++) {
+      p.dbgHatchAs(6, false);
       p.ivAtk=p.ivDef=p.ivSpe=p.ivHp=8;
       uint8_t which=0;
-      p.rewardGymIv((uint8_t)(i / GYM_IV_GYMS_PER_REGION),
-                    (uint8_t)(i % GYM_IV_GYMS_PER_REGION), which);
+      p.rewardGymIv(0, (uint8_t)(i % GYM_IV_GYMS_PER_REGION), which);
       if (which<4) hit[which]=true;
     }
     ck(hit[0]&&hit[1]&&hit[2]&&hit[3], "different gyms can reach all four IVs");
@@ -96,13 +96,13 @@ int main(){
   {
     Pet p; p.begin(); p.dbgHatchAs(25,false);
     uint8_t which=0;
-    p.winBadge(4, 6, false);
-    p.rewardGymIv(4, 6, which);
+    p.winBadge(0, 6, false);
+    p.rewardGymIv(0, 6, which);
     Pet q; q.begin();
-    ck(q.gymIvClaimed(4, 6), "the claim is persisted with the current creature");
+    ck(q.gymIvClaimed(0, 6), "the claim is persisted with the current creature");
     q.newEgg(); q.dbgHatchAs(25,false);
-    ck(!q.gymIvClaimed(4, 6), "a different creature gets its own claim map");
-    ck(q.hasBadge(4, 6, false), "the player's badge remains global across creatures");
+    ck(!q.gymIvClaimed(0, 6), "a different creature gets its own claim map");
+    ck(q.hasBadge(0, 6, false), "the player's badge remains global across creatures");
   }
 
   printf("%s\n", bad?"FAILURES":"all good");

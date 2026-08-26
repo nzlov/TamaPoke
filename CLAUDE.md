@@ -111,7 +111,7 @@ they surfaced over months rather than at once:
 (`dex_moves.py`; `gen_moves.py` does `idx = i + 1`), and `Pet::moves[]` /
 `PartyMon::moves[]` store that index RAW in NVS. Inserting a move into its type
 section shifts every later move by one and silently rewrites the moveset of
-every creature already saved -- the live pet and every banked member, on every
+every creature already saved -- every cultivation and Box record, on every
 player's device. **New moves go at the END**, after STRUGGLE, under the
 `APPEND-ONLY BELOW HERE` marker. Same family as the box getting its own NVS key
 and badges being stored additively: never reinterpret bytes that already exist.
@@ -491,15 +491,14 @@ done from here.
   IV-bound ceiling, since a mediocre individual not reaching as far is the point
   of `trMaxFor()`.
 
-  It goes to the LIVE pet only, and only if it was in the squad (`btlPetIn`):
-  banked members are frozen at what they were banked with. No cooldown was added
-  -- battling already costs the live pet energy, which is the designed
+  It goes to the displayed cultivation-slot pet only, and only if it was in the
+  squad (`btlPetIn`). No cooldown was added -- battling already costs that pet
+  energy, which is the designed
   rate-limit. A fully trained creature is told so instead of seeing nothing
   happen. Balance change, so `README.md` and `FW_VERSION` moved to 2.3 with it.
 - ~~Save backup~~ **done**. `EXPORT` prints the whole save as a block of
   `IMPORT <hex>` lines, and pasting that block back is the restore -- there is
-  no second format to get wrong and no 2000-character line for a terminal to
-  mangle. About 1.2 KB, 16 lines.
+  no second format to get wrong and no oversized line for a terminal to mangle.
 
   `save.cpp` is KEY-DRIVEN: `SAVE_FIELDS` lists all 51 keys with their types and
   both directions walk that one table through the ordinary `Preferences` API, so
@@ -549,28 +548,19 @@ the volume curve. The amplitude scale in particular (`500 * vol`) is a guess at
 what sounds linear. This is part of what the soak test is for.
 
 **B. Storage and the box -- DONE.**
-- The box is 18 slots (3 pages of 6) under its OWN NVS key, not a bigger party
-  blob. That was deliberate: growing the party blob changes its stride, and the
-  length-based migration in `begin()` cannot tell a stride change from a
-  slot-count change, so an existing party would have been read back misaligned.
-  A separate key is purely additive and cannot corrupt anything -- `box_test`
-  checks a pre-box save keeps its whole party and comes up with an empty box.
+- The Box is 24 slots (4 pages of 6), persisted as four versioned page blobs.
+  Splitting it keeps each NVS value bounded and lets one exchange rewrite only
+  the affected page.
 - `swapPartyBox()` is one call for deposit, withdraw and exchange, since any of
-  the two slots may be empty. Reached by tapping a party slot then BOX.
-- Room to grow: 6 + 18 records is 720 B against a ~4000 B single-blob limit, so
-  the box could reach ~120 before it would need splitting.
+  the two slots may be empty. It exchanges the complete cultivation record.
 - A farewell now falls through party -> box, and only a full party AND a full
   box makes the player choose who to replace. That is what the box is for.
 
-**B3. Bringing a banked creature back -- DONE, frozen.** `Pet::reviveFrom()`
-makes a banked creature the live pet as a permanent companion: it does not age,
-cannot evolve, and is never offered a farewell or able to run away. Its cost is
-that its level never rises again.
-
-`ageMinutes` is simply set to match the banked level rather than adding a second
-source of truth, so `level()` needs no special case. Offered ONLY while an egg
-is waiting -- otherwise it would silently destroy whatever creature is alive,
-and the button says why when it is greyed.
+**B3. Six cultivation slots -- DONE.** There is no separate live-pet-plus-party
+pool. `Pet` is the behavioural view of the selected `PartyMon`; all six occupied
+team records advance together, including offline catch-up. Horizontal swipe or
+the six indicators changes the selected record. Box location alone freezes time,
+and exchanging a Box record back into the team resumes its complete state.
 
 Note for anyone reading the farewell timing: 3 days is when it is first OFFERED
 (level 73), not when the creature is finished -- 100 comes at 4d 3h, and
@@ -711,16 +701,13 @@ confirm their licence or replace them.
    otherwise -- each guarded by `has()`, since not every species ships every
    action, falling back to idle and then to the flat thumbnail with no SD.
    The player's slot is NOT the global `pmd`: the active creature may be a
-   banked party member rather than the live pet.
+   inactive cultivation member rather than the displayed pet.
 2. ~~Trainer name~~ **done**. `Pet::trainerName` is player-wide and outlives
    every ending; tap the title on the player card to set it. The keyboard now
    takes a target (`KB_PET` / `KB_TRAINER`) rather than hardcoding
    `pet.rename()` on commit, so two callers can share it.
-3. **Box 6 -> 18** (3 pages of 6). `S_PARTY_FMT` hardcodes "%u/6" in all seven
-   languages, the party screen needs paging, and **`Party::begin()` must be
-   re-keyed off `sizeof(PartyMon)` first** -- it infers the old record size as
-   `stored / PARTY_SLOTS`, right when the stride grows and wrong when the slot
-   count does, so 180 bytes over 18 slots would infer a 10-byte record.
+3. ~~**Box growth**~~ **done: 24 slots** (4 pages of 6), split across versioned
+   page keys so the full-state record stride is never inferred from a blob size.
 4. **Peer-to-peer** (see below) -- the biggest, and the only one needing a
    hardware subsystem that has never been brought up.
 
@@ -1044,11 +1031,10 @@ Level anchor for balancing the ladder: `MINUTES_PER_LEVEL 60` and farewell at
 3 days means a fully-raised pet retires at **level 73**. Pets banked earlier are
 weaker, so team strength reflects how long each one was raised.
 
-- **The player picks the battle team.** Pool = the live pet plus the 6 banked;
-  choose up to 6 per battle. The live pet is selectable, never compulsory.
-  Battling costs the *live* pet energy (banked pets are retired, so they cost
-  nothing) — it ties battle to the care sim and rate-limits grinding without a
-  cooldown timer.
+- **The player picks the battle team.** Pool = exactly the six cultivation slots;
+  choose up to 6 per battle. The displayed slot is selectable, never compulsory.
+  Battling costs the displayed pet energy — it ties battle to the care sim and
+  rate-limits grinding without a cooldown timer.
 - **The ladder is sequential** (this REVERSES the earlier "no gating, attrition
   is the gate" rule). A leader opens once the previous is beaten, tracked
   separately per difficulty so hard mode is its own run. The original rule was
@@ -1085,8 +1071,8 @@ So one creature clears the eight gyms over a normal life and still cannot take
 the Elite 4 -- exactly what "no gating, attrition is the gate" was meant to do.
 A banked team is the answer, which makes farewells matter.
 
-Team-select is NOT built: the squad is the live pet plus the first five banked
-members in order. It only bites when you hold 7 candidates.
+Team-select is built over exactly the six cultivation slots, so there is no
+seventh hidden candidate.
 
 ### Hard mode (designed, not built)
 
@@ -1197,19 +1183,12 @@ fact so nobody redesigns it from the old notes.
 | Gesture | From the main screen |
 |---|---|
 | Up | the creature's card (4 pages: profile, battle, moves, progress) |
-| Down | the player card (badges + avatar, then medals) |
-| Left | the gym ladder -- which is also where the LAN battle button lives |
-| Right | the party |
+| Down | navigation page (bag, battle centre, badges) |
+| Left | next occupied cultivation slot |
+| Right | previous occupied cultivation slot |
 
-The clock lost its gesture on purpose: the menu's SETTINGS row already opens it,
-and the player card is reached far more often. The Pokedex lost its horizontal
-gesture for the same reason -- it has a menu row, and a gesture is worth more
-spent on a screen without one.
-
-**Swipe left is spoken for.** The old suggestion of wild encounters there is
-superseded twice over: the gym ladder took it, and the multi-region plan (B2)
-turns it into a region/LAN chooser. Wild encounters, if they happen, need
-another home -- a menu row is the obvious one.
+The clock and Pokedex remain in the name-band menu. The player-wide navigation
+page is separate so those existing routes are not displaced.
 
 Every paged screen reached this way must be added to `swipe_test`; the same
 paging bug shipped four times before that test existed.

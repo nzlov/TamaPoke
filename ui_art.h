@@ -12,7 +12,7 @@
 #define UI_INK 0x2946  // #2a2a36
 #define UI_INK_NIGHT 0xDEFE  // #d8dcf0
 #define UI_TRACK 0xDE97  // #d8d2bd
-#define UI_MUTED 0x738D  // #74706b; secondary text on the light panel
+#define UI_MUTED 0x738D  // #74706b
 #define UI_BAR_OK 0x5DCD  // #58b868
 #define UI_BAR_WARN 0xED07  // #e8a23c
 #define UI_BAR_BAD 0xEA87  // #e8503a
@@ -198,6 +198,44 @@ static const char* const SPR_ICON_CANDY[16] = {  // 16x16
   "......kkkkk.....",
   "................",
   "................",
+  "................",
+  "................",
+};
+
+static const char* const SPR_ICON_BAG[16] = {  // 16x16
+  "................",
+  "......kkkk......",
+  ".....kcccck.....",
+  ".....kcCCck.....",
+  "...kkkkkkkkkk...",
+  "..kcccccccccck..",
+  ".kcccccccccccck.",
+  ".kcccccccccccck.",
+  ".kcccCccccCccck.",
+  ".kcccCccccCccck.",
+  ".kcccccccccccck.",
+  ".kcccccccccccck.",
+  ".kCCCCCCCCCCCCk.",
+  "..kkkkkkkkkkkk..",
+  "................",
+  "................",
+};
+
+static const char* const SPR_ICON_BATTLE[16] = {  // 16x16
+  "................",
+  "..kk........kk..",
+  "..kNk......kNk..",
+  "...kNk....kNk...",
+  "....kNk..kNk....",
+  ".....kNkkNk.....",
+  "......kNNk......",
+  "......kNNk......",
+  ".....kNkkNk.....",
+  "....kNk..kNk....",
+  "...kNk....kNk...",
+  "..kkk......kkk..",
+  ".kNNk......kNNk.",
+  ".kkkk......kkkk.",
   "................",
   "................",
 };

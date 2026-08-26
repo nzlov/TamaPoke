@@ -4,16 +4,16 @@
 #include "moves.h"
 #include "nature.h"
 
-// The party: pets that finished their life and were kept, rather than being
-// dissolved into a single Pokedex bit like every previous ending did.
-//
-// Only the two endings the player CHOOSES bank a pet -- farewell and release.
-// A runaway does not: it is the game's one punishing outcome, and letting a
-// neglected pet come back as a team member would take the sting out of it.
+// The six cultivation slots. Every occupied slot keeps the complete durable
+// state needed to become the pet shown on the main screen.
 #define PARTY_SLOTS 6
-// The box: storage beyond the six that fight, kept under a separate NVS key.
-#define BOX_SLOTS 18
+// Four pages of six. Boxed creatures keep the same record shape but do not
+// advance until they return to the cultivation team.
+#define BOX_SLOTS 24
+#define BOX_PAGE_SLOTS 6
 #define MOVE_SLOTS 4    // the same four every trainer gets in the real games
+
+class Pet;
 
 enum PartyStoreResult : uint8_t {
   PARTY_STORE_PARTY = 1,
@@ -36,32 +36,70 @@ enum : uint8_t {
   GYM_IV_REWARD_MAXED = 0xFF,
 };
 
-// A retired pet. Its level is frozen at the moment it joined; it does not keep
-// ageing, and nothing about it can be trained any further.
+// One persistent creature. The original combat-only prefix stays byte-exact so
+// saves from every released PartyMon layout can be migrated. The cultivation
+// fields are appended and are shared by team and box; location, not shape,
+// decides whether time advances.
 struct PartyMon {
-  int16_t dex = 0;      // Pokedex number, 0 = empty slot
-  uint16_t level = 1;   // frozen at the moment it was banked
+  int16_t dex = 0;      // 0 = empty, -1 = egg, positive = Pokedex number
+  uint16_t level = 1;   // cached from ageMinutes for lists and combat
   uint16_t medals = 0;  // what it earned in life
   uint8_t ivAtk = 0, ivDef = 0, ivSpe = 0, ivHp = 0;
   uint8_t trAtk = 0, trDef = 0, trSpe = 0;
   uint8_t shiny = 0;
   char nick[12] = "";
-  // Frozen with everything else: the moves you chose while it was alive are
-  // what it fights with forever. 0 = empty slot (moveEntry(0) is the "-" filler).
+  // Moves travel with the creature through team and Box exchanges. 0 is an
+  // empty move slot (moveEntry(0) is the "-" filler).
   MoveId moves[MOVE_SLOTS] = { 0, 0, 0, 0 };
   uint8_t gymIvRewards[GYM_IV_REWARD_SLOTS] = { 0 };
   // Appended to preserve every previous field offset in the raw NVS record.
   NatureId nature = NATURE_UNKNOWN;
 
-  bool empty() const { return dex < 1; }
+  // Full cultivation state. `stateVersion == 0` identifies a migrated
+  // combat-only PartyMon and receives safe life-state defaults on load.
+  uint8_t stateVersion = 1;
+  uint8_t fullness = 80, joy = 80, energy = 80, hygiene = 100;
+  uint8_t poops = 0, weight = 0;
+  uint8_t berryKnown = 0;
+  uint8_t careMistakes = 0;
+  uint8_t sleeping = 0, sleepAuto = 0;
+  uint8_t lastEnd = 0;
+  uint8_t bond = 0;
+  uint32_t ageMinutes = 0;
+  int16_t eggTarget = 1;
+  uint8_t eggShiny = 0, eggTaps = 0;
+  uint8_t starterPick = 0, evoPen = 0, retirePending = 0;
+  uint8_t evoDeclinedLv = 0;
+  uint32_t farDeclinedAge = 0;
+  uint8_t mistakeCooldown = 0, neglectTicks = 0, bondToday = 0;
+  uint16_t goodTicks = 0;
+  uint8_t lastLearnLevel = 0;
+  MoveId learnQueue[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+  uint8_t learnQCount = 0;
+  int16_t eggByRegion[CONTENT_MAX_REGIONS + 1] = { 0 };
+
+  bool empty() const { return dex == 0; }
+  bool isEgg() const { return dex < 0; }
+  bool battleReady() const { return dex > 0; }
 };
+static_assert(sizeof(PartyMon) * PARTY_SLOTS <= 4096,
+              "one roster page must stay within the backup/NVS blob bound");
 
 class Party {
 public:
   PartyMon slots[PARTY_SLOTS];
   PartyMon box[BOX_SLOTS];
 
-  void begin();                 // load from NVS
+  void begin();                 // load roster or stage a legacy migration
+  void attach(Pet &pet);        // bind the main-screen runtime and finish migration
+  void update(Pet &pet, uint32_t nowMs);
+  void syncClock(Pet &pet, uint32_t nowEpoch);
+  bool activate(uint8_t index, Pet &pet);
+  bool activateNext(int direction, Pet &pet);
+  uint8_t activeIndex() const { return active; }
+  bool savePending() const { return pendingSave; }
+  void flushSave(Pet &pet);
+  void captureActive(const Pet &pet, bool persist = true);
   uint8_t count() const;
   bool isFull() const { return count() >= PARTY_SLOTS; }
   int firstFree() const;        // index of the first empty slot, -1 if full
@@ -89,6 +127,17 @@ public:
 
 private:
   Preferences prefs;
+  Pet *boundPet = nullptr;
+  uint8_t active = 0;
+  uint32_t lastRosterTick = 0;
+  uint8_t ticksSinceSave = 0;
+  bool pendingSave = false;
+  bool legacyMigration = false;
+
+  void saveTeam();
+  void saveBoxPage(uint8_t page);
+  void loadRoster();
+  void sanitize(PartyMon &mon, bool boxed);
 };
 
 extern Party party;

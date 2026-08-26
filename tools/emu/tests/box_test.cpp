@@ -1,11 +1,11 @@
-// The box is a separate NVS key on purpose. This checks the swap is a real
-// exchange in both directions, that it persists, and that an absent box key is
-// treated as empty without affecting a current-format party.
+// The 24-slot Box is persisted as four pages. This checks full-state exchange,
+// page persistence, and both legacy combat-only layouts.
 #include "Arduino.h"
 #include "Preferences.h"
 #include "pet.h"
 #include "party.h"
 #include "dex.h"
+#include "save.h"
 #include <cstdio>
 uint32_t g_seed=3; FakeSerial Serial; FakeESP ESP; FakeWire Wire;
 volatile int g_touchX=0,g_touchY=0; volatile bool g_touchDown=false; bool wasPressed=false;
@@ -29,14 +29,17 @@ struct LegacyPartyMonV2 {
   uint8_t gymIvRewards[GYM_IV_REWARD_SLOTS] = { 0 };
 };
 static PartyMon mk(int dex,int lvl){ PartyMon m; m.dex=dex; m.level=lvl;
+  m.ageMinutes=(uint32_t)(lvl-1)*MINUTES_PER_LEVEL;
   m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20; return m; }
 
 int main(){
-  // Current-format party key with no box key.
+  // Current-format team with no Box pages.
   { Preferences seed; seed.begin("tamapoke", false);
     PartyMon old[PARTY_SLOTS];
     for (int i=0;i<PARTY_SLOTS;i++) old[i]=mk(1+i*20, 30+i);
-    seed.putBytes("party", old, sizeof(old));
+    seed.putBytes("team1", old, sizeof(old));
+    seed.putUShort("rostv", 1);
+    seed.putUChar("active", 0);
     seed.end(); }
   Party p; p.begin();
   bool kept = true;
@@ -54,13 +57,27 @@ int main(){
 
   // a real exchange, both occupied
   p.box[3] = mk(150, 70);
+  p.box[3].fullness = 17;
+  p.box[3].joy = 29;
+  p.box[3].bond = 63;
   int16_t a = p.slots[2].dex, b = p.box[3].dex;
   p.swapPartyBox(2, 3);
   ck(p.slots[2].dex==b && p.box[3].dex==a, "two occupied slots exchange");
+  ck(p.slots[2].fullness==17 && p.slots[2].joy==29 && p.slots[2].bond==63,
+     "the exchange carries full cultivation state");
 
   // and it survives a reload
   Party q; q.begin();
   ck(q.slots[2].dex==b && q.box[3].dex==a, "the swap persists across a reload");
+  ck(q.slots[2].fullness==17 && q.slots[2].joy==29 && q.slots[2].bond==63,
+     "the cultivation state persists too");
+
+  p.box[23] = mk(149, 61);
+  p.box[23].energy = 11;
+  p.boxSave();
+  Party page4; page4.begin();
+  ck(page4.box[23].dex==149 && page4.box[23].energy==11,
+     "the fourth Box page persists slot 24");
 
   ck(p.boxFirstFree()==0, "boxFirstFree finds the hole");
   for (int i=0;i<BOX_SLOTS;i++) p.box[i]=mk(19,5);
@@ -99,8 +116,10 @@ int main(){
   // from the previous firmware must be mapped rather than appearing empty.
   {
     Preferences seed; seed.begin("tamapoke", false); seed.clear();
+    seed.putUShort("savev", SAVE_STATE_VERSION);
+    seed.putBool("init", true);
     LegacyPartyMonV1 oldParty[PARTY_SLOTS];
-    LegacyPartyMonV1 oldBox[BOX_SLOTS];
+    LegacyPartyMonV1 oldBox[18];
     oldParty[1].dex=25; oldParty[1].level=44; oldParty[1].ivDef=27;
     oldParty[1].trDef=73; oldParty[1].moves[0]=9;
     snprintf(oldParty[1].nick,sizeof(oldParty[1].nick),"SPARK");
@@ -108,14 +127,15 @@ int main(){
     seed.putBytes("party", oldParty, sizeof(oldParty));
     seed.putBytes("box", oldBox, sizeof(oldBox));
     seed.end();
-    Party migrated; migrated.begin();
-    ck(migrated.slots[1].dex==25 && migrated.slots[1].level==44 &&
-       migrated.slots[1].ivDef==27 && migrated.slots[1].trDef==73 &&
-       migrated.slots[1].moves[0]==9 && !strcmp(migrated.slots[1].nick,"SPARK"),
+    Pet live; live.begin();
+    Party migrated; migrated.begin(); migrated.attach(live);
+    ck(migrated.slots[2].dex==25 && migrated.slots[2].level==44 &&
+       migrated.slots[2].ivDef==27 && migrated.slots[2].trDef==73 &&
+       migrated.slots[2].moves[0]==9 && !strcmp(migrated.slots[2].nick,"SPARK"),
        "the previous party record layout migrates without losing fields");
     ck(migrated.box[4].dex==150 && migrated.box[4].level==70 && migrated.box[4].shiny,
        "the previous box record layout migrates too");
-    ck(!migrated.slots[1].gymIvRewards[0] && !migrated.box[4].gymIvRewards[0],
+    ck(!migrated.slots[2].gymIvRewards[0] && !migrated.box[4].gymIvRewards[0],
        "legacy creatures start with unclaimed gym IV bytes");
   }
 
@@ -123,8 +143,10 @@ int main(){
   // It must keep every byte and receive one stable migrated nature.
   {
     Preferences seed; seed.begin("tamapoke", false); seed.clear();
+    seed.putUShort("savev", SAVE_STATE_VERSION);
+    seed.putBool("init", true);
     LegacyPartyMonV2 oldParty[PARTY_SLOTS];
-    LegacyPartyMonV2 oldBox[BOX_SLOTS];
+    LegacyPartyMonV2 oldBox[18];
     oldParty[2].mon.dex=94; oldParty[2].mon.level=55;
     oldParty[2].mon.ivAtk=9; oldParty[2].mon.ivDef=17;
     oldParty[2].mon.ivSpe=25; oldParty[2].mon.ivHp=31;
@@ -133,14 +155,15 @@ int main(){
     oldBox[5].gymIvRewards[16]=GYM_IV_REWARD_ATK;
     seed.putBytes("party", oldParty, sizeof(oldParty));
     seed.putBytes("box", oldBox, sizeof(oldBox)); seed.end();
-    Party migrated; migrated.begin();
-    ck(migrated.slots[2].dex==94 && migrated.slots[2].level==55 &&
-       migrated.slots[2].gymIvRewards[8]==GYM_IV_REWARD_HP,
+    Pet live; live.begin();
+    Party migrated; migrated.begin(); migrated.attach(live);
+    ck(migrated.slots[3].dex==94 && migrated.slots[3].level==55 &&
+       migrated.slots[3].gymIvRewards[8]==GYM_IV_REWARD_HP,
        "the pre-nature party layout preserves its gym history");
     ck(migrated.box[5].dex==149 && migrated.box[5].level==73 &&
        migrated.box[5].gymIvRewards[16]==GYM_IV_REWARD_ATK,
        "the pre-nature box layout preserves its gym history");
-    ck(natureValid(migrated.slots[2].nature) && natureValid(migrated.box[5].nature),
+    ck(natureValid(migrated.slots[3].nature) && natureValid(migrated.box[5].nature),
        "pre-nature banked creatures receive stable valid natures");
   }
 

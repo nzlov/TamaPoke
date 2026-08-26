@@ -43,13 +43,17 @@ int main(){
   pet.gameHi = 33; pet.strHi = 21; pet.spdHi = 9;
   pet.bond = 77; pet.careMistakes = 2; pet.weight = 55;
   pet.dexReg[0] = 0x5A; pet.dexReg[9] = 0xC3; pet.dexShinyReg[3] = 0x11;
-  for (int i=0;i<PARTY_SLOTS;i++){ PartyMon m; m.dex=20+i*7; m.level=40+i;
+  party.begin();
+  party.attach(pet);
+  for (int i=1;i<PARTY_SLOTS;i++){ PartyMon m; m.dex=20+i*7; m.level=40+i;
+    m.ageMinutes=(uint32_t)(m.level-1)*MINUTES_PER_LEVEL;
     m.nature=(NatureId)(i%NATURE_COUNT);
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20+i; m.shiny=(i==2);
     m.gymIvRewards[i]=GYM_IV_REWARD_ATK;
     snprintf(m.nick,sizeof(m.nick),"P%d",i);
     m.moves[0]=1+i; m.moves[1]=9; party.replaceAt(i,m); }
   for (int i=0;i<BOX_SLOTS;i++){ PartyMon m; m.dex=1+i*3; m.level=10+i;
+    m.ageMinutes=(uint32_t)(m.level-1)*MINUTES_PER_LEVEL;
     m.nature=(NatureId)((i+5)%NATURE_COUNT);
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=11;
     m.gymIvRewards[i]=GYM_IV_REWARD_SPE; party.box[i]=m; }
@@ -79,7 +83,7 @@ int main(){
     ck(inTable.size()==SAVE_FIELD_COUNT, "and the table has no duplicates");
   }
 
-  static uint8_t buf[8192];
+  static uint8_t buf[SAVE_BLOB_MAX];
   size_t n = saveExport(buf, sizeof(buf));
   ck(n > 0, "a save exports");
   ck(n < sizeof(buf), "and fits a sensible buffer");
@@ -100,16 +104,16 @@ int main(){
     ck(!saveImport(t.data(), t.size()), "and a truncated blob is refused");
     ck(!saveImport(buf, 3), "as is one too short to hold a header");
     // and none of that touched the live save
-    ck(nvs().count("party") == 1, "a refused import leaves the save alone");
+    ck(nvs().count("team1") == 1, "a refused import leaves the save alone");
   }
 
   // --- the real thing: wipe everything, restore, and compare
   pet.factoryReset();
-  ck(nvs().empty() || nvs().count("party")==0, "the wipe really emptied NVS");
+  ck(nvs().empty() || nvs().count("team1")==0, "the wipe really emptied NVS");
   ck(saveImport(buf, n), "the backup imports");
 
   Pet p2; Party q2;
-  p2.begin(); q2.begin();
+  p2.begin(); q2.begin(); q2.attach(p2);
   ck(p2.speciesId==6 && p2.shiny, "the creature is back, shiny and all");
   ck(p2.ageMinutes==72UL*MINUTES_PER_LEVEL, "at the age it was");
   ck(p2.ivAtk==31 && p2.ivDef==7 && p2.ivSpe==22 && p2.ivHp==19, "with its IVs");
@@ -138,7 +142,11 @@ int main(){
 
   ck(q2.count()==PARTY_SLOTS, "the whole party is back");
   bool party_ok = true;
-  for (int i=0;i<PARTY_SLOTS;i++){
+  const PartyMon &active = q2.slots[0];
+  if (active.dex != 6 || active.ageMinutes != 72UL*MINUTES_PER_LEVEL ||
+      strcmp(active.nick, "SCORCH") || active.fullness != pet.fullness ||
+      active.bond != 77 || active.nature != NATURE_MODEST) party_ok = false;
+  for (int i=1;i<PARTY_SLOTS;i++){
     const PartyMon &m = q2.slots[i];
     if (m.dex != 20+i*7 || m.level != 40+i) party_ok = false;
     if (m.moves[0] != 1+i || m.moves[1] != 9) party_ok = false;

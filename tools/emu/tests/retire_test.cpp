@@ -57,7 +57,6 @@ int main(){
     p.trAtk=p.trDef=p.trSpe=1;
     p.nature=NATURE_JOLLY;
     p.gymIvRewards[0]=GYM_IV_REWARD_DEF;
-    uint8_t maxAtk=p.trMaxAtk(), maxDef=p.trMaxDef(), maxSpe=p.trMaxSpe();
     ck(!p.canFarewellNow(), "a young creature is not offered a farewell");
     ck(p.canRetireNow(), "but it can be retired on demand");
     ck(!p.retireIsFree(), "and the game says that costs something");
@@ -65,11 +64,11 @@ int main(){
     ck(p.ceremony == CER_FAREWELL, "retiring runs the farewell ceremony");
     finish(p, q);
     ck(q.count() == 1 && q.slots[0].dex == 4, "the creature is banked, not lost");
-    ck(q.slots[0].level == 21, "frozen at the level it had");
+    ck(q.slots[0].level == 21, "keeps the level it had when stored");
     ck(q.slots[0].ivAtk==8 && q.slots[0].ivDef==16 && q.slots[0].ivSpe==24 && q.slots[0].ivHp==29,
        "banking preserves the creature's actual IVs");
-    ck(q.slots[0].trAtk==maxAtk && q.slots[0].trDef==maxDef && q.slots[0].trSpe==maxSpe,
-       "banking fills training to the caps set by those IVs");
+    ck(q.slots[0].trAtk==1 && q.slots[0].trDef==1 && q.slots[0].trSpe==1,
+       "storing preserves actual training without granting free points");
     ck(q.slots[0].gymIvRewards[0]==GYM_IV_REWARD_DEF,
        "banking preserves its claimed gyms and IV reward");
     ck(q.slots[0].nature==NATURE_JOLLY,"banking preserves its nature");
@@ -131,7 +130,7 @@ int main(){
     ck(!p.canRetireNow(), "an egg cannot be retired");
     young(p, 4, 10);
     p.frozen = true;
-    ck(!p.canRetireNow(), "nor can a revived companion");
+    ck(!p.canRetireNow(), "nor a compatibility-frozen pet");
     p.frozen = false;
     p.sleeping = true;
     ck(!p.canRetireNow(), "nor one that is asleep");

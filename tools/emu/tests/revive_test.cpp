@@ -1,5 +1,5 @@
-// A revived companion is FROZEN: it does not age, cannot evolve, and cannot be
-// lost. Those three are the whole feature, so each is checked directly.
+// The legacy revive entry point now imports a complete cultivation record. It
+// remains as an API compatibility path, but no longer creates a frozen pet.
 #include "Arduino.h"
 #include "Preferences.h"
 #include "pet.h"
@@ -18,8 +18,10 @@ static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!
 int main(){
   Pet p; p.begin();
   if (p.awaitingStarter()) p.chooseStarter(4);
-  PartyMon m; m.dex=6; m.level=61; m.shiny=1; m.nature=NATURE_BRAVE;
+  PartyMon m; m.dex=6; m.level=61;
+  m.ageMinutes=60UL*MINUTES_PER_LEVEL; m.shiny=1; m.nature=NATURE_BRAVE;
   m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=24; m.trAtk=m.trDef=m.trSpe=35;
+  m.fullness=43; m.joy=54; m.energy=65; m.hygiene=76; m.bond=87;
   m.gymIvRewards[3]=GYM_IV_REWARD_HP;
   m.moves[0]=1; m.moves[1]=2;
   snprintf(m.nick,sizeof(m.nick),"BLAZE");
@@ -30,31 +32,23 @@ int main(){
   ck(p.moves[0]==1 && p.moves[1]==2, "and its moveset");
   ck(p.gymIvRewards[3]==GYM_IV_REWARD_HP, "and its per-creature gym history");
   ck(p.nature==NATURE_BRAVE,"and its nature");
-  ck(p.frozen, "and is marked frozen");
+  ck(!p.frozen && p.fullness==43 && p.joy==54 && p.energy==65 &&
+     p.hygiene==76 && p.bond==87, "and restores its cultivation state unfrozen");
 
-  // it must not age, however long passes
+  // A cultivation slot remains alive and therefore ages.
   uint8_t lvl = p.level();
-  for (int i=0;i<400;i++){ g_ms += 60000; p.update(g_ms);
+  for (int i=0;i<MINUTES_PER_LEVEL;i++){ g_ms += 60000; p.update(g_ms);
     p.fullness=p.joy=p.energy=p.hygiene=100; }
-  printf("     after ~400 game-minutes: level %u (was %u)\n", p.level(), lvl);
-  ck(p.level()==lvl, "does not age");
+  ck(p.level()==lvl+1, "continues ageing while in a cultivation slot");
 
-  // and cannot be taken away
-  p.ageMinutes = 10UL*24*60;
-  ck(!p.canFarewellNow(), "is never offered a farewell");
-  p.fullness=p.joy=p.energy=p.hygiene=0;
-  for (int i=0;i<200;i++){ g_ms += 60000; p.update(g_ms); }
-  ck(!p.canRunawayNow(), "cannot run away even when wholly neglected");
-  ck(!p.canEvolveNow(), "cannot evolve past the form it was banked in");
-
-  // it survives a reload, still frozen
+  // and it survives a reload, still active rather than frozen
   Pet q; q.begin();
-  ck(q.frozen && q.speciesId==6 && q.nature==NATURE_BRAVE,
-     "stays frozen with its nature across a reload");
+  ck(!q.frozen && q.speciesId==6 && q.nature==NATURE_BRAVE,
+     "stays active with its nature across a reload");
 
   // and a brand new egg is a normal life again
   q.newEgg();
-  ck(!q.frozen, "a new egg is not frozen");
+  ck(!q.frozen, "a new egg remains active too");
   printf("%s\n", bad?"FAILURES":"all good");
   return bad?1:0;
 }

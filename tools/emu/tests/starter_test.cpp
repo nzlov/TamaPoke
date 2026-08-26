@@ -73,24 +73,27 @@ int main(){
     ck(pika && eevee, "Pikachu and Eevee are still reachable as a first egg");
   }
 
-  // --- drive the real two-step flow through onTap: Johto, then its middle one
-  onTap(233, regionRowY(1));                  // JOHTO
-  ck(pet.region == 1, "tapping a region on the first screen sets the egg region");
+  // --- drive the real two-step flow through an installed region and its middle starter
+  uint8_t chosenRegion = regionAll() > 1 ? 1 : 0;
+  onTap(233, regionRowY(chosenRegion));
+  ck(pet.region == chosenRegion, "tapping a region on the first screen sets the egg region");
   ck(pet.awaitingStarter(), "and does not choose a creature by itself");
 
   render();                                   // now the starter list
-  onTap(233, starterRowY(1));                 // CYNDAQUIL
+  onTap(233, starterRowY(1));
   ck(!pet.awaitingStarter(), "tapping a starter finishes the first boot");
-  ck(pet.eggPeek() == 155, "and it is the one that was tapped, from that region");
+  ck(pet.eggPeek() == starterOf(chosenRegion, 1),
+     "and it is the one that was tapped, from that region");
 
   // the egg really is Johto's, which is the whole point of choosing first
-  ck(pet.eggPeek() >= regionInfo(1).lo && pet.eggPeek() <= regionInfo(1).hi,
+  ck(pet.eggPeek() >= regionInfo(chosenRegion).lo &&
+     pet.eggPeek() <= regionInfo(chosenRegion).hi,
      "the waiting egg belongs to the region that was picked");
 
   // --- and it survives a reload: region is persisted, the flow is not repeated
   {
     Pet again; again.begin();
-    ck(again.region == 1, "the region choice is saved");
+    ck(again.region == chosenRegion, "the region choice is saved");
     ck(!again.awaitingStarter(), "and the first boot does not run a second time");
   }
 

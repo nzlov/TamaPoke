@@ -9,7 +9,10 @@ contact-sheet PNG para revision visual, y emite los arrays C y JS:
   python3 tools/sprites.py        # valida + renderiza tools/sheet.png
   python3 tools/sprites.py emit   # regenera ui_art.h y emitted_sprites.js
 """
-from PIL import Image, ImageDraw
+try:
+    from PIL import Image, ImageDraw
+except ModuleNotFoundError:
+    Image = ImageDraw = None
 
 PALETTE = {
     'k': '#1b1b25',  # contorno / ojos
@@ -487,6 +490,28 @@ def icon_train():
     ]
 
 
+def icon_bag():
+    return [
+        "................", "......kkkk......", ".....kcccck.....",
+        ".....kcCCck.....", "...kkkkkkkkkk...", "..kcccccccccck..",
+        ".kcccccccccccck.", ".kcccccccccccck.", ".kcccCccccCccck.",
+        ".kcccCccccCccck.", ".kcccccccccccck.", ".kcccccccccccck.",
+        ".kCCCCCCCCCCCCk.", "..kkkkkkkkkkkk..", "................",
+        "................",
+    ]
+
+
+def icon_battle():
+    return [
+        "................", "..kk........kk..", "..kNk......kNk..",
+        "...kNk....kNk...", "....kNk..kNk....", ".....kNkkNk.....",
+        "......kNNk......", "......kNNk......", ".....kNkkNk.....",
+        "....kNk..kNk....", "...kNk....kNk...", "..kkk......kkk..",
+        ".kNNk......kNNk.", ".kkkk......kkkk.", "................",
+        "................",
+    ]
+
+
 SPRITES = {
     "CHARMANDER": charmander(),
     "CHARMELEON": charmeleon(),
@@ -505,6 +530,8 @@ SPRITES = {
     "ICON_BERRY_B": icon_berry_blue(),
     "ICON_BERRY_G": icon_berry_green(),
     "ICON_CANDY": icon_candy(),
+    "ICON_BAG": icon_bag(),
+    "ICON_BATTLE": icon_battle(),
     "EGG": egg(),
     "POOP": poop(),
     "HEART": heart(),
@@ -512,7 +539,8 @@ SPRITES = {
 
 UI_SPRITE_NAMES = (
     "ICON_FOOD", "ICON_PLAY", "ICON_LIGHT", "ICON_CLEAN", "ICON_TRAIN",
-    "ICON_BERRY_B", "ICON_BERRY_G", "ICON_CANDY", "EGG", "POOP", "HEART",
+    "ICON_BERRY_B", "ICON_BERRY_G", "ICON_CANDY", "ICON_BAG", "ICON_BATTLE",
+    "EGG", "POOP", "HEART",
 )
 
 # anclas (ojos 3x4 / boca) y color de cuerpo para las expresiones superpuestas
@@ -545,6 +573,9 @@ def validate():
 
 
 def render(path="tools/sheet.png", scale=10, percol=3):
+    if Image is None:
+        print("Pillow no disponible; se omite la hoja de sprites")
+        return
     pad = 16
     names = list(SPRITES)
     ncols = percol
@@ -594,7 +625,7 @@ ACCENT = {"TYPE_FUEGO": '#e8503a', "TYPE_PLANTA": '#3c8a4c', "TYPE_AGUA": '#4f93
 UI_COLORS = {
     'UI_BG_DAY': '#f2efe1', 'UI_BG_NIGHT': '#141828',
     'UI_INK': '#2a2a36', 'UI_INK_NIGHT': '#d8dcf0',
-    'UI_TRACK': '#d8d2bd',
+    'UI_TRACK': '#d8d2bd', 'UI_MUTED': '#74706b',
     'UI_BAR_OK': '#58b868', 'UI_BAR_WARN': '#e8a23c', 'UI_BAR_BAD': '#e8503a',
     'UI_WHITE': '#ffffff',
 }
@@ -619,7 +650,7 @@ def emit_c(path="ui_art.h"):
         for row in rows:
             out.append(f'  "{row}",\n')
         out.append("};\n\n")
-    open(path, 'w').write(''.join(out))
+    open(path, 'w').write(''.join(out).rstrip() + '\n')
     print(f"guardado {path}")
 
 

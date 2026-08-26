@@ -101,11 +101,18 @@ void Pet::setClock(uint32_t nowEpoch) {
 
 void Pet::syncClock(uint32_t nowEpoch) {
   uint32_t seen = prefs.getUInt("seen", 0);
+  syncClockFrom(nowEpoch, seen, true);
+}
+
+void Pet::syncClockFrom(uint32_t nowEpoch, uint32_t seenEpoch, bool persist) {
+  bool wasBackground = backgroundMode;
+  if (!persist) backgroundMode = true;
   lastSeenEpoch = nowEpoch;
-  if (nowEpoch == 0) return;
-  uint32_t mins = (seen && nowEpoch > seen) ? (nowEpoch - seen) / 60 : 0;
+  if (nowEpoch == 0) { backgroundMode = wasBackground; return; }
+  uint32_t mins = (seenEpoch && nowEpoch > seenEpoch) ? (nowEpoch - seenEpoch) / 60 : 0;
   if (mins < 2 || ceremony != CER_NONE || starterPick) {
-    save();  // primera vez, sin tiempo que aplicar o aun eligiendo inicial
+    if (persist) save();  // primera vez, sin tiempo que aplicar o aun eligiendo inicial
+    backgroundMode = wasBackground;
     return;
   }
   if (mins > 14UL * 24 * 60) mins = 14UL * 24 * 60;  // tope: 2 semanas
@@ -139,7 +146,8 @@ void Pet::syncClock(uint32_t nowEpoch) {
     // tocando al bicho cuando vuelve (para que vea la transformacion)
   }
   Serial.printf("offline: %u min aplicados (nv.%u)\n", mins, level());
-  save();
+  if (persist) save();
+  backgroundMode = wasBackground;
 }
 
 void Pet::update(uint32_t nowMs) {
@@ -189,7 +197,8 @@ void Pet::tick() {
     return;
   }
 
-  if (ageMinutes % MINUTES_PER_LEVEL == 0) sfxPlay(SFX_LEVEL);  // subio de nivel (despierto)
+  if (!backgroundMode && ageMinutes % MINUTES_PER_LEVEL == 0)
+    sfxPlay(SFX_LEVEL);  // subio de nivel (despierto)
 
   fullness = clamp100(fullness - 2);
   energy = clamp100(energy - 1);
@@ -237,19 +246,27 @@ void Pet::tick() {
   if (++ticksSinceSave >= 5) pendingSave = true;
 }
 
+void Pet::advanceBackgroundMinute() {
+  bool wasBackground = backgroundMode;
+  backgroundMode = true;
+  tick();
+  backgroundMode = wasBackground;
+  pendingSave = false;
+  ticksSinceSave = 0;
+}
+
 // Copies the creature into endedMon so it can be offered a party slot, since
 // newEgg() is about to wipe every field. Only the two endings the player CHOSE
 // qualify: a runaway ran off after an hour of total neglect, and letting it
 // come back on the team would remove the cost from the one ending that has any.
-// Brings a banked creature back as the live pet, frozen.
-void Pet::reviveFrom(const PartyMon &m) {
+// GLUE: PartyMon is the versioned persistence record while Pet remains the
+// behavioural runtime used throughout the sketch. Keep all field mapping in
+// these two functions; remove them only when Pet directly owns CreatureState.
+void Pet::importState(const PartyMon &m) {
   if (m.empty()) return;
   ceremony = CER_NONE;
-  neglectTicks = 0;
   speciesId = m.dex;
   prevSpeciesId = -1;
-  eggTaps = 0;
-  starterPick = false;
   shiny = m.shiny != 0;
   nature = natureValid(m.nature) ? m.nature
                                  : natureForLegacy(m.dex, m.ivAtk, m.ivDef,
@@ -258,43 +275,111 @@ void Pet::reviveFrom(const PartyMon &m) {
   trAtk = m.trAtk; trDef = m.trDef; trSpe = m.trSpe;
   memcpy(gymIvRewards, m.gymIvRewards, sizeof(gymIvRewards));
   for (int i = 0; i < MOVE_SLOTS; i++) moves[i] = m.moves[i];
-  // its banked level expressed as an age, so level() needs no special case
-  ageMinutes = (uint32_t)(m.level ? m.level - 1 : 0) * MINUTES_PER_LEVEL;
-  lastLearnLevel = level();     // do not replay every gate it already passed
-  learnQCount = 0;
+  ageMinutes = m.stateVersion ? m.ageMinutes
+                              : (uint32_t)(m.level ? m.level - 1 : 0) * MINUTES_PER_LEVEL;
+  lastLearnLevel = m.stateVersion ? m.lastLearnLevel : (uint8_t)m.level;
+  learnQCount = m.learnQCount > sizeof(learnQueue) / sizeof(learnQueue[0])
+                  ? sizeof(learnQueue) / sizeof(learnQueue[0]) : m.learnQCount;
+  memcpy(learnQueue, m.learnQueue, sizeof(learnQueue));
   medals = m.medals;
-  careMistakes = 0;
-  mistakeCooldown = 0;
-  sleeping = false;
-  bond = 0;
-  bondToday = 0;
-  berryKnown = false;
-  weight = 0;
-  fullness = joy = energy = 80;
-  hygiene = 100;
-  poops = 0;
-  frozen = true;
+  fullness = m.fullness; joy = m.joy; energy = m.energy; hygiene = m.hygiene;
+  poops = m.poops; weight = m.weight;
+  careMistakes = m.careMistakes;
+  mistakeCooldown = m.mistakeCooldown;
+  sleeping = m.sleeping != 0;
+  sleepAuto = m.sleepAuto;
+  lastEnd = m.lastEnd;
+  bond = m.bond;
+  bondToday = m.bondToday;
+  berryKnown = m.berryKnown != 0;
+  eggTarget = m.eggTarget;
+  eggShiny = m.eggShiny != 0;
+  eggTaps = m.eggTaps;
+  starterPick = m.starterPick != 0;
+  evoPen = m.evoPen;
+  retirePending = m.retirePending != 0;
+  evoDeclinedLv = m.evoDeclinedLv;
+  farDeclinedAge = m.farDeclinedAge;
+  neglectTicks = m.neglectTicks;
+  goodTicks = m.goodTicks;
+  memcpy(eggByRegion, m.eggByRegion, sizeof(eggByRegion));
+  frozen = false;
   strncpy(nick, m.nick, sizeof(nick) - 1);
   nick[sizeof(nick) - 1] = 0;
-  registerSpecies(speciesId);
-  save();
+  endedMon = PartyMon();
+  endedKind = CER_NONE;
+  pendingSave = false;
+  ticksSinceSave = 0;
+  lastTick = millis();
 }
 
-PartyMon Pet::toPartyMon() const {
-  PartyMon out;
-  if (isEgg()) return out;
-  out.dex = speciesId;
+void Pet::exportState(PartyMon &out) const {
+  out = PartyMon();
+  out.dex = isEgg() ? -1 : speciesId;
   out.level = level();
   out.medals = medals;
   out.ivAtk = ivAtk; out.ivDef = ivDef; out.ivSpe = ivSpe; out.ivHp = ivHp;
-  out.trAtk = trMaxAtk(); out.trDef = trMaxDef(); out.trSpe = trMaxSpe();
+  out.trAtk = trAtk; out.trDef = trDef; out.trSpe = trSpe;
   out.shiny = shiny ? 1 : 0;
   out.nature = nature;
   for (int i = 0; i < MOVE_SLOTS; i++) out.moves[i] = moves[i];
   memcpy(out.gymIvRewards, gymIvRewards, sizeof(gymIvRewards));
   strncpy(out.nick, nick, sizeof(out.nick) - 1);
   out.nick[sizeof(out.nick) - 1] = 0;
+  out.stateVersion = 1;
+  out.fullness = fullness; out.joy = joy; out.energy = energy; out.hygiene = hygiene;
+  out.poops = poops; out.weight = weight;
+  out.berryKnown = berryKnown ? 1 : 0;
+  out.careMistakes = careMistakes;
+  out.sleeping = sleeping ? 1 : 0; out.sleepAuto = sleepAuto;
+  out.lastEnd = lastEnd; out.bond = bond;
+  out.ageMinutes = ageMinutes;
+  out.eggTarget = eggTarget; out.eggShiny = eggShiny ? 1 : 0; out.eggTaps = eggTaps;
+  out.starterPick = starterPick ? 1 : 0; out.evoPen = evoPen;
+  out.retirePending = retirePending ? 1 : 0;
+  out.evoDeclinedLv = evoDeclinedLv; out.farDeclinedAge = farDeclinedAge;
+  out.mistakeCooldown = mistakeCooldown; out.neglectTicks = neglectTicks;
+  out.bondToday = bondToday; out.goodTicks = goodTicks;
+  out.lastLearnLevel = lastLearnLevel;
+  memcpy(out.learnQueue, learnQueue, sizeof(out.learnQueue));
+  out.learnQCount = learnQCount;
+  memcpy(out.eggByRegion, eggByRegion, sizeof(out.eggByRegion));
+}
+
+void Pet::reviveFrom(const PartyMon &m) {
+  importState(m);
+  if (!m.empty()) {
+    registerSpecies(speciesId);
+    save();
+  }
+}
+
+PartyMon Pet::toPartyMon() const {
+  PartyMon out;
+  exportState(out);
   return out;
+}
+
+void Pet::copySharedFrom(const Pet &other) {
+  memcpy(dexReg, other.dexReg, sizeof(dexReg));
+  memcpy(dexShinyReg, other.dexShinyReg, sizeof(dexShinyReg));
+  streak = other.streak; bestStreak = other.bestStreak;
+  lastCareDay = other.lastCareDay;
+  totalMedals = other.totalMedals;
+  lastMilestone = other.lastMilestone;
+  gameHi = other.gameHi; strHi = other.strHi; spdHi = other.spdHi;
+  avatar = other.avatar; region = other.region;
+  badges = other.badges; badgesHard = other.badgesHard;
+  memcpy(badgesX, other.badgesX, sizeof(badgesX));
+  memcpy(badgesHardX, other.badgesHardX, sizeof(badgesHardX));
+  strncpy(trainerName, other.trainerName, sizeof(trainerName) - 1);
+  trainerName[sizeof(trainerName) - 1] = 0;
+  lastSeenEpoch = other.lastSeenEpoch;
+  screenIsOff = other.screenIsOff;
+}
+
+void Pet::mergeSharedFrom(const Pet &other) {
+  copySharedFrom(other);
 }
 
 void Pet::snapshotForParty() {
@@ -541,7 +626,7 @@ void Pet::checkMedals() {
     for (uint16_t m = gained; m; m &= (m - 1)) totalMedals++;
     newMedal = gained;
     medalUntil = millis() + 4000;
-    if (!sleeping) sfxPlay(SFX_MEDAL);
+    if (!backgroundMode && !sleeping) sfxPlay(SFX_MEDAL);
     save();
   }
 }
@@ -923,7 +1008,7 @@ void Pet::hatch() {
   lastLearnLevel = 0;
   checkLearnGates();
   checkMedals();     // por si nace ya en forma final (legendario)
-  sfxPlay(SFX_HATCH);
+  if (!backgroundMode) sfxPlay(SFX_HATCH);
   save();
 }
 
@@ -1264,6 +1349,7 @@ PetMood Pet::mood() const {
 }
 
 void Pet::save() {
+  if (backgroundMode) return;
   ticksSinceSave = 0;
   pendingSave = false;
   prefs.putUChar("full", fullness);
@@ -1320,6 +1406,7 @@ void Pet::save() {
   prefs.putUShort("shi", strHi);
   prefs.putUShort("qhi", spdHi);
   prefs.putString("nick", nick);
+  if (roster) roster->captureActive(*this);
 }
 
 void Pet::load() {

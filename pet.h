@@ -205,7 +205,7 @@ public:
   // data gives no level at all, and those unlock together at TM_LEVEL.
   //
   // It is a free function, not a Pet method, because the move PICKER needs the
-  // identical answer for a banked party member. Having its own gate is what let
+  // identical answer for an inactive team member. Having its own gate is what let
   // a level 22 Charmeleon be offered FIRE BLAST.
 
   // Moves reachable at this level that are not already known, for the learn
@@ -214,14 +214,21 @@ public:
 
   // Player-wide, like the streak and the Pokedex: badges outlive the creature
   // that earned them, so newEgg() must never clear this.
-  // A creature brought back out of the party or box. It is FROZEN: it does not
-  // age, cannot evolve, and cannot be lost -- a companion rather than a
-  // contender. The cost is that its level never rises again, so it stops
-  // improving; ageMinutes is simply set to match its banked level, which keeps
-  // level() working untouched rather than needing a second source of truth.
+  // Compatibility flag from the former single-pet model. Team records are
+  // active cultivation slots; only Box location now decides whether time stops.
   bool frozen = false;
   void reviveFrom(const PartyMon &m);
   PartyMon toPartyMon() const;
+  // The roster owns persistence; Pet is the live behavioural view of one
+  // complete record. These two functions are the single serialization boundary
+  // used for switching, box exchange and background progression.
+  void exportState(PartyMon &out) const;
+  void importState(const PartyMon &in);
+  void attachRoster(Party *owner) { roster = owner; }
+  void copySharedFrom(const Pet &other);
+  void mergeSharedFrom(const Pet &other);
+  void advanceBackgroundMinute();
+  void syncClockFrom(uint32_t nowEpoch, uint32_t seenEpoch, bool persist);
   void registerCaught(SpeciesId dex) { registerSpecies(dex); save(); }
 
   // The player's own name, alongside the badges and the streak: it belongs to
@@ -433,6 +440,8 @@ public:
 
 private:
   Preferences prefs;
+  Party *roster = nullptr;
+  bool backgroundMode = false;
   uint32_t lastTick = 0;
   uint32_t eatUntil = 0;
   uint32_t heartUntil = 0;

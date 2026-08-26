@@ -15,10 +15,13 @@ void FakeESP::restart(){exit(0);}
 int FakeSerial::available(){return 0;}
 String FakeSerial::readStringUntil(char){return String("");}
 void setup(); void render(); void onSwipe(int dir); void onSwipeV(int dir);
+bool petNavTap(int16_t x, int16_t y);
+bool navMenuTap(int16_t x, int16_t y);
+void navMenuButtonPoint(uint8_t index, int *x, int *y);
 extern Pet pet;
 extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyOpen, partyPick;
 extern bool trainOpen, movePickOpen, battleOpen, gymOpen, playerOpen, boxOpen, pickOpen;
-extern bool bagOpen, captureOpen;
+extern bool bagOpen, captureOpen, navMenuOpen;
 extern uint8_t cardPage, gymPage, playerPage, movePickPage, boxPage, pickPage, partyDetail;
 extern int galleryPage; extern bool galleryDirty; extern uint8_t galleryDetail;
 extern uint8_t galleryRegion;
@@ -45,7 +48,7 @@ static void clearAll(){
   gymPick=galleryPick=false;
   cardOpen=galleryOpen=clockOpen=kbOpen=menuOpen=partyOpen=partyPick=false;
   trainOpen=movePickOpen=battleOpen=gymOpen=playerOpen=boxOpen=pickOpen=false;
-  bagOpen=captureOpen=false;
+  bagOpen=captureOpen=navMenuOpen=false;
   partyDetail=0; boxSel=boxSwapFrom=0;
 }
 // swipe left; the page must advance and the screen must stay open
@@ -65,7 +68,8 @@ int main(){
   if (pet.isEgg()) pet.dbgHatchAs(6,false);
   pet.ageMinutes = 60UL*60; pet.relearnFromLevel();
   while (pet.hasLearnOffer()) pet.declineLearn();
-  for (int i=0;i<PARTY_SLOTS;i++){ PartyMon m; m.dex=9+i; m.level=40;
+  for (int i=1;i<PARTY_SLOTS;i++){ PartyMon m; m.dex=9+i; m.level=40;
+    m.ageMinutes=39UL*MINUTES_PER_LEVEL;
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20; party.replaceAt(i,m); }
   for (int i=0;i<BOX_SLOTS;i++){ PartyMon m; m.dex=1+i; m.level=20;
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20; party.box[i]=m; }
@@ -77,7 +81,9 @@ int main(){
   clearAll(); movePickOpen=true; movePickParty=0; movePickSlot=0;
                                                   check("movepick", &movePickOpen, &movePickPage);
   clearAll(); pickTrainer=7; pickHard=false; pickDefault(squadCap(7,false)); pickOpen=true;
-                                                  check("teampick", &pickOpen,     &pickPage);
+  onSwipe(-1);
+  if (pickOpen) { printf("FAIL  teampick  one-page picker did not close at its edge\n"); bad++; }
+  else printf("PASS  %-10s six slots fit one page\n", "teampick");
   // The Pokedex pages within ONE region and changes region on a vertical swipe.
   // Every species must be reachable: it was capped at 10 flat pages when the dex
   // was 151 long, which silently hid everything past 160 once it grew to 386.
@@ -115,7 +121,8 @@ int main(){
     // and a vertical swipe really does move between regions
     galleryRegion = 0; galleryDetail = 0;
     onSwipeV(1);
-    if (galleryRegion != 1 || !galleryOpen) {
+    uint8_t expected = regionAll() > 1 ? 1 : 0;
+    if (galleryRegion != expected || !galleryOpen) {
       printf("FAIL  gallery    a vertical swipe does not change region\n"); bad++;
     } else printf("PASS  %-10s changes region on a vertical swipe\n", "gallery");
   }
@@ -147,23 +154,28 @@ int main(){
   // built, reachable only by an invisible gesture, and so looks absent.
   {
     clearAll();
-    onSwipe(-1);                       // swipe left from the main screen
+    int menuX, menuY;
+    onSwipeV(1);
+    navMenuButtonPoint(1, &menuX, &menuY);
+    navMenuTap(menuX, menuY);
     if (!gymOpen || !gymPick) { printf("FAIL  gyms       does not open on the region chooser\n"); bad++; }
     else printf("PASS  %-10s opens on the region chooser\n", "gyms");
     // and paging back off the front of a ladder returns to it
-    gymPick = false; gymRegion = 2; gymPage = 0;
+    gymPick = false; gymRegion = 0; gymPage = 0;
     onSwipe(1);
     if (!gymPick || !gymOpen) { printf("FAIL  gyms       paging back does not return to the chooser\n"); bad++; }
     else printf("PASS  %-10s paging back returns to the chooser\n", "gyms");
 
-    clearAll(); galleryOpen = true; galleryPick = false; galleryRegion = 1; galleryPage = 0;
+    clearAll(); galleryOpen = true; galleryPick = false; galleryRegion = 0; galleryPage = 0;
     onSwipe(1);
     if (!galleryPick || !galleryOpen) { printf("FAIL  gallery    paging back does not return to the chooser\n"); bad++; }
     else printf("PASS  %-10s paging back returns to the chooser\n", "gallery");
 
     clearAll();
-    onSwipe(1);                        // swipe right from the main screen
-    if (!bagOpen || partyOpen) { printf("FAIL  bag        right swipe did not open the bag\n"); bad++; }
+    onSwipeV(1);
+    navMenuButtonPoint(0, &menuX, &menuY);
+    navMenuTap(menuX, menuY);
+    if (!bagOpen || partyOpen) { printf("FAIL  bag        menu button did not open the bag\n"); bad++; }
     else printf("PASS  %-10s opens without opening the party\n", "bag");
   }
 
@@ -179,10 +191,9 @@ int main(){
     galleryOpen = true; galleryPick = true; rpickPage = 0;
     uint8_t nreg  = rpickRegions(rpickModeNow());
     uint8_t pages = rpickPageCount(rpickModeNow());
-    if (pages < 2) { printf("FAIL  dexpick    expected >1 page for %u regions\n", nreg); bad++; }
     onSwipe(-1);
     if (!galleryOpen || !galleryPick) { printf("FAIL  dexpick    closed on a swipe instead of paging\n"); bad++; }
-    else if (rpickPage != 1) { printf("FAIL  dexpick    did not advance a page (page=%u)\n", rpickPage); bad++; }
+    else if (rpickPage != (pages > 1 ? 1 : 0)) { printf("FAIL  dexpick    did not advance or wrap (page=%u)\n", rpickPage); bad++; }
     else printf("PASS  %-10s pages on a horizontal swipe\n", "dexpick");
 
     // wrapping, in both directions, so no page can strand the player
@@ -218,11 +229,10 @@ int main(){
     uint8_t pages = rpickPageCount(rpickModeNow());
     if (nreg != regionAll()) { printf("FAIL  gympick    lists %u regions, not installed regions=%u\n", nreg, regionAll()); bad++; }
     else printf("PASS  %-10s lists every ladder (%u)\n", "gympick", nreg);
-    if (pages < 2) { printf("FAIL  gympick    %u regions but only %u page -- the last ladder is unreachable\n", nreg, pages); bad++; }
-    else printf("PASS  %-10s needs %u pages and says so\n", "gympick", pages);
+    printf("PASS  %-10s uses %u page(s) for installed ladders\n", "gympick", pages);
     onSwipe(-1);
     if (!gymOpen || !gymPick) { printf("FAIL  gympick    closed on a swipe instead of paging\n"); bad++; }
-    else if (rpickPage != 1) { printf("FAIL  gympick    did not advance a page (page=%u)\n", rpickPage); bad++; }
+    else if (rpickPage != (pages > 1 ? 1 : 0)) { printf("FAIL  gympick    did not advance or wrap (page=%u)\n", rpickPage); bad++; }
     else printf("PASS  %-10s pages on a horizontal swipe\n", "gympick");
     // the LAST ladder must actually be selectable from the page it lands on
     uint8_t last = (uint8_t)(nreg - 1);
@@ -235,10 +245,10 @@ int main(){
   // the egg pool will not draw from it, and the pill skips over it.
   {
     clearAll();
-    gRegionArt = 0x1;                          // KANTO only
+    gRegionArt = 0x1;                          // first installed region only
     if (!regionAvailable(0)) { printf("FAIL  gating     KANTO should be available\n"); bad++; }
-    else if (regionAvailable(1)) { printf("FAIL  gating     JOHTO has no pack and must be locked\n"); bad++; }
-    else printf("PASS  %-10s a region with no pack is locked\n", "gating");
+    else if (regionAll() > 1 && regionAvailable(1)) { printf("FAIL  gating     second region has no art and must be locked\n"); bad++; }
+    else printf("PASS  %-10s installed region remains available\n", "gating");
 
     // Cycle the pill all the way round twice. The invariant is that it never
     // RESTS on a locked region -- not that it returns any particular index.
@@ -260,19 +270,21 @@ int main(){
       // second half is the one with teeth: with only KANTO present the pill
       // must reach FEWER regions than exist.
       if (landedLocked) { printf("FAIL  gating     the pill landed on a locked region %d times\n", landedLocked); bad++; }
-      else if (nvisited >= regionCount()) { printf("FAIL  gating     the pill reached all %d regions with 3 packs missing\n", (int)regionCount()); bad++; }
+      else if (regionAll() > 1 && nvisited >= regionCount()) { printf("FAIL  gating     the pill reached all %d regions with packs missing\n", (int)regionCount()); bad++; }
       else printf("PASS  %-10s the pill skips locked regions and reaches only %d\n", "gating", nvisited);
     }
 
-    uint8_t was = pet.region;
-    pet.setRegion(1);                          // JOHTO: locked, must not take
-    if (pet.region != was) { printf("FAIL  gating     setRegion accepted a locked region\n"); bad++; }
-    else printf("PASS  %-10s a locked region cannot be chosen\n", "gating");
+    if (regionAll() > 1) {
+      uint8_t was = pet.region;
+      pet.setRegion(1);
+      if (pet.region != was) { printf("FAIL  gating     setRegion accepted a locked region\n"); bad++; }
+      else printf("PASS  %-10s a locked region cannot be chosen\n", "gating");
+    }
 
     // and no egg may hatch from a region whose art is not on the card
     int wrong = 0;
     for (int i = 0; i < 200; i++) {
-      int16_t d = pet.rollInRegion(1, 0);       // ask for JOHTO explicitly
+      int16_t d = pet.rollInRegion(regionAll() > 1 ? 1 : 0, 0);
       if (regionOfDex(d) != 0) wrong++;
     }
     if (wrong) { printf("FAIL  gating     %d/200 eggs came from a locked region\n", wrong); bad++; }

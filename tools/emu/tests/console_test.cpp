@@ -67,7 +67,8 @@ int main(){
   pet.ivAtk=29; pet.ivHp=13;
   pet.badges = 0x0055;
   pet.streak = 8;
-  for (int i=0;i<3;i++){ PartyMon m; m.dex=100+i; m.level=44+i;
+  for (int i=1;i<4;i++){ PartyMon m; m.dex=99+i; m.level=43+i;
+    m.ageMinutes=(uint32_t)(m.level-1)*MINUTES_PER_LEVEL;
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=17; party.replaceAt(i,m); }
   pet.renameTrainer("ASH");        // persists everything above
 
@@ -99,13 +100,13 @@ int main(){
   ck(gRestarted, "and it reboots, as a restore has to");
 
   Pet p2; Party q2;
-  p2.begin(); q2.begin();
+  p2.begin(); q2.begin(); q2.attach(p2);
   ck(!strcmp(p2.trainerName,"ASH"), "the trainer name came back");
   ck(p2.speciesId==59 && p2.ageMinutes==61UL*MINUTES_PER_LEVEL,
      "so did the creature and its age");
   ck(p2.ivAtk==29 && p2.ivHp==13 && p2.badges==0x0055 && p2.streak==8,
      "and the IVs, badges and streak");
-  ck(q2.count()==3 && q2.slots[1].dex==101 && q2.slots[1].level==45,
+  ck(q2.count()==4 && q2.slots[2].dex==101 && q2.slots[2].level==45,
      "and the party");
 
   // --- a mistyped paste must not be applied

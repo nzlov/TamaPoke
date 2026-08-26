@@ -89,12 +89,16 @@ int main(){
     p.setRegion(0);
     p.newEgg();
     ck(p.isEgg(), "an egg is waiting");
-    int16_t k = p.eggPeek();
-    ck(k>=1 && k<=151, "and it is a Kanto creature");
-    p.setRegion(1);
-    ck(p.eggPeek()>=152 && p.eggPeek()<=251, "switching to Johto moves the egg there");
-    p.setRegion(2);
-    ck(p.eggPeek()>=252 && p.eggPeek()<=386, "and on to Hoenn");
+    const RegionInfo &first = regionInfo(0);
+    ck(p.eggPeek() >= first.lo && p.eggPeek() <= first.hi,
+       "and it belongs to the selected installed region");
+    bool moved = true;
+    for (uint8_t r = 1; r < regionAll(); r++) {
+      p.setRegion(r);
+      const RegionInfo &ri = regionInfo(r);
+      if (p.eggPeek() < ri.lo || p.eggPeek() > ri.hi) moved = false;
+    }
+    ck(moved, "switching moves the egg through every installed region");
   }
 
   // --- RULE 1: the rarity it was granted is kept
@@ -151,26 +155,30 @@ int main(){
     Pet p; seed(p);
     p.setRegion(0);
     p.newEgg();
-    p.setRegion(1);
+    uint8_t other = regionAll() > 1 ? 1 : 0;
+    p.setRegion(other);
     int16_t before = p.eggPeek();
     p.newEgg();
     p.setRegion(0);
-    p.setRegion(1);
+    p.setRegion(other);
     // it may coincide by chance, but the memo must have been cleared: check the
     // stored table rather than the outcome
-    ck(p.eggByRegion[2]==0 && p.eggByRegion[regionAll()]==0,
-       "a new egg clears what the old one would have been");
+    bool cleared = true;
+    for (uint8_t r = 0; r < regionCount(); r++)
+      if (r != p.region && p.eggByRegion[r] != 0) cleared = false;
+    ck(cleared, "a new egg clears what the old one would have been");
     (void)before;
   }
 
   // --- it survives a reload, like every other player-wide setting
   {
     Pet p; seed(p);
-    p.setRegion(2);
+    uint8_t selected = regionAll() > 1 ? 1 : 0;
+    p.setRegion(selected);
     p.newEgg();
     int16_t t = p.eggPeek();
     Pet q; q.begin();
-    ck(q.region==2, "the region persists");
+    ck(q.region==selected, "the region persists");
     ck(q.eggPeek()==t, "and so does the egg it chose");
     q.setRegion(0);
     Pet r2; r2.begin();

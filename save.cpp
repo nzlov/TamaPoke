@@ -31,7 +31,11 @@ const SaveField SAVE_FIELDS[] = {
   { "strk", SK_U16 },   { "bstrk", SK_U16 },  { "cday", SK_U32 },
   { "medal", SK_U16 },  { "tmedal", SK_U16 }, { "mstone", SK_U16 },
   { "ghi", SK_U16 },    { "shi", SK_U16 },    { "qhi", SK_U16 },
-  // the banked creatures
+  // the six cultivation slots and four frozen Box pages. The two legacy blobs
+  // remain listed so a backup taken before setup finishes migration is complete.
+  { "rostv", SK_U16 }, { "active", SK_U8 }, { "team1", SK_BYTES },
+  { "box10", SK_BYTES }, { "box11", SK_BYTES },
+  { "box12", SK_BYTES }, { "box13", SK_BYTES },
   { "party", SK_BYTES }, { "box", SK_BYTES },
   // the bag. Keys inside the blob are opaque identities owned by the move pack.
   { "items", SK_BYTES }, { "itemday", SK_U32 }, { "iteminit", SK_BOOL },
@@ -40,7 +44,7 @@ const SaveField SAVE_FIELDS[] = {
 };
 const uint16_t SAVE_FIELD_COUNT = sizeof(SAVE_FIELDS) / sizeof(SAVE_FIELDS[0]);
 
-#define MAX_VAL 4096       // the box is the largest, at 18 reward-bearing records
+#define MAX_VAL 4096       // larger than one six-creature roster/page blob
 
 static uint16_t crc16(const uint8_t *p, size_t n) {
   uint16_t c = 0xFFFF;
@@ -114,7 +118,7 @@ size_t saveExportSize() {
   size_t n = SAVE_HDR + 2;
   for (uint16_t i = 0; i < SAVE_FIELD_COUNT; i++)
     n += 1 + strlen(SAVE_FIELDS[i].key) + 1 + 2 + MAX_VAL / 16;
-  return n + 1024;                   // the two big blobs
+  return n + 1024;                   // headroom beyond the conservative estimate
 }
 
 size_t saveExport(uint8_t *out, size_t cap) {

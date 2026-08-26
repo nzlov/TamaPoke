@@ -2,43 +2,51 @@
 
 English | [简体中文](README.zh-CN.md)
 
-[![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://dylanpdao.github.io/TamaPoke/web/)
+[![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://nzlov.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
 ![Firmware](https://img.shields.io/badge/firmware-v3.6-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
 ![Languages](https://img.shields.io/badge/languages-7-FFCB05)
-[![Stars](https://img.shields.io/github/stars/DylanPDao/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/DylanPDao/TamaPoke/stargazers)
+[![Stars](https://img.shields.io/github/stars/nzlov/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/nzlov/TamaPoke/stargazers)
 
 A gen-1-Pokémon-inspired tamagotchi for the
 **Waveshare ESP32-S3-Touch-AMOLED-1.75** (round 466×466 AMOLED, CO5300 driver
 over QSPI, CST9217 touch over I2C). Raise any installed species, evolve it, train it
 and complete them all (shinies included).
 
-> ### 🙏 This is a fork of [**socquique/TamaPoke**](https://github.com/socquique/TamaPoke) by **Quique Tortosa**
+> ### 🙏 Project lineage
 >
-> Quique wrote the original TamaPoke — the firmware, the sprite pipeline, the
-> six-language UI, the web installer, the whole thing. This fork builds on that
-> work; it did not start it. If you like this, go **[star the
-> original](https://github.com/socquique/TamaPoke)**.
+> - **Current project:** [nzlov/TamaPoke](https://github.com/nzlov/TamaPoke)
+> - **Upstream:** [DylanPDao/TamaPoke](https://github.com/DylanPDao/TamaPoke) by Dylan Dao
+> - **Original upstream:** [socquique/TamaPoke](https://github.com/socquique/TamaPoke) by Quique Tortosa
 >
-> Original: MIT © 2026 Quique Tortosa. Changes in this fork are MIT on the same
-> terms.
+> Quique created the original firmware, sprite pipeline, six-language UI and web
+> installer. Dylan maintained and substantially expanded the next upstream
+> branch. This repository continues from Dylan's upstream with its own runtime
+> packs, Chinese UI and gameplay changes. If this project helps you, please also
+> visit and support both upstream projects.
+>
+> The original code and derivative changes are available under the MIT License.
 
 > **Personal, non-commercial fan project.** Code is MIT; the sprites are from
 > PMD SpriteCollab (CC BY-NC, Pokémon © Nintendo/Game Freak), and the 3D case is
 > CC BY-NC-SA. See **[License](#license)** and **Credits**.
 
-🔴 **3D-printed Pokéball case + print profiles → [on MakerWorld](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)** · flash it in your browser → **[web installer](https://dylanpdao.github.io/TamaPoke/web/)**
+🔴 **3D-printed Pokéball case + print profiles → [on MakerWorld](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)** · flash it in your browser → **[web installer](https://nzlov.github.io/TamaPoke/web/)**
 
 ## Latest release and package split
 
-The current release covers Kanto, Johto, Hoenn and Sinnoh: **493 species and
-their shiny forms**, with a complete Simplified Chinese UI, names and
+The supplied regional packs cover Kanto, Johto, Hoenn and Sinnoh and their
+shiny forms, with a complete Simplified Chinese UI, names and
 descriptions. The recommended installation path is the **[web
-installer](https://dylanpdao.github.io/TamaPoke/web/)**: flash the firmware,
+installer](https://nzlov.github.io/TamaPoke/web/)**: flash the firmware,
 then deploy the selected languages and regions to the microSD. Arduino IDE is
 not required.
+
+The available species count is **determined by the region packs installed on
+the device**; the Pokédex, eggs, battles and region selectors expose only that
+available content.
 
 Language, move, regional and question-bank content now lives in independently deployable
 runtime packages. Install only the languages and regions you need, and update
@@ -144,18 +152,19 @@ way. Same reasoning that makes Hoenn Emerald throughout.
 
 ## Status
 
-Running on hardware. Implemented: 493 species + shinies animated from regional packs, full
-life cycle (egg by rarity → evolution → farewell/release/runaway, each gated
-behind a decision dialog), bred-Pokédex with gallery, battle stats (IVs +
-training), retention hooks (streak / bond / medals / name), biome + real-time
-backgrounds, ball minigame, training bag, post-care question modal, indexed question
-banks, configurable arithmetic generation, animated bath, RTC with offline
-progression, battery (AXP2101) and PWR button, anti-burn-in dimming,
-**sound (ES8311)**, **7 UI languages (English default)**, **starter choice on
-first run**, and a one-click **web installer**.
+Running on hardware. Implemented: installed species + shinies animated from
+regional packs; six persistent cultivation slots and a 24-slot Box; the full
+life cycle
+(egg by rarity → evolution → farewell/release/runaway); bred-Pokédex with
+gallery; turn-based trainer, wild and LAN battles; wild capture and shared item
+inventory; battle stats (IVs + training); retention hooks (streak / bond /
+medals / name); biome + real-time backgrounds; three training minigames;
+care/battle questions backed by indexed banks or configurable arithmetic;
+animated bath; RTC offline progression; battery (AXP2101), PWR key and
+anti-burn-in dimming; **sound (ES8311)**; **7 UI languages (English default)**;
+**starter choice on first run**; and a one-click **web installer**.
 
-Pending: wild encounters, 3D case, soak
-test. See **Roadmap**.
+Pending: the 24–48 hour soak test. See **Roadmap**.
 
 ## Game manual (the actual numbers)
 
@@ -253,8 +262,8 @@ the answering side keeps the link alive, and the host settles once both actions 
 
 **Cross-generation and branching evolutions come from region packs.** Targets
 such as CROBAT, STEELIX, BLISSEY, KINGDRA, SCIZOR and PORYGON2 stay linked even
-though they live outside their source species' region. All branching lines in
-the installed 493-species catalogue are represented, including Gloom,
+though they live outside their source species' region. Branching lines in the
+installed catalogue are represented, including Gloom,
 Poliwhirl, Slowpoke, Eevee, Tyrogue, Wurmple, Kirlia, Nincada, Snorunt,
 Clamperl and Burmy. Every target is evolution-only rather than also hatching
 straight from an egg.
@@ -271,15 +280,22 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 - You can **decline** ("keep form"); it re-offers at the next level.
 - Branching species prefer an installed evolution you're still missing.
 
-### Your party
-- A **farewell** or a **release** doesn't end the relationship any more — the creature
-  **joins your party** (6 slots), keeping its species, nickname, shiny status, IVs,
-  training and the level it reached. Frozen there: it no longer ages or trains.
+### Six cultivation slots and the Box
+- The **six party slots are all cultivation slots**. Every occupied slot keeps its
+  complete care, growth, move, IV, training and lifecycle state; all six advance
+  together even though only one is shown on the main screen.
+- Swipe horizontally or tap one of the six indicators to change the displayed
+  creature. The indicators sit above the creature name; swipe down for the
+  **bag / battle centre / badges** navigation page.
+- The **Box holds 24 creatures** across four pages of six. Box state is frozen;
+  exchanging a creature with a cultivation slot resumes it with no state reset.
+- Party and Box cards use the same 2× thumbnails, vertically centred in each row.
 - A **runaway does not join.** It's the one ending with a cost, and letting a
   neglected pet come back on the team would remove it.
-- With a full party you're taken straight to the party screen to pick who the
-  newcomer replaces — or to let it go. Nothing is ever overwritten silently.
-- Gym and linked battles build their selectable team from the live pet and party.
+- A newcomer uses a free cultivation slot first, then a free Box slot. If both
+  are full, the player explicitly chooses a replacement or lets it go; nothing
+  is overwritten silently.
+- Gym and linked battles select from exactly the six cultivation slots.
 
 ### The three endings (you choose & witness each — none auto-fire)
 - 💛 **Farewell** — when it's a **final form** that has lived **3 days**. A button
@@ -298,9 +314,9 @@ After any ending, a **new egg** appears.
   neglect. Both streak & bond improve egg/shiny odds — **and the IVs of your next pet**.
 - **8 medals** (Lv10/25/50, favorite berry found, 7-day streak, max bond, final form,
   "fit" = weight 0 & no slip-ups), per-pet + a global counter.
-- **Pokédex:** raising a species registers it; **493 + shinies** to complete.
-  Browsed **one region at a time** — swipe vertically for Kanto/Johto/Hoenn/Sinnoh,
-  horizontally to page within it, so nothing is more than ten pages from the front.
+- **Pokédex:** raising a species registers it; completion covers every species
+  and shiny supplied by the installed region packs. Browse **one installed
+  region at a time**, swiping horizontally to page within it.
 - **Region:** the pill under a waiting egg picks which generation it comes from —
   **Kanto / Johto / Hoenn / Sinnoh / All**. A first egg gives that region's starter.
   A region whose **region pack is not on the card** shows as locked and is kept
@@ -378,8 +394,9 @@ a checklist you tick once:
 ### Retiring a creature early
 
 The farewell is only *offered* at final form and three days. **RETIRE** on the
-menu ends a creature whenever you like -- it is the same ceremony, and it banks
-the creature into your party exactly as a farewell does.
+menu ends a creature whenever you like -- it uses the same ceremony and storage
+flow as farewell: a free cultivation slot first, then the Box, with an explicit
+replacement choice only when both are full.
 
 | | |
 |---|---|
@@ -415,13 +432,14 @@ lead — a Kanto run still reaches Crobat and Blissey.
 | Easy | **3–5** points, **+1 per 3 leaders** deeper into the ladder |
 | Hard | **6–10** points, same ladder bonus |
 | Which stat | **random**, but only among stats **not already at their ceiling** |
-| Who gets it | the **live pet**, and only if it was in the squad |
+| Who gets it | the **displayed creature**, and only if it was in the squad |
 
 A random stat that landed on a maxed one would silently evaporate, so it never
 picks one; and the IV-bound ceiling above still applies, so a win can never push a
-stat past what its IV allows. Banked members are frozen at what they were banked
-with, and battling already costs the live pet energy — that, not a cooldown, is
-what rate-limits rematching. A fully trained creature is told so.
+stat past what its IV allows. Box members are frozen until exchanged into a
+cultivation slot, and battling already costs the displayed creature energy —
+that, not a cooldown, is what rate-limits rematching. A fully trained creature
+is told so.
 
 ## Hardware
 
@@ -550,14 +568,16 @@ If one bottoms out it counts as a *slip-up*.
 - 🫧 **Bath** → a foam scene that cleans up the poops.
 
 **Touch gestures:**
-- **Tap the name** at the top = the **menu** (Pokédex / Party / Settings). Close it
+- **Tap the name** at the top = the **menu** (stats / Pokédex / Settings / early
+  retirement). Close it
   with the CLOSE row, by tapping anywhere outside the panel, or with any swipe.
+- Tap one of the six indicators above the name to switch cultivation slots.
 - Tap the creature = pet it (+happiness, bond).
-- Horizontal swipe = open the **Pokédex / gallery**.
-- Vertical swipe up = open the **stat card** (4 pages: Profile / Battle / Medals /
+- Horizontal swipe = switch between the six cultivation slots.
+- Vertical swipe up = open the **stat card** (4 pages: Profile / Battle / Moves /
   Progress; swipe between them; tap the name on Profile to rename; on Battle the
   "Train strength" button opens the bag).
-- Swipe down = **set the clock** and pick the **language** + sound on/off.
+- Swipe down = open the **bag / battle centre / badges** navigation page.
 - Long press (3 s) on the creature = **release** dialog.
 
 **Physical PWR button:** short = screen on/off · long (4 s) = full power-off
@@ -651,7 +671,8 @@ Seven of the original 151 differ from their Gen 1 typing: Magnemite and Magneton
 (Gen 2), and Clefairy, Clefable, Jigglypuff, Wigglytuff and Mr. Mime gained Fairy
 (Gen 6) — the first two losing Normal entirely.
 
-Typing is shown on the Battle page of the stat card. *(Battles: on the roadmap.)*
+Typing is shown on the Battle page of the stat card and drives trainer, wild and
+LAN battle damage.
 
 ## Battle stats and training
 
@@ -683,8 +704,8 @@ Levels come from FireRed/LeafGreen, the Kanto games that still gate properly.
 A move that is *also* a TM keeps its level gate — otherwise every gated move
 would come free, since most of them were sold as TMs at some point.
 
-Moves **freeze when a pet is banked** into the party, alongside its level and
-training: the set you chose while it was alive is what it fights with forever.
+Moves remain part of each creature's complete state. They continue with it
+between cultivation slots and freeze only while that creature is in the Box.
 
 **Special attack and defence** come off the species' own `bSpA`/`bSpD` base stats
 (Alakazam is 50 Attack but 135 Special Attack), reusing the physical IV and
@@ -738,7 +759,7 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
 
 - `TamaPoke.ino` — init, game loop, render of every screen, gestures, serial console, audio
 - `pet.h` / `pet.cpp` — pet state and logic (stats, evolution, life cycle, streak/bond/medals, NVS)
-- `party.h` / `party.cpp` — the 6 retired pets kept from farewells and releases
+- `party.h` / `party.cpp` — six cultivation records, active switching, migration and the 24-slot Box
 - `content.h` / `content.cpp` — pack ABI, CRC validation, catalogues, descriptions and lazy assets
 - `quiz.h` / `quiz.cpp` — global answer rules, exact arithmetic generation/input and timed settlement
 - `sdmon.h` / `sdmon.cpp` — packed TPK2 sprites + thumbnails and atomic pack reception over USB
@@ -774,9 +795,6 @@ To test fast: lower `PET_TICK_MS`, `MINUTES_PER_LEVEL` and `FAREWELL_AGE_MIN` in
 
 ## Roadmap
 
-- **Wild encounters / battle** — designed (see project memory): resolution by
-  ATK/DEF/SPD with PMD Attack/Hurt animations, trainer rank as endgame. Style
-  still to pick (auto / timing / turn-based).
 - **Soak test** 24–48 h (instrumentation ready: `HEALTH` command/heartbeat).
 
 *(Done: 3D-printed case [published on MakerWorld](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi); repo public with the browser installer + one-click sprite bundle.)*

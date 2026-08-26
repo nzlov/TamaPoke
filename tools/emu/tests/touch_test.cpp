@@ -211,7 +211,7 @@ int main(int argc, char **argv) {
   gameOpen = false;
   trainOpen = false;
 
-  click(233, 60);                        // name/status band opens the menu
+  click(233, 82);                        // relocated name/status band opens the menu
   if (!menuOpen) { printf("FAIL: name band did not open the menu\n"); return 1; }
   click(233, 104 + 16 + 22);             // menu row 0 == STATS == MENU_ROW_Y(0)+22
   if (!cardOpen || cardPage != 1) {
@@ -490,30 +490,31 @@ int main(int argc, char **argv) {
   partyOpen = false;
   gymHard = false; gymOpen = false; pet.badges = 0;
 
-  // ---- a live pet plus a FULL party is 7 candidates against a cap of 6. The
-  // 7th used to be counted but never drawn and never tappable, so FIGHT sat
-  // inert with no way to fix it.
+  // ---- the six cultivation slots are the complete candidate pool. The old
+  // live-pet-plus-party model accidentally produced a seventh candidate.
   battleOpen = false; pickOpen = false;
   for (int i = 0; i < PARTY_SLOTS; i++) { PartyMon m; m.dex = 9 + i * 10; m.level = 40;
+    m.ageMinutes = 39UL * MINUTES_PER_LEVEL;
     m.ivAtk = m.ivDef = m.ivSpe = m.ivHp = 25; party.replaceAt(i, m); }
   pickTrainer = 0; pickHard = false; pickPage = 0;
   pickDefault(squadCap(0, false));
   printf("     candidates=%u chosen=%u cap=%u\n",
          pickCandidates(), pickChosen(), squadCap(0, false));
-  if (pickCandidates() != PARTY_SLOTS + 1) { printf("FAIL: expected 7 candidates\n"); return 1; }
-  printf("PASS: a live pet plus a full party is 7 candidates\n");
+  if (pickCandidates() != PARTY_SLOTS) { printf("FAIL: expected 6 candidates\n"); return 1; }
+  printf("PASS: a full cultivation team is exactly 6 candidates\n");
   if (pickChosen() > squadCap(0, false)) {
     printf("FAIL: the picker opens over its own cap\n"); return 1; }
   printf("PASS: it opens with a valid selection, not everything\n");
   { uint8_t pages = (pickCandidates() + 6 - 1) / 6;
-    if (pages < 2) { printf("FAIL: 7 candidates must span 2 pages\n"); return 1; }
-    printf("PASS: the 7th is reachable on page %u of %u\n", pages, pages); }
+    if (pages != 1) { printf("FAIL: 6 candidates must fit one page\n"); return 1; }
+    printf("PASS: all 6 candidates fit on one page\n"); }
   for (int i = 0; i < PARTY_SLOTS; i++) party.releaseAt(i);
   squadMask = 0xFFFF;
 
   // ---- team select: cap enforcement and toggling
   battleOpen = false;
-  for (int i = 0; i < 5; i++) { PartyMon m; m.dex = 9 + i; m.level = 40;
+  for (int i = 0; i < PARTY_SLOTS; i++) { PartyMon m; m.dex = 9 + i; m.level = 40;
+    m.ageMinutes = 39UL * MINUTES_PER_LEVEL;
     m.ivAtk = m.ivDef = m.ivSpe = m.ivHp = 25; party.replaceAt(i, m); }
   squadMask = 0xFFFF;
   pickTrainer = 0; pickHard = true; pickOpen = true;   // BROCK: cap of 2

@@ -256,14 +256,14 @@ int main(){
        "a LAN battle is uncapped: bring what you like");
     pickOpen = true;
 
-    // keep only the live pet and party slot 1 (bits 0 and 2)
+    // keep cultivation slots 0 and 2
     squadMask = (1 << 0) | (1 << 2);
     ck(pickChosen()==2, "two chosen");
     lan.begin(true,"T");
     pickTap(300, 366);                    // FIGHT (right of BACK now)
     ck(!pickOpen && lanOpen, "confirming the team opens the LAN screen");
     ck(lan.mineN==2, "and offers exactly what was chosen, not the whole party");
-    ck(lan.mine[1].dex==35, "including the right party member");
+    ck(lan.mine[1].dex==40, "including the right cultivation slot");
     // the emulator has no radio, so the offer cannot go anywhere -- but the
     // squad must still have been built, which is the half that matters here
     ck(lan.state==LINK_REFUSED, "with no radio it says so rather than hanging");
