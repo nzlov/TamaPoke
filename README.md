@@ -199,12 +199,17 @@ While **awake**, per minute:
   → +35 FOOD, +10 JOY, ♥, bond, and it gets revealed.
 - 🍬 **Candy:** +10 FOOD, +12 JOY, but **+12 weight** (fattening).
 - ⚽ **Ball / defence training:** **+5 JOY, plus 2 per rally** (max +35), trains
-  **DEFENCE** (2 rallies = 1 pt, cap +18/session), −ENE and burns weight. Leaving
+  **DEFENCE** (2 rallies = one score step), −ENE and burns weight. Leaving
   early keeps the actual score and still proceeds to its question.
 - 🎯 **Reaction test:** a target appears, tap it before it shrinks away. Trains
   **SPEED**; the window tightens as you go.
-- 🥊 **Training bag:** trains **STRENGTH** (~4 hits = 1 pt, cap +18/session), tires it.
+- 🥊 **Training bag:** trains **STRENGTH** (~4 hits = one score step), tires it.
 - 🫧 **Bath:** clears poops, HYG → 100.
+
+Each active trainer awards a percentage of that stat's IV-based training ceiling:
+`floor(ceiling × 30%) × score progress × answer percentage`, rounded to the nearest
+point and clipped at the ceiling. A full session with a 100% answer therefore adds
+at most 30% of the ceiling.
 
 Choosing feed, bath or petting opens the modal question first, and the matching
 success animation starts only after a correct result settles. Ball, reaction and
@@ -683,9 +688,9 @@ LAN battle damage.
 Each creature has ATK/DEF/SPD/VIT = **base stat** + level + **IV** (0–31, rolled
 at hatch, `IV × level/100` exactly as in the real games) + **training**, followed
 by its nature modifier (see [Battle stats & IVs](#battle-stats--ivs)):
-- SPEED ← the **reaction test** (~2 reactions = 1 pt, cap +18 per session)
-- DEFENSE ← accumulated wellbeing (1 h resting or well-cared = +1)
-- STRENGTH ← the training bag (~4 hits = 1 pt, cap +18 per session)
+- SPEED ← the **reaction test** (~2 reactions = one score step)
+- DEFENSE ← the ball game (~2 rallies = one score step), plus 1 h of wellbeing = +1
+- STRENGTH ← the training bag (~4 hits = one score step)
 - VIT (vitality, from the base HP stat) — not trainable
 
 ### Moves

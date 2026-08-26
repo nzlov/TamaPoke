@@ -103,8 +103,23 @@ int main() {
   check(pet.settleCare({ CARE_ACTION_TRAIN_STRENGTH, 40 }, 0) == 0 &&
         pet.trAtk == 0 && pet.energy == 88 && pet.fullness == 95 && pet.strHi == 40,
         "a failed training answer keeps costs and the real session record");
-  check(pet.settleCare({ CARE_ACTION_TRAIN_STRENGTH, 40 }, 50) == 5 && pet.trAtk == 5,
-        "a correct training answer scales its positive training gain");
+  pet.ivAtk = pet.ivDef = pet.ivSpe = 31;
+  check(pet.settleCare({ CARE_ACTION_TRAIN_STRENGTH, 40 }, 50) == 8 && pet.trAtk == 8,
+        "training score and answer percentage scale the stat-cap reward together");
+  pet.trAtk = 0;
+  check(pet.settleCare({ CARE_ACTION_TRAIN_STRENGTH, 72 }, 100) == 30 && pet.trAtk == 30,
+        "a full strength session gains 30 percent of the attack training cap");
+  check(pet.settleCare({ CARE_ACTION_TRAIN_SPEED, 36 }, 100) == 30 && pet.trSpe == 30,
+        "a full speed session gains 30 percent of the speed training cap");
+  check(pet.settleCare({ CARE_ACTION_PLAY, 36 }, 100) == 30 && pet.trDef == 30,
+        "a full defence session gains 30 percent of the defence training cap");
+  pet.ivDef = 16;
+  pet.trDef = 0;
+  check(pet.settleCare({ CARE_ACTION_PLAY, 36 }, 100) == 25 && pet.trDef == 25,
+        "integer training rewards never exceed 30 percent of a non-round cap");
+  pet.trAtk = 90;
+  check(pet.settleCare({ CARE_ACTION_TRAIN_STRENGTH, 72 }, 100) == 10 && pet.trAtk == 100,
+        "training gain stops at the stat training cap");
 
   QuizRuntime timeout;
   timeout.config = config;

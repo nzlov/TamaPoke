@@ -1080,6 +1080,22 @@ static uint8_t scaledCareGain(uint16_t value, uint8_t percent) {
   return (uint8_t)(((uint32_t)value * percent + 50u) / 100u);
 }
 
+static constexpr uint8_t TRAINING_FULL_SCORE = 18;
+static constexpr uint8_t TRAINING_MAX_CAP_PERCENT = 30;
+
+static uint8_t scaledTrainingGain(uint8_t cap, uint8_t current,
+                                  uint8_t scoreGain, uint8_t answerPercent) {
+  if (answerPercent > 100) answerPercent = 100;
+  if (scoreGain > TRAINING_FULL_SCORE) scoreGain = TRAINING_FULL_SCORE;
+  if (current >= cap || !scoreGain || !answerPercent) return 0;
+  uint8_t maxGain = (uint16_t)cap * TRAINING_MAX_CAP_PERCENT / 100u;
+  constexpr uint32_t denominator = TRAINING_FULL_SCORE * 100u;
+  uint32_t gain = ((uint32_t)maxGain * scoreGain * answerPercent +
+                   denominator / 2u) / denominator;
+  uint8_t remaining = cap - current;
+  return gain < remaining ? (uint8_t)gain : remaining;
+}
+
 uint8_t Pet::settleCare(const CareAction &action, uint8_t percent) {
   if (percent > 100) percent = 100;
   if (ceremony != CER_NONE || isEgg()) return 0;
@@ -1143,9 +1159,9 @@ uint8_t Pet::settleCare(const CareAction &action, uint8_t percent) {
     // from getting past you.
     uint8_t before = trDef;
     uint8_t baseGain = score / 2;
-    if (baseGain > 18) baseGain = 18;          // the same per-session ceiling as the bag
+    if (baseGain > TRAINING_FULL_SCORE) baseGain = TRAINING_FULL_SCORE;
     uint8_t potentialGain = baseGain < trMaxDef() - before ? baseGain : trMaxDef() - before;
-    uint8_t gain = scaledCareGain(potentialGain, percent);
+    uint8_t gain = scaledTrainingGain(trMaxDef(), before, baseGain, percent);
     uint16_t v = (uint16_t)trDef + gain;
     trDef = v > trMaxDef() ? trMaxDef() : (uint8_t)v;
     gain = trDef - before;
@@ -1171,10 +1187,10 @@ uint8_t Pet::settleCare(const CareAction &action, uint8_t percent) {
   if (action.kind == CARE_ACTION_TRAIN_SPEED) {
     uint16_t hits = action.value;
     uint8_t baseGain = hits / 2;
-    if (baseGain > 18) baseGain = 18;
+    if (baseGain > TRAINING_FULL_SCORE) baseGain = TRAINING_FULL_SCORE;
     uint8_t before = trSpe;
     uint8_t potentialGain = baseGain < trMaxSpe() - before ? baseGain : trMaxSpe() - before;
-    uint8_t gain = scaledCareGain(potentialGain, percent);
+    uint8_t gain = scaledTrainingGain(trMaxSpe(), before, baseGain, percent);
     uint8_t v = trSpe + gain;
     trSpe = v > trMaxSpe() ? trMaxSpe() : v;
     gain = trSpe - before;
@@ -1194,10 +1210,10 @@ uint8_t Pet::settleCare(const CareAction &action, uint8_t percent) {
   if (action.kind == CARE_ACTION_TRAIN_STRENGTH) {
     uint16_t hits = action.value;
     uint8_t baseGain = hits / 4;
-    if (baseGain > 18) baseGain = 18;
+    if (baseGain > TRAINING_FULL_SCORE) baseGain = TRAINING_FULL_SCORE;
     uint8_t before = trAtk;
     uint8_t potentialGain = baseGain < trMaxAtk() - before ? baseGain : trMaxAtk() - before;
-    uint8_t gain = scaledCareGain(potentialGain, percent);
+    uint8_t gain = scaledTrainingGain(trMaxAtk(), before, baseGain, percent);
     uint8_t v = trAtk + gain;
     trAtk = v > trMaxAtk() ? trMaxAtk() : v;
     gain = trAtk - before;
