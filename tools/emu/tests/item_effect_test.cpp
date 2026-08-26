@@ -36,8 +36,10 @@ int main() {
   const ItemEntry *heal = effect(ITEM_EFFECT_HEAL_HP);
   const ItemEntry *cure = effect(ITEM_EFFECT_CURE_STATUS);
   const ItemEntry *revive = effect(ITEM_EFFECT_REVIVE);
-  CHECK(heal && cure && revive);
-  if (!heal || !cure || !revive) return 1;
+  const ItemEntry *training = effect(ITEM_EFFECT_TRAINING_FLOOR);
+  const ItemEntry *boost = effect(ITEM_EFFECT_BATTLE_STAGE);
+  CHECK(heal && cure && revive && training && boost);
+  if (!heal || !cure || !revive || !training || !boost) return 1;
 
   Combatant target;
   target.maxHp = 100;
@@ -66,6 +68,31 @@ int main() {
 
   const ItemEntry *catchItem = effect(ITEM_EFFECT_CATCH);
   CHECK(catchItem && !itemApplyToCombatant(*catchItem, target));
+
+  Pet pet;
+  pet.speciesId = 6;
+  pet.ivAtk = pet.ivDef = pet.ivSpe = 31;
+  pet.trAtk = pet.trDef = pet.trSpe = 0;
+  CHECK(itemCanApplyToPet(*training, pet));
+  CHECK(itemApplyToPet(*training, pet));
+  CHECK(pet.trMinAtk == 10 && pet.trAtk == 10);
+  while (itemApplyToPet(*training, pet)) {}
+  CHECK(pet.trMinAtk == pet.trMaxAtk());
+  CHECK(!itemCanApplyToPet(*training, pet));
+
+  Combatant boosted;
+  boosted.maxHp = boosted.hp = 100;
+  CHECK(itemCanApplyToCombatant(*boost, boosted));
+  CHECK(itemApplyToCombatant(*boost, boosted));
+  uint8_t boostedStat = 0xFF;
+  for (uint8_t i = 0; i < SI_COUNT; i++)
+    if (boost->flags & (1u << i)) boostedStat = i;
+  CHECK(boostedStat < SI_COUNT && boosted.stage[boostedStat] == 1);
+  while (itemApplyToCombatant(*boost, boosted)) {}
+  CHECK(boosted.stage[boostedStat] == 6);
+  CHECK(!itemCanApplyToCombatant(*boost, boosted));
+  Combatant nextBattle;
+  CHECK(nextBattle.stage[boostedStat] == 0);
   if (fails) return 1;
   std::puts("PASS generic item effects");
   return 0;

@@ -14,6 +14,8 @@ enum ItemCategory : uint8_t {
   ITEM_CATEGORY_STATUS,
   ITEM_CATEGORY_REVIVE,
   ITEM_CATEGORY_EVOLUTION,
+  ITEM_CATEGORY_TRAINING,
+  ITEM_CATEGORY_BATTLE_BOOST,
 };
 
 enum ItemEffect : uint8_t {
@@ -22,6 +24,16 @@ enum ItemEffect : uint8_t {
   ITEM_EFFECT_CURE_STATUS,
   ITEM_EFFECT_REVIVE,
   ITEM_EFFECT_EVOLVE,
+  ITEM_EFFECT_TRAINING_FLOOR,
+  ITEM_EFFECT_BATTLE_STAGE,
+};
+
+enum ItemStatMask : uint8_t {
+  ITEM_STAT_ATK = 1 << 0,
+  ITEM_STAT_DEF = 1 << 1,
+  ITEM_STAT_SPA = 1 << 2,
+  ITEM_STAT_SPD = 1 << 3,
+  ITEM_STAT_SPE = 1 << 4,
 };
 
 struct ItemEntry {
@@ -37,8 +49,11 @@ struct ItemEntry {
 };
 
 struct Combatant;
+class Pet;
 
 // The pack selects an opcode and parameters. Firmware executes that generic
 // effect without assigning meaning to any concrete item key.
 bool itemCanApplyToCombatant(const ItemEntry &item, const Combatant &target);
 bool itemApplyToCombatant(const ItemEntry &item, Combatant &target);
+bool itemCanApplyToPet(const ItemEntry &item, const Pet &target);
+bool itemApplyToPet(const ItemEntry &item, Pet &target);

@@ -1292,6 +1292,9 @@ void handleSerial() {
       pet.trAtk = (uint8_t)(a < 0 ? 0 : (a > pet.trMaxAtk() ? pet.trMaxAtk() : a));
       pet.trDef = (uint8_t)(d < 0 ? 0 : (d > pet.trMaxDef() ? pet.trMaxDef() : d));
       pet.trSpe = (uint8_t)(e < 0 ? 0 : (e > pet.trMaxSpe() ? pet.trMaxSpe() : e));
+      if (pet.trAtk < pet.trMinAtk) pet.trAtk = pet.trMinAtk;
+      if (pet.trDef < pet.trMinDef) pet.trDef = pet.trMinDef;
+      if (pet.trSpe < pet.trMinSpe) pet.trSpe = pet.trMinSpe;
       pet.saveNow();
     }
     Serial.printf("tr=%u/%u/%u topes=%u/%u/%u\n", pet.trAtk, pet.trDef, pet.trSpe,
@@ -1307,9 +1310,15 @@ void handleSerial() {
       pet.ivDef = (n >= 2) ? v[1] : v[0];
       pet.ivSpe = (n >= 3) ? v[2] : v[0];
       pet.ivHp = (n >= 4) ? v[3] : v[0];
+      if (pet.trMinAtk > pet.trMaxAtk()) pet.trMinAtk = pet.trMaxAtk();
+      if (pet.trMinDef > pet.trMaxDef()) pet.trMinDef = pet.trMaxDef();
+      if (pet.trMinSpe > pet.trMaxSpe()) pet.trMinSpe = pet.trMaxSpe();
       if (pet.trAtk > pet.trMaxAtk()) pet.trAtk = pet.trMaxAtk();
       if (pet.trDef > pet.trMaxDef()) pet.trDef = pet.trMaxDef();
       if (pet.trSpe > pet.trMaxSpe()) pet.trSpe = pet.trMaxSpe();
+      if (pet.trAtk < pet.trMinAtk) pet.trAtk = pet.trMinAtk;
+      if (pet.trDef < pet.trMinDef) pet.trDef = pet.trMinDef;
+      if (pet.trSpe < pet.trMinSpe) pet.trSpe = pet.trMinSpe;
     }
     pet.saveNow();   // IV used to change RAM only and never write
     Serial.printf("iv=%u/%u/%u/%u topes=%u/%u/%u\n", pet.ivAtk, pet.ivDef,
@@ -1493,9 +1502,10 @@ void handleSerial() {
     Serial.printf("peso=%u fue=%u def=%u vel=%u vit=%u baya=%d\n",
                   pet.weight, pet.atkStat(), pet.defStat(), pet.speStat(),
                   pet.vitStat(), pet.berryKnown);
-    Serial.printf("iv=%u/%u/%u/%u tr=%u/%u/%u topes=%u/%u/%u\n",
+    Serial.printf("iv=%u/%u/%u/%u tr=%u/%u/%u min=%u/%u/%u topes=%u/%u/%u\n",
                   pet.ivAtk, pet.ivDef, pet.ivSpe, pet.ivHp,
                   pet.trAtk, pet.trDef, pet.trSpe,
+                  pet.trMinAtk, pet.trMinDef, pet.trMinSpe,
                   pet.trMaxAtk(), pet.trMaxDef(), pet.trMaxSpe());
     Serial.printf("shiny=%d streak=%u/%u bond=%u medals=0x%X(%u) nick=%s\n",
                   pet.shiny, pet.streak, pet.bestStreak, pet.bond, pet.medals,
@@ -1713,9 +1723,16 @@ void renderBag() {
     drawWrappedText(description ? description : "?", 76, 196, 314, 5);
     gfx->setTextColor(UI_MUTED);
     gfx->setTextSize(2);
-    gfx->setCursor(uiCenterX(T(S_ITEM_CANT_USE)), 350);
-    gfx->print(T(S_ITEM_CANT_USE));
-    gfx->setCursor(uiCenterX(T(S_BACK)), 400);
+    if (itemCanApplyToPet(*item, pet)) {
+      gfx->fillRoundRect(133, 342, 200, 44, 12, UI_BAR_OK);
+      gfx->setTextColor(UI_WHITE);
+      uiDrawCenteredIn(T(S_USE), 133, 342, 200, 44);
+      gfx->setTextColor(UI_MUTED);
+    } else {
+      gfx->setCursor(uiCenterX(T(S_ITEM_CANT_USE)), 354);
+      gfx->print(T(S_ITEM_CANT_USE));
+    }
+    gfx->setCursor(uiCenterX(T(S_BACK)), 408);
     gfx->print(T(S_BACK));
     gfx->flush();
     return;
@@ -1761,6 +1778,12 @@ void renderBag() {
 
 void bagTap(int16_t x, int16_t y) {
   if (bagDetailKey) {
+    const ItemEntry *item = itemByKey(bagDetailKey);
+    if (item && x >= 133 && x <= 333 && y >= 342 && y <= 386 &&
+        itemApplyToPet(*item, pet) && inventory.consume(item->key)) {
+      sfxPlay(SFX_TAP);
+      return;
+    }
     bagDetailKey = ITEM_KEY_NONE;
     sfxPlay(SFX_TAP);
     return;
@@ -4539,7 +4562,8 @@ static Combatant *btlMember(uint8_t index) {
 static bool btlWarehouseEffect(const ItemEntry &item) {
   if (btlLink) return false;
   return item.effect == ITEM_EFFECT_CATCH || item.effect == ITEM_EFFECT_HEAL_HP ||
-         item.effect == ITEM_EFFECT_CURE_STATUS || item.effect == ITEM_EFFECT_REVIVE;
+         item.effect == ITEM_EFFECT_CURE_STATUS || item.effect == ITEM_EFFECT_REVIVE ||
+         item.effect == ITEM_EFFECT_BATTLE_STAGE;
 }
 
 static uint8_t btlWarehouseCount() {
@@ -4565,7 +4589,8 @@ static const InventoryStack *btlWarehouseAt(uint8_t index) {
 static bool btlItemUsable(const ItemEntry &item) {
   if (item.effect == ITEM_EFFECT_CATCH)
     return btlWild && !btlFoe.fainted();
-  if (item.effect == ITEM_EFFECT_HEAL_HP || item.effect == ITEM_EFFECT_CURE_STATUS)
+  if (item.effect == ITEM_EFFECT_HEAL_HP || item.effect == ITEM_EFFECT_CURE_STATUS ||
+      item.effect == ITEM_EFFECT_BATTLE_STAGE)
     return itemCanApplyToCombatant(item, btlYou);
   if (item.effect == ITEM_EFFECT_REVIVE)
     for (uint8_t i = 0; i < btlSquadN; i++) {

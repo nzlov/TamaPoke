@@ -41,6 +41,12 @@ enum : uint8_t { CER_NONE = 0, CER_FAREWELL, CER_RUNAWAY, CER_RELEASE };
 
 enum PetMood : uint8_t { MOOD_HAPPY, MOOD_SAD, MOOD_EATING, MOOD_SLEEPING };
 
+enum TrainingStat : uint8_t {
+  TRAINING_ATK = 0,
+  TRAINING_DEF,
+  TRAINING_SPE,
+};
+
 enum GymIvReward : uint8_t {
   GYM_IV_NONE = 0,
   GYM_IV_GAINED,
@@ -119,6 +125,7 @@ public:
   // mediocre no solo empieza peor, es que no puede llegar tan lejos.
   uint8_t ivAtk = 16, ivDef = 16, ivSpe = 16, ivHp = 16;
   uint8_t trAtk = 0, trDef = 0, trSpe = 0;
+  uint8_t trMinAtk = 0, trMinDef = 0, trMinSpe = 0;
   NatureId nature = NATURE_UNKNOWN;
   uint8_t gymIvRewards[GYM_IV_REWARD_SLOTS] = { 0 };
   bool berryKnown = false;  // ya descubrio su baya favorita
@@ -316,6 +323,8 @@ public:
   uint8_t trMaxAtk() const { return trMaxFor(ivAtk); }
   uint8_t trMaxDef() const { return trMaxFor(ivDef); }
   uint8_t trMaxSpe() const { return trMaxFor(ivSpe); }
+  bool canRaiseTrainingFloor(TrainingStat stat) const;
+  bool raiseTrainingFloor(TrainingStat stat, uint8_t amount);
   void play();
   void toggleLight();
   bool isNightHour() const;

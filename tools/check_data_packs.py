@@ -174,11 +174,18 @@ def validate(path: Path, expected: dict) -> None:
             raise ValueError("invalid item table size")
         keys = []
         for offset in range(0, len(sections[b"ITEM"]), item_record.size):
-            key, category, effect, rarity, _flags, _param, _weight, daily, reserved, _name = \
+            key, category, effect, rarity, flags, param, _weight, daily, reserved, _name = \
                 item_record.unpack_from(sections[b"ITEM"], offset)
-            if not key or not 1 <= category <= 5 or not 1 <= effect <= 5 or \
+            training_item = effect == 6
+            battle_boost = effect == 7
+            if not key or not 1 <= category <= 7 or not 1 <= effect <= 7 or \
                     not 1 <= rarity <= 4 or daily > 99 or reserved:
                 raise ValueError("invalid item record")
+            if training_item and (category != 6 or flags not in (1, 2, 16) or param <= 0):
+                raise ValueError("invalid training tonic")
+            if battle_boost and (category != 7 or flags not in (1, 2, 4, 8, 16) or
+                                 not 1 <= param <= 6):
+                raise ValueError("invalid battle booster")
             keys.append(key)
         if len(keys) != len(set(keys)):
             raise ValueError("duplicate item key")

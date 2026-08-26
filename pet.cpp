@@ -81,16 +81,17 @@ void Pet::advanceAgeMinute() {
   if (frozen) return;
   ageMinutes++;
   if (!isEgg() && ageMinutes % 60 == 0) {
-    auto decay = [](uint8_t value, uint8_t cap, uint8_t percent) {
+    auto decay = [](uint8_t value, uint8_t cap, uint8_t percent, uint8_t floor) {
+      if (value <= floor) return value;
       uint8_t loss = (uint8_t)(((uint16_t)cap * percent + 99) / 100);
-      return value > loss ? (uint8_t)(value - loss) : (uint8_t)0;
+      return value - floor > loss ? (uint8_t)(value - loss) : floor;
     };
     trAtk = decay(trAtk, trMaxAtk(),
-                  natureTrainingDecayPercent(nature, NATURE_TRAIN_ATK));
+                  natureTrainingDecayPercent(nature, NATURE_TRAIN_ATK), trMinAtk);
     trDef = decay(trDef, trMaxDef(),
-                  natureTrainingDecayPercent(nature, NATURE_TRAIN_DEF));
+                  natureTrainingDecayPercent(nature, NATURE_TRAIN_DEF), trMinDef);
     trSpe = decay(trSpe, trMaxSpe(),
-                  natureTrainingDecayPercent(nature, NATURE_TRAIN_SPE));
+                  natureTrainingDecayPercent(nature, NATURE_TRAIN_SPE), trMinSpe);
   }
 }
 
@@ -273,6 +274,7 @@ void Pet::importState(const PartyMon &m) {
                                                    m.ivSpe, m.ivHp);
   ivAtk = m.ivAtk; ivDef = m.ivDef; ivSpe = m.ivSpe; ivHp = m.ivHp;
   trAtk = m.trAtk; trDef = m.trDef; trSpe = m.trSpe;
+  trMinAtk = m.trMinAtk; trMinDef = m.trMinDef; trMinSpe = m.trMinSpe;
   memcpy(gymIvRewards, m.gymIvRewards, sizeof(gymIvRewards));
   for (int i = 0; i < MOVE_SLOTS; i++) moves[i] = m.moves[i];
   ageMinutes = m.stateVersion ? m.ageMinutes
@@ -320,13 +322,14 @@ void Pet::exportState(PartyMon &out) const {
   out.medals = medals;
   out.ivAtk = ivAtk; out.ivDef = ivDef; out.ivSpe = ivSpe; out.ivHp = ivHp;
   out.trAtk = trAtk; out.trDef = trDef; out.trSpe = trSpe;
+  out.trMinAtk = trMinAtk; out.trMinDef = trMinDef; out.trMinSpe = trMinSpe;
   out.shiny = shiny ? 1 : 0;
   out.nature = nature;
   for (int i = 0; i < MOVE_SLOTS; i++) out.moves[i] = moves[i];
   memcpy(out.gymIvRewards, gymIvRewards, sizeof(gymIvRewards));
   strncpy(out.nick, nick, sizeof(out.nick) - 1);
   out.nick[sizeof(out.nick) - 1] = 0;
-  out.stateVersion = 1;
+  out.stateVersion = 2;
   out.fullness = fullness; out.joy = joy; out.energy = energy; out.hygiene = hygiene;
   out.poops = poops; out.weight = weight;
   out.berryKnown = berryKnown ? 1 : 0;
@@ -678,6 +681,32 @@ uint16_t Pet::spdStat() const {
                                 nature, NATURE_STAT_SPD);
 }
 
+bool Pet::canRaiseTrainingFloor(TrainingStat stat) const {
+  if (isEgg() || frozen || ceremony != CER_NONE) return false;
+  switch (stat) {
+    case TRAINING_ATK: return trMinAtk < trMaxAtk();
+    case TRAINING_DEF: return trMinDef < trMaxDef();
+    case TRAINING_SPE: return trMinSpe < trMaxSpe();
+    default: return false;
+  }
+}
+
+bool Pet::raiseTrainingFloor(TrainingStat stat, uint8_t amount) {
+  if (!amount || !canRaiseTrainingFloor(stat)) return false;
+  uint8_t *floor = nullptr, *training = nullptr, cap = 0;
+  switch (stat) {
+    case TRAINING_ATK: floor = &trMinAtk; training = &trAtk; cap = trMaxAtk(); break;
+    case TRAINING_DEF: floor = &trMinDef; training = &trDef; cap = trMaxDef(); break;
+    case TRAINING_SPE: floor = &trMinSpe; training = &trSpe; cap = trMaxSpe(); break;
+    default: return false;
+  }
+  uint16_t next = (uint16_t)*floor + amount;
+  *floor = next > cap ? cap : (uint8_t)next;
+  if (*training < *floor) *training = *floor;
+  save();
+  return true;
+}
+
 // ---------- moves ----------
 
 uint8_t Pet::moveCount() const {
@@ -993,6 +1022,7 @@ void Pet::hatch() {
   rollIVs();
   nature = (NatureId)random(NATURE_COUNT);
   trAtk = trDef = trSpe = 0;
+  trMinAtk = trMinDef = trMinSpe = 0;
   goodTicks = 0;
   berryKnown = false;
   bond = 0;          // vinculo, medallas y nombre son del individuo
@@ -1382,6 +1412,9 @@ void Pet::save() {
   prefs.putUChar("tatk", trAtk);
   prefs.putUChar("tdef", trDef);
   prefs.putUChar("tspe", trSpe);
+  prefs.putUChar("tminat", trMinAtk);
+  prefs.putUChar("tmindf", trMinDef);
+  prefs.putUChar("tminsp", trMinSpe);
   prefs.putBytes("giv", gymIvRewards, sizeof(gymIvRewards));
   prefs.putBytes("mvs", moves, sizeof(moves));
   prefs.putUChar("mvlv", lastLearnLevel);
@@ -1439,6 +1472,9 @@ void Pet::load() {
   trAtk = prefs.getUChar("tatk", 0);
   trDef = prefs.getUChar("tdef", 0);
   trSpe = prefs.getUChar("tspe", 0);
+  trMinAtk = prefs.getUChar("tminat", 0);
+  trMinDef = prefs.getUChar("tmindf", 0);
+  trMinSpe = prefs.getUChar("tminsp", 0);
   if (prefs.getBytesLength("giv") == sizeof(gymIvRewards))
     prefs.getBytes("giv", gymIvRewards, sizeof(gymIvRewards));
   for (uint8_t &reward : gymIvRewards)
@@ -1447,6 +1483,12 @@ void Pet::load() {
   if (trAtk > trMaxAtk()) trAtk = trMaxAtk();
   if (trDef > trMaxDef()) trDef = trMaxDef();
   if (trSpe > trMaxSpe()) trSpe = trMaxSpe();
+  if (trMinAtk > trMaxAtk()) trMinAtk = trMaxAtk();
+  if (trMinDef > trMaxDef()) trMinDef = trMaxDef();
+  if (trMinSpe > trMaxSpe()) trMinSpe = trMaxSpe();
+  if (trAtk < trMinAtk) trAtk = trMinAtk;
+  if (trDef < trMinDef) trDef = trMinDef;
+  if (trSpe < trMinSpe) trSpe = trMinSpe;
   berryKnown = prefs.getBool("bk", false);
   shiny = prefs.getBool("shy", false);
   eggShiny = prefs.getBool("eshy", false);

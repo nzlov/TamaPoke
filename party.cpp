@@ -136,13 +136,24 @@ void Party::sanitize(PartyMon &m, bool boxed) {
   if (m.dex > 0 && !natureValid(m.nature))
     m.nature = natureForLegacy(m.dex, m.ivAtk, m.ivDef, m.ivSpe, m.ivHp);
   m.nick[sizeof(m.nick) - 1] = 0;
-  if (m.stateVersion != 1) {
-    m.stateVersion = 1;
+  if (m.stateVersion != 1 && m.stateVersion != 2) {
     m.fullness = m.joy = m.energy = 80; m.hygiene = 100;
     m.ageMinutes = (uint32_t)(m.level ? m.level - 1 : 0) * MINUTES_PER_LEVEL;
     m.lastLearnLevel = (uint8_t)(m.level > MAX_LEVEL ? MAX_LEVEL : m.level);
     m.eggTarget = 1;
   }
+  if (m.stateVersion != 2)
+    m.trMinAtk = m.trMinDef = m.trMinSpe = 0;
+  m.stateVersion = 2;
+  auto sanitizeTraining = [](uint8_t &training, uint8_t &floor, uint8_t iv) {
+    uint8_t cap = Pet::trMaxFor(iv);
+    if (floor > cap) floor = cap;
+    if (training > cap) training = cap;
+    if (training < floor) training = floor;
+  };
+  sanitizeTraining(m.trAtk, m.trMinAtk, m.ivAtk);
+  sanitizeTraining(m.trDef, m.trMinDef, m.ivDef);
+  sanitizeTraining(m.trSpe, m.trMinSpe, m.ivSpe);
   if (m.fullness > 100) m.fullness = 100;
   if (m.joy > 100) m.joy = 100;
   if (m.energy > 100) m.energy = 100;

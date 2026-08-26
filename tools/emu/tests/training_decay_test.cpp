@@ -16,7 +16,7 @@ static int bad=0;
 static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!ok)bad++;}
 
 static void ready(Pet &p){
-  p.dbgHatchAs(6,false);
+  p.speciesId=6;
   p.nature=NATURE_ADAMANT;  // a canonical stat nature: no training modifier
   p.ivAtk=p.ivDef=p.ivSpe=p.ivHp=31;
   p.trAtk=p.trDef=p.trSpe=100;
@@ -91,6 +91,21 @@ int main(){
     Pet p; ready(p); p.ivAtk=8; p.trAtk=77; p.nature=NATURE_HARDY;
     for(int i=0;i<60;i++) p.dbgTick();
     ck(p.trAtk==74,"a 3-percent loss from cap 77 rounds up to three");
+  }
+
+  {
+    Pet p; ready(p);
+    p.trAtk=3;
+    ck(p.raiseTrainingFloor(TRAINING_ATK,10) &&
+       p.trMinAtk==10 && p.trAtk==10,
+       "a training tonic raises its permanent floor and current value");
+    for(int i=0;i<24*60;i++) p.dbgTick();
+    ck(p.trAtk==10,
+       "hourly decay never crosses the raised training floor");
+    for(int i=0;i<9;i++) ck(p.raiseTrainingFloor(TRAINING_ATK,10),
+                            "the floor can rise in ten-point steps");
+    ck(p.trMinAtk==p.trMaxAtk() && !p.canRaiseTrainingFloor(TRAINING_ATK),
+       "a tonic is unusable once its floor reaches the IV training cap");
   }
 
   {

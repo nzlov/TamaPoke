@@ -638,10 +638,21 @@ static bool loadMovePack(uint8_t packIndex) {
   for (uint32_t i = 0; i < itemRecords; i++) {
     const uint8_t *row = rawItems + i * 16;
     ItemKey key = rd16(row);
+    int16_t itemParam = (int16_t)rd16(row + 6);
     uint32_t nameOffset = rd32(row + 12);
-    if (!key || row[2] < ITEM_CATEGORY_BALL || row[2] > ITEM_CATEGORY_EVOLUTION ||
-        row[3] < ITEM_EFFECT_CATCH || row[3] > ITEM_EFFECT_EVOLVE ||
+    bool trainingItem = row[3] == ITEM_EFFECT_TRAINING_FLOOR;
+    bool battleBoost = row[3] == ITEM_EFFECT_BATTLE_STAGE;
+    if (!key || row[2] < ITEM_CATEGORY_BALL || row[2] > ITEM_CATEGORY_BATTLE_BOOST ||
+        row[3] < ITEM_EFFECT_CATCH || row[3] > ITEM_EFFECT_BATTLE_STAGE ||
         !row[4] || row[4] > 4 || row[10] > ITEM_STACK_LIMIT ||
+        (trainingItem && (row[2] != ITEM_CATEGORY_TRAINING ||
+                          (row[5] != ITEM_STAT_ATK && row[5] != ITEM_STAT_DEF &&
+                           row[5] != ITEM_STAT_SPE) || itemParam <= 0)) ||
+        (battleBoost && (row[2] != ITEM_CATEGORY_BATTLE_BOOST ||
+                         (row[5] != ITEM_STAT_ATK && row[5] != ITEM_STAT_DEF &&
+                          row[5] != ITEM_STAT_SPA && row[5] != ITEM_STAT_SPD &&
+                          row[5] != ITEM_STAT_SPE) || itemParam <= 0 ||
+                         itemParam > 6)) ||
         !validString(itemNames, itemNamesSize, nameOffset)) {
       free(rawItems); free(itemNames); free(itemLocalizedNames); free(itemLocales); free(items);
       free(locales); free(localizedNames); free(localizedTypeNames);
@@ -658,7 +669,7 @@ static bool loadMovePack(uint8_t packIndex) {
     ItemEntry &item = items[i];
     item.key = key; item.name = (const char *)(itemNames + nameOffset);
     item.category = row[2]; item.effect = row[3]; item.rarity = row[4];
-    item.flags = row[5]; item.param = (int16_t)rd16(row + 6);
+    item.flags = row[5]; item.param = itemParam;
     item.dropWeight = rd16(row + 8); item.dailyMin = row[10];
   }
   free(rawItems);

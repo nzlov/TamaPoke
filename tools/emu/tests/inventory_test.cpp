@@ -57,6 +57,52 @@ int main() {
     if (maxWeight[rarity] && maxWeight[rarity - 1] <= maxWeight[rarity]) rarityWeighted = false;
   ck(rarityWeighted, "rarer pack items have lower drop weight");
 
+  bool dailyBalance = true, plannedWeights = true;
+  bool rarityBands = true;
+  const uint8_t minWeight[5] = { 0, 30, 10, 2, 1 };
+  const uint8_t maxBandWeight[5] = { 0, 50, 20, 8, 1 };
+  uint8_t trainingTonics = 0, battleBoosters = 0;
+  uint8_t trainingStats = 0, battleStats = 0;
+  for (uint16_t i = 0; i < itemCount(); i++) {
+    const ItemEntry *item = itemAt(i);
+    if (item->rarity > 4 || item->dropWeight < minWeight[item->rarity] ||
+        item->dropWeight > maxBandWeight[item->rarity]) rarityBands = false;
+    if (item->effect == ITEM_EFFECT_CATCH) {
+      uint8_t expected = item->param == 100 ? 5 : 0;
+      if (item->dailyMin != expected) dailyBalance = false;
+      uint16_t expectedWeight = item->param == 100 ? 50 : item->param == 150 ? 20 : 8;
+      if (item->dropWeight != expectedWeight) plannedWeights = false;
+    } else if (item->effect == ITEM_EFFECT_HEAL_HP && item->param == 20) {
+      if (item->dailyMin != 2) dailyBalance = false;
+      if (item->dropWeight != 40) plannedWeights = false;
+    } else if (item->effect == ITEM_EFFECT_HEAL_HP && item->param == 60) {
+      if (item->dropWeight != 16) plannedWeights = false;
+    } else if (item->effect == ITEM_EFFECT_CURE_STATUS) {
+      if (item->dropWeight != 14) plannedWeights = false;
+    } else if (item->effect == ITEM_EFFECT_REVIVE) {
+      if (item->dropWeight != 6) plannedWeights = false;
+    }
+    if (item->effect == ITEM_EFFECT_TRAINING_FLOOR && item->param == 10 &&
+        item->dropWeight == 3 && !item->dailyMin) {
+      trainingTonics++;
+      trainingStats |= item->flags;
+    }
+    if (item->effect == ITEM_EFFECT_BATTLE_STAGE && item->param == 1 &&
+        item->dropWeight == 10 && !item->dailyMin) {
+      battleBoosters++;
+      battleStats |= item->flags;
+    }
+  }
+  ck(dailyBalance,
+     "only basic balls refill to five and basic medicine refills to two");
+  ck(rarityBands, "drop weights stay inside non-overlapping rarity bands");
+  ck(plannedWeights, "each basic item keeps its planned value within that rarity band");
+  ck(trainingTonics == 3 && trainingStats == (ITEM_STAT_ATK | ITEM_STAT_DEF | ITEM_STAT_SPE) &&
+     battleBoosters == 5 &&
+     battleStats == (ITEM_STAT_ATK | ITEM_STAT_DEF | ITEM_STAT_SPA |
+                     ITEM_STAT_SPD | ITEM_STAT_SPE),
+     "the pack exposes three rare training tonics and five battle boosters");
+
   Inventory bag;
   bag.begin();
   bag.ensureDailySupply(100);

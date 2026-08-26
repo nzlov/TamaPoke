@@ -31,6 +31,7 @@ int main(){
   pet.ageMinutes = 72UL*MINUTES_PER_LEVEL;
   pet.ivAtk=31; pet.ivDef=7; pet.ivSpe=22; pet.ivHp=19;
   pet.trAtk=64; pet.trDef=31; pet.trSpe=90;
+  pet.trMinAtk=40; pet.trMinDef=20; pet.trMinSpe=70;
   pet.nature=NATURE_MODEST;
   pet.gymIvRewards[0]=GYM_IV_REWARD_DEF;
   pet.gymIvRewards[71]=GYM_IV_REWARD_MAXED;
@@ -56,6 +57,7 @@ int main(){
     m.ageMinutes=(uint32_t)(m.level-1)*MINUTES_PER_LEVEL;
     m.nature=(NatureId)((i+5)%NATURE_COUNT);
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=11;
+    m.trMinSpe=30;
     m.gymIvRewards[i]=GYM_IV_REWARD_SPE; party.box[i]=m; }
   party.boxSave();
   // renameTrainer() persists, and save() writes every field -- so this is also
@@ -118,6 +120,8 @@ int main(){
   ck(p2.ageMinutes==72UL*MINUTES_PER_LEVEL, "at the age it was");
   ck(p2.ivAtk==31 && p2.ivDef==7 && p2.ivSpe==22 && p2.ivHp==19, "with its IVs");
   ck(p2.trAtk==64 && p2.trDef==31 && p2.trSpe==90, "and its training");
+  ck(p2.trMinAtk==40 && p2.trMinDef==20 && p2.trMinSpe==70,
+     "and its permanent training floors");
   ck(p2.nature==NATURE_MODEST,"and its nature");
   ck(p2.gymIvRewards[0]==GYM_IV_REWARD_DEF &&
      p2.gymIvRewards[71]==GYM_IV_REWARD_MAXED, "and its gym IV reward bytes");
@@ -161,6 +165,8 @@ int main(){
   ck(q2.box[7].dex==1+7*3 && q2.box[7].level==17, "with the right creatures in it");
   ck(q2.box[7].gymIvRewards[7]==GYM_IV_REWARD_SPE,
      "with each banked creature's gym IV bytes");
+  ck(q2.box[7].trMinSpe==30,
+     "with each banked creature's permanent training floors");
   ck(q2.box[7].nature==(NatureId)((7+5)%NATURE_COUNT),
      "with each banked creature's nature");
 

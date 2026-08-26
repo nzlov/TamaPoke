@@ -55,9 +55,9 @@ struct PartyMon {
   // Appended to preserve every previous field offset in the raw NVS record.
   NatureId nature = NATURE_UNKNOWN;
 
-  // Full cultivation state. `stateVersion == 0` identifies a migrated
-  // combat-only PartyMon and receives safe life-state defaults on load.
-  uint8_t stateVersion = 1;
+  // Full cultivation state. v0 identifies a migrated combat-only record; v1
+  // has cultivation state but predates the permanent training floors in v2.
+  uint8_t stateVersion = 2;
   uint8_t fullness = 80, joy = 80, energy = 80, hygiene = 100;
   uint8_t poops = 0, weight = 0;
   uint8_t berryKnown = 0;
@@ -72,16 +72,23 @@ struct PartyMon {
   uint8_t evoDeclinedLv = 0;
   uint32_t farDeclinedAge = 0;
   uint8_t mistakeCooldown = 0, neglectTicks = 0, bondToday = 0;
+  // These occupy alignment bytes from the v1 raw record, keeping its size and
+  // every later field offset stable while making training floors per-creature.
+  uint8_t trMinAtk = 0;
   uint16_t goodTicks = 0;
   uint8_t lastLearnLevel = 0;
+  uint8_t trMinDef = 0;
   MoveId learnQueue[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
   uint8_t learnQCount = 0;
+  uint8_t trMinSpe = 0;
   int16_t eggByRegion[CONTENT_MAX_REGIONS + 1] = { 0 };
 
   bool empty() const { return dex == 0; }
   bool isEgg() const { return dex < 0; }
   bool battleReady() const { return dex > 0; }
 };
+static_assert(sizeof(PartyMon) == 252,
+              "the raw roster record must remain compatible with v1 saves");
 static_assert(sizeof(PartyMon) * PARTY_SLOTS <= 4096,
               "one roster page must stay within the backup/NVS blob bound");
 
