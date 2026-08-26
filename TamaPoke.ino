@@ -570,6 +570,13 @@ int drawWrappedTextWindow(const char *text, int x, int y, int width,
 // has to fit both creatures, both HP bars and the menu, and four full-width
 // rows do not leave room for the sprites.
 bool battleOpen = false;
+#define BTL_TAP_DEBOUNCE_MS 300
+uint32_t btlLastAcceptedTap = 0;
+bool btlTapDebounceArmed = false;
+
+static void btlResetTapDebounce() {
+  btlTapDebounceArmed = false;
+}
 
 enum : uint8_t {
   SCR_QUIZ = 0, SCR_STARTER, SCR_REGION, SCR_GALLERY, SCR_DEXPICK, SCR_MOVEPICK, SCR_BOX,
@@ -4202,6 +4209,7 @@ void startLinkBattle() {
   btlSyncSprite(0, btlYou);
   btlSyncSprite(1, btlFoe);
   audioMusic(MUS_BATTLE);
+  btlResetTapDebounce();
   battleOpen = true;
 }
 
@@ -4246,6 +4254,7 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   audioMusic(MUS_BATTLE);
   btlLungeUntil[0] = btlLungeUntil[1] = 0;
   btlHitUntil[0] = btlHitUntil[1] = 0;
+  btlResetTapDebounce();
   battleOpen = true;
 }
 
@@ -4284,6 +4293,7 @@ void startBattle(int16_t dex, uint8_t lvl) {
   audioMusic(MUS_BATTLE);
   btlLungeUntil[0] = btlLungeUntil[1] = 0;
   btlHitUntil[0] = btlHitUntil[1] = 0;
+  btlResetTapDebounce();
   battleOpen = true;
 }
 
@@ -4371,6 +4381,7 @@ void startWildBattle(uint8_t region, bool hard) {
   audioMusic(MUS_BATTLE);
   btlLungeUntil[0] = btlLungeUntil[1] = 0;
   btlHitUntil[0] = btlHitUntil[1] = 0;
+  btlResetTapDebounce();
   battleOpen = true;
 }
 
@@ -5467,27 +5478,27 @@ static void btlThrowBall(const ItemEntry &item) {
   btlResolve(0, 100);
 }
 
-void battleTap(int16_t x, int16_t y) {
+static bool btlDispatchTap(int16_t x, int16_t y) {
   if (btlWinUntil) {          // dismiss the win screen and leave the fight
     btlWinUntil = 0;
     btlFreeSprites();
     audioMusic(MUS_NONE);
     battleOpen = false;
     if (btlLink) { btlLink = false; lanOpen = true; }
-    return;
+    return true;
   }
   if (btlFoeDetailOpen) {
     if (y >= 370) {
       btlFoeDetailOpen = false;
       sfxPlay(SFX_TAP);
     }
-    return;
+    return y >= 370;
   }
   if (btlWild && !btlOver && btlFoeDetailHit(x, y)) {
     btlFoeDetailOpen = true;
     btlFoeDetailPage = 0;
     sfxPlay(SFX_TAP);
-    return;
+    return true;
   }
   if (btlMsgCount) {          // a tap clears the narration and returns the menu
     btlMsgCount = 0;
@@ -5498,59 +5509,59 @@ void battleTap(int16_t x, int16_t y) {
       // Back to the LAN screen rather than all the way out: that is where a
       // rematch is offered, and re-pairing for every fight would be tedious.
       if (btlLink) { btlLink = false; lanOpen = true; }
-      return;
+      return true;
     }
     if (btlSwapWho >= 0) btlDoSwap();   // the replacement arrives on this beat
-    return;
+    return true;
   }
   if (btlMenu == 0) {
     if (btlCellHit(0, x, y)) {
       sfxPlay(SFX_TAP);
       btlMenu = 1;                       // FIGHT
-      return;
+      return true;
     }
     if (btlCellHit(1, x, y)) {
       sfxPlay(SFX_TAP);
       btlItemPage = 0;
       btlMenu = 3;
-      return;
+      return true;
     }
     if (btlCellHit(2, x, y)) {
-      sfxPlay(SFX_TAP); btlTargetPage = 0; btlMenu = 2; return;
+      sfxPlay(SFX_TAP); btlTargetPage = 0; btlMenu = 2; return true;
     }
-    if (btlCellHit(3, x, y)) { btlRun(); return; }
-    return;
+    if (btlCellHit(3, x, y)) { btlRun(); return true; }
+    return false;
   }
   if (btlMenu == 3) {
-    if (btlBackTap(x, y)) return;
+    if (btlBackTap(x, y)) return true;
     for (uint8_t i = 0; i < 4; i++) {
       if (!btlCellHit(i, x, y)) continue;
       const InventoryStack *stack = btlWarehouseAt((uint8_t)(btlItemPage * 4 + i));
       const ItemEntry *item = stack ? itemByKey(stack->key) : nullptr;
-      if (!item || !btlItemUsable(*item)) { sfxPlay(SFX_DENY); return; }
+      if (!item || !btlItemUsable(*item)) { sfxPlay(SFX_DENY); return true; }
       BattleMechanic mechanic = btlMechanicFromItem(*item);
       if (mechanic != BMECH_NONE) {
         btlPendingMechanic = mechanic;
         btlPendingItem = ITEM_KEY_NONE;
         btlMenu = 1;
         sfxPlay(SFX_TAP);
-        return;
+        return true;
       }
-      if (item->effect == ITEM_EFFECT_CATCH) { btlThrowBall(*item); return; }
+      if (item->effect == ITEM_EFFECT_CATCH) { btlThrowBall(*item); return true; }
       if (item->effect == ITEM_EFFECT_REVIVE) {
         btlPendingItem = item->key;
         btlTargetPage = 0;
         btlMenu = 4;
         sfxPlay(SFX_TAP);
-        return;
+        return true;
       }
       btlSpendItemTurn(*item, btlSquadAt);
-      return;
+      return true;
     }
-    return;
+    return false;
   }
   if (btlMenu == 4) {
-    if (btlBackTap(x, y)) { btlPendingItem = ITEM_KEY_NONE; return; }
+    if (btlBackTap(x, y)) { btlPendingItem = ITEM_KEY_NONE; return true; }
     const ItemEntry *item = itemByKey(btlPendingItem);
     for (uint8_t cell = 0; item && cell < 4; cell++) {
       uint8_t i = (uint8_t)(btlTargetPage * 4 + cell);
@@ -5559,21 +5570,21 @@ void battleTap(int16_t x, int16_t y) {
       Combatant *member = btlMember(i);
       if (!member || !itemCanApplyToCombatant(*item, *member)) {
         sfxPlay(SFX_DENY);
-        return;
+        return true;
       }
       btlSpendItemTurn(*item, i);
-      return;
+      return true;
     }
-    return;
+    return false;
   }
   if (btlMenu == 2) {
-    if (btlBackTap(x, y)) return;
+    if (btlBackTap(x, y)) return true;
     for (uint8_t cell = 0; cell < 4; cell++) {
       uint8_t i = (uint8_t)(btlTargetPage * 4 + cell);
       if (i >= btlSquadN) break;
       if (!btlCellHit(cell, x, y)) continue;
       const Combatant &m = (i == btlSquadAt) ? btlYou : btlSquad[i];
-      if (i == btlSquadAt || m.fainted()) { sfxPlay(SFX_DENY); return; }
+      if (i == btlSquadAt || m.fainted()) { sfxPlay(SFX_DENY); return true; }
       sfxPlay(SFX_TAP);
       if (btlLink && !btlLinkHost) {
         // The guest asks; it never switches on its own. A switch rides the same
@@ -5581,38 +5592,47 @@ void battleTap(int16_t x, int16_t y) {
         // would for us.
         lan.sendAct(LINK_ACT_SWITCH_TO(i));
         btlMenu = 0;
-        return;
+        return true;
       }
       if (btlLink) {            // host: latched like a move, see btlLinkPoll
         btlMyAct = LINK_ACT_SWITCH_TO(i);
         btlMyPercent = 100;
         btlMenu = 0;
-        if (!lan.hasPeerAct()) return;
+        if (!lan.hasPeerAct()) return true;
         btlMyAct = 0;
         btlMyPercent = 0;
       }
       btlSwitchTo(i);
-      return;
+      return true;
     }
     btlMenu = 0;      // anywhere else backs out
-    return;
+    return true;
   }
-  if (btlBackTap(x, y)) return;
+  if (btlBackTap(x, y)) return true;
   for (int i = 0; i < MOVE_SLOTS; i++) {
     if (!btlYou.moves[i]) continue;
     if (!btlCellHit(i, x, y)) continue;
     if (btlPendingMechanic == BMECH_Z_MOVE &&
         moveEntry(btlYou.moves[i]).cat == MC_STATUS) {
       sfxPlay(SFX_DENY);
-      return;
+      return true;
     }
     sfxPlay(SFX_TAP);
     btlMenu = 0;
     beginBattleQuiz((uint8_t)i);
-    return;
+    return true;
   }
   btlMenu = 0;        // a tap off the grid goes back to FIGHT/POKEMON
   btlPendingMechanic = BMECH_NONE;
+  return true;
+}
+
+void battleTap(int16_t x, int16_t y) {
+  uint32_t now = millis();
+  if (btlTapDebounceArmed && now - btlLastAcceptedTap < BTL_TAP_DEBOUNCE_MS) return;
+  if (!btlDispatchTap(x, y)) return;
+  btlLastAcceptedTap = now;
+  btlTapDebounceArmed = true;
 }
 
 // ---------- player card (swipe down) ----------
