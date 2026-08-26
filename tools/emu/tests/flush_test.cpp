@@ -16,7 +16,7 @@ volatile int g_touchX=0,g_touchY=0; volatile bool g_touchDown=false;
 void FakeESP::restart(){exit(0);}
 int FakeSerial::available(){return 0;}
 String FakeSerial::readStringUntil(char){return String("");}
-void setup(); void render();
+void setup(); void render(); void renderBootSplash();
 uint8_t uiCurrentScreen();
 extern const char *const SCREEN_NAME[];
 extern Arduino_Canvas *gfx;
@@ -52,6 +52,14 @@ static void crumbIs(const char *want){
 }
 int main(){
   setup();
+  gfx->frameReady = false;
+  renderBootSplash();
+  size_t lit = 0;
+  for (size_t i = 0; i < 466UL * 466UL; i++)
+    if (gfx->buffer()[i] != RGB565_BLACK) lit++;
+  if (!gfx->frameReady || lit < 10000) {
+    printf("FAIL  boot splash is blank or never flushed\n"); bad++;
+  } else printf("PASS  boot splash draws and flushes\n");
   for (int i=0;i<4;i++) render();
   if (pet.awaitingStarter()) pet.chooseStarter(4);
   if (pet.isEgg()) pet.dbgHatchAs(6,false);

@@ -16,6 +16,7 @@
 #include "TouchDrvCSTXXX.hpp"
 #include "pin_config.h"
 #include "ui_art.h"
+#include "boot_splash.h"
 #include "dex.h"
 #include "types.h"
 #include "moves.h"
@@ -947,6 +948,12 @@ uint32_t tStart = 0;
 bool holdFired = false;
 bool recoveryMode = false;
 
+void renderBootSplash() {
+  gfx->setPackFont(false);
+  drawBootSplashFrame(*gfx);
+  gfx->setPackFont(contentHasUi());
+}
+
 void renderRecovery() {
   gfx->setPackFont(false);
   gfx->fillScreen(RGB565_BLACK);
@@ -983,8 +990,6 @@ void setup() {
   Serial.setTxTimeoutMs(0);
   Serial.printf("TamaPoke fw %s\n", FW_VERSION);
   bootReport();   // why the last run ended, and what it was doing
-  sdBegin();
-  quiz.loadConfig();
   Wire.begin(IIC_SDA, IIC_SCL);
   // CST9217 (tactil), AXP2101 (PMU) y PCF85063 (RTC) comparten este bus I2C.
   // Red de seguridad para PMU/RTC (SensorLib NO respeta este timeout en el
@@ -1002,6 +1007,10 @@ void setup() {
   if (!gfx->begin(80000000)) Serial.println("gfx->begin() fallo");
   gfx->setPackFont(contentHasUi());
   panel->setBrightness(180);
+  renderBootSplash();
+
+  sdBegin();
+  quiz.loadConfig();
 
   touch.setPins(TP_RESET, TP_INT);
   bool touchOk = false;
