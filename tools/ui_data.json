@@ -228,7 +228,8 @@
         "AT. ESP.",
         "DEF. ESP.",
         "%s %s %+d",
-        "%s recupero PS"
+        "%s recupero PS",
+        "RETIRAR"
       ],
       "medalNames": [
         "Nv.10",
@@ -492,7 +493,8 @@
         "SP. ATK",
         "SP. DEF",
         "%s %s %+d",
-        "%s recovered HP"
+        "%s recovered HP",
+        "WITHDRAW"
       ],
       "medalNames": [
         "Lv.10",
@@ -756,7 +758,8 @@
         "ATQ. SPE",
         "DEF. SPE",
         "%s %s %+d",
-        "%s recupere des PV"
+        "%s recupere des PV",
+        "RETIRER"
       ],
       "medalNames": [
         "Niv.10",
@@ -1020,7 +1023,8 @@
         "SP. ANG",
         "SP. VER",
         "%s %s %+d",
-        "%s regeneriert KP"
+        "%s regeneriert KP",
+        "ENTNEHMEN"
       ],
       "medalNames": [
         "Lv.10",
@@ -1284,7 +1288,8 @@
         "ATT. SP.",
         "DIF. SP.",
         "%s %s %+d",
-        "%s recupera PS"
+        "%s recupera PS",
+        "RITIRA"
       ],
       "medalNames": [
         "Lv.10",
@@ -1548,7 +1553,8 @@
         "ATQ. ESP",
         "DEF. ESP",
         "%s %s %+d",
-        "%s recuperou PS"
+        "%s recuperou PS",
+        "RETIRAR"
       ],
       "medalNames": [
         "Niv.10",
@@ -1818,7 +1824,8 @@
         "特攻",
         "特防",
         "%s%s%+d级",
-        "%s回复生命"
+        "%s回复生命",
+        "取出"
       ],
       "medalNames": [
         "10级",

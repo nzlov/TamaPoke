@@ -121,6 +121,15 @@ int main() {
     std::puts("FAIL Box accepted the sole remaining cultivation member");
     return 1;
   }
+  boxTap(200, 398);  // back to the Box grid after the denied deposit
+  boxTap(100, 110);  // occupied Box slot 0, with a free cultivation slot
+  boxTap(310, 398);  // withdraw button
+  if (party.count() != 2 || party.slots[1].dex != 1 || !party.box[0].empty() || boxSel) {
+    std::printf("FAIL Box member was not withdrawn into the first free slot "
+                "(count=%u team=%d box=%d selected=%u)\n",
+                party.count(), party.slots[1].dex, party.box[0].dex, boxSel);
+    return 1;
+  }
   boxOpen = false;
   navMenuOpen = true;
   playerPage = 2;

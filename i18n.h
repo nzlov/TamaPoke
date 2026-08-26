@@ -146,6 +146,7 @@ enum StrId : uint8_t {
   S_STAT_SPA, S_STAT_SPD,
   S_BTL_STAGE_FMT,  // combatant, stat label, signed stage delta
   S_BTL_HEALED,     // combatant recovered HP
+  S_BOX_WITHDRAW,   // move a Box member into the first free cultivation slot
   STR_COUNT
 };
 

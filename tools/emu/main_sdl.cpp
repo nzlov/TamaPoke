@@ -638,6 +638,18 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     party.box[0] = stored;
     boxOpen = true; boxSel = 1;
   }
+  else if (!strcmp(screen, "boxwithdraw")) {
+    static const int fill[] = { 9, 25, 143 };
+    for (int i = 0; i < 3; i++) {
+      PartyMon m; m.dex = fill[i]; m.level = 30 + i * 5;
+      m.ivAtk = m.ivDef = m.ivSpe = m.ivHp = 24;
+      party.replaceAt(i, m);
+    }
+    PartyMon stored; stored.dex = 6; stored.level = 42;
+    stored.ivAtk = stored.ivDef = stored.ivSpe = stored.ivHp = 26;
+    party.box[0] = stored;
+    boxOpen = true; boxSel = 1;
+  }
   else if (!strcmp(screen, "boxdeposit")) {
     static const int fill[] = { 9, 25, 143 };
     for (int i = 0; i < 3; i++) {

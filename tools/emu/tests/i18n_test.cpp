@@ -111,11 +111,19 @@ int main() {
     printf("WRONG EXIT LABEL  en-US: %s\n", T(S_RETIRE));
     bad++;
   }
+  if (strcmp(T(S_BOX_WITHDRAW), "WITHDRAW")) {
+    printf("WRONG BOX WITHDRAW LABEL  en-US: %s\n", T(S_BOX_WITHDRAW));
+    bad++;
+  }
   int8_t chinese = uiFindLocale("zh-CN");
   if (chinese >= 0) {
     setLang((Lang)chinese);
     if (strcmp(T(S_RETIRE), "放生")) {
       printf("WRONG EXIT LABEL  zh-CN: %s\n", T(S_RETIRE));
+      bad++;
+    }
+    if (strcmp(T(S_BOX_WITHDRAW), "取出")) {
+      printf("WRONG BOX WITHDRAW LABEL  zh-CN: %s\n", T(S_BOX_WITHDRAW));
       bad++;
     }
   }

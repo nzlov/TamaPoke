@@ -294,9 +294,9 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
   the Box. Swipe down for the **bag / battle centre / badges** navigation page.
 - The **Box holds 24 creatures** across four pages of six. Box state is frozen;
   exchanging a creature with a cultivation slot resumes it with no state reset.
-- The Box is the only cultivation-management screen. Tap any Box cell, then
-  choose an existing cultivation member: an empty cell deposits that member,
-  while an occupied cell exchanges the two creatures.
+- The Box is the only cultivation-management screen. Tap any Box cell: an empty
+  cell accepts a chosen cultivation member; an occupied cell can be withdrawn
+  directly when a cultivation slot is free, or exchanged with a chosen member.
 - Box cells and embedded cultivation-member cards use the same 2× thumbnails,
   vertically centred in each row.
 - A **runaway does not join.** It's the one ending with a cost, and letting a

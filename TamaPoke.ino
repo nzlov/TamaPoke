@@ -430,8 +430,9 @@ bool navMenuOpen = false;
 
 // Box is the only cultivation-management screen. Selecting any Box cell opens
 // its embedded cultivation picker: an empty cell deposits the chosen creature,
-// while an occupied cell exchanges it. `partyPick` reuses that picker when a
-// captured creature needs a replacement slot.
+// while an occupied cell can be withdrawn into a free cultivation slot or
+// exchanged with a chosen member. `partyPick` reuses that picker when a captured
+// creature needs a replacement slot.
 bool partyPick = false;
 PartyMon partyPending;
 #define BURY_TARGET_NONE  -2
@@ -709,6 +710,8 @@ BattleMechanic btlMyMechanic = BMECH_NONE;
 #define BOXPICK_BACK_H UI_TAP_MIN
 #define BOXPICK_BACK_X 133
 #define BOXPICK_BACK_W 200
+#define BOXPICK_ACTION_X (PARTY_GRID_X + PARTY_CELL_W + 10)
+#define BOXPICK_ACTION_W PARTY_CELL_W
 
 uint8_t gymRegion = 0;
 uint8_t btlRegion = 0;
@@ -6797,8 +6800,14 @@ void renderTrain() {
 
 // ---------- the box ----------
 // Box owns the complete cultivation-management flow. A Box cell is selected
-// first, then an occupied cultivation member. Empty Box cells deposit; occupied
-// Box cells exchange. There is no separate party-management screen.
+// first. Empty Box cells deposit a chosen cultivation member; occupied Box
+// cells can be withdrawn into a free slot or exchanged with an occupied slot.
+// There is no separate party-management screen.
+static bool boxCanWithdraw() {
+  return !partyPick && boxSel && !party.box[boxSel - 1].empty() &&
+         party.firstFree() >= 0;
+}
+
 static void drawCultivationSlot(uint8_t slot, int x, int y) {
   const PartyMon &m = party.slots[slot];
   gfx->fillRoundRect(x, y, PARTY_CELL_W, PARTY_CELL_H, 10,
@@ -6873,15 +6882,26 @@ void renderBox() {
       drawCultivationSlot((uint8_t)slot, x, y);
       shown++;
     }
+    const bool canWithdraw = boxCanWithdraw();
+    const int backX = canWithdraw ? PARTY_GRID_X : BOXPICK_BACK_X;
+    const int backW = canWithdraw ? PARTY_CELL_W : BOXPICK_BACK_W;
     const char *back = partyPick ? T(S_PARTY_LETGO) : T(S_BACK);
-    gfx->fillRoundRect(BOXPICK_BACK_X, BOXPICK_BACK_Y, BOXPICK_BACK_W,
+    gfx->fillRoundRect(backX, BOXPICK_BACK_Y, backW,
                        BOXPICK_BACK_H, 12, partyPick ? UI_BAR_BAD : UI_TRACK);
-    gfx->drawRoundRect(BOXPICK_BACK_X, BOXPICK_BACK_Y, BOXPICK_BACK_W,
+    gfx->drawRoundRect(backX, BOXPICK_BACK_Y, backW,
                        BOXPICK_BACK_H, 12, UI_INK);
     gfx->setTextColor(partyPick ? UI_WHITE : UI_INK);
     gfx->setTextSize(2);
-    uiDrawCenteredIn(back, BOXPICK_BACK_X, BOXPICK_BACK_Y,
-                     BOXPICK_BACK_W, BOXPICK_BACK_H);
+    uiDrawCenteredIn(back, backX, BOXPICK_BACK_Y, backW, BOXPICK_BACK_H);
+    if (canWithdraw) {
+      gfx->fillRoundRect(BOXPICK_ACTION_X, BOXPICK_BACK_Y, BOXPICK_ACTION_W,
+                         BOXPICK_BACK_H, 12, UI_BAR_OK);
+      gfx->drawRoundRect(BOXPICK_ACTION_X, BOXPICK_BACK_Y, BOXPICK_ACTION_W,
+                         BOXPICK_BACK_H, 12, UI_INK);
+      gfx->setTextColor(UI_WHITE);
+      uiDrawCenteredIn(T(S_BOX_WITHDRAW), BOXPICK_ACTION_X, BOXPICK_BACK_Y,
+                       BOXPICK_ACTION_W, BOXPICK_BACK_H);
+    }
     gfx->flush();
     return;
   }
@@ -6959,8 +6979,23 @@ void boxTap(int16_t x, int16_t y) {
       sfxPlay(SFX_MEDAL);
       return;
     }
+    if (boxCanWithdraw() &&
+        y >= BOXPICK_BACK_Y && y <= BOXPICK_BACK_Y + BOXPICK_BACK_H &&
+        x >= BOXPICK_ACTION_X && x <= BOXPICK_ACTION_X + BOXPICK_ACTION_W) {
+      const uint8_t boxIndex = boxSel - 1;
+      const int freeSlot = party.firstFree();
+      if (freeSlot >= 0) {
+        party.swapPartyBox((uint8_t)freeSlot, boxIndex);
+        boxSel = 0;
+        sfxPlay(SFX_MEDAL);
+      }
+      return;
+    }
+    const bool dualButtons = boxCanWithdraw();
+    const int backX = dualButtons ? PARTY_GRID_X : BOXPICK_BACK_X;
+    const int backW = dualButtons ? PARTY_CELL_W : BOXPICK_BACK_W;
     if ((y >= BOXPICK_BACK_Y && y <= BOXPICK_BACK_Y + BOXPICK_BACK_H &&
-         x >= BOXPICK_BACK_X && x <= BOXPICK_BACK_X + BOXPICK_BACK_W) || y < 34) {
+         x >= backX && x <= backX + backW) || y < 34) {
       if (partyPick) {
         partyPick = false;
         partyPending = PartyMon();
