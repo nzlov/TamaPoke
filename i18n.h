@@ -140,6 +140,8 @@ enum StrId : uint8_t {
   // bag and battle-centre navigation (append-only: UI packs are positional)
   S_BAG, S_BATTLE_CENTER, S_USE, S_ITEM_EMPTY, S_ITEM_CANT_USE,
   S_WILD, S_CAUGHT, S_JOIN, S_ITEM_FOUND_FMT,
+  // persistent battle death and burial (append-only)
+  S_DEAD, S_BURY, S_BURY_Q, S_BTL_RUN_FAILED, S_BTL_FOE_RAN,
   STR_COUNT
 };
 

@@ -14,6 +14,7 @@ const SaveField SAVE_FIELDS[] = {
   { "eggT2", SK_I16 },  { "crack", SK_U8 },   { "mist", SK_U8 },
   { "sleep", SK_BOOL }, { "lend", SK_U8 },    { "seen", SK_U32 },
   { "bond", SK_U8 },    { "nick", SK_STR },   { "froz", SK_BOOL },
+  { "dead", SK_BOOL },
   // individual values and training
   { "ivat", SK_U8 },    { "ivdf", SK_U8 },    { "ivsp", SK_U8 },
   { "ivhp", SK_U8 },    { "tatk", SK_U8 },    { "tdef", SK_U8 },

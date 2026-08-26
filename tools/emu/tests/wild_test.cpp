@@ -24,6 +24,33 @@ static void ck(bool ok, const char *what) {
 }
 
 int main() {
+  ck(wildEncounterMaxLevel(1, false) == 6,
+     "normal encounters include five levels above the player");
+  ck(wildEncounterMaxLevel(94, false) == 99,
+     "normal encounters include every lower level");
+  ck(wildEncounterMaxLevel(95, false) == 100,
+     "normal encounter levels stop at the game limit");
+  ck(wildEncounterMaxLevel(1, true) == 100 &&
+     wildEncounterMaxLevel(100, true) == 100,
+     "hard encounters allow every level");
+  ck(wildEscapeChance(50, 50) == 90 && wildEscapeChance(80, 50) == 90,
+     "escape defaults to ninety percent when not under-levelled");
+  ck(wildEscapeChance(50, 100) == 45,
+     "a lower level scales escape chance by the level ratio");
+  ck(wildEscapeChance(1, 100) == 10,
+     "escape chance never falls below ten percent");
+  ck(wildFoeEscapeChance(41, 100) == 0,
+     "a wild foe does not flee above forty percent HP");
+  ck(wildFoeEscapeChance(40, 100) == 10,
+     "a wild foe has ten percent escape chance at forty percent HP");
+  ck(wildFoeEscapeChance(25, 100) == 20,
+     "wild foe escape chance rises linearly as HP falls");
+  ck(wildFoeEscapeChance(10, 100) == 30 &&
+     wildFoeEscapeChance(1, 100) == 30,
+     "wild foe escape chance reaches and keeps its thirty percent cap");
+  ck(wildFoeEscapeChance(0, 100) == 0 && wildFoeEscapeChance(10, 0) == 0,
+     "fainted foes and invalid HP cannot escape");
+
   uint8_t commonFull = wildCaptureChance(R_COMUN, 100, 100, false, 100);
   uint8_t commonLow = wildCaptureChance(R_COMUN, 1, 100, false, 100);
   uint8_t statusLow = wildCaptureChance(R_COMUN, 1, 100, true, 100);

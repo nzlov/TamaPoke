@@ -219,7 +219,12 @@
         "SALVAJE",
         "CAPTURADO",
         "UNIR",
-        "ENCONTRADO: %s"
+        "ENCONTRADO: %s",
+        "MUERTO",
+        "ENTERRAR",
+        "Enterrar a %s?",
+        "No pudo escapar!",
+        "%s salvaje huyo!"
       ],
       "medalNames": [
         "Nv.10",
@@ -474,7 +479,12 @@
         "WILD",
         "CAUGHT",
         "JOIN",
-        "FOUND: %s"
+        "FOUND: %s",
+        "DEAD",
+        "BURY",
+        "Bury %s?",
+        "Couldn't escape!",
+        "Wild %s fled!"
       ],
       "medalNames": [
         "Lv.10",
@@ -729,7 +739,12 @@
         "SAUVAGE",
         "CAPTURE",
         "REJOINDRE",
-        "TROUVE : %s"
+        "TROUVE : %s",
+        "MORT",
+        "ENTERRER",
+        "Enterrer %s ?",
+        "Fuite impossible !",
+        "Le %s sauvage s'est enfui !"
       ],
       "medalNames": [
         "Niv.10",
@@ -984,7 +999,12 @@
         "WILDNIS",
         "GEFANGEN",
         "AUFNEHMEN",
-        "GEFUNDEN: %s"
+        "GEFUNDEN: %s",
+        "TOT",
+        "BEGRABEN",
+        "%s begraben?",
+        "Flucht gescheitert!",
+        "Wildes %s ist geflohen!"
       ],
       "medalNames": [
         "Lv.10",
@@ -1239,7 +1259,12 @@
         "SELVATICO",
         "CATTURATO",
         "UNISCI",
-        "TROVATO: %s"
+        "TROVATO: %s",
+        "MORTO",
+        "SEPPELLISCI",
+        "Seppellire %s?",
+        "Fuga fallita!",
+        "%s selvatico e fuggito!"
       ],
       "medalNames": [
         "Lv.10",
@@ -1494,7 +1519,12 @@
         "SELVAGEM",
         "CAPTURADO",
         "JUNTAR",
-        "ENCONTRADO: %s"
+        "ENCONTRADO: %s",
+        "MORTO",
+        "ENTERRAR",
+        "Enterrar %s?",
+        "Fuga falhou!",
+        "%s selvagem fugiu!"
       ],
       "medalNames": [
         "Niv.10",
@@ -1755,7 +1785,12 @@
         "野外",
         "已捕获",
         "入队",
-        "获得：%s"
+        "获得：%s",
+        "已倒下",
+        "安眠",
+        "让%s安眠？",
+        "逃跑失败！",
+        "野生%s逃跑了！"
       ],
       "medalNames": [
         "10级",

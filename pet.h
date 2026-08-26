@@ -224,6 +224,7 @@ public:
   // Compatibility flag from the former single-pet model. Team records are
   // active cultivation slots; only Box location now decides whether time stops.
   bool frozen = false;
+  bool dead = false;
   void reviveFrom(const PartyMon &m);
   PartyMon toPartyMon() const;
   // The roster owns persistence; Pet is the live behavioural view of one
@@ -236,6 +237,8 @@ public:
   void mergeSharedFrom(const Pet &other);
   void advanceBackgroundMinute();
   void syncClockFrom(uint32_t nowEpoch, uint32_t seenEpoch, bool persist);
+  bool isDead() const { return dead; }
+  void setDead(bool value);
   void registerCaught(SpeciesId dex) { registerSpecies(dex); save(); }
 
   // The player's own name, alongside the badges and the streak: it belongs to

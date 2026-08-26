@@ -28,9 +28,22 @@ struct LegacyPartyMonV2 {
   LegacyPartyMonV1 mon;
   uint8_t gymIvRewards[GYM_IV_REWARD_SLOTS] = { 0 };
 };
+struct LegacyPartyMonV3 {
+  LegacyPartyMonV2 mon;
+  NatureId nature = NATURE_UNKNOWN;
+};
 static PartyMon mk(int dex,int lvl){ PartyMon m; m.dex=dex; m.level=lvl;
   m.ageMinutes=(uint32_t)(lvl-1)*MINUTES_PER_LEVEL;
   m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20; return m; }
+template <size_t N>
+static void putPreDeathMons(Preferences &prefs, const char *key,
+                            PartyMon (&mons)[N]) {
+  constexpr size_t recordSize = offsetof(PartyMon, state);
+  uint8_t raw[recordSize * N];
+  for (size_t i = 0; i < N; i++)
+    memcpy(raw + i * recordSize, &mons[i], recordSize);
+  prefs.putBytes(key, raw, sizeof(raw));
+}
 
 int main(){
   // Current-format team with no Box pages.
@@ -165,6 +178,55 @@ int main(){
        "the pre-nature box layout preserves its gym history");
     ck(natureValid(migrated.slots[3].nature) && natureValid(migrated.box[5].nature),
        "pre-nature banked creatures receive stable valid natures");
+  }
+
+  // The immediately previous layout had natures but no persistent death bit.
+  // It must remain alive after migration rather than reading tail padding.
+  {
+    Preferences seed; seed.begin("tamapoke", false); seed.clear();
+    PartyMon oldParty[PARTY_SLOTS];
+    PartyMon oldBoxPage[BOX_PAGE_SLOTS];
+    oldParty[3]=mk(131,61);
+    oldParty[3].gymIvRewards[12]=GYM_IV_REWARD_DEF;
+    oldParty[3].nature=NATURE_CALM;
+    oldBoxPage[2]=mk(143,67);
+    oldBoxPage[2].nature=NATURE_BRAVE;
+    putPreDeathMons(seed, "team1", oldParty);
+    putPreDeathMons(seed, "box11", oldBoxPage);
+    seed.putUShort("rostv", 1);
+    seed.putUChar("active", 3);
+    seed.end();
+    Party migrated; migrated.begin();
+    ck(migrated.slots[3].dex==131 && migrated.slots[3].level==61 &&
+       migrated.slots[3].nature==NATURE_CALM &&
+       migrated.slots[3].gymIvRewards[12]==GYM_IV_REWARD_DEF &&
+       !migrated.slots[3].dead(),
+       "the pre-death party layout migrates alive with all fields intact");
+    ck(migrated.box[8].dex==143 && migrated.box[8].level==67 &&
+       migrated.box[8].nature==NATURE_BRAVE && !migrated.box[8].dead(),
+       "the pre-death box layout migrates alive with all fields intact");
+  }
+
+  // Death belongs to the creature record and must survive both party and box
+  // reloads until a revive clears it.
+  {
+    Preferences seed; seed.begin("tamapoke", false); seed.clear(); seed.end();
+    Pet live; live.begin();
+    Party stored; stored.begin(); stored.attach(live);
+    stored.replaceAt(0, mk(25, 40));
+    stored.box[2] = mk(94, 55);
+    stored.box[2].setDead(true);
+    stored.boxSave();
+    stored.setDeadAt(0, true);
+    Party loaded; loaded.begin();
+    ck(loaded.slots[0].dead() && loaded.box[2].dead(),
+       "party and box deaths persist across a reload");
+    loaded.setDeadAt(0, false);
+    loaded.box[2].setDead(false);
+    loaded.boxSave();
+    Party revived; revived.begin();
+    ck(!revived.slots[0].dead() && !revived.box[2].dead(),
+       "reviving clears the persistent death state");
   }
 
   printf("%s\n", bad?"FAILURES":"all good");

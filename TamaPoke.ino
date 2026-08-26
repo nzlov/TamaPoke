@@ -434,6 +434,9 @@ bool navMenuOpen = false;
 // captured or retiring creature needs a replacement slot.
 bool partyPick = false;
 PartyMon partyPending;
+#define BURY_TARGET_NONE  -2
+#define BURY_TARGET_PET   -1
+int8_t buryTarget = BURY_TARGET_NONE;
 bool boxOpen = false;
 uint8_t boxPage = 0;
 uint8_t boxSel = 0;        // selected Box slot + 1; may refer to an empty cell
@@ -457,6 +460,12 @@ ItemKey bagDetailKey = ITEM_KEY_NONE;
 #define BAG_PER_PAGE 5
 #define BAG_ROW_Y(i) (92 + (i) * 52)
 #define BAG_ROW_H 44
+
+#define DEAD_BTN_Y 346
+#define DEAD_BTN_W 150
+#define DEAD_BTN_H 48
+#define DEAD_REVIVE_X 74
+#define DEAD_BURY_X 242
 
 bool clockOpen = false;       // pantalla de ajuste de hora (deslizar abajo)
 int clockH = 12, clockM = 0;  // hora en edicion
@@ -660,6 +669,7 @@ static void drawBtlBack();
 static void btlLinkPoll();   // defined with the battle code, called from render()
 static void btlSwitchTo(uint8_t i);
 static void btlResolve(MoveId yourMove, uint8_t yourPercent = 100);
+static void btlSetPersistentDead(uint8_t index, bool dead);
 // The peer's whole team, kept live. A trainer's replacements are built fresh
 // from TRAINERS[] because they only ever arrive once; a linked opponent can
 // switch OUT and back IN, so its creatures have to remember how battered they
@@ -739,6 +749,13 @@ bool btlHard = false;
 Combatant btlSquad[TRAINER_TEAM_MAX + 1];
 uint8_t btlSquadN = 0, btlSquadAt = 0;
 uint8_t btlFoeAt = 0;
+// Each battle copy points back to the persistent creature it came from. Damage
+// remains temporary; death and revival cross this boundary explicitly.
+#define BTL_SOURCE_NONE -1
+int8_t btlSquadSource[TRAINER_TEAM_MAX + 1];
+int8_t lanMineSource[TRAINER_TEAM_MAX];
+uint8_t lanMineSourceN = 0;
+uint8_t btlSwapPending = 0;   // bit0 player, bit1 opponent
 
 // Animation. Deliberately built on the thumbnails the screen already draws
 // rather than on PmdMon: three PmdMon blobs are live already, and the battle
@@ -765,6 +782,7 @@ int8_t btlSwapWho = -1;        // 0 = your side, 1 = the foe's, -1 = nothing due
 // battle menu: root, moves, switch, direct warehouse view, revive target
 uint8_t btlMenu = 0;
 uint8_t btlItemPage = 0;
+uint8_t btlTargetPage = 0;
 ItemKey btlPendingItem = ITEM_KEY_NONE;
 #define BTL_LUNGE_MS 260
 #define BTL_HIT_MS 420
@@ -1590,7 +1608,7 @@ void handleTouch() {
         millis() - tStart > 3000 &&
         abs(tXl - tX0) < 30 && abs(tYl - tY0) < 30 && inPetZone(tX0, tY0) &&
         !inPetNavZone(tX0, tY0) &&
-        !pet.isEgg() && !confirmUntil && !pet.ceremony) {
+        !pet.isEgg() && !pet.isDead() && !confirmUntil && !pet.ceremony) {
       confirmUntil = millis() + 10000;
       holdFired = true;
     }
@@ -1805,6 +1823,82 @@ void bagTap(int16_t x, int16_t y) {
   }
 }
 
+static const ItemEntry *availableReviveItem() {
+  for (uint8_t i = 0; i < inventory.stackCount(); i++) {
+    const InventoryStack *stack = inventory.stackAt(i);
+    const ItemEntry *item = stack ? itemByKey(stack->key) : nullptr;
+    if (item && item->effect == ITEM_EFFECT_REVIVE && stack->count) return item;
+  }
+  return nullptr;
+}
+
+static bool useReviveOnPet() {
+  const ItemEntry *item = availableReviveItem();
+  if (!item || !pet.isDead() || !inventory.consume(item->key)) return false;
+  pet.setDead(false);
+  return true;
+}
+
+static void drawDeadButtons() {
+  bool canRevive = availableReviveItem() != nullptr;
+  gfx->fillRoundRect(DEAD_REVIVE_X, DEAD_BTN_Y, DEAD_BTN_W, DEAD_BTN_H, 12,
+                     canRevive ? UI_BAR_OK : UI_TRACK);
+  gfx->drawRoundRect(DEAD_REVIVE_X, DEAD_BTN_Y, DEAD_BTN_W, DEAD_BTN_H, 12, UI_INK);
+  gfx->setTextColor(canRevive ? UI_WHITE : 0x8410);
+  gfx->setTextSize(2);
+  uiDrawCenteredIn(T(S_REVIVE), DEAD_REVIVE_X, DEAD_BTN_Y, DEAD_BTN_W, DEAD_BTN_H);
+  gfx->fillRoundRect(DEAD_BURY_X, DEAD_BTN_Y, DEAD_BTN_W, DEAD_BTN_H, 12, UI_BAR_BAD);
+  gfx->drawRoundRect(DEAD_BURY_X, DEAD_BTN_Y, DEAD_BTN_W, DEAD_BTN_H, 12, UI_INK);
+  gfx->setTextColor(UI_WHITE);
+  uiDrawCenteredIn(T(S_BURY), DEAD_BURY_X, DEAD_BTN_Y, DEAD_BTN_W, DEAD_BTN_H);
+}
+
+static void drawBuryDialog(const char *name) {
+  gfx->fillRoundRect(73, 156, 320, 188, 16, UI_WHITE);
+  gfx->drawRoundRect(73, 156, 320, 188, 16, UI_INK);
+  char question[64];
+  snprintf(question, sizeof(question), T(S_BURY_Q), name);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(question), 180);
+  gfx->print(question);
+  gfx->fillRoundRect(CHOICE_BTN_X, CHOICE_BTN1_Y, CHOICE_BTN_W, CHOICE_BTN_H,
+                     12, UI_BAR_BAD);
+  gfx->setTextColor(UI_WHITE);
+  uiDrawCenteredIn(T(S_BURY), CHOICE_BTN_X, CHOICE_BTN1_Y, CHOICE_BTN_W, CHOICE_BTN_H);
+  gfx->fillRoundRect(CHOICE_BTN_X, CHOICE_BTN2_Y, CHOICE_BTN_W, CHOICE_BTN_H,
+                     12, UI_TRACK);
+  gfx->setTextColor(UI_INK);
+  uiDrawCenteredIn(T(S_NO), CHOICE_BTN_X, CHOICE_BTN2_Y, CHOICE_BTN_W, CHOICE_BTN_H);
+}
+
+static void buryActivePet() {
+  uint8_t buried = party.activeIndex();
+  party.captureActive(pet, false);
+  party.releaseAt(buried);
+  if (party.count()) return;
+  for (uint8_t i = 0; i < BOX_SLOTS; i++) {
+    if (party.box[i].empty()) continue;
+    party.swapPartyBox(buried, i);
+    return;
+  }
+  pet.newEgg();
+  party.captureActive(pet);
+}
+
+static void buryTap(int16_t x, int16_t y) {
+  bool yes = x >= CHOICE_BTN_X && x <= CHOICE_BTN_X + CHOICE_BTN_W &&
+             y >= CHOICE_BTN1_Y && y <= CHOICE_BTN1_Y + CHOICE_BTN_H;
+  bool no = x >= CHOICE_BTN_X && x <= CHOICE_BTN_X + CHOICE_BTN_W &&
+            y >= CHOICE_BTN2_Y && y <= CHOICE_BTN2_Y + CHOICE_BTN_H;
+  if (!yes && !no) return;
+  int8_t target = buryTarget;
+  buryTarget = BURY_TARGET_NONE;
+  if (!yes) { sfxPlay(SFX_TAP); return; }
+  if (target == BURY_TARGET_PET && pet.isDead()) buryActivePet();
+  sfxPlay(SFX_BYE);
+}
+
 void renderCapture() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
@@ -1954,6 +2048,10 @@ void onSwipe(int dir) {
     if (btlMenu == 3) {
       int p = (int)btlItemPage + (dir > 0 ? -1 : 1);
       if (p >= 0) btlItemPage = (uint8_t)p;
+    } else if (btlMenu == 2 || btlMenu == 4) {
+      uint8_t pages = (uint8_t)((btlSquadN + 3) / 4);
+      int p = (int)btlTargetPage + (dir > 0 ? -1 : 1);
+      if (p >= 0 && p < pages) btlTargetPage = (uint8_t)p;
     }
     return;
   }
@@ -2093,6 +2191,7 @@ bool navMenuTap(int16_t x, int16_t y) {
 
 void onTap(int16_t x, int16_t y) {
   if (quiz.active) { quizTap(x, y); return; }
+  if (buryTarget != BURY_TARGET_NONE) { buryTap(x, y); return; }
   if (pet.awaitingStarter()) {  // primera partida: region y luego inicial
     if (!starterRegionDone) {
       int r = regionPickTap(x, y, RPICK_FOR_START);
@@ -2397,6 +2496,19 @@ void onTap(int16_t x, int16_t y) {
     if (eggRegionTap(x, y)) return;
     pet.eggTap();
     sfxPlay(SFX_TAP);
+    return;
+  }
+  if (pet.isDead()) {
+    if (y >= DEAD_BTN_Y && y <= DEAD_BTN_Y + DEAD_BTN_H &&
+        x >= DEAD_REVIVE_X && x <= DEAD_REVIVE_X + DEAD_BTN_W) {
+      sfxPlay(useReviveOnPet() ? SFX_HATCH : SFX_DENY);
+      return;
+    }
+    if (y >= DEAD_BTN_Y && y <= DEAD_BTN_Y + DEAD_BTN_H &&
+        x >= DEAD_BURY_X && x <= DEAD_BURY_X + DEAD_BTN_W) {
+      buryTarget = BURY_TARGET_PET;
+      sfxPlay(SFX_TAP);
+    }
     return;
   }
   // boton de evolucion: abre el dialogo evolucionar/mantener
@@ -2806,6 +2918,20 @@ void render() {
     // species is decided when the egg appears, so choosing the region is
     // something you do to the egg in front of you.
     drawEggRegion();
+  } else if (pet.isDead()) {
+    const DexEntry &d = dexEntry(pet.speciesId);
+    const char *name = displaySpeciesName(pet.speciesId, pet.nick);
+    drawHeader(name, d.accent, T(S_DEAD));
+    if (pmd.loaded) {
+      uint8_t act = pmd.has(PMD_HURT) ? PMD_HURT : PMD_IDLE;
+      drawPmdAct(act, CX, PET_GROUND, 0, false, true, 5);
+    } else {
+      const uint8_t *thumb = thumbs.get(pet.speciesId);
+      if (thumb) drawThumb(thumb, CX - 72, PET_GROUND - 144, 3, true);
+    }
+    gfx->fillRect(0, 312, 466, 154, gNight ? UI_BG_NIGHT : UI_BG_DAY);
+    drawDeadButtons();
+    if (buryTarget == BURY_TARGET_PET) drawBuryDialog(name);
   } else {
     const DexEntry &d = dexEntry(pet.speciesId);
     char name[64];
@@ -3963,17 +4089,19 @@ static void buildSquad(uint8_t maxLvl, uint8_t maxCount, uint16_t mask) {
   for (int i = 0; i < PARTY_SLOTS && btlSquadN < maxCount; i++) {
     if (!(mask & (1 << i))) continue;
     if (i == party.activeIndex()) {
-      if (pet.isEgg()) continue;
+      if (pet.isEgg() || pet.isDead()) continue;
       Pet tmp = pet;                     // battle caps never mutate cultivation
       if (maxLvl && tmp.level() > maxLvl)
         tmp.ageMinutes = (uint32_t)(maxLvl - 1) * MINUTES_PER_LEVEL;
+      btlSquadSource[btlSquadN] = (int8_t)i;
       combatantFromPet(btlSquad[btlSquadN++], tmp);
       btlPetIn = true;
       continue;
     }
-    if (!party.slots[i].battleReady()) continue;
+    if (!party.slots[i].battleReady() || party.slots[i].dead()) continue;
     PartyMon m = party.slots[i];
     if (maxLvl && m.level > maxLvl) m.level = maxLvl;
+    btlSquadSource[btlSquadN] = (int8_t)i;
     combatantFromParty(btlSquad[btlSquadN++], m);
   }
   if (btlSquadN) btlYou = btlSquad[0];
@@ -3994,8 +4122,11 @@ void startLinkBattle() {
   // silently diverge if anything changed between offering and starting.
   btlSquadN = 0;
   btlSquadAt = 0;
-  for (uint8_t i = 0; i < lan.mineN && i < TRAINER_TEAM_MAX; i++)
+  for (uint8_t i = 0; i < lan.mineN && i < TRAINER_TEAM_MAX; i++) {
+    btlSquadSource[btlSquadN] = i < lanMineSourceN
+        ? lanMineSource[i] : BTL_SOURCE_NONE;
     linkMonTo(btlSquad[btlSquadN++], lan.mine[i]);
+  }
   if (!btlSquadN) return;
   btlYou = btlSquad[0];
   btlLink = true;
@@ -4016,6 +4147,7 @@ void startLinkBattle() {
   btlMenu = 0;
   btlWinUntil = 0;
   btlSwapWho = -1;
+  btlSwapPending = 0;
   btlFaintUntil[0] = btlFaintUntil[1] = 0;
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
   btlHpShown[0] = btlYou.maxHp;
@@ -4053,6 +4185,7 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   btlMenu = 0;
   btlWinUntil = 0;
   btlSwapWho = -1;
+  btlSwapPending = 0;
   btlFaintUntil[0] = btlFaintUntil[1] = 0;
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
   btlHpShown[0] = btlYou.maxHp;
@@ -4086,6 +4219,7 @@ void startBattle(int16_t dex, uint8_t lvl) {
   btlMenu = 0;
   btlWinUntil = 0;
   btlSwapWho = -1;
+  btlSwapPending = 0;
   btlFaintUntil[0] = btlFaintUntil[1] = 0;
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
   btlHpShown[0] = btlYou.maxHp;
@@ -4127,9 +4261,8 @@ void startWildBattle(uint8_t region, bool hard) {
   if (!dex) return;
   buildSquad(0, TRAINER_TEAM_MAX, 0xFFFF);
   if (!btlSquadN) return;
-  uint8_t level = pet.level();
-  int adjusted = (int)level + (hard ? 2 : 0) + (int)random(5) - 2;
-  level = adjusted < 1 ? 1 : adjusted > 100 ? 100 : (uint8_t)adjusted;
+  uint8_t level = (uint8_t)random(1L,
+      (long)wildEncounterMaxLevel(pet.level(), hard) + 1L);
   const RegionBattleInfo &battle = regionBattleInfo(region);
   uint8_t ivBase = hard ? battle.hardIv : battle.easyIv;
   Pet foe;
@@ -4157,6 +4290,7 @@ void startWildBattle(uint8_t region, bool hard) {
   btlPendingItem = ITEM_KEY_NONE;
   btlWinUntil = 0;
   btlSwapWho = -1;
+  btlSwapPending = 0;
   btlFaintUntil[0] = btlFaintUntil[1] = 0;
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
   btlHpShown[0] = btlYou.maxHp;
@@ -4201,6 +4335,7 @@ static void btlApplyResult() {
   btlFoe.hp = r.hostHp > btlFoe.maxHp ? btlFoe.maxHp : r.hostHp;
   btlYou.ailment = r.guestAil;
   btlFoe.ailment = r.hostAil;
+  if (btlYou.fainted()) btlSetPersistentDead(btlSquadAt, true);
 
   btlMsgCount = 0;
   if (r.hostMove) btlSay(T(S_BTL_USED), displayCombatantName(btlFoe), moveName(r.hostMove));
@@ -4273,6 +4408,93 @@ static void btlShipResult(MoveId yourMove, MoveId theirMove,
   lan.sendResult((const uint8_t *)&r, (uint8_t)sizeof(r));
 }
 
+static void btlSetPersistentDead(uint8_t index, bool dead) {
+  if (index >= btlSquadN) return;
+  int8_t source = btlSquadSource[index];
+  if (source < 0 || source >= PARTY_SLOTS) return;
+  if (source == party.activeIndex()) pet.setDead(dead);
+  else party.setDeadAt((uint8_t)source, dead);
+}
+
+static bool btlPlayerHasReplacement() {
+  for (uint8_t i = 0; i < btlSquadN; i++)
+    if (i != btlSquadAt && !btlSquad[i].fainted()) return true;
+  return false;
+}
+
+static bool btlFoeHasReplacement() {
+  if (btlLink) {
+    for (uint8_t i = 0; i < btlFoeSquadN; i++)
+      if (i != btlFoeAt && !btlFoeSquad[i].fainted()) return true;
+    return false;
+  }
+  return btlTrainer >= 0 &&
+         btlFoeAt + 1 < trainerInfo(btlRegion, btlTrainer).count;
+}
+
+static void btlFinish(bool won) {
+  btlOver = true;
+  btlWon = won;
+  btlNewBadge = false;
+  btlIvReward = GYM_IV_NONE;
+  if (btlWon && btlTrainer >= 0 && !pet.hasBadge(btlRegion, btlTrainer, btlHard)) {
+    pet.winBadge(btlRegion, btlTrainer, btlHard);
+    btlNewBadge = true;
+  }
+  if (btlWon && btlTrainer >= 0 &&
+      btlTrainer < regionBattleInfo(btlRegion).gymCount && btlPetIn)
+    btlIvReward = pet.rewardGymIv(btlRegion, btlTrainer, btlIvWhich);
+  audioMusic(btlWon ? MUS_VICTORY : MUS_NONE);
+  if (btlWon) sfxPlay(SFX_VICTORY);
+  if (btlLink && btlLinkHost) lan.sendEnd(btlWon);
+  if (btlLink) { btlSay("%s", btlWon ? T(S_BTL_WIN) : T(S_BTL_LOSE)); return; }
+  if (btlWon && btlTrainer >= 0) { btlWinUntil = millis() + 60000; return; }
+  btlSay("%s", btlWon ? T(S_BTL_WIN) : T(S_BTL_LOSE));
+  if (btlWon && btlWild) {
+    ItemKey drop = inventory.grantWeightedDrop((uint32_t)random(0x7FFFFFFF));
+    if (drop) btlSay(T(S_ITEM_FOUND_FMT), itemName(drop));
+  }
+}
+
+static void btlHandleFaints() {
+  bool youDown = btlYou.fainted();
+  bool foeDown = btlFoe.fainted();
+  if (!youDown && !foeDown) return;
+  if (youDown) btlSetPersistentDead(btlSquadAt, true);
+
+  bool youHaveNext = youDown && btlPlayerHasReplacement();
+  bool foeHasNext = foeDown && btlFoeHasReplacement();
+  // A complete local wipe is a loss even when the final exchange was a draw.
+  if (youDown && !youHaveNext) { btlFinish(false); return; }
+  if (foeDown && !foeHasNext) { btlFinish(true); return; }
+
+  btlSwapPending = 0;
+  if (youHaveNext) {
+    btlSwapPending |= 0x01;
+    btlFaintUntil[0] = millis() + BTL_FAINT_MS;
+  }
+  if (foeHasNext) {
+    btlSwapPending |= 0x02;
+    btlFaintUntil[1] = millis() + BTL_FAINT_MS;
+  }
+  btlSwapWho = (btlSwapPending & 0x02) ? 1 : 0;
+}
+
+// The roll is supplied by the caller for the same reason as player escape:
+// tests can prove the boundary values without depending on the global PRNG.
+bool btlAttemptFoeRun(uint8_t roll) {
+  if (!battleOpen || btlOver || !btlWild || btlLink || btlFoe.fainted()) return false;
+  uint8_t chance = wildFoeEscapeChance(btlFoe.hp, btlFoe.maxHp);
+  if (!chance || roll >= chance) return false;
+  btlOver = true;
+  btlWon = false;
+  btlMenu = 0;
+  btlMsgCount = 0;
+  audioMusic(MUS_NONE);
+  btlSay(T(S_BTL_FOE_RAN), displayCombatantName(btlFoe));
+  return true;
+}
+
 // One exchange: both sides act in speed order, then burn/poison chip.
 static void btlResolve(MoveId yourMove, uint8_t yourPercent) {
   TurnLog lg;
@@ -4337,51 +4559,11 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent) {
     battleEndTurn(btlFoe, lg);
     if (lg.damage) btlNarrate(btlFoe, btlFoe, lg);
   }
-  // Someone went down. The replacement is NOT swapped in here -- that made the
-  // change instant and read as a jump cut. Flag it, let the sprite drop out of
-  // frame, and swap when the player dismisses the message.
-  if (btlFoe.fainted() && btlLink && btlFoeAt + 1 < btlFoeSquadN) {
-    btlFaintUntil[1] = millis() + BTL_FAINT_MS;
-    btlSwapWho = 1;
-    return;
-  }
-  if (btlFoe.fainted() && btlTrainer >= 0 && btlFoeAt + 1 < trainerInfo(btlRegion, btlTrainer).count) {
-    btlFaintUntil[1] = millis() + BTL_FAINT_MS;
-    btlSwapWho = 1;
-    return;
-  }
-  if (btlYou.fainted() && btlSquadAt + 1 < btlSquadN) {
-    btlFaintUntil[0] = millis() + BTL_FAINT_MS;
-    btlSwapWho = 0;
-    return;
-  }
-  if (btlFoe.fainted() || btlYou.fainted()) {
-    btlOver = true;
-    btlWon = btlFoe.fainted();
-    btlNewBadge = false;
-    btlIvReward = GYM_IV_NONE;
-    if (btlWon && btlTrainer >= 0 && !pet.hasBadge(btlRegion, btlTrainer, btlHard)) {
-      pet.winBadge(btlRegion, btlTrainer, btlHard);
-      btlNewBadge = true;
-    }
-    // Badges belong to the player, but each live creature may claim each real
-    // leader's IV reward once. Difficulty does not enter that creature key.
-    if (btlWon && btlTrainer >= 0 &&
-        btlTrainer < regionBattleInfo(btlRegion).gymCount && btlPetIn)
-      btlIvReward = pet.rewardGymIv(btlRegion, btlTrainer, btlIvWhich);
-    audioMusic(btlWon ? MUS_VICTORY : MUS_NONE);
-    if (btlWon) sfxPlay(SFX_VICTORY);
-    // Tell the peer before anything else: if we stop here without sending, the
-    // other device sits on a battle that will never take another turn.
-    if (btlLink && btlLinkHost) lan.sendEnd(btlWon);
-    if (btlLink) { btlSay("%s", btlWon ? T(S_BTL_WIN) : T(S_BTL_LOSE)); return; }
-    if (btlWon && btlTrainer >= 0) { btlWinUntil = millis() + 60000; return; }
-    btlSay("%s", btlWon ? T(S_BTL_WIN) : T(S_BTL_LOSE));
-    if (btlWon && btlWild) {
-      ItemKey drop = inventory.grantWeightedDrop((uint32_t)random(0x7FFFFFFF));
-      if (drop) btlSay(T(S_ITEM_FOUND_FMT), itemName(drop));
-    }
-  }
+  // Persist deaths and either queue replacements or finish the battle. The
+  // replacement itself remains deferred until the faint message is dismissed.
+  btlHandleFaints();
+  if (btlWild && !btlLink && !btlOver)
+    btlAttemptFoeRun((uint8_t)random(100));
 }
 
 static void btlHpBar(int x, int y, int w, const Combatant &c, uint16_t shown) {
@@ -4681,10 +4863,12 @@ void renderBattle() {
   } else if (btlMenu == 4) {
     drawBtlBack();
     const ItemEntry *item = itemByKey(btlPendingItem);
-    for (uint8_t i = 0; item && i < btlSquadN && i < 4; i++) {
+    for (uint8_t cell = 0; item && cell < 4; cell++) {
+      uint8_t i = (uint8_t)(btlTargetPage * 4 + cell);
+      if (i >= btlSquadN) break;
       Combatant *member = btlMember(i);
       bool usable = member && itemCanApplyToCombatant(*item, *member);
-      int x = BTL_CELL_X(i), y = BTL_CELL_Y(i);
+      int x = BTL_CELL_X(cell), y = BTL_CELL_Y(cell);
       gfx->fillRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, usable ? UI_BG_DAY : UI_TRACK);
       gfx->drawRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, usable ? UI_INK : 0x8410);
       gfx->setTextColor(usable ? UI_INK : 0x8410);
@@ -4699,8 +4883,10 @@ void renderBattle() {
   } else if (btlMenu == 2) {
     drawBtlBack();
     // who to bring on instead; the current one and anything fainted is inert
-    for (uint8_t i = 0; i < btlSquadN && i < 4; i++) {
-      int x = BTL_CELL_X(i), y = BTL_CELL_Y(i);
+    for (uint8_t cell = 0; cell < 4; cell++) {
+      uint8_t i = (uint8_t)(btlTargetPage * 4 + cell);
+      if (i >= btlSquadN) break;
+      int x = BTL_CELL_X(cell), y = BTL_CELL_Y(cell);
       const Combatant &m = (i == btlSquadAt) ? btlYou : btlSquad[i];
       bool usable = (i != btlSquadAt) && !m.fainted();
       gfx->fillRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, usable ? UI_BG_DAY : UI_TRACK);
@@ -4744,11 +4930,12 @@ void renderBattle() {
 // Brings on the flagged replacement and starts its entrance.
 static void btlDoSwap() {
   uint32_t now = millis();
+  int8_t finishedWho = btlSwapWho;
   if (btlSwapWho == 1 && btlLink) {
     btlFoeSquad[btlFoeAt] = btlFoe;
-    // the next one still standing, not simply the next index
-    uint8_t nxt = btlFoeAt;
-    while (++nxt < btlFoeSquadN && btlFoeSquad[nxt].fainted()) {}
+    uint8_t nxt = 0;
+    while (nxt < btlFoeSquadN &&
+           (nxt == btlFoeAt || btlFoeSquad[nxt].fainted())) nxt++;
     if (nxt >= btlFoeSquadN) { btlSwapWho = -1; return; }
     btlFoeAt = nxt;
     btlFoe = btlFoeSquad[btlFoeAt];
@@ -4771,7 +4958,11 @@ static void btlDoSwap() {
            displayCombatantName(btlFoe));
   } else if (btlSwapWho == 0) {
     btlSquad[btlSquadAt] = btlYou;     // remember how battered it was
-    btlSquadAt++;
+    uint8_t nxt = 0;
+    while (nxt < btlSquadN &&
+           (nxt == btlSquadAt || btlSquad[nxt].fainted())) nxt++;
+    if (nxt >= btlSquadN) { btlSwapWho = -1; return; }
+    btlSquadAt = nxt;
     btlYou = btlSquad[btlSquadAt];
     btlHpShown[0] = btlYou.hp;
     btlSyncSprite(0, btlYou);
@@ -4779,7 +4970,10 @@ static void btlDoSwap() {
     btlEnterUntil[0] = now + BTL_ENTER_MS;
     btlSay(T(S_BTL_GO), displayCombatantName(btlYou));
   }
-  btlSwapWho = -1;
+  if (finishedWho == 0) btlSwapPending &= (uint8_t)~0x01;
+  else if (finishedWho == 1) btlSwapPending &= (uint8_t)~0x02;
+  btlSwapWho = (btlSwapPending & 0x02) ? 1
+             : (btlSwapPending & 0x01) ? 0 : -1;
 }
 
 // Switching spends your turn: the opponent still acts. That is what stops it
@@ -4839,24 +5033,46 @@ static bool btlBackTap(int16_t x, int16_t y) {
   return true;
 }
 
-// Running. A gym leader keeps their badge and the fight simply ends; against
-// another device the peer is told, so it does not sit waiting for a move that
-// will never come.
-static void btlRun() {
+// The roll is supplied by the caller so the policy boundary can be tested
+// without coupling a regression test to the global PRNG sequence.
+bool btlAttemptRun(uint8_t roll) {
+  // In a linked fight RUN is the existing deliberate disconnect/forfeit, not a
+  // simulated wild escape. Applying a local failed roll would desynchronise the
+  // two authoritative battle copies.
+  if (btlLink || roll < wildEscapeChance(btlYou.level, btlFoe.level)) {
+    sfxPlay(SFX_TAP);
+    btlFreeSprites();
+    audioMusic(MUS_NONE);
+    if (btlLink) { lanLeave(); btlLink = false; lanOpen = true; }
+    battleOpen = false;
+    btlWild = false;
+    btlMenu = 0;
+    return true;
+  }
+
   sfxPlay(SFX_DENY);
-  btlFreeSprites();
-  audioMusic(MUS_NONE);
-  if (btlLink) { lanLeave(); btlLink = false; lanOpen = true; }
-  battleOpen = false;
-  btlWild = false;
   btlMenu = 0;
+  btlMsgCount = 0;
+  btlYou.hp = 0;
+  btlSay("%s", T(S_BTL_RUN_FAILED));
+  btlSay(T(S_BTL_FAINT), displayCombatantName(btlYou));
+  btlHandleFaints();
+  return false;
 }
 
-static void btlSpendItemTurn(const ItemEntry &item, Combatant &target) {
-  if (!itemApplyToCombatant(item, target) || !inventory.consume(item.key)) {
+static void btlRun() {
+  btlAttemptRun((uint8_t)random(100));
+}
+
+static void btlSpendItemTurn(const ItemEntry &item, uint8_t targetIndex) {
+  Combatant *target = btlMember(targetIndex);
+  if (!target || !itemApplyToCombatant(item, *target) ||
+      !inventory.consume(item.key)) {
     sfxPlay(SFX_DENY);
     return;
   }
+  if (item.effect == ITEM_EFFECT_REVIVE)
+    btlSetPersistentDead(targetIndex, false);
   sfxPlay(SFX_TAP);
   btlMenu = 0;
   btlPendingItem = ITEM_KEY_NONE;
@@ -4925,7 +5141,9 @@ void battleTap(int16_t x, int16_t y) {
       btlMenu = 3;
       return;
     }
-    if (btlCellHit(2, x, y)) { sfxPlay(SFX_TAP); btlMenu = 2; return; }
+    if (btlCellHit(2, x, y)) {
+      sfxPlay(SFX_TAP); btlTargetPage = 0; btlMenu = 2; return;
+    }
     if (btlCellHit(3, x, y)) { btlRun(); return; }
     return;
   }
@@ -4939,11 +5157,12 @@ void battleTap(int16_t x, int16_t y) {
       if (item->effect == ITEM_EFFECT_CATCH) { btlThrowBall(*item); return; }
       if (item->effect == ITEM_EFFECT_REVIVE) {
         btlPendingItem = item->key;
+        btlTargetPage = 0;
         btlMenu = 4;
         sfxPlay(SFX_TAP);
         return;
       }
-      btlSpendItemTurn(*item, btlYou);
+      btlSpendItemTurn(*item, btlSquadAt);
       return;
     }
     return;
@@ -4951,22 +5170,26 @@ void battleTap(int16_t x, int16_t y) {
   if (btlMenu == 4) {
     if (btlBackTap(x, y)) { btlPendingItem = ITEM_KEY_NONE; return; }
     const ItemEntry *item = itemByKey(btlPendingItem);
-    for (uint8_t i = 0; item && i < btlSquadN && i < 4; i++) {
-      if (!btlCellHit(i, x, y)) continue;
+    for (uint8_t cell = 0; item && cell < 4; cell++) {
+      uint8_t i = (uint8_t)(btlTargetPage * 4 + cell);
+      if (i >= btlSquadN) break;
+      if (!btlCellHit(cell, x, y)) continue;
       Combatant *member = btlMember(i);
       if (!member || !itemCanApplyToCombatant(*item, *member)) {
         sfxPlay(SFX_DENY);
         return;
       }
-      btlSpendItemTurn(*item, *member);
+      btlSpendItemTurn(*item, i);
       return;
     }
     return;
   }
   if (btlMenu == 2) {
     if (btlBackTap(x, y)) return;
-    for (uint8_t i = 0; i < btlSquadN && i < 4; i++) {
-      if (!btlCellHit(i, x, y)) continue;
+    for (uint8_t cell = 0; cell < 4; cell++) {
+      uint8_t i = (uint8_t)(btlTargetPage * 4 + cell);
+      if (i >= btlSquadN) break;
+      if (!btlCellHit(cell, x, y)) continue;
       const Combatant &m = (i == btlSquadAt) ? btlYou : btlSquad[i];
       if (i == btlSquadAt || m.fainted()) { sfxPlay(SFX_DENY); return; }
       sfxPlay(SFX_TAP);
@@ -5269,10 +5492,14 @@ bool pickExists(uint8_t n) {
   if (n == party.activeIndex()) return party.slots[n].battleReady() && !pet.isEgg();
   return party.slots[n].battleReady();
 }
+bool pickUsable(uint8_t n) {
+  if (!pickExists(n)) return false;
+  return n == party.activeIndex() ? !pet.isDead() : !party.slots[n].dead();
+}
 uint8_t pickChosen() {
   uint8_t c = 0;
   for (uint8_t n = 0; n < PARTY_SLOTS; n++)
-    if (pickExists(n) && (squadMask & (1 << n))) c++;
+    if (pickUsable(n) && (squadMask & (1 << n))) c++;
   return c;
 }
 uint8_t pickCandidates() {
@@ -5286,11 +5513,12 @@ void pickDefault(uint8_t cap) {
   squadMask = 0;
   uint8_t taken = 0;
   for (uint8_t n = 0; n < PARTY_SLOTS && taken < cap; n++)
-    if (pickExists(n)) { squadMask |= (1 << n); taken++; }
+    if (pickUsable(n)) { squadMask |= (1 << n); taken++; }
 }
 
 static void drawPickCell(uint8_t n, int x, int y, uint8_t capLvl) {
-  bool on = (squadMask & (1 << n)) != 0;
+  bool usable = pickUsable(n);
+  bool on = usable && (squadMask & (1 << n)) != 0;
   int16_t dex; uint16_t lvl; const char *nm; bool shiny;
   if (n == party.activeIndex()) {
     dex = pet.speciesId; lvl = pet.level(); shiny = pet.shiny;
@@ -5312,7 +5540,7 @@ static void drawPickCell(uint8_t n, int x, int y, uint8_t capLvl) {
   char l[16];
   snprintf(l, sizeof(l), "Lv.%u%s", (unsigned)lvl, shiny ? " *" : "");
   gfx->setCursor(x + 54, y + 30);
-  gfx->print(l);
+  gfx->print(usable ? l : T(S_DEAD));
   // its typing is the whole reason you are on this screen
   const DexEntry &d = dexEntry(dex);
   gfx->setTextColor(on ? d.accent : 0x8410);
@@ -5423,6 +5651,7 @@ void pickTap(int16_t x, int16_t y) {
     int cx0 = PICK_X(drawn), cy0 = PICK_Y(drawn);
     drawn++;
     if (x < cx0 || x > cx0 + PICK_CELL_W || y < cy0 || y > cy0 + PICK_CELL_H) continue;
+    if (!pickUsable(n)) { sfxPlay(SFX_DENY); return; }
     squadMask ^= (1 << n);
     sfxPlay(SFX_TAP);
     return;
@@ -5525,7 +5754,9 @@ static void lanOffer(bool host) {
   lan.begin(host, pet.trainerName);
   snprintf(lan.peerName, sizeof(lan.peerName), "%s", pet.trainerName);
   buildSquad(0, TRAINER_TEAM_MAX, squadMask);
+  lanMineSourceN = btlSquadN;
   for (uint8_t i = 0; i < btlSquadN; i++) {
+    lanMineSource[i] = btlSquadSource[i];
     LinkMon m;
     linkMonFrom(m, btlSquad[i]);
     lan.addMon(m);
@@ -6307,7 +6538,8 @@ void renderBox() {
     snprintf(level, sizeof(level), "Lv.%u%s", (unsigned)m.level,
              m.shiny ? " *" : "");
     gfx->setCursor(x + PARTY_TEXT_X_OFF, y + 34);
-    gfx->print(level);
+    gfx->setTextColor(m.dead() ? UI_BAR_BAD : UI_INK);
+    gfx->print(m.dead() ? T(S_DEAD) : level);
   }
   uint8_t pages = BOX_SLOTS / BOX_PER_PAGE;
   for (uint8_t i = 0; i < pages; i++) {

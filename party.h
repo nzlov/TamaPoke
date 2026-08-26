@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <Preferences.h>
+#include <stddef.h>
 #include "moves.h"
 #include "nature.h"
 
@@ -40,6 +41,9 @@ enum : uint8_t {
 // saves from every released PartyMon layout can be migrated. The cultivation
 // fields are appended and are shared by team and box; location, not shape,
 // decides whether time advances.
+enum PartyMonState : uint32_t {
+  PARTY_MON_DEAD = 1u << 0,
+};
 struct PartyMon {
   int16_t dex = 0;      // 0 = empty, -1 = egg, positive = Pokedex number
   uint16_t level = 1;   // cached from ageMinutes for lists and combat
@@ -54,7 +58,6 @@ struct PartyMon {
   uint8_t gymIvRewards[GYM_IV_REWARD_SLOTS] = { 0 };
   // Appended to preserve every previous field offset in the raw NVS record.
   NatureId nature = NATURE_UNKNOWN;
-
   // Full cultivation state. v0 identifies a migrated combat-only record; v1
   // has cultivation state but predates the permanent training floors in v2.
   uint8_t stateVersion = 2;
@@ -82,13 +85,23 @@ struct PartyMon {
   uint8_t learnQCount = 0;
   uint8_t trMinSpe = 0;
   int16_t eggByRegion[CONTENT_MAX_REGIONS + 1] = { 0 };
+  // Appended so pre-death six-slot records remain a byte-exact prefix and can
+  // be migrated without remapping cultivation or permanent training floors.
+  uint32_t state = 0;
 
   bool empty() const { return dex == 0; }
   bool isEgg() const { return dex < 0; }
   bool battleReady() const { return dex > 0; }
+  bool dead() const { return (state & PARTY_MON_DEAD) != 0; }
+  void setDead(bool value) {
+    if (value) state |= PARTY_MON_DEAD;
+    else state &= ~((uint32_t)PARTY_MON_DEAD);
+  }
 };
-static_assert(sizeof(PartyMon) == 252,
-              "the raw roster record must remain compatible with v1 saves");
+static_assert(offsetof(PartyMon, state) == 252,
+              "the pre-death roster record must remain a byte-exact prefix");
+static_assert(sizeof(PartyMon) == 256,
+              "death state must remain the final roster field");
 static_assert(sizeof(PartyMon) * PARTY_SLOTS <= 4096,
               "one roster page must stay within the backup/NVS blob bound");
 
@@ -114,6 +127,7 @@ public:
   PartyStoreResult store(const PartyMon &m);  // party first, then box
   void replaceAt(uint8_t i, const PartyMon &m);
   void releaseAt(uint8_t i);    // free a slot again
+  void setDeadAt(uint8_t i, bool dead);
   void save();
   uint8_t boxCount() const;
   int boxFirstFree() const;

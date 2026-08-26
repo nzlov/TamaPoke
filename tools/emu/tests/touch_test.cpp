@@ -11,6 +11,9 @@
 #include "party.h"
 #include "moves.h"
 #include "battle.h"
+#include "content.h"
+#include "inventory.h"
+#include "items.h"
 #include "trainers.h"
 #include "quiz.h"
 #include <chrono>
@@ -37,17 +40,22 @@ void setup();
 void loop();
 extern Pet pet;   // defined in the sketch
 extern bool trainOpen, sackOpen, gameOpen, menuOpen, cardOpen, moveInfoOpen, movePickOpen, spdOpen;
+extern bool captureOpen, bagOpen, boxOpen, playerOpen, lanOpen, galleryOpen, kbOpen, clockOpen;
 extern uint8_t movePickSlot, movePickPage;
-extern bool battleOpen, btlOver, btlWon;
+extern bool battleOpen, btlOver, btlWon, btlWild;
 extern Combatant btlYou, btlFoe;
 extern QuizRuntime quiz;
 extern uint8_t btlMsgCount;
 extern uint8_t gymRegion, btlRegion;
 void updateQuiz(uint32_t now);
 void startBattle(int16_t dex, uint8_t lvl);
+bool btlAttemptRun(uint8_t roll);
+bool btlAttemptFoeRun(uint8_t roll);
 void startTrainerBattle(uint8_t idx, bool hard);
 void battleTap(int16_t x, int16_t y);
 extern uint8_t btlFoeAt, btlSquadN, btlSquadAt, btlMenu;
+extern uint8_t btlTargetPage;
+extern ItemKey btlPendingItem;
 extern Combatant btlSquad[7];
 extern int8_t btlSwapWho;
 extern bool btlHard;
@@ -540,5 +548,118 @@ int main(int argc, char **argv) {
   startTrainerBattle(0, false);
   if (btlYou.level != 14) { printf("FAIL: easy mode did not cap the level\n"); return 1; }
   printf("PASS: easy mode caps the level as well\n");
+
+  // ---- failed escape, persistent team death, revive, and burial
+  battleOpen = false; btlMenu = 0; btlMsgCount = 0;
+  for (int i = 0; i < PARTY_SLOTS; i++) party.releaseAt(i);
+  for (int i = 0; i < BOX_SLOTS; i++) party.boxReleaseAt(i);
+  pet.dbgHatchAs(9, false);
+  pet.ageMinutes = 19 * MINUTES_PER_LEVEL;       // level 20
+  PartyMon active;
+  pet.exportState(active);
+  uint8_t oldActive = party.activeIndex();
+  party.replaceAt(0, active);
+  if (oldActive != 0) {
+    party.activate(0, pet);
+    party.releaseAt(oldActive);
+  }
+  PartyMon reserve;
+  reserve.dex = 25; reserve.level = 40;
+  reserve.ageMinutes = 39UL * MINUTES_PER_LEVEL;
+  reserve.ivAtk = reserve.ivDef = reserve.ivSpe = reserve.ivHp = 20;
+  uint8_t reserveSlot = 1;
+  party.replaceAt(reserveSlot, reserve);
+  startBattle(150, 100);
+  if (btlSquadN != 2 || btlYou.level != 20) {
+    printf("FAIL: death test did not start with the intended two-member team\n");
+    return 1;
+  }
+  btlWild = true;
+  btlFoe.maxHp = 100; btlFoe.hp = 41;
+  if (btlAttemptFoeRun(0)) {
+    printf("FAIL: a healthy wild foe escaped above the HP threshold\n"); return 1;
+  }
+  btlFoe.hp = 40;
+  if (btlAttemptFoeRun(10) || !btlAttemptFoeRun(9) || !btlOver || btlWon ||
+      pet.isDead()) {
+    printf("FAIL: wild foe escape did not respect its ten-percent boundary\n");
+    return 1;
+  }
+  printf("PASS: a low-HP wild foe can escape without killing the player's pet\n");
+  battleTap(0, 0);
+  startBattle(150, 100);
+  if (btlAttemptRun(99) || !pet.isDead() || btlOver || btlSwapWho != 0) {
+    printf("FAIL: a failed escape did not kill the active pet and queue its reserve\n");
+    return 1;
+  }
+  printf("PASS: a failed escape kills the active pet but continues with a reserve\n");
+  battleTap(0, 0);                           // faint text -> reserve enters
+  battleTap(0, 0);                           // clear GO text
+  if (btlSquadAt != 1 || btlYou.dex != reserve.dex) {
+    printf("FAIL: the living reserve did not replace the dead pet\n"); return 1;
+  }
+
+  const ItemEntry *revive = nullptr;
+  for (uint16_t i = 0; i < itemCount(); i++) {
+    const ItemEntry *item = itemAt(i);
+    if (item && item->effect == ITEM_EFFECT_REVIVE) { revive = item; break; }
+  }
+  if (!revive || !inventory.add(revive->key)) {
+    printf("FAIL: no revive item available for the battle test\n"); return 1;
+  }
+  uint8_t reviveBefore = inventory.count(revive->key);
+  for (MoveId &move : btlFoe.moves) move = MOVE_NONE;
+  btlPendingItem = revive->key; btlTargetPage = 0; btlMenu = 4;
+  battleTap(BTL_CELL_X(0) + 40, BTL_CELL_Y(0) + 20);
+  if (pet.isDead() || inventory.count(revive->key) != reviveBefore - 1 ||
+      btlSquad[0].fainted()) {
+    printf("FAIL: an in-battle revive did not restore persistent life\n"); return 1;
+  }
+  printf("PASS: a battle item revives a dead team member persistently\n");
+  while (btlMsgCount && !btlOver) battleTap(0, 0);
+
+  if (btlAttemptRun(99) || !party.slots[reserveSlot].dead() || btlOver) {
+    printf("FAIL: the reserve's failed escape did not persist its death\n"); return 1;
+  }
+  battleTap(0, 0);                           // reserve faints -> revived pet enters
+  battleTap(0, 0);                           // clear GO text
+  if (btlSquadAt != 0 || btlAttemptRun(99) || !pet.isDead() || !btlOver) {
+    printf("FAIL: battle did not end only after every team member died\n"); return 1;
+  }
+  printf("PASS: battle ends only after the whole selected team is dead\n");
+  battleTap(0, 0);                           // close the concluded fight
+  if (battleOpen) { printf("FAIL: concluded death battle did not close\n"); return 1; }
+
+  if (!inventory.add(revive->key)) {
+    printf("FAIL: could not add an outside-battle revive\n"); return 1;
+  }
+  trainOpen = sackOpen = gameOpen = menuOpen = cardOpen = false;
+  moveInfoOpen = movePickOpen = spdOpen = false;
+  captureOpen = bagOpen = playerOpen = lanOpen = galleryOpen = false;
+  kbOpen = clockOpen = gymOpen = boxOpen = pickOpen = false;
+  while (pet.hasLearnOffer()) pet.declineLearn();
+  reviveBefore = inventory.count(revive->key);
+  click(74 + 75, 346 + 24);
+  if (pet.isDead() || inventory.count(revive->key) != reviveBefore - 1) {
+    printf("FAIL: the main-screen revive left dead=%d and item count %u -> %u\n",
+           (int)pet.isDead(), reviveBefore, inventory.count(revive->key));
+    return 1;
+  }
+  printf("PASS: a corpse can be revived outside battle with an item\n");
+
+  pet.setDead(true);
+  click(242 + 75, 346 + 24);                 // BURY
+  click(93 + 140, 216 + 26);                 // confirm
+  if (pet.speciesId != reserve.dex || !pet.isDead() || !party.slots[0].empty()) {
+    printf("FAIL: burial did not promote the stored corpse and free its slot\n");
+    return 1;
+  }
+  printf("PASS: burial frees the slot and promotes the next stored creature\n");
+  click(242 + 75, 346 + 24);
+  click(93 + 140, 216 + 26);
+  if (!pet.isEgg()) {
+    printf("FAIL: burying the final creature did not grant a new egg\n"); return 1;
+  }
+  printf("PASS: burying the final creature grants a new random egg\n");
   return 0;
 }

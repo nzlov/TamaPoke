@@ -37,6 +37,7 @@ void Pet::begin() {
 
 void Pet::newEgg() {
   ceremony = CER_NONE;
+  dead = false;
   neglectTicks = 0;
   weight = 0;
   speciesId = -1;
@@ -111,7 +112,7 @@ void Pet::syncClockFrom(uint32_t nowEpoch, uint32_t seenEpoch, bool persist) {
   lastSeenEpoch = nowEpoch;
   if (nowEpoch == 0) { backgroundMode = wasBackground; return; }
   uint32_t mins = (seenEpoch && nowEpoch > seenEpoch) ? (nowEpoch - seenEpoch) / 60 : 0;
-  if (mins < 2 || ceremony != CER_NONE || starterPick) {
+  if (mins < 2 || ceremony != CER_NONE || starterPick || dead) {
     if (persist) save();  // primera vez, sin tiempo que aplicar o aun eligiendo inicial
     backgroundMode = wasBackground;
     return;
@@ -165,7 +166,7 @@ void Pet::update(uint32_t nowMs) {
 }
 
 void Pet::tick() {
-  if (ceremony != CER_NONE) return;  // el tiempo se detiene en la despedida
+  if (ceremony != CER_NONE || dead) return;  // time stops after leaving or death
   if (starterPick) return;  // la partida no empieza hasta elegir inicial: si el
                             // tiempo corriera aqui, el huevo eclosionaria solo a
                             // los 3 min con la especie sorteada y se perderia la
@@ -306,6 +307,7 @@ void Pet::importState(const PartyMon &m) {
   goodTicks = m.goodTicks;
   memcpy(eggByRegion, m.eggByRegion, sizeof(eggByRegion));
   frozen = false;
+  dead = m.dead();
   strncpy(nick, m.nick, sizeof(nick) - 1);
   nick[sizeof(nick) - 1] = 0;
   endedMon = PartyMon();
@@ -325,6 +327,7 @@ void Pet::exportState(PartyMon &out) const {
   out.trMinAtk = trMinAtk; out.trMinDef = trMinDef; out.trMinSpe = trMinSpe;
   out.shiny = shiny ? 1 : 0;
   out.nature = nature;
+  out.setDead(dead);
   for (int i = 0; i < MOVE_SLOTS; i++) out.moves[i] = moves[i];
   memcpy(out.gymIvRewards, gymIvRewards, sizeof(gymIvRewards));
   strncpy(out.nick, nick, sizeof(out.nick) - 1);
@@ -574,6 +577,13 @@ void Pet::registerSpecies(int16_t dex) {
   if (dex < 1 || dex > dexCount()) return;
   dexReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
   if (shiny) dexShinyReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
+}
+
+void Pet::setDead(bool value) {
+  if (isEgg()) return;
+  dead = value;
+  if (dead) sleeping = false;
+  save();
 }
 
 // la racha y el vinculo mejoran el sorteo del huevo (0..~14)
@@ -950,7 +960,7 @@ uint16_t Pet::registeredCount() const {
 // forma final que ya cumplio su ciclo (7 dias): lista para despedirse. La
 // despedida la dispara el usuario con el boton (no salta sola, para que la vea)
 bool Pet::canFarewellNow() const {
-  if (frozen) return false;     // a companion cannot be lost; that is the point
+  if (frozen || dead) return false;
   return !isEgg() && !sleeping && ceremony == CER_NONE &&
          !evolutionAvailable(speciesId) && ageMinutes >= FAREWELL_AGE_MIN;
 }
@@ -958,7 +968,7 @@ bool Pet::canFarewellNow() const {
 // abandono total durante 1h: lista para escaparse. La dispara el usuario con el
 // boton (final triste); cuidarla un solo tick la salva (neglectTicks se resetea)
 bool Pet::canRunawayNow() const {
-  if (frozen) return false;
+  if (frozen || dead) return false;
   // inTotalNeglect() as well as the counter, and NOT just the counter. The
   // sleeping branch of tick() returns before the neglect block, so neglectTicks
   // is frozen rather than cleared for the whole night: a creature that went to
@@ -971,7 +981,7 @@ bool Pet::canRunawayNow() const {
 }
 
 bool Pet::canRetireNow() const {
-  if (frozen) return false;     // a companion is never given up
+  if (frozen || dead) return false;
   return !isEgg() && !sleeping && ceremony == CER_NONE && !starterPick;
 }
 
@@ -1016,6 +1026,7 @@ void Pet::release() {
 
 void Pet::hatch() {
   speciesId = eggTarget;
+  dead = false;
   shiny = eggShiny;
   // IV del individuo (cada crianza es unica). Se tiran ANTES de resetear el
   // vinculo a proposito: el careBonus que los empuja es el del bicho anterior.
@@ -1047,7 +1058,7 @@ void Pet::hatch() {
 // (ninguna estadistica por debajo de 40). NO evoluciona sola: la dispara el
 // usuario tocando al bicho (evolve()), para que vea la transformacion.
 bool Pet::canEvolveNow() const {
-  if (frozen) return false;     // frozen at the form it was banked in
+  if (frozen || dead) return false;
   if (isEgg() || sleeping || ceremony != CER_NONE) return false;
   const DexEntry &d = dexEntry(speciesId);
   if (!evolutionAvailable(speciesId)) return false;
@@ -1271,7 +1282,7 @@ uint8_t Pet::gymIvRewardAt(uint8_t region, uint8_t gym) const {
 
 GymIvReward Pet::rewardGymIv(uint8_t region, uint8_t gym, uint8_t &which) {
   which = 0;
-  if (ceremony != CER_NONE || isEgg() || frozen || region >= regionAll() ||
+  if (ceremony != CER_NONE || isEgg() || frozen || dead || region >= regionAll() ||
       gym >= GYM_IV_GYMS_PER_REGION || gym >= regionBattleInfo(region).gymCount)
     return GYM_IV_NONE;
   size_t at = (size_t)region * GYM_IV_GYMS_PER_REGION + gym;
@@ -1425,6 +1436,7 @@ void Pet::save() {
   prefs.putBytes("eggR", eggByRegion, sizeof(eggByRegion));
   prefs.putString("tnam", trainerName);
   prefs.putBool("froz", frozen);
+  prefs.putBool("dead", dead);
   prefs.putUShort("badg", badges);
   prefs.putUShort("badh", badgesHard);
   prefs.putBool("bk", berryKnown);
@@ -1526,6 +1538,7 @@ void Pet::load() {
     if (moves[i] >= ::moveCount()) moves[i] = 0;
   lastLearnLevel = prefs.getUChar("mvlv", 0);
   frozen = prefs.getBool("froz", false);
+  dead = prefs.getBool("dead", false) && speciesId >= 1;
   avatar = prefs.getUChar("avtr", 0);
   prefs.getBytes("badgX", badgesX, sizeof(badgesX));
   prefs.getBytes("badhX", badgesHardX, sizeof(badgesHardX));

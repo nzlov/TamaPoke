@@ -63,6 +63,10 @@ int main(){
   // renameTrainer() persists, and save() writes every field -- so this is also
   // what commits everything set above. save() itself is private on purpose.
   pet.renameTrainer("DYLAN");
+  pet.setDead(true);
+  party.setDeadAt(1, true);
+  party.box[7].setDead(true);
+  party.boxSave();
 
   // --- COMPLETENESS. Everything the firmware stored must be in the table.
   // This is what stops the backup rotting: add a key to pet.cpp and forget
@@ -117,6 +121,7 @@ int main(){
   Pet p2; Party q2;
   p2.begin(); q2.begin(); q2.attach(p2);
   ck(p2.speciesId==6 && p2.shiny, "the creature is back, shiny and all");
+  ck(p2.isDead(), "the active creature's death state is restored");
   ck(p2.ageMinutes==72UL*MINUTES_PER_LEVEL, "at the age it was");
   ck(p2.ivAtk==31 && p2.ivDef==7 && p2.ivSpe==22 && p2.ivHp==19, "with its IVs");
   ck(p2.trAtk==64 && p2.trDef==31 && p2.trSpe==90, "and its training");
@@ -161,6 +166,7 @@ int main(){
   }
   ck(party_ok, "with every level, moveset and nickname");
   ck(q2.slots[2].shiny, "and a banked shiny is still shiny");
+  ck(q2.slots[1].dead(), "and a party creature's death state is restored");
   ck(q2.boxCount()==BOX_SLOTS, "the box comes back full");
   ck(q2.box[7].dex==1+7*3 && q2.box[7].level==17, "with the right creatures in it");
   ck(q2.box[7].gymIvRewards[7]==GYM_IV_REWARD_SPE,
@@ -169,6 +175,7 @@ int main(){
      "with each banked creature's permanent training floors");
   ck(q2.box[7].nature==(NatureId)((7+5)%NATURE_COUNT),
      "with each banked creature's nature");
+  ck(q2.box[7].dead(), "with each banked creature's death state");
 
   // --- a restore must not leave anything of whatever was there before
   {

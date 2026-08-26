@@ -32,7 +32,8 @@ struct LegacyPartyMonV3 {
 static_assert(sizeof(LegacyPartyMonV3) == 164,
               "combat-only party layout must stay byte-exact");
 
-constexpr uint16_t ROSTER_VERSION = 1;
+constexpr uint16_t ROSTER_VERSION = 2;
+constexpr uint16_t ROSTER_VERSION_WITHOUT_DEATH = 1;
 static const char *const BOX_KEYS[BOX_SLOTS / BOX_PAGE_SLOTS] = {
   "box10", "box11", "box12", "box13"
 };
@@ -88,7 +89,9 @@ void Party::begin() {
   for (auto &s : slots) s = PartyMon();
   for (auto &s : box) s = PartyMon();
   prefs.begin("tamapoke", false);
-  if (prefs.getUShort("rostv", 0) == ROSTER_VERSION) {
+  uint16_t rosterVersion = prefs.getUShort("rostv", 0);
+  if (rosterVersion == ROSTER_VERSION ||
+      rosterVersion == ROSTER_VERSION_WITHOUT_DEATH) {
     loadRoster();
     legacyMigration = false;
   } else {
@@ -103,16 +106,35 @@ void Party::begin() {
   active = prefs.getUChar("active", 0);
   if (active >= PARTY_SLOTS || slots[active].empty()) active = 0;
   lastRosterTick = millis();
+  if (rosterVersion == ROSTER_VERSION_WITHOUT_DEATH) {
+    saveTeam();
+    boxSave();
+    prefs.putUShort("rostv", ROSTER_VERSION);
+  }
+}
+
+template <size_t N>
+static void loadRosterMons(Preferences &prefs, const char *key,
+                           PartyMon (&out)[N]) {
+  size_t stored = prefs.getBytesLength(key);
+  if (stored == sizeof(out)) {
+    prefs.getBytes(key, out, sizeof(out));
+    return;
+  }
+  constexpr size_t OLD_MON_SIZE = sizeof(PartyMon) - sizeof(uint32_t);
+  if (stored != OLD_MON_SIZE * N) return;
+  uint8_t raw[OLD_MON_SIZE * N];
+  prefs.getBytes(key, raw, sizeof(raw));
+  for (size_t i = 0; i < N; i++)
+    memcpy(&out[i], raw + i * OLD_MON_SIZE, OLD_MON_SIZE);
 }
 
 void Party::loadRoster() {
-  if (prefs.getBytesLength("team1") == sizeof(slots))
-    prefs.getBytes("team1", slots, sizeof(slots));
+  loadRosterMons(prefs, "team1", slots);
   for (uint8_t page = 0; page < BOX_SLOTS / BOX_PAGE_SLOTS; page++) {
-    PartyMon *at = box + page * BOX_PAGE_SLOTS;
-    size_t bytes = sizeof(PartyMon) * BOX_PAGE_SLOTS;
-    if (prefs.getBytesLength(BOX_KEYS[page]) == bytes)
-      prefs.getBytes(BOX_KEYS[page], at, bytes);
+    PartyMon (&pageMons)[BOX_PAGE_SLOTS] =
+        *reinterpret_cast<PartyMon (*)[BOX_PAGE_SLOTS]>(box + page * BOX_PAGE_SLOTS);
+    loadRosterMons(prefs, BOX_KEYS[page], pageMons);
   }
 }
 
@@ -135,6 +157,8 @@ void Party::sanitize(PartyMon &m, bool boxed) {
     if (reward > GYM_IV_REWARD_HP && reward != GYM_IV_REWARD_MAXED) reward = 0;
   if (m.dex > 0 && !natureValid(m.nature))
     m.nature = natureForLegacy(m.dex, m.ivAtk, m.ivDef, m.ivSpe, m.ivHp);
+  m.state &= PARTY_MON_DEAD;
+  if (m.dex <= 0) m.state = 0;
   m.nick[sizeof(m.nick) - 1] = 0;
   if (m.stateVersion != 1 && m.stateVersion != 2) {
     m.fullness = m.joy = m.energy = 80; m.hygiene = 100;
@@ -374,6 +398,12 @@ void Party::releaseAt(uint8_t i) {
     for (uint8_t n = 0; n < PARTY_SLOTS; n++)
       if (!slots[n].empty()) { active = n; boundPet->importState(slots[n]); break; }
   saveTeam();
+}
+
+void Party::setDeadAt(uint8_t i, bool dead) {
+  if (i >= PARTY_SLOTS || slots[i].empty()) return;
+  slots[i].setDead(dead);
+  save();
 }
 
 // Mirrors calcStat() in pet.cpp: base + level + IV contribution + training.
