@@ -616,6 +616,7 @@ PartyMon btlWildMon;
 bool captureOpen = false;
 uint8_t capturePage = 0;
 PartyMon capturedMon;
+ItemKey captureDrop = ITEM_KEY_NONE;
 bool btlNewBadge = false;
 uint32_t btlWinUntil = 0;   // the win screen is up
 // A trainer fight is a run of 1v1s: both sides queue their squad and the next
@@ -748,6 +749,8 @@ int8_t btlTrainer = -1;      // index into TRAINERS, -1 = a one-off fight
 bool btlHard = false;
 Combatant btlSquad[TRAINER_TEAM_MAX + 1];
 uint8_t btlSquadN = 0, btlSquadAt = 0;
+// Squad-index bits: merely being selected is not participation; entering is.
+uint8_t btlEnteredMask = 0;
 uint8_t btlFoeAt = 0;
 // Each battle copy points back to the persistent creature it came from. Damage
 // remains temporary; death and revival cross this boundary explicitly.
@@ -1939,6 +1942,13 @@ void renderCapture() {
              party.vitOf(capturedMon));
     gfx->setCursor(uiCenterX(line), 252);
     gfx->print(line);
+    if (captureDrop) {
+      snprintf(line, sizeof(line), T(S_ITEM_FOUND_FMT), itemName(captureDrop));
+      gfx->setTextColor(UI_BAR_OK);
+      gfx->setTextSize(1);
+      gfx->setCursor(uiCenterX(line), 292);
+      gfx->print(line);
+    }
   } else {
     for (uint8_t i = 0; i < MOVE_SLOTS; i++)
       drawMoveRow(100 + i * 54, capturedMon.moves[i], false, capturedMon.dex);
@@ -1968,6 +1978,7 @@ void captureTap(int16_t x, int16_t y) {
   btlWild = false;
   if (release) {
     capturedMon = PartyMon();
+    captureDrop = ITEM_KEY_NONE;
     sfxPlay(SFX_TAP);
     return;
   }
@@ -1976,11 +1987,13 @@ void captureTap(int16_t x, int16_t y) {
              displaySpeciesName(capturedMon.dex, capturedMon.nick));
     partyBannerUntil = millis() + 3500;
     capturedMon = PartyMon();
+    captureDrop = ITEM_KEY_NONE;
     sfxPlay(SFX_MEDAL);
     return;
   }
   partyPending = capturedMon;
   capturedMon = PartyMon();
+  captureDrop = ITEM_KEY_NONE;
   partyPick = true;
   boxOpen = true;
   boxSel = 0;
@@ -4119,6 +4132,14 @@ static void buildSquad(uint8_t maxLvl, uint8_t maxCount, uint16_t mask) {
   if (btlSquadN) btlYou = btlSquad[0];
 }
 
+static void btlBeginParticipation() {
+  btlEnteredMask = btlSquadN ? 1 : 0;
+}
+
+static void btlMarkEntered(uint8_t index) {
+  if (index < btlSquadN) btlEnteredMask |= (uint8_t)(1u << index);
+}
+
 // How many you may bring: the leader's own count in hard mode, six otherwise.
 uint8_t squadCap(uint8_t idx, bool hard) {
   if (idx >= regionBattleInfo(gymRegion).trainerCount) return TRAINER_TEAM_MAX;
@@ -4141,6 +4162,7 @@ void startLinkBattle() {
   }
   if (!btlSquadN) return;
   btlYou = btlSquad[0];
+  btlBeginParticipation();
   btlLink = true;
   btlWild = false;
   btlLinkHost = lan.isHost;
@@ -4183,6 +4205,7 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   // size cap on top, plus a smarter AI and better opposing IVs.
   buildSquad(top, hard ? tr.count : TRAINER_TEAM_MAX, squadMask);
   if (!btlSquadN) return;
+  btlBeginParticipation();
   btlRegion = region;
   btlWild = false;
   btlTrainer = (int8_t)idx;
@@ -4215,6 +4238,7 @@ void startBattle(int16_t dex, uint8_t lvl) {
   if (dex < 1 || dex > dexCount()) return;
   buildSquad(0, TRAINER_TEAM_MAX, 0xFFFF);
   if (!btlSquadN) return;
+  btlBeginParticipation();
   // The opponent is built through Pet so it gets the same stat formula and the
   // same learnset-driven moveset the player's creature does -- no special-cased
   // "enemy" maths that could quietly diverge.
@@ -4273,6 +4297,7 @@ void startWildBattle(uint8_t region, bool hard) {
   if (!dex) return;
   buildSquad(0, TRAINER_TEAM_MAX, 0xFFFF);
   if (!btlSquadN) return;
+  btlBeginParticipation();
   uint8_t level = (uint8_t)random(1L,
       (long)wildEncounterMaxLevel(pet.level(), hard) + 1L);
   const RegionBattleInfo &battle = regionBattleInfo(region);
@@ -4331,6 +4356,7 @@ static void btlApplyResult() {
     btlSquad[btlSquadAt] = btlYou;
     btlSquadAt = r.guestIdx;
     btlYou = btlSquad[btlSquadAt];
+    btlMarkEntered(btlSquadAt);
     btlSyncSprite(0, btlYou);
     btlLungeUntil[0] = btlHitUntil[0] = btlFaintUntil[0] = 0;
     btlEnterUntil[0] = now + BTL_ENTER_MS;
@@ -4444,6 +4470,17 @@ static bool btlFoeHasReplacement() {
          btlFoeAt + 1 < trainerInfo(btlRegion, btlTrainer).count;
 }
 
+static ItemKey btlGrantWildRewards() {
+  uint8_t rosterMask = 0;
+  for (uint8_t i = 0; i < btlSquadN; i++) {
+    int8_t source = btlSquadSource[i];
+    if ((btlEnteredMask & (1u << i)) && source >= 0 && source < PARTY_SLOTS)
+      rosterMask |= (uint8_t)(1u << source);
+  }
+  party.rewardRandomTraining(rosterMask, pet, 10);
+  return inventory.grantWeightedDrop((uint32_t)random(0x7FFFFFFF));
+}
+
 static void btlFinish(bool won) {
   btlOver = true;
   btlWon = won;
@@ -4463,7 +4500,7 @@ static void btlFinish(bool won) {
   if (btlWon && btlTrainer >= 0) { btlWinUntil = millis() + 60000; return; }
   btlSay("%s", btlWon ? T(S_BTL_WIN) : T(S_BTL_LOSE));
   if (btlWon && btlWild) {
-    ItemKey drop = inventory.grantWeightedDrop((uint32_t)random(0x7FFFFFFF));
+    ItemKey drop = btlGrantWildRewards();
     if (drop) btlSay(T(S_ITEM_FOUND_FMT), itemName(drop));
   }
 }
@@ -4976,6 +5013,7 @@ static void btlDoSwap() {
     if (nxt >= btlSquadN) { btlSwapWho = -1; return; }
     btlSquadAt = nxt;
     btlYou = btlSquad[btlSquadAt];
+    btlMarkEntered(btlSquadAt);
     btlHpShown[0] = btlYou.hp;
     btlSyncSprite(0, btlYou);
     btlLungeUntil[0] = btlHitUntil[0] = btlFaintUntil[0] = 0;
@@ -4995,6 +5033,7 @@ static void btlSwitchTo(uint8_t i) {
   btlSquad[btlSquadAt] = btlYou;
   btlSquadAt = i;
   btlYou = btlSquad[i];
+  btlMarkEntered(btlSquadAt);
   btlHpShown[0] = btlYou.hp;
   btlSyncSprite(0, btlYou);
   btlLungeUntil[0] = btlHitUntil[0] = btlFaintUntil[0] = 0;
@@ -5103,6 +5142,7 @@ static void btlThrowBall(const ItemEntry &item) {
   if ((uint8_t)random(100) < chance) {
     capturedMon = btlWildMon;
     pet.registerCaught(capturedMon.dex);
+    captureDrop = btlGrantWildRewards();
     capturePage = 0;
     captureOpen = true;
     battleOpen = false;

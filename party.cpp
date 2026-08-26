@@ -406,6 +406,31 @@ void Party::setDeadAt(uint8_t i, bool dead) {
   save();
 }
 
+void Party::rewardRandomTraining(uint8_t slotMask, Pet &pet, uint8_t points) {
+  captureActive(pet, false);
+  for (uint8_t i = 0; i < PARTY_SLOTS; i++) {
+    if (!(slotMask & (1u << i)) || !slots[i].battleReady()) continue;
+    PartyMon &m = slots[i];
+    uint8_t *training[] = { &m.trAtk, &m.trDef, &m.trSpe };
+    const uint8_t caps[] = {
+      Pet::trMaxFor(m.ivAtk), Pet::trMaxFor(m.ivDef), Pet::trMaxFor(m.ivSpe)
+    };
+    for (uint8_t point = 0; point < points; point++) {
+      uint8_t available[3], count = 0;
+      for (uint8_t stat = 0; stat < 3; stat++)
+        if (*training[stat] < caps[stat]) available[count++] = stat;
+      if (!count) break;
+      (*training[available[random(count)]])++;
+    }
+  }
+  if (slotMask & (1u << active)) {
+    pet.trAtk = slots[active].trAtk;
+    pet.trDef = slots[active].trDef;
+    pet.trSpe = slots[active].trSpe;
+  }
+  saveTeam();
+}
+
 // Mirrors calcStat() in pet.cpp: base + level + IV contribution + training.
 // Kept in step with it by hand; there is no shared home for it that both the
 // live pet and a frozen party member could use without dragging Pet in here.

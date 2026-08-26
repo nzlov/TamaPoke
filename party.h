@@ -128,6 +128,8 @@ public:
   void replaceAt(uint8_t i, const PartyMon &m);
   void releaseAt(uint8_t i);    // free a slot again
   void setDeadAt(uint8_t i, bool dead);
+  // Randomly distributes current (decayable) training without raising floors.
+  void rewardRandomTraining(uint8_t slotMask, Pet &pet, uint8_t points);
   void save();
   uint8_t boxCount() const;
   int boxFirstFree() const;
