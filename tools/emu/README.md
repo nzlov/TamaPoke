@@ -65,6 +65,7 @@ sips -s format png shot.ppm --out shot.png     # macOS; or use ImageMagick
 states. Representative names include `main`, `evolvecta`, `farewellcta`,
 `runawaycta`, `sleep`, `feedmenu`,
 `choicerelease`, `choicefarewell`, `choiceevolve`, `bath`, `keyboard`, `battle`, `btlmoves`,
+`btlmechanics`, `btlzmove`, `btlnormal`, `btldynamax`, `btlmega`,
 `btlrevive`, `profile`, `gallery`, `clock`, `menu`, `navmenu`, `mainroster`, `box`, `boxreplace`, `boxdeposit`, `bag`,
 `bagdetail`, `train`, `ballgame`, `sack`, `speed`, `quiz`, `quizcorrect`,
 `battlecenter`, `wildfight`, `wilditems`, `capture`, `capturemoves`, `captureboth`,

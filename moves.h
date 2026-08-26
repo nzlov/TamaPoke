@@ -6,6 +6,7 @@ enum : uint8_t { MC_PHYS = 0, MC_SPEC = 1, MC_STATUS = 2 };
 enum : uint8_t {
   EF_NONE = 0, EF_STAGE, EF_RECOIL, EF_DRAIN, EF_FIXED_LVL, EF_FIXED,
   EF_PRIORITY, EF_NEVER_MISS, EF_MULTI, EF_HEAL, EF_RECHARGE, EF_CHARGE,
+  EF_PROTECT,
 };
 enum : uint8_t { ST_ATK = 1, ST_DEF = 2, ST_SPA = 4, ST_SPD = 8, ST_SPE = 16 };
 enum : uint8_t { TG_SELF = 0, TG_FOE = 1 };

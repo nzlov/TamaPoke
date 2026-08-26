@@ -15,6 +15,7 @@
 #include "pet.h"
 #include "party.h"
 #include "battle.h"
+#include "inventory.h"
 #include "i18n.h"
 #include "quiz.h"
 #include <cstdio>
@@ -35,7 +36,10 @@ extern bool battleOpen;
 extern uint8_t choiceKind;
 extern uint8_t btlMenu;
 extern Combatant btlYou;
+extern BattleMechanic btlPendingMechanic;
+extern BattleSideMechanics btlYourMechanics;
 void startBattle(int16_t dex, uint8_t lvl);
+void commitBattleMove(uint8_t moveSlot, uint8_t percent);
 int btlCellIndexAt(int16_t x, int16_t y);
 void uiButtonHeights(int *out, int max, int *n);
 void gymHeaderRects(int *pillTop, int *pillBot, int *rowTop);
@@ -165,6 +169,40 @@ int main(){
   ck(btlMenu != before, "a low tap in the move grid is actually accepted");
   ck(quiz.active, "an accepted battle move opens its question before resolving");
   ck(answerActiveQuiz(), "answer feedback resumes the pending battle move");
+
+  // A mechanic item is only spent when a legal move is committed. Backing out
+  // or trying a status move with the Z Crystal must leave the stack untouched.
+  startBattle(9, 50);
+  const ItemEntry *zItem = nullptr;
+  for (uint16_t i = 0; i < itemCount(); i++) {
+    const ItemEntry *item = itemAt(i);
+    if (item && item->effect == ITEM_EFFECT_BATTLE_MECHANIC &&
+        item->flags == ITEM_MECHANIC_Z_MOVE) { zItem = item; break; }
+  }
+  ck(zItem && inventory.add(zItem->key, 3), "the Z Crystal can enter the battle bag");
+  uint8_t itemBefore = zItem ? inventory.count(zItem->key) : 0;
+  btlPendingMechanic = BMECH_Z_MOVE;
+  btlMenu = 1;
+  battleTap(233, 400);
+  ck(btlPendingMechanic == BMECH_NONE && inventory.count(zItem->key) == itemBefore,
+     "cancelling an armed mechanic does not consume its item");
+
+  MoveId statusMove = MOVE_NONE;
+  for (MoveId move = 1; move < moveCount(); move++)
+    if (moveEntry(move).cat == MC_STATUS) { statusMove = move; break; }
+  MoveId damagingMove = btlYou.moves[0];
+  if (statusMove) btlYou.moves[3] = statusMove;
+  btlPendingMechanic = BMECH_Z_MOVE;
+  commitBattleMove(3, 100);
+  ck(inventory.count(zItem->key) == itemBefore &&
+     !btlYourMechanics.used(BMECH_Z_MOVE),
+     "an invalid Z-Move commit does not consume its item");
+  btlPendingMechanic = BMECH_Z_MOVE;
+  btlYou.moves[0] = damagingMove;
+  commitBattleMove(0, 100);
+  ck(inventory.count(zItem->key) + 1 == itemBefore &&
+     btlYourMechanics.used(BMECH_Z_MOVE) && btlYou.usedMechanic == BMECH_Z_MOVE,
+     "a valid Z-Move commit consumes exactly one item and records both limits");
 
   startBattle(9, 50);
   quiz.config.questionTypes = 0;

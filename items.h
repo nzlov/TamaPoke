@@ -16,6 +16,7 @@ enum ItemCategory : uint8_t {
   ITEM_CATEGORY_EVOLUTION,
   ITEM_CATEGORY_TRAINING,
   ITEM_CATEGORY_BATTLE_BOOST,
+  ITEM_CATEGORY_MECHANIC,
 };
 
 enum ItemEffect : uint8_t {
@@ -26,6 +27,7 @@ enum ItemEffect : uint8_t {
   ITEM_EFFECT_EVOLVE,
   ITEM_EFFECT_TRAINING_FLOOR,
   ITEM_EFFECT_BATTLE_STAGE,
+  ITEM_EFFECT_BATTLE_MECHANIC,
 };
 
 enum ItemStatMask : uint8_t {
@@ -34,6 +36,12 @@ enum ItemStatMask : uint8_t {
   ITEM_STAT_SPA = 1 << 2,
   ITEM_STAT_SPD = 1 << 3,
   ITEM_STAT_SPE = 1 << 4,
+};
+
+enum ItemMechanicKind : uint8_t {
+  ITEM_MECHANIC_Z_MOVE = 1,
+  ITEM_MECHANIC_DYNAMAX = 2,
+  ITEM_MECHANIC_MEGA = 3,
 };
 
 struct ItemEntry {

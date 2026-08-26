@@ -537,6 +537,7 @@ and badge data. No regional intermediate bundle is created.
 
 ```bash
 python3 tools/pack_pmd.py       # fetch + pack the current catalogue + color inputs
+python3 tools/pack_pmd.py --mega kanto  # optional Mega-form PMD inputs -> pmNNN.bin
 python3 tools/make_thumbs.py    # Pokédex thumbnails (from the PMD sprites) -> thumbs.bin
 python3 tools/fetch_species_descriptions.py # append descriptions for newly added dex numbers
 python3 tools/gen_data_packs.py # web/packs/*.tui, *.tmove, *.tregion, *.tquiz + index.json

@@ -69,6 +69,8 @@ int main(){
      "a wire creature restores at full health");
   ck(back.shiny && back.sparkle, "the restored combatant keeps both rare traits");
   ck(back.base[SI_ATK]==A.mine[0].base[SI_ATK], "with its stats intact");
+  ck(back.type1==T_FIRE && back.type2==T_FLYING,
+     "and restores the species types used by battle resolution");
 
   // --- the turn flow
   ck(A.turn==0 && B.turn==0, "both start on turn zero");
@@ -80,11 +82,12 @@ int main(){
   ck(A.state==LINK_READY && B.state==LINK_READY &&
      A.txLive && B.txLive && A.tx[0]==LM_WAIT && B.tx[0]==LM_WAIT,
      "both sides can keep the link alive while answering");
-  B.sendAct(LINK_ACT_MOVE(0), 50);
+  B.sendAct(LINK_ACT_MOVE(0), 50, BMECH_Z_MOVE);
   ck(A.hasPeerAct(), "the host receives the guest's action");
   ck(LINK_ACT_SLOT(A.pendingAct)==0 && !LINK_ACT_IS_SWITCH(A.pendingAct),
      "move slot 0 survives -- it is not confused with silence");
   ck(A.pendingPercent==50, "the answer percentage travels with the move");
+  ck(A.pendingMechanic==BMECH_Z_MOVE, "the requested battle mechanic travels with the move");
   ck(B.state==LINK_WAITING, "and the guest waits rather than resolving");
 
   A.pendingAct = 0;
@@ -101,8 +104,8 @@ int main(){
 
   // a stale action -- the resend of a turn already resolved -- is not a choice
   A.pendingAct = 0;
-  uint8_t stale[5]={LM_ACT,3,0,LINK_ACT_MOVE(1),83};   // turn 0, already done
-  A.onPacket(stale,5);
+  uint8_t stale[6]={LM_ACT,4,0,LINK_ACT_MOVE(1),83,BMECH_NONE}; // turn 0, already done
+  A.onPacket(stale,6);
   ck(!A.hasPeerAct(), "a resent action from a finished turn is ignored");
 
   // the real payload: what the guest actually renders a turn from
@@ -110,6 +113,10 @@ int main(){
   LinkResult r{};
   r.hostHp=111; r.guestHp=222; r.hostMove=33; r.guestMove=44;
   r.hostDmg=9; r.guestDmg=8; r.hostIdx=1; r.guestIdx=0; r.guestAil=AIL_BURN;
+  r.hostMaxHp=333; r.guestMaxHp=444; r.hostActive=BMECH_MEGA;
+  r.guestActive=BMECH_DYNAMAX; r.guestDynamaxTurns=2;
+  r.hostUsedMask=battleMechanicBit(BMECH_MEGA);
+  r.guestUsedMask=battleMechanicBit(BMECH_DYNAMAX);
   B.resultNew=false;
   A.pendingAct = LINK_ACT_MOVE(0);
   A.sendResult((const uint8_t*)&r,(uint8_t)sizeof(r));
@@ -118,11 +125,14 @@ int main(){
   ck(got.hostHp==111 && got.guestHp==222 && got.guestAil==AIL_BURN,
      "health and ailments survive the wire");
   ck(got.hostIdx==1 && got.guestIdx==0, "so does which creature is out");
+  ck(got.hostMaxHp==333 && got.guestMaxHp==444 && got.hostActive==BMECH_MEGA &&
+     got.guestActive==BMECH_DYNAMAX && got.guestDynamaxTurns==2,
+     "absolute mechanic and maximum-HP state survives the wire");
   ck(!A.pendingAct, "resolving clears the action, so it cannot be spent twice");
 
   // the guest never acts on an action; the host never accepts a result
   B.pendingAct=0;
-  B.onPacket((const uint8_t[]){LM_ACT,3,0,1,100},5);
+  B.onPacket((const uint8_t[]){LM_ACT,4,0,1,100,BMECH_NONE},6);
   ck(B.pendingAct==0, "the guest ignores ACT packets");
   uint8_t was=A.turn;
   A.onPacket((const uint8_t[]){LM_RESULT,1,0},3);
@@ -193,8 +203,10 @@ int main(){
     E.onPacket((const uint8_t[]){LM_HELLO,3,LINK_PROTO,0,1},5);   // short hello
     ck(E.state==LINK_LISTENING, "and a short hello is not half-read");
     E.state=LINK_READY;
-    E.onPacket((const uint8_t[]){LM_ACT,3,0,LINK_ACT_MOVE(0),101},5);
+    E.onPacket((const uint8_t[]){LM_ACT,4,0,LINK_ACT_MOVE(0),101,BMECH_NONE},6);
     ck(!E.pendingAct, "an out-of-range answer percentage is rejected");
+    E.onPacket((const uint8_t[]){LM_ACT,4,0,LINK_ACT_MOVE(0),100,99},6);
+    ck(!E.pendingAct, "an unknown battle mechanic is rejected");
   }
 
   // --- NOTHING off the wire may be trusted to index a table

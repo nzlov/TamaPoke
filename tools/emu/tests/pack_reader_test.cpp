@@ -53,7 +53,8 @@ int main() {
   };
   bool precise = loaded &&
       mutationIs(0, CONTENT_PACK_HEADER_INVALID) &&
-      mutationIs(4, CONTENT_PACK_ABI_MISMATCH) &&
+      mutationIs(4, CONTENT_PACK_VALID) &&
+      mutationIs(5, CONTENT_PACK_ABI_MISMATCH) &&
       mutationIs(8, CONTENT_PACK_SIZE_MISMATCH) &&
       mutationIs(52, CONTENT_PACK_DIRECTORY_INVALID) &&
       mutationIs(raw.size() - 1, CONTENT_PACK_CHECKSUM_MISMATCH);
@@ -68,6 +69,8 @@ int main() {
   printf("%s  payload CRC uses one sequential filesystem scan\n",
          sequential ? "PASS" : "FAIL");
   printf("%s  pack validation reports the failing format stage\n",
+         precise ? "PASS" : "FAIL");
+  printf("%s  ABI 2 region packs remain readable under the ABI 3 move schema\n",
          precise ? "PASS" : "FAIL");
   printf("%s  startup discovers packs without rescanning payload CRC\n",
          discoverySkipsCrc ? "PASS" : "FAIL");

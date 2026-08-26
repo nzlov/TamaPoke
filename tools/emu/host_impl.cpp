@@ -13,11 +13,11 @@ bool sdReady = true;
 bool sdDirty = false;
 SdThumbs thumbs;
 
-bool PmdMon::load(int16_t dexNum, bool shiny) {
+bool PmdMon::load(int16_t dexNum, bool shiny, bool mega) {
   if (!dexValid(dexNum)) return false;
   unload();
   uint32_t size = 0;
-  if (!contentLoadSprite((SpeciesId)dexNum, shiny, &blob, &size)) return false;
+  if (!contentLoadSprite((SpeciesId)dexNum, shiny, mega, &blob, &size)) return false;
   if (size < 7 || memcmp(blob, "TPK2", 4) != 0) { unload(); return false; }
 
   uint8_t nActs = blob[4];

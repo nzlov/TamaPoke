@@ -83,7 +83,7 @@ standalone() { case "$1" in synth_test) return 0;; *) return 1;; esac; }
 
 # sprite_test drives PmdMon from a regional pack, so it needs the host's SD
 # stubs but none of the sketch.
-needs_host() { case "$1" in sprite_test) return 0;; *) return 1;; esac; }
+needs_host() { case "$1" in sprite_test|mega_sprite_test) return 0;; *) return 1;; esac; }
 
 pass=0; fail=0
 for src in "$HERE"/*_test.cpp; do

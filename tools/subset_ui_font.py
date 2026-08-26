@@ -19,15 +19,14 @@ def main() -> int:
     parser = ArgumentParser()
     parser.add_argument("source", type=Path, help="source OTF/TTC/TTF")
     parser.add_argument("output", type=Path, help="subset OTF written here")
-    parser.add_argument("--font-number", type=int, default=2,
-                        help="face in a TTC; Noto Sans CJK SC is 2")
+    parser.add_argument("--font-number", type=int,
+                        help="optional face index for a TTC; Noto Sans CJK SC is 2")
     args = parser.parse_args()
 
     codepoints = sorted(required_ui_codepoints())
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    subset.main([
+    options = [
         str(args.source),
-        f"--font-number={args.font_number}",
         f"--output-file={args.output}",
         "--unicodes=" + ",".join(f"U+{codepoint:04X}" for codepoint in codepoints),
         "--layout-features=*",
@@ -38,7 +37,10 @@ def main() -> int:
         "--name-IDs=*",
         "--name-languages=*",
         "--no-ignore-missing-unicodes",
-    ])
+    ]
+    if args.font_number is not None:
+        options.insert(1, f"--font-number={args.font_number}")
+    subset.main(options)
 
     face = TTFont(args.output)
     available = set(face.getBestCmap())

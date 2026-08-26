@@ -52,6 +52,7 @@ SPECIES_DESCRIPTION_DATA = json.loads(
 SPECIES_DESCRIPTION_LOCALES = sorted(
     SPECIES_DESCRIPTION_DATA.get("species", [{}])[0].get("descriptions", {})
 )
+MEGA_DATA = json.loads((HERE / "mega_data.json").read_text(encoding="utf-8"))
 
 TYPE_COLORS = [
     0xAD4F, 0xF406, 0x6C9E, 0xFE86, 0x7E4A, 0x9EDB,
@@ -601,7 +602,7 @@ def required_ui_codepoints() -> set[int]:
     }
 
 
-def build_move_pack(manifest: list[dict]) -> None:
+def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
     type_ids = {name: index for index, name in enumerate(TYPE_ORDER)}
     move_rows = [("-", None, "normal", MC_STATUS, 0, 0, 0, 0, 0, 0, 0)] + list(MOVES)
     names_blob, name_offsets = string_pool([row[0] for row in move_rows])
@@ -656,10 +657,40 @@ def build_move_pack(manifest: list[dict]) -> None:
         for locale in ("en-US", "zh-CN")
     }, len(ITEM_DATA))
 
+    mega_record = struct.Struct("<HBBBBBBB")
+    mega_blob = bytearray()
+    mega_sprite_record = struct.Struct("<HII")
+    mega_sprite_index = bytearray()
+    mega_sprites = bytearray()
+    previous_species = 0
+    for form in MEGA_DATA:
+        species = int(form["species"])
+        types = form["types"]
+        stats = form["stats"]
+        if species <= previous_species or species > 0xFFFF:
+            raise ValueError("mega species IDs must be unique and sorted")
+        if not 1 <= len(types) <= 2 or any(name not in type_ids for name in types):
+            raise ValueError(f"invalid mega types for species {species}")
+        if len(stats) != 5 or any(not 0 < int(value) <= 255 for value in stats):
+            raise ValueError(f"invalid mega stats for species {species}")
+        mega_blob.extend(mega_record.pack(
+            species, type_ids[types[0]], type_ids[types[1]] if len(types) == 2 else 255,
+            *(int(value) for value in stats),
+        ))
+        sprite_path = sprite_dir / f"pm{species:03d}.bin"
+        if form.get("spritePath") and sprite_path.exists():
+            sprite = sprite_path.read_bytes()
+            sprite_at = len(mega_sprites)
+            mega_sprites.extend(sprite)
+            mega_sprite_index.extend(mega_sprite_record.pack(
+                species, sprite_at, len(sprite),
+            ))
+        previous_species = species
+
     mechanics_hash = binascii.crc32(
-        move_blob + learn + offset_blob + chart + item_blob
+        move_blob + learn + offset_blob + chart + item_blob + mega_blob
     ) & 0xFFFFFFFF
-    blob = pack(KIND_MOVE, "moves-core", mechanics_hash, [
+    sections = [
         ("MOVE", bytes(move_blob), len(move_rows)),
         ("NAME", names_blob, len(move_rows)),
         ("LNAM", localized_names, len(move_rows)),
@@ -674,7 +705,16 @@ def build_move_pack(manifest: list[dict]) -> None:
         ("INAM", item_names, len(ITEM_DATA)),
         ("ILNM", item_localized_names, len(ITEM_DATA)),
         ("ILOC", item_localized_descriptions, len(ITEM_DATA)),
-    ])
+        ("MEGA", bytes(mega_blob), len(MEGA_DATA)),
+    ]
+    if mega_sprite_index:
+        sections.extend([
+            ("MSPI", bytes(mega_sprite_index),
+             len(mega_sprite_index) // mega_sprite_record.size),
+            ("MSBL", bytes(mega_sprites),
+             len(mega_sprite_index) // mega_sprite_record.size),
+        ])
+    blob = pack(KIND_MOVE, "moves-core", mechanics_hash, sections)
     path = WEB_PACKS / "moves-core.tmove"
     path.write_bytes(blob)
     item = pack_manifest(path, "move", "moves-core", ["en-US", "zh-CN"])
@@ -722,7 +762,19 @@ def main() -> int:
     WEB_PACKS.mkdir(parents=True, exist_ok=True)
     if args.move_only:
         manifest: list[dict] = []
-        build_move_pack(manifest)
+        build_move_pack(manifest, args.sprite_dir.resolve())
+        index_path = WEB_PACKS / "index.json"
+        if index_path.exists():
+            index = json.loads(index_path.read_text(encoding="utf-8"))
+            packages = [item for item in index.get("packages", [])
+                        if item.get("id") != "moves-core"]
+            packages.extend(manifest)
+            index["packAbi"] = PACK_ABI
+            index["packages"] = packages
+            index_path.write_text(
+                json.dumps(index, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
         print(f"wrote {WEB_PACKS / 'moves-core.tmove'}")
         return 0
     for pattern in ("*.tui", "*.tmove", "*.tpet", "*.tquiz"):
@@ -730,7 +782,7 @@ def main() -> int:
             obsolete.unlink()
     manifest: list[dict] = []
     build_ui_packs(manifest)
-    build_move_pack(manifest)
+    build_move_pack(manifest, args.sprite_dir.resolve())
     build_region_packs(manifest, args.sprite_dir.resolve())
     build_quiz_packs(manifest)
     expected_regions = {item["file"] for item in manifest if item["kind"] == "region"}

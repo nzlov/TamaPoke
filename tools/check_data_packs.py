@@ -19,9 +19,10 @@ REQUIRED_SECTIONS = {
     2: {b"SPEC", b"EVOS", b"NAME", b"LNAM", b"REGN", b"RLNM", b"SPRI", b"SBLB", b"THMB",
         b"LOCL", b"BTTL", b"TRNR", b"GSTR", b"BADG", b"BBLB"},
     3: {b"MOVE", b"NAME", b"LNAM", b"LOFS", b"LERN", b"TYPS", b"TSTR", b"TLNM",
-        b"CHRT", b"LOCL", b"ITEM", b"INAM", b"ILNM", b"ILOC"},
+        b"CHRT", b"LOCL", b"ITEM", b"INAM", b"ILNM", b"ILOC", b"MEGA"},
     4: {b"QLOC", b"QIDX", b"QDAT"},
 }
+OPTIONAL_SECTIONS = {3: {b"MSPI", b"MSBL"}}
 
 QLOC = struct.Struct("<16sII")
 QIDX = struct.Struct("<III")
@@ -161,7 +162,10 @@ def validate(path: Path, expected: dict) -> None:
     ranges.sort()
     if any(left[1] > right[0] for left, right in zip(ranges, ranges[1:])):
         raise ValueError(f"{path.name}: overlapping sections")
-    if tags != REQUIRED_SECTIONS[kind]:
+    required = REQUIRED_SECTIONS[kind]
+    extras = tags - required
+    if not required.issubset(tags) or \
+            (extras and extras != OPTIONAL_SECTIONS.get(kind, set())):
         raise ValueError(f"{path.name}: unexpected section set")
     if kind == 1:
         validate_ui_font(sections[b"FONT"], section_counts[b"FONT"])
@@ -174,11 +178,12 @@ def validate(path: Path, expected: dict) -> None:
             raise ValueError("invalid item table size")
         keys = []
         for offset in range(0, len(sections[b"ITEM"]), item_record.size):
-            key, category, effect, rarity, flags, param, _weight, daily, reserved, _name = \
+            key, category, effect, rarity, flags, param, weight, daily, reserved, _name = \
                 item_record.unpack_from(sections[b"ITEM"], offset)
             training_item = effect == 6
             battle_boost = effect == 7
-            if not key or not 1 <= category <= 7 or not 1 <= effect <= 7 or \
+            battle_mechanic = effect == 8
+            if not key or not 1 <= category <= 8 or not 1 <= effect <= 8 or \
                     not 1 <= rarity <= 4 or daily > 99 or reserved:
                 raise ValueError("invalid item record")
             if training_item and (category != 6 or flags not in (1, 2, 16) or param <= 0):
@@ -186,11 +191,46 @@ def validate(path: Path, expected: dict) -> None:
             if battle_boost and (category != 7 or flags not in (1, 2, 4, 8, 16) or
                                  not 1 <= param <= 6):
                 raise ValueError("invalid battle booster")
+            if battle_mechanic and (category != 8 or flags not in (1, 2, 3) or
+                                    param or weight or daily):
+                raise ValueError("invalid battle mechanic item")
             keys.append(key)
         if len(keys) != len(set(keys)):
             raise ValueError("duplicate item key")
         validate_localized_strings(sections[b"ILNM"], item_count)
         validate_localized_strings(sections[b"ILOC"], item_count)
+        mega_record = struct.Struct("<HBBBBBBB")
+        mega_count = section_counts[b"MEGA"]
+        if not mega_count or len(sections[b"MEGA"]) != mega_count * mega_record.size:
+            raise ValueError("invalid mega form table size")
+        previous_species = 0
+        type_count = section_counts[b"TYPS"]
+        for offset in range(0, len(sections[b"MEGA"]), mega_record.size):
+            species, type1, type2, *stats = mega_record.unpack_from(sections[b"MEGA"], offset)
+            if species <= previous_species or type1 >= type_count or \
+                    (type2 != 255 and type2 >= type_count) or any(not value for value in stats):
+                raise ValueError("invalid mega form record")
+            previous_species = species
+        if (b"MSPI" in sections) != (b"MSBL" in sections):
+            raise ValueError("incomplete mega sprite sections")
+        if b"MSPI" in sections:
+            sprite_record = struct.Struct("<HII")
+            sprite_count = section_counts[b"MSPI"]
+            if not sprite_count or len(sections[b"MSPI"]) != sprite_count * sprite_record.size:
+                raise ValueError("invalid mega sprite index")
+            previous_species = 0
+            mega_species = {
+                mega_record.unpack_from(sections[b"MEGA"], offset)[0]
+                for offset in range(0, len(sections[b"MEGA"]), mega_record.size)
+            }
+            for offset in range(0, len(sections[b"MSPI"]), sprite_record.size):
+                species, sprite_at, sprite_size = sprite_record.unpack_from(
+                    sections[b"MSPI"], offset)
+                if species <= previous_species or species not in mega_species or not sprite_size or \
+                        sprite_at > len(sections[b"MSBL"]) or \
+                        sprite_size > len(sections[b"MSBL"]) - sprite_at:
+                    raise ValueError("invalid mega sprite record")
+                previous_species = species
     elif kind == 4:
         validate_quiz(sections, section_counts)
     if kind in (2, 3) and mechanics_hash == 0:
@@ -199,7 +239,7 @@ def validate(path: Path, expected: dict) -> None:
 
 def main() -> int:
     index = json.loads((PACKS / "index.json").read_text(encoding="utf-8"))
-    if index.get("schema") != 1 or index.get("packAbi") != 2:
+    if index.get("schema") != 1 or index.get("packAbi") != 3:
         raise SystemExit("unsupported index schema")
     packages = index.get("packages", [])
     ids = {item["id"] for item in packages}

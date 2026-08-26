@@ -20,10 +20,12 @@ Acciones: 0 Idle, 1 WalkL, 2 WalkR, 3 Sleep, 4 Eat, 5 Hurt, 6 Attack,
   python3 tools/pack_pmd.py kanto       # solo una region (johto, hoenn)
   python3 tools/pack_pmd.py 7 25        # dex concretos
   python3 tools/pack_pmd.py normal 1 4  # solo normales
+  python3 tools/pack_pmd.py --mega 6    # formas Mega configuradas, pmNNN.bin
 
 Necesita Pillow: pip3 install Pillow
 """
 import argparse
+import json
 import os
 import struct
 import sys
@@ -105,9 +107,10 @@ def load_animdata(folder):
     return anims
 
 
-def pack(dexnum, shiny=False):
-    sub = '/0000/0001' if shiny else ''
-    folder = os.path.join(CACHE, f'{dexnum:04d}{"s" if shiny else ""}')
+def pack(dexnum, shiny=False, form_path=None):
+    sub = f'/{form_path}' if form_path else ('/0000/0001' if shiny else '')
+    suffix = 'm' if form_path else ('s' if shiny else '')
+    folder = os.path.join(CACHE, f'{dexnum:04d}{suffix}')
     base = f'{BASE}/{dexnum:04d}{sub}'
     if not fetch(f'{base}/AnimData.xml', os.path.join(folder, 'AnimData.xml')):
         raise RuntimeError('sin AnimData.xml')
@@ -152,7 +155,7 @@ def pack(dexnum, shiny=False):
         raise RuntimeError('sin Idle')
 
     os.makedirs(OUT, exist_ok=True)
-    path = os.path.join(OUT, f'p{"s" if shiny else ""}{dexnum:03d}.bin')
+    path = os.path.join(OUT, f'p{suffix}{dexnum:03d}.bin')
     with open(path, 'wb') as f:
         f.write(b'TPK2')
         f.write(struct.pack('<BH', len(packed), len(pal)))
@@ -163,7 +166,7 @@ def pack(dexnum, shiny=False):
             f.write(struct.pack(f'<{nf}H', *ms))
             f.write(data)
     kb = os.path.getsize(path) / 1024
-    print(f"  -> p{'s' if shiny else ''}{dexnum:03d}.bin: {len(packed)} acciones, "
+    print(f"  -> p{suffix}{dexnum:03d}.bin: {len(packed)} acciones, "
           f"{len(pal)} colores, {kb:.0f} KB")
 
 
@@ -171,6 +174,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Empaqueta sprites PMD en formato TPK2')
     parser.add_argument('--workers', type=int, default=10,
                         help='tareas concurrentes de descarga/empaquetado (predeterminado: 10)')
+    parser.add_argument('--mega', action='store_true',
+                        help='download configured Mega forms as pmNNN.bin')
     parser.add_argument('selectors', nargs='*',
                         help='regiones, numeros del dex o "normal"')
     options = parser.parse_args()
@@ -195,14 +200,21 @@ if __name__ == '__main__':
             nums = [d for lo, hi in picked for d in range(lo, hi + 1)]
         else:
             nums = list(range(1, DEX_COUNT + 1))
-    jobs = [(n, sh) for n in nums
-            for sh in ([False] if solo_normal else [False, True])]
+    if options.mega:
+        with open(os.path.join(os.path.dirname(__file__), 'mega_data.json'),
+                  encoding='utf-8') as mega_file:
+            mega_data = json.load(mega_file)
+        paths = {int(row['species']): row.get('spritePath') for row in mega_data}
+        jobs = [(n, False, paths[n]) for n in nums if paths.get(n)]
+    else:
+        jobs = [(n, sh, None) for n in nums
+                for sh in ([False] if solo_normal else [False, True])]
 
     def run_job(job):
-        n, sh = job
+        n, sh, form_path = job
         try:
             print(f"#{n:03d}{' shiny' if sh else ''}", flush=True)
-            pack(n, sh)
+            pack(n, sh, form_path)
             return None
         except Exception as e:
             print(f"#{n:03d}{' shiny' if sh else ''} FALLO: {e}", flush=True)

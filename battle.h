@@ -11,6 +11,25 @@
 
 enum : uint8_t { SI_ATK = 0, SI_DEF, SI_SPA, SI_SPD, SI_SPE, SI_COUNT };
 
+enum BattleMechanic : uint8_t {
+  BMECH_NONE = 0,
+  BMECH_Z_MOVE = 1,
+  BMECH_DYNAMAX = 2,
+  BMECH_MEGA = 3,
+};
+
+constexpr uint8_t battleMechanicBit(BattleMechanic mechanic) {
+  return mechanic == BMECH_NONE ? 0 : (uint8_t)(1u << (mechanic - 1));
+}
+
+struct BattleSideMechanics {
+  uint8_t usedMask = 0;
+
+  bool used(BattleMechanic mechanic) const {
+    return (usedMask & battleMechanicBit(mechanic)) != 0;
+  }
+};
+
 // A creature as it exists inside a battle. Built from the live pet or from a
 // banked party member; nothing here is ever written back, which is what keeps
 // ailments battle-only.
@@ -19,6 +38,7 @@ struct Combatant {
   uint8_t level = 1;
   uint16_t maxHp = 1, hp = 1;
   uint16_t base[SI_COUNT] = { 1, 1, 1, 1, 1 };  // before stat stages
+  uint8_t type1 = T_NORMAL, type2 = T_NONE;
   MoveId moves[MOVE_SLOTS] = { 0, 0, 0, 0 };
   int8_t stage[SI_COUNT] = { 0, 0, 0, 0, 0 };   // -6..+6
   uint8_t ailment = AIL_NONE;
@@ -26,11 +46,27 @@ struct Combatant {
   uint8_t confuseTurns = 0;  // confusion runs alongside a real ailment
   bool recharge = false;     // EF_RECHARGE spent this creature's next turn
   MoveId charging = 0;       // EF_CHARGE move already wound up
+  bool protectedTurn = false;
+  BattleMechanic usedMechanic = BMECH_NONE;
+  BattleMechanic activeMechanic = BMECH_NONE;
+  uint8_t dynamaxTurns = 0;
+  uint16_t normalMaxHp = 0;
   bool shiny = false;        // which color sprite variant to stream
   bool sparkle = false;      // independent persistent particle effect
   char name[12] = "";
 
   bool fainted() const { return hp == 0; }
+};
+
+// The move which actually reaches the resolver. Normal moves are copied from
+// the content catalogue; Z and Max moves replace only the fields their rules
+// change, leaving the source MoveId available for UI and LAN narration.
+struct BattleMove {
+  MoveId source = MOVE_NONE;
+  MoveEntry entry = {};
+  BattleMechanic mechanic = BMECH_NONE;
+
+  bool valid() const { return source != MOVE_NONE; }
 };
 
 void combatantFromPet(Combatant &c, const Pet &p);
@@ -39,6 +75,8 @@ void combatantFromParty(Combatant &c, const PartyMon &m);
 // What one action did, so the UI can narrate it without recomputing anything.
 struct TurnLog {
   MoveId move = 0;
+  BattleMechanic mechanic = BMECH_NONE;
+  uint8_t moveType = T_NORMAL;
   uint16_t damage = 0;
   uint16_t effPct = 100;   // type effectiveness, percent
   uint8_t hits = 0;        // >1 for EF_MULTI
@@ -55,19 +93,39 @@ struct TurnLog {
   bool targetFainted = false;
 };
 
+BattleMove battleMove(MoveId move);
+BattleMove battleMoveFor(const Combatant &attacker, MoveId move,
+                         BattleMechanic requested = BMECH_NONE);
+bool battleMegaEligible(SpeciesId species);
+bool battleMechanicAvailable(const BattleSideMechanics &side,
+                             const Combatant &combatant,
+                             BattleMechanic mechanic, MoveId move = MOVE_NONE);
+bool battleActivateMechanic(BattleSideMechanics &side, Combatant &combatant,
+                            BattleMechanic mechanic, MoveId move = MOVE_NONE);
+void battleAfterAction(Combatant &combatant);
+void battleOnSwitchOut(Combatant &combatant);
+BattleMechanic wildBattleMechanic(uint8_t eventRoll, uint8_t choiceRoll,
+                                  bool megaEligible, bool zEligible = true);
+
 uint16_t stagedStat(uint16_t base, int8_t stage);
 uint16_t battleDamage(const Combatant &atk, const Combatant &def, MoveId mv,
                       bool crit, uint8_t roll);
+uint16_t battleDamage(const Combatant &atk, const Combatant &def,
+                      const BattleMove &move, bool crit, uint8_t roll);
 
 // True if `a` using `ma` acts before `b` using `mb`. Priority first, then the
 // staged speed, and paralysis halves it.
 bool battleMovesFirst(const Combatant &a, MoveId ma,
                       const Combatant &b, MoveId mb);
+bool battleMovesFirst(const Combatant &a, const BattleMove &ma,
+                      const Combatant &b, const BattleMove &mb);
 
 // One creature's action. `effectPercent` comes from the local answer: damaging
 // moves scale their final damage, while 0 makes every move category fail.
 void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log,
                uint8_t effectPercent = 100);
+void battleAct(Combatant &atk, Combatant &def, const BattleMove &move,
+               TurnLog &log, uint8_t effectPercent = 100);
 
 // Burn and poison chip damage, applied to one creature after both have acted.
 void battleEndTurn(Combatant &c, TurnLog &log);

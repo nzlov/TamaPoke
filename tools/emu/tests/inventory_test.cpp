@@ -61,12 +61,14 @@ int main() {
   bool rarityBands = true;
   const uint8_t minWeight[5] = { 0, 30, 10, 2, 1 };
   const uint8_t maxBandWeight[5] = { 0, 50, 20, 8, 1 };
-  uint8_t trainingTonics = 0, battleBoosters = 0;
-  uint8_t trainingStats = 0, battleStats = 0;
+  uint8_t trainingTonics = 0, battleBoosters = 0, mechanicItems = 0;
+  uint8_t trainingStats = 0, battleStats = 0, mechanicKinds = 0;
   for (uint16_t i = 0; i < itemCount(); i++) {
     const ItemEntry *item = itemAt(i);
-    if (item->rarity > 4 || item->dropWeight < minWeight[item->rarity] ||
-        item->dropWeight > maxBandWeight[item->rarity]) rarityBands = false;
+    bool encounterReward = item->effect == ITEM_EFFECT_BATTLE_MECHANIC;
+    if (item->rarity > 4 || (!encounterReward &&
+        (item->dropWeight < minWeight[item->rarity] ||
+         item->dropWeight > maxBandWeight[item->rarity]))) rarityBands = false;
     if (item->effect == ITEM_EFFECT_CATCH) {
       uint8_t expected = item->param == 100 ? 5 : 0;
       if (item->dailyMin != expected) dailyBalance = false;
@@ -92,6 +94,11 @@ int main() {
       battleBoosters++;
       battleStats |= item->flags;
     }
+    if (encounterReward && item->category == ITEM_CATEGORY_MECHANIC &&
+        item->rarity == 4 && !item->dropWeight && !item->dailyMin && !item->param) {
+      mechanicItems++;
+      mechanicKinds |= (uint8_t)(1u << (item->flags - 1));
+    }
   }
   ck(dailyBalance,
      "only basic balls refill to five and basic medicine refills to two");
@@ -102,6 +109,8 @@ int main() {
      battleStats == (ITEM_STAT_ATK | ITEM_STAT_DEF | ITEM_STAT_SPA |
                      ITEM_STAT_SPD | ITEM_STAT_SPE),
      "the pack exposes three rare training tonics and five battle boosters");
+  ck(mechanicItems == 3 && mechanicKinds == 0x07,
+     "the pack exposes exactly one non-weighted reward item for each battle mechanic");
 
   Inventory bag;
   bag.begin();
@@ -139,6 +148,24 @@ int main() {
     }
   }
   ck(hasWeightedDrop, "a weighted drop grants one non-full pack item");
+
+  bool mechanicRewards = true;
+  for (uint8_t kind = ITEM_MECHANIC_Z_MOVE; kind <= ITEM_MECHANIC_MEGA; kind++) {
+    const ItemEntry *expected = nullptr;
+    for (uint16_t i = 0; i < itemCount(); i++) {
+      const ItemEntry *item = itemAt(i);
+      if (item && item->effect == ITEM_EFFECT_BATTLE_MECHANIC && item->flags == kind) {
+        expected = item;
+        break;
+      }
+    }
+    if (!expected) { mechanicRewards = false; continue; }
+    uint8_t beforeReward = loaded.count(expected->key);
+    ItemKey granted = loaded.grantMechanicReward((ItemMechanicKind)kind);
+    if (granted != expected->key || loaded.count(expected->key) != beforeReward + 1)
+      mechanicRewards = false;
+  }
+  ck(mechanicRewards, "each wild mechanic grants its one corresponding reward item");
 
   printf("%s\n", bad ? "FAILURES" : "all good");
   return bad ? 1 : 0;

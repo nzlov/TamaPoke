@@ -22,7 +22,7 @@
 namespace {
 
 constexpr uint8_t MAX_PACKS = 32;
-constexpr uint8_t MAX_SECTIONS = 16;
+constexpr uint8_t MAX_SECTIONS = 18;
 constexpr uint16_t COMMON_SIZE = 48;
 constexpr uint16_t SECTION_SIZE = 16;
 constexpr uint8_t MAX_PET_PACKS = CONTENT_MAX_REGIONS;
@@ -127,6 +127,9 @@ static uint8_t *gItemLocalizedNames = nullptr;
 static uint32_t gItemLocalizedNamesSize = 0;
 static uint8_t *gItemLocales = nullptr;
 static uint32_t gItemLocalesSize = 0;
+static MegaFormEntry *gMegaForms = nullptr;
+static uint16_t gMegaFormCount = 0;
+static uint8_t gMegaSpritePack = 0xFF;
 static uint8_t *gTypeLocalizedNames = nullptr;
 static uint32_t gTypeLocalizedNamesSize = 0;
 static uint8_t gTypeChart[TYPE_COUNT * TYPE_COUNT] = {};
@@ -302,7 +305,10 @@ static ContentPackValidation validatePackHeader(const char *path, Reader &reader
       sectionCount == 0 || sectionCount > MAX_SECTIONS ||
       headerSize != COMMON_SIZE + sectionCount * SECTION_SIZE || headerSize > reader.size)
     return CONTENT_PACK_HEADER_INVALID;
-  if (rd16(common + 4) != CONTENT_PACK_ABI) return CONTENT_PACK_ABI_MISMATCH;
+  uint16_t abi = rd16(common + 4);
+  if (abi != CONTENT_PACK_ABI &&
+      !(kind == CONTENT_PACK_REGION && abi == CONTENT_PACK_REGION_COMPAT_ABI))
+    return CONTENT_PACK_ABI_MISMATCH;
   if (rd32(common + 8) != reader.size) return CONTENT_PACK_SIZE_MISMATCH;
   return CONTENT_PACK_VALID;
 }
@@ -532,7 +538,7 @@ static bool loadMovePack(uint8_t packIndex) {
     uint16_t id = rd16(row);
     uint32_t nameOffset = rd32(row + 13);
     if (id >= moveRecords || row[2] >= TYPE_COUNT || row[3] > MC_STATUS ||
-        row[6] > EF_CHARGE || row[10] > TG_FOE || row[11] > AIL_CONFUSE ||
+        row[6] > EF_PROTECT || row[10] > TG_FOE || row[11] > AIL_CONFUSE ||
         row[12] > 100 || !validString(names, nameSize, nameOffset)) {
       free(rawMoves); free(names); free(table); return false;
     }
@@ -642,8 +648,9 @@ static bool loadMovePack(uint8_t packIndex) {
     uint32_t nameOffset = rd32(row + 12);
     bool trainingItem = row[3] == ITEM_EFFECT_TRAINING_FLOOR;
     bool battleBoost = row[3] == ITEM_EFFECT_BATTLE_STAGE;
-    if (!key || row[2] < ITEM_CATEGORY_BALL || row[2] > ITEM_CATEGORY_BATTLE_BOOST ||
-        row[3] < ITEM_EFFECT_CATCH || row[3] > ITEM_EFFECT_BATTLE_STAGE ||
+    bool mechanicItem = row[3] == ITEM_EFFECT_BATTLE_MECHANIC;
+    if (!key || row[2] < ITEM_CATEGORY_BALL || row[2] > ITEM_CATEGORY_MECHANIC ||
+        row[3] < ITEM_EFFECT_CATCH || row[3] > ITEM_EFFECT_BATTLE_MECHANIC ||
         !row[4] || row[4] > 4 || row[10] > ITEM_STACK_LIMIT ||
         (trainingItem && (row[2] != ITEM_CATEGORY_TRAINING ||
                           (row[5] != ITEM_STAT_ATK && row[5] != ITEM_STAT_DEF &&
@@ -653,6 +660,9 @@ static bool loadMovePack(uint8_t packIndex) {
                           row[5] != ITEM_STAT_SPA && row[5] != ITEM_STAT_SPD &&
                           row[5] != ITEM_STAT_SPE) || itemParam <= 0 ||
                          itemParam > 6)) ||
+        (mechanicItem && (row[2] != ITEM_CATEGORY_MECHANIC ||
+                          row[5] < ITEM_MECHANIC_Z_MOVE || row[5] > ITEM_MECHANIC_MEGA ||
+                          itemParam != 0 || row[8] || row[9] || row[10])) ||
         !validString(itemNames, itemNamesSize, nameOffset)) {
       free(rawItems); free(itemNames); free(itemLocalizedNames); free(itemLocales); free(items);
       free(locales); free(localizedNames); free(localizedTypeNames);
@@ -674,6 +684,84 @@ static bool loadMovePack(uint8_t packIndex) {
   }
   free(rawItems);
 
+  uint32_t megaSize = 0, megaRecords = 0;
+  uint8_t *rawMega = readSection(pack, "MEGA", &megaSize, &megaRecords);
+  if (!rawMega || !megaRecords || megaSize != megaRecords * 9u) {
+    free(rawMega); free(itemNames); free(itemLocalizedNames); free(itemLocales); free(items);
+    free(locales); free(localizedNames); free(localizedTypeNames);
+    free(typeNames); free(offsets); free(entries); free(names); free(table);
+    return false;
+  }
+  MegaFormEntry *megaForms = (MegaFormEntry *)contentAlloc(
+      sizeof(MegaFormEntry) * megaRecords);
+  if (!megaForms) {
+    free(rawMega); free(itemNames); free(itemLocalizedNames); free(itemLocales); free(items);
+    free(locales); free(localizedNames); free(localizedTypeNames);
+    free(typeNames); free(offsets); free(entries); free(names); free(table);
+    return false;
+  }
+  SpeciesId previousSpecies = SPECIES_NONE;
+  for (uint32_t i = 0; i < megaRecords; i++) {
+    const uint8_t *row = rawMega + i * 9u;
+    MegaFormEntry &form = megaForms[i];
+    form.species = rd16(row);
+    form.type1 = row[2]; form.type2 = row[3];
+    form.bAtk = row[4]; form.bDef = row[5]; form.bSpA = row[6];
+    form.bSpD = row[7]; form.bSpe = row[8];
+    form.spriteAt = form.spriteSize = 0;
+    if (!form.species || form.species > CONTENT_MAX_SPECIES ||
+        (i && form.species <= previousSpecies) || form.type1 >= TYPE_COUNT ||
+        (form.type2 != T_NONE && form.type2 >= TYPE_COUNT) ||
+        !form.bAtk || !form.bDef || !form.bSpA || !form.bSpD || !form.bSpe) {
+      free(rawMega); free(megaForms); free(itemNames); free(itemLocalizedNames);
+      free(itemLocales); free(items); free(locales); free(localizedNames);
+      free(localizedTypeNames); free(typeNames); free(offsets); free(entries);
+      free(names); free(table);
+      return false;
+    }
+    previousSpecies = form.species;
+  }
+  free(rawMega);
+
+  const SectionRef *megaSpriteBlob = findSection(pack, "MSBL");
+  const SectionRef *megaSpriteIndex = findSection(pack, "MSPI");
+  if ((megaSpriteBlob == nullptr) != (megaSpriteIndex == nullptr)) {
+    free(megaForms); free(itemNames); free(itemLocalizedNames); free(itemLocales); free(items);
+    free(locales); free(localizedNames); free(localizedTypeNames);
+    free(typeNames); free(offsets); free(entries); free(names); free(table);
+    return false;
+  }
+  if (megaSpriteIndex) {
+    uint32_t indexSize = 0, indexCount = 0;
+    uint8_t *index = readSection(pack, "MSPI", &indexSize, &indexCount);
+    if (!index || indexSize != indexCount * 10u || indexCount > megaRecords) {
+      free(index); free(megaForms); free(itemNames); free(itemLocalizedNames);
+      free(itemLocales); free(items); free(locales); free(localizedNames);
+      free(localizedTypeNames); free(typeNames); free(offsets); free(entries);
+      free(names); free(table); return false;
+    }
+    SpeciesId previousSprite = SPECIES_NONE;
+    for (uint32_t i = 0; i < indexCount; i++) {
+      const uint8_t *row = index + i * 10u;
+      SpeciesId species = rd16(row);
+      uint32_t relative = rd32(row + 2), length = rd32(row + 6);
+      MegaFormEntry *form = nullptr;
+      for (uint32_t j = 0; j < megaRecords; j++)
+        if (megaForms[j].species == species) { form = &megaForms[j]; break; }
+      if (!form || !length || (i && species <= previousSprite) ||
+          relative > megaSpriteBlob->size || length > megaSpriteBlob->size - relative) {
+        free(index); free(megaForms); free(itemNames); free(itemLocalizedNames);
+        free(itemLocales); free(items); free(locales); free(localizedNames);
+        free(localizedTypeNames); free(typeNames); free(offsets); free(entries);
+        free(names); free(table); return false;
+      }
+      form->spriteAt = megaSpriteBlob->offset + relative;
+      form->spriteSize = length;
+      previousSprite = species;
+    }
+    free(index);
+  }
+
   gMovesTable = table; gMoveCount = (uint16_t)moveRecords; gMoveNames = (char *)names;
   gLearnOffsets = offsets; gLearnOffsetCount = offsetCount;
   gLearnEntries = entries; gLearnEntryCount = learnCountValue;
@@ -683,6 +771,8 @@ static bool loadMovePack(uint8_t packIndex) {
   gItemLocalizedNames = itemLocalizedNames;
   gItemLocalizedNamesSize = itemLocalizedNamesSize;
   gItemLocales = itemLocales; gItemLocalesSize = itemLocalesSize;
+  gMegaForms = megaForms; gMegaFormCount = (uint16_t)megaRecords;
+  gMegaSpritePack = packIndex;
   gTypeLocalizedNames = localizedTypeNames;
   gTypeLocalizedNamesSize = localizedTypeNamesSize;
   gTypeNames = (char *)typeNames;
@@ -1257,6 +1347,18 @@ const ItemEntry *itemByKey(ItemKey key) {
   for (uint16_t i = 0; i < gItemCount; i++) if (gItems[i].key == key) return &gItems[i];
   return nullptr;
 }
+
+const MegaFormEntry *megaFormFor(SpeciesId species) {
+  ensureContent();
+  uint16_t lo = 0, hi = gMegaFormCount;
+  while (lo < hi) {
+    uint16_t mid = (uint16_t)(lo + (hi - lo) / 2);
+    if (gMegaForms[mid].species < species) lo = (uint16_t)(mid + 1);
+    else hi = mid;
+  }
+  return lo < gMegaFormCount && gMegaForms[lo].species == species
+      ? &gMegaForms[lo] : nullptr;
+}
 uint16_t learnCount(SpeciesId species) {
   ensureContent();
   if (!species || (uint32_t)species + 1u >= gLearnOffsetCount) return 0;
@@ -1484,8 +1586,21 @@ bool spriteAvailable(SpeciesId species) {
   return dexValid(species) && gSprites[species].pack != 0xFF &&
          gSprites[species].normalSize != 0;
 }
-bool contentLoadSprite(SpeciesId species, bool shiny, uint8_t **out, uint32_t *size) {
+bool contentLoadSprite(SpeciesId species, bool shiny, bool mega,
+                       uint8_t **out, uint32_t *size) {
   if (!out || !size || !spriteAvailable(species)) return false;
+  if (mega) {
+    const MegaFormEntry *form = megaFormFor(species);
+    if (form && form->spriteSize && gMegaSpritePack < gPackCount) {
+      uint8_t *data = (uint8_t *)contentAlloc(form->spriteSize);
+      if (!data || !readRange(gPacks[gMegaSpritePack], form->spriteAt,
+                              data, form->spriteSize)) {
+        free(data); return false;
+      }
+      *out = data; *size = form->spriteSize;
+      return true;
+    }
+  }
   const SpriteRef &sprite = gSprites[species];
   uint32_t offset = shiny && sprite.shinySize ? sprite.shinyAt : sprite.normalAt;
   uint32_t length = shiny && sprite.shinySize ? sprite.shinySize : sprite.normalSize;

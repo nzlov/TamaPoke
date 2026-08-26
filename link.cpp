@@ -2,6 +2,7 @@
 #include "moves.h"
 #include "dex.h"
 #include "pet.h"
+#include "content.h"
 #include <string.h>
 
 // Packets are [type][len][payload]. Small and fixed so a truncated or
@@ -23,10 +24,12 @@ uint16_t linkBuildTag() {
   // exactly the things that change how a packet is READ. Two builds agreeing on
   // all of them can narrate the same fight even if they differ elsewhere.
   uint32_t h = 2166136261u;
+  uint32_t mechanics = contentMechanicsHash();
   const uint16_t bits[] = {
     (uint16_t)moveCount(), (uint16_t)dexCount(), (uint16_t)MOVE_SLOTS,
     (uint16_t)TRAINER_TEAM_MAX, (uint16_t)sizeof(LinkMon),
     (uint16_t)sizeof(LinkResult), (uint16_t)SI_COUNT,
+    (uint16_t)mechanics, (uint16_t)(mechanics >> 16),
   };
   for (uint16_t b : bits) { h ^= b; h *= 16777619u; }
   return (uint16_t)(h ^ (h >> 16));
@@ -56,6 +59,8 @@ void linkMonTo(Combatant &out, const LinkMon &m) {
   out.level = m.level < 1 ? 1 : (m.level > MAX_LEVEL ? MAX_LEVEL : m.level);
   out.maxHp = m.maxHp ? m.maxHp : 1;
   out.hp = out.maxHp;
+  out.type1 = dexEntry(out.dex).type1;
+  out.type2 = dexEntry(out.dex).type2;
   for (int i = 0; i < SI_COUNT; i++) out.base[i] = m.base[i] ? m.base[i] : 1;
   for (int i = 0; i < MOVE_SLOTS; i++) out.moves[i] = linkSafeMove(m.moves[i]);
   out.shiny = m.shiny != 0;
@@ -135,6 +140,7 @@ void Link::begin(bool host, const char *myName) {
   turn = 0;
   pendingAct = 0;
   pendingPercent = 0;
+  pendingMechanic = BMECH_NONE;
   resultN = 0;
   resultNew = false;
   youWon = false;
@@ -163,11 +169,14 @@ void Link::start() {
   sendHello(*this);
 }
 
-void Link::sendAct(uint8_t act, uint8_t percent) {
+void Link::sendAct(uint8_t act, uint8_t percent, BattleMechanic mechanic) {
   if (state != LINK_READY || !act) return;
   if (percent > 100) percent = 100;
-  uint8_t b[3] = { turn, act, LINK_ACT_IS_SWITCH(act) ? (uint8_t)100 : percent };
-  put(*this, LM_ACT, b, 3, true);   // kept: the host may never have heard it
+  if (mechanic > BMECH_MEGA) mechanic = BMECH_NONE;
+  if (LINK_ACT_IS_SWITCH(act)) mechanic = BMECH_NONE;
+  uint8_t b[4] = { turn, act, LINK_ACT_IS_SWITCH(act) ? (uint8_t)100 : percent,
+                   (uint8_t)mechanic };
+  put(*this, LM_ACT, b, 4, true);   // kept: the host may never have heard it
   if (!isHost) state = LINK_WAITING;
 }
 
@@ -187,6 +196,7 @@ void Link::sendResult(const uint8_t *blob, uint8_t len) {
   turn++;                              // this exchange is finished
   pendingAct = 0;
   pendingPercent = 0;
+  pendingMechanic = BMECH_NONE;
 }
 
 void Link::sendEnd(bool hostWon) {
@@ -216,6 +226,7 @@ void Link::rearm() {
   turn = 0;
   pendingAct = 0;
   pendingPercent = 0;
+  pendingMechanic = BMECH_NONE;
   resultN = 0;
   resultNew = false;
   youWon = false;
@@ -327,15 +338,17 @@ void Link::onPacket(const uint8_t *buf, uint8_t len) {
       return;
     }
     case LM_ACT:
-      if (!isHost || n < 3) return;    // only the host acts on an action
+      if (!isHost || n < 4) return;    // only the host acts on an action
       // A resend of a turn already resolved is not a new choice. Without this
       // the retransmissions that make the link reliable would themselves
       // desync it -- every repeat would spend another turn.
       if (body[0] != turn) return;
       if (!body[1]) return;            // 0 is not an action, it means silence
       if (body[2] > 100) return;
+      if (body[3] > BMECH_MEGA || (LINK_ACT_IS_SWITCH(body[1]) && body[3])) return;
       pendingAct = body[1];
       pendingPercent = LINK_ACT_IS_SWITCH(body[1]) ? 100 : body[2];
+      pendingMechanic = (BattleMechanic)body[3];
       return;
     case LM_WAIT:
       if (n < 2 || body[0] != turn || body[1] > 1 ||

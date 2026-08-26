@@ -104,11 +104,20 @@ struct LinkMon {
 // a turn recover from the next one instead of drifting.
 struct LinkResult {
   uint16_t hostHp, guestHp;
+  uint16_t hostMaxHp, guestMaxHp;
   uint8_t hostAil, guestAil;
   MoveId hostMove, guestMove;
   uint16_t hostDmg, guestDmg;
   uint8_t hostIdx, guestIdx;   // which squad member is out on each side
   uint8_t flags;               // bit0 crit, bit1 super, bit2 a faint happened
+  uint8_t hostType1, hostType2, guestType1, guestType2;
+  BattleMechanic hostActive, guestActive;
+  BattleMechanic hostMoveMechanic, guestMoveMechanic;
+  uint8_t hostDynamaxTurns, guestDynamaxTurns;
+  uint8_t hostUsedMask, guestUsedMask;
+  uint16_t hostBase[SI_COUNT], guestBase[SI_COUNT];
+  BattleMechanic hostMemberMechanic[TRAINER_TEAM_MAX];
+  BattleMechanic guestMemberMechanic[TRAINER_TEAM_MAX];
 };
 
 struct Link {
@@ -130,6 +139,7 @@ struct Link {
   uint8_t turn = 0;            // the exchange both sides are on
   uint8_t pendingAct = 0;      // host: the guest's action for `turn`, 0 = none
   uint8_t pendingPercent = 0;  // host: answer effect for that move, 0..100
+  BattleMechanic pendingMechanic = BMECH_NONE;
   bool youWon = false;
 
   // guest: the last turn the host resolved. `resultNew` is cleared by whoever
@@ -158,7 +168,8 @@ struct Link {
   void onPacket(const uint8_t *buf, uint8_t len);
   void tick(uint32_t now);            // resend + timeout; call once a frame
 
-  void sendAct(uint8_t act, uint8_t percent = 100);  // guest -> host
+  void sendAct(uint8_t act, uint8_t percent = 100,
+               BattleMechanic mechanic = BMECH_NONE);  // guest -> host
   void sendWait();                    // request reciprocal proof of life while answering
   void sendResult(const uint8_t *blob, uint8_t len);   // host -> guest
   void sendEnd(bool hostWon);

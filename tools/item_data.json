@@ -171,5 +171,41 @@
     "dailyMin": 0,
     "names": {"en-US": "X SPEED", "zh-CN": "速度强化剂"},
     "descriptions": {"en-US": "Raises Speed by one stage for the current battle.", "zh-CN": "本场战斗中使速度提高1级。"}
+  },
+  {
+    "key": 1601,
+    "category": 8,
+    "effect": 8,
+    "rarity": 4,
+    "flags": 1,
+    "param": 0,
+    "dropWeight": 0,
+    "dailyMin": 0,
+    "names": {"en-US": "Z CRYSTAL", "zh-CN": "Z纯晶"},
+    "descriptions": {"en-US": "Consumed to turn one damaging move into its type's Z-Move.", "zh-CN": "消耗后将一次攻击招式转化为对应属性的Z招式。"}
+  },
+  {
+    "key": 1602,
+    "category": 8,
+    "effect": 8,
+    "rarity": 4,
+    "flags": 2,
+    "param": 0,
+    "dropWeight": 0,
+    "dailyMin": 0,
+    "names": {"en-US": "WISHING STAR", "zh-CN": "许愿星"},
+    "descriptions": {"en-US": "Consumed to Dynamax one Pokemon for three actions.", "zh-CN": "消耗后让一只宝可梦极巨化三个行动回合。"}
+  },
+  {
+    "key": 1603,
+    "category": 8,
+    "effect": 8,
+    "rarity": 4,
+    "flags": 3,
+    "param": 0,
+    "dropWeight": 0,
+    "dailyMin": 0,
+    "names": {"en-US": "MEGA STONE", "zh-CN": "超级石"},
+    "descriptions": {"en-US": "Consumed to Mega Evolve one eligible Pokemon for the battle.", "zh-CN": "消耗后让一只符合条件的宝可梦在本场战斗中超级进化。"}
   }
 ]

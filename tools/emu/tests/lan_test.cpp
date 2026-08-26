@@ -30,6 +30,7 @@ extern Combatant btlSquad[];
 extern uint8_t btlSquadN, btlSquadAt, btlFoeAt, btlMenu, btlMsgCount;
 extern uint8_t btlMyAct, btlMyPercent, btlFoeSquadN;
 extern Combatant btlFoeSquad[];
+extern BattleSideMechanics btlYourMechanics, btlFoeMechanics;
 extern uint16_t squadMask;
 extern bool pickOpen, lanWantHost;
 extern uint8_t pickTrainer, pickPage;
@@ -127,7 +128,7 @@ int main(){
   ck(sent==1 && lastPkt[0]==LM_ACT, "it sends the request instead");
   ck(LINK_ACT_IS_SWITCH(lastPkt[3]) && LINK_ACT_SLOT(lastPkt[3])==1,
      "and the request names the slot it wants");
-  ck(lastPkt[1]==3 && lastPkt[4]==100,
+  ck(lastPkt[1]==4 && lastPkt[4]==100 && lastPkt[5]==BMECH_NONE,
      "a switch carries the fixed full-effect percentage");
 
   // --- a guest answers locally before its move is sent. The answer ratio is
@@ -139,7 +140,7 @@ int main(){
   ck(quiz.active && sent==1 && lastPkt[0]==LM_WAIT,
      "the guest sends only a keepalive while answering");
   ck(answerBattleQuiz(15000), "the guest can finish its local battle question");
-  ck(lan.state==LINK_WAITING && lastPkt[0]==LM_ACT && lastPkt[1]==3,
+  ck(lan.state==LINK_WAITING && lastPkt[0]==LM_ACT && lastPkt[1]==4,
      "the guest sends its move only after feedback");
   ck(lastPkt[4]==50, "the guest's 50 percent answer travels with that move");
 
@@ -164,6 +165,7 @@ int main(){
      "the host latches its move with the local answer percentage");
   lan.pendingAct = LINK_ACT_MOVE(0);
   lan.pendingPercent = 100;
+  lan.pendingMechanic = BMECH_NONE;
   render();                          // btlLinkPoll spots that both are in
   ck(btlMyAct == 0 && !btlMyPercent && !lan.pendingAct && !lan.pendingPercent,
      "and the turn goes as soon as the rival's action lands");
@@ -189,6 +191,7 @@ int main(){
   btlMyPercent = 0;
   lan.pendingAct = 0;
   lan.pendingPercent = 0;
+  lan.pendingMechanic = BMECH_NONE;
   uint16_t asymmetricHpWas = btlFoe.hp;
   battleTap(69 + 10, 286 + 10);
   ck(!quiz.active && btlMyAct != 0 && btlMyPercent == 100 &&
@@ -196,6 +199,7 @@ int main(){
      "a host with questions disabled waits for an answering guest");
   lan.pendingAct = LINK_ACT_MOVE(0);
   lan.pendingPercent = 50;
+  lan.pendingMechanic = BMECH_NONE;
   render();
   ck(!btlMyAct && !btlMyPercent && !lan.pendingAct && !lan.pendingPercent,
      "the asymmetric turn resolves once after the answering guest submits");
@@ -213,14 +217,32 @@ int main(){
   btlLink = true; btlLinkHost = false; btlMenu = 0; btlMsgCount = 0;
   btlYou = btlSquad[btlSquadAt];
   LinkResult r{};
-  r.hostHp = btlFoe.maxHp/2; r.guestHp = btlYou.maxHp/4;
+  uint16_t guestNormalMaxHp = btlYou.maxHp;
+  r.hostHp = btlFoe.maxHp/2; r.guestHp = guestNormalMaxHp/2;
+  r.hostMaxHp = btlFoe.maxHp; r.guestMaxHp = guestNormalMaxHp*2;
   r.hostMove = 1; r.guestMove = 1; r.hostDmg = 5; r.guestDmg = 7;
   r.hostIdx = 0; r.guestIdx = 0;
   r.guestAil = AIL_BURN;
+  r.hostType1 = btlFoe.type1; r.hostType2 = btlFoe.type2;
+  r.guestType1 = btlYou.type1; r.guestType2 = btlYou.type2;
+  r.hostActive = BMECH_MEGA;
+  r.guestActive = BMECH_DYNAMAX;
+  r.guestDynamaxTurns = 2;
+  r.hostUsedMask = battleMechanicBit(BMECH_MEGA);
+  r.guestUsedMask = battleMechanicBit(BMECH_DYNAMAX);
+  r.hostMemberMechanic[0] = BMECH_MEGA;
+  r.guestMemberMechanic[0] = BMECH_DYNAMAX;
+  for (uint8_t i=0;i<SI_COUNT;i++) { r.hostBase[i]=btlFoe.base[i]; r.guestBase[i]=btlYou.base[i]; }
   memcpy(lan.result,&r,sizeof(r)); lan.resultN=sizeof(r); lan.resultNew=true;
   render();
   ck(btlYou.hp==r.guestHp && btlFoe.hp==r.hostHp, "the guest takes the host's numbers");
   ck(btlYou.ailment==AIL_BURN, "and the ailment it was handed");
+  ck(btlYou.maxHp==guestNormalMaxHp*2 && btlYou.normalMaxHp==guestNormalMaxHp &&
+     btlYou.activeMechanic==BMECH_DYNAMAX && btlYou.dynamaxTurns==2,
+     "and restores the guest's absolute Dynamax state");
+  ck(btlYourMechanics.used(BMECH_DYNAMAX) &&
+     btlFoeMechanics.used(BMECH_MEGA) && btlYou.usedMechanic==BMECH_DYNAMAX,
+     "and restores the per-team and per-creature mechanic limits");
   ck(!lan.resultNew, "a result is consumed once");
   uint16_t hpNow = btlYou.hp;
   render();

@@ -139,6 +139,11 @@ int main() {
   for (MoveId move = 0; chineseGlyphs && move < moveCount(); move++)
     chineseGlyphs = fontCovers(moveName(move)) &&
                     fontCovers(moveDescription(move, "zh-CN"));
+  for (uint16_t item = 0; chineseGlyphs && item < itemCount(); item++) {
+    const ItemEntry *entry = itemAt(item);
+    chineseGlyphs = entry && fontCovers(itemName(entry->key)) &&
+                    fontCovers(itemDescription(entry->key, "zh-CN"));
+  }
   for (uint8_t type = 0; chineseGlyphs && type < TYPE_COUNT; type++)
     chineseGlyphs = fontCovers(packedTypeName(type));
   for (uint8_t region = 0; chineseGlyphs && region < regionAll(); region++) {

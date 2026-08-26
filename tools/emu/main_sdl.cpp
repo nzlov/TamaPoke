@@ -144,6 +144,9 @@ void startBattle(int16_t dex, uint8_t lvl);
 extern Combatant btlYou, btlFoe;
 extern uint32_t btlLungeUntil[2], btlHitUntil[2];
 extern uint8_t btlMenu;
+extern uint16_t btlHpShown[2];
+extern BattleSideMechanics btlYourMechanics;
+extern BattleMechanic btlPendingMechanic;
 void startTrainerBattle(uint8_t idx, bool hard);
 void onTap(int16_t x, int16_t y);   // the first-boot shots tap their way in
 void refreshUiFont();
@@ -465,6 +468,56 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
       if (item) inventory.add(item->key, 3);
     }
     btlMenu = 3; btlItemPage = 1;
+  }
+  else if (!strcmp(screen, "btlmechanics")) {
+    pet.dbgHatchAs(3, false);
+    pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
+    pet.relearnFromLevel();
+    startBattle(25, 42);
+    for (MoveId move = 1; move < moveCount(); move++)
+      if (moveEntry(move).cat != MC_STATUS) {
+        btlYou.moves[0] = move;
+        break;
+      }
+    for (uint16_t i = 0; i < itemCount(); i++) {
+      const ItemEntry *item = itemAt(i);
+      if (!item) continue;
+      while (item->effect != ITEM_EFFECT_BATTLE_MECHANIC && inventory.count(item->key))
+        inventory.consume(item->key);
+      if (item->effect == ITEM_EFFECT_BATTLE_MECHANIC)
+        inventory.add(item->key, 3);
+    }
+    btlMenu = 3;
+    btlItemPage = 0;
+  }
+  else if (!strcmp(screen, "btlzmove")) {
+    startTrainerBattle(3, false);
+    btlPendingMechanic = BMECH_Z_MOVE;
+    btlMenu = 1;
+  }
+  else if (!strcmp(screen, "btlnormal")) {
+    pet.dbgHatchAs(6, false);
+    pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
+    pet.relearnFromLevel();
+    startBattle(25, 42);
+  }
+  else if (!strcmp(screen, "btldynamax")) {
+    pet.dbgHatchAs(6, false);
+    pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
+    pet.relearnFromLevel();
+    startBattle(25, 42);
+    battleActivateMechanic(btlYourMechanics, btlYou, BMECH_DYNAMAX,
+                           btlYou.moves[0]);
+    btlHpShown[0] = btlYou.hp;
+  }
+  else if (!strcmp(screen, "btlmega")) {
+    pet.dbgHatchAs(6, false);
+    pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
+    pet.relearnFromLevel();
+    startBattle(25, 42);
+    battleActivateMechanic(btlYourMechanics, btlYou, BMECH_MEGA,
+                           btlYou.moves[0]);
+    btlHpShown[0] = btlYou.hp;
   }
   else if (!strcmp(screen, "btlrevive")) {
     static const int fill[] = { 9, 25, 143 };

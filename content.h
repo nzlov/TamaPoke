@@ -6,7 +6,8 @@
 #include "items.h"
 #include "moves.h"
 
-constexpr uint16_t CONTENT_PACK_ABI = 2;
+constexpr uint16_t CONTENT_PACK_ABI = 3;
+constexpr uint16_t CONTENT_PACK_REGION_COMPAT_ABI = 2;
 constexpr uint8_t CONTENT_MAX_UI_LOCALES = 16;
 constexpr uint8_t CONTENT_MAX_QUIZ_OPTIONS = 4;
 constexpr uint16_t CONTENT_MAX_QUESTION_ID_BYTES = 40;
@@ -57,6 +58,13 @@ enum ContentPackValidation : uint8_t {
 struct ContentPackInfo {
   char id[21];
   uint32_t revision;
+};
+
+struct MegaFormEntry {
+  SpeciesId species = SPECIES_NONE;
+  uint8_t type1 = T_NORMAL, type2 = T_NONE;
+  uint8_t bAtk = 1, bDef = 1, bSpA = 1, bSpD = 1, bSpe = 1;
+  uint32_t spriteAt = 0, spriteSize = 0;
 };
 
 struct UiLocaleInfo {
@@ -135,6 +143,7 @@ const char *itemName(ItemKey key);
 uint16_t itemCount();
 const ItemEntry *itemAt(uint16_t index);
 const ItemEntry *itemByKey(ItemKey key);
+const MegaFormEntry *megaFormFor(SpeciesId species);
 
 uint8_t typeEffectTenth(uint8_t attack, uint8_t defense);
 const char *packedTypeName(uint8_t type);
@@ -142,7 +151,8 @@ uint16_t packedTypeColor(uint8_t type);
 bool packedTypeColorIsLight(uint8_t type);
 
 // The caller owns the returned PSRAM/malloc buffer and frees it with free().
-bool contentLoadSprite(SpeciesId species, bool shiny, uint8_t **out, uint32_t *size);
+bool contentLoadSprite(SpeciesId species, bool shiny, bool mega,
+                       uint8_t **out, uint32_t *size);
 bool contentLoadThumbs(uint8_t **out, uint32_t *size);
 
 // Serial/Web diagnostics. The text is one line per installed pack and ends in

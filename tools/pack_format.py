@@ -6,7 +6,7 @@ import binascii
 import struct
 
 
-PACK_ABI = 2
+PACK_ABI = 3
 PACK_REVISION = 1
 COMMON = struct.Struct("<4sHBBIIIIHH20s")
 SECTION = struct.Struct("<4sIII")

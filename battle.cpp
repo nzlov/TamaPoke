@@ -13,6 +13,10 @@ static void fill(Combatant &c, int16_t dex, uint8_t lvl, uint16_t hp,
   c.hp = c.maxHp;
   c.base[SI_ATK] = a; c.base[SI_DEF] = d;
   c.base[SI_SPA] = sa; c.base[SI_SPD] = sd; c.base[SI_SPE] = sp;
+  if (dex >= 1 && dex <= dexCount()) {
+    c.type1 = dexEntry(dex).type1;
+    c.type2 = dexEntry(dex).type2;
+  }
 }
 
 void combatantFromPet(Combatant &c, const Pet &p) {
@@ -33,6 +37,209 @@ void combatantFromParty(Combatant &c, const PartyMon &m) {
   c.sparkle = m.sparkle != 0;
   const char *nm = m.nick[0] ? m.nick : dexEntry(m.dex).name;
   snprintf(c.name, sizeof(c.name), "%s", nm);
+}
+
+// ---------- special battle mechanics ----------
+
+static bool combatantHasType(const Combatant &c, uint8_t type) {
+  return c.type1 == type || c.type2 == type;
+}
+
+static uint16_t typeEffVsCombatant(uint8_t attack, const Combatant &defender) {
+  return typeEffPct(attack, defender.type1, defender.type2);
+}
+
+BattleMove battleMove(MoveId move) {
+  BattleMove result;
+  if (!moveValid(move)) return result;
+  result.source = move;
+  result.entry = moveEntry(move);
+  return result;
+}
+
+static uint8_t zPower(uint8_t power) {
+  if (power <= 55) return 100;
+  if (power <= 60) return 120;
+  if (power <= 70) return 140;
+  if (power <= 85) return 160;
+  if (power <= 95) return 175;
+  if (power <= 100) return 180;
+  if (power <= 110) return 185;
+  if (power <= 120) return 190;
+  if (power <= 130) return 195;
+  return 200;
+}
+
+static uint8_t maxPower(uint8_t power, uint8_t type) {
+  uint8_t result = power <= 40 ? 90 : power <= 50 ? 100 : power <= 60 ? 110
+                   : power <= 70 ? 120 : power <= 100 ? 130
+                   : power <= 140 ? 140 : 150;
+  if (type == T_FIGHTING || type == T_POISON)
+    result = result <= 100 ? 70 : result <= 120 ? 80 : result <= 140 ? 90 : 100;
+  return result;
+}
+
+static void setMaxStageEffect(MoveEntry &move) {
+  move.statMask = 0;
+  move.stages = 0;
+  move.target = TG_SELF;
+  switch (move.type) {
+    case T_NORMAL:   move.statMask = ST_SPE; move.stages = -1; move.target = TG_FOE; break;
+    case T_FIGHTING: move.statMask = ST_ATK; move.stages = 1; break;
+    case T_FLYING:   move.statMask = ST_SPE; move.stages = 1; break;
+    case T_POISON:   move.statMask = ST_SPA; move.stages = 1; break;
+    case T_GROUND:   move.statMask = ST_SPD; move.stages = 1; break;
+    case T_BUG:      move.statMask = ST_SPA; move.stages = -1; move.target = TG_FOE; break;
+    case T_GHOST:    move.statMask = ST_DEF; move.stages = -1; move.target = TG_FOE; break;
+    case T_DRAGON:   move.statMask = ST_ATK; move.stages = -1; move.target = TG_FOE; break;
+    case T_DARK:     move.statMask = ST_SPD; move.stages = -1; move.target = TG_FOE; break;
+    case T_STEEL:    move.statMask = ST_DEF; move.stages = 1; break;
+    default: break;  // weather and terrain effects are outside the compact ruleset
+  }
+}
+
+BattleMove battleMoveFor(const Combatant &attacker, MoveId move,
+                         BattleMechanic requested) {
+  BattleMove result = battleMove(move);
+  if (!result.valid()) return result;
+  if (requested == BMECH_Z_MOVE && result.entry.cat != MC_STATUS) {
+    result.mechanic = BMECH_Z_MOVE;
+    result.entry.power = zPower(result.entry.power);
+    result.entry.acc = 0;
+    result.entry.effect = EF_NONE;
+    result.entry.param = 0;
+    result.entry.statMask = 0;
+    result.entry.stages = 0;
+    result.entry.ailment = AIL_NONE;
+    result.entry.ailChance = 0;
+  } else if (attacker.activeMechanic == BMECH_DYNAMAX) {
+    result.mechanic = BMECH_DYNAMAX;
+    result.entry.acc = 0;
+    result.entry.ailment = AIL_NONE;
+    result.entry.ailChance = 0;
+    if (result.entry.cat == MC_STATUS) {
+      result.entry.effect = EF_PROTECT;
+      result.entry.param = 4;  // Max Guard priority
+      result.entry.statMask = 0;
+      result.entry.stages = 0;
+    } else {
+      result.entry.power = maxPower(result.entry.power, result.entry.type);
+      result.entry.effect = EF_NONE;
+      result.entry.param = 0;
+      setMaxStageEffect(result.entry);
+    }
+  }
+  return result;
+}
+
+bool battleMegaEligible(SpeciesId species) {
+  return megaFormFor(species) != nullptr;
+}
+
+static bool hasDamagingMove(const Combatant &combatant) {
+  for (uint8_t i = 0; i < MOVE_SLOTS; i++)
+    if (moveValid(combatant.moves[i]) && moveEntry(combatant.moves[i]).cat != MC_STATUS)
+      return true;
+  return false;
+}
+
+bool battleMechanicAvailable(const BattleSideMechanics &side,
+                             const Combatant &combatant,
+                             BattleMechanic mechanic, MoveId move) {
+  if (mechanic == BMECH_NONE || combatant.fainted() ||
+      combatant.usedMechanic != BMECH_NONE ||
+      side.used(mechanic)) return false;
+  if (mechanic == BMECH_MEGA) return battleMegaEligible(combatant.dex);
+  if (mechanic == BMECH_Z_MOVE) {
+    if (moveValid(move)) return moveEntry(move).cat != MC_STATUS;
+    return hasDamagingMove(combatant);
+  }
+  return mechanic == BMECH_DYNAMAX;
+}
+
+static void applyMegaForm(Combatant &combatant) {
+  const MegaFormEntry *form = megaFormFor(combatant.dex);
+  if (!form) return;
+  if (dexValid(combatant.dex)) {
+    const DexEntry &baseSpecies = dexEntry(combatant.dex);
+    const uint8_t oldBase[SI_COUNT] = {
+      baseSpecies.bAtk, baseSpecies.bDef, baseSpecies.bSpA,
+      baseSpecies.bSpD, baseSpecies.bSpe,
+    };
+    const uint8_t newBase[SI_COUNT] = {
+      form->bAtk, form->bDef, form->bSpA, form->bSpD, form->bSpe,
+    };
+    for (uint8_t i = 0; i < SI_COUNT; i++) {
+      int32_t changed = (int32_t)combatant.base[i] + newBase[i] - oldBase[i];
+      combatant.base[i] = changed < 1 ? 1
+                           : changed > UINT16_MAX ? UINT16_MAX : (uint16_t)changed;
+    }
+  } else {
+    // Recovery/test environments may have the move pack without a region pack.
+    // Eligibility still comes from real form data; this fallback keeps the
+    // battle object valid until species base stats are available again.
+    for (uint8_t i = 0; i < SI_COUNT; i++)
+      combatant.base[i] = (uint16_t)((uint32_t)combatant.base[i] * 6u / 5u);
+  }
+  combatant.type1 = form->type1;
+  combatant.type2 = form->type2;
+}
+
+bool battleActivateMechanic(BattleSideMechanics &side, Combatant &combatant,
+                            BattleMechanic mechanic, MoveId move) {
+  if (!battleMechanicAvailable(side, combatant, mechanic, move)) return false;
+  side.usedMask |= battleMechanicBit(mechanic);
+  combatant.usedMechanic = mechanic;
+  if (mechanic == BMECH_DYNAMAX) {
+    combatant.activeMechanic = mechanic;
+    combatant.dynamaxTurns = 3;
+    combatant.normalMaxHp = combatant.maxHp;
+    combatant.maxHp = combatant.maxHp > UINT16_MAX / 2 ? UINT16_MAX
+                                                       : (uint16_t)(combatant.maxHp * 2u);
+    combatant.hp = combatant.hp > UINT16_MAX / 2 ? UINT16_MAX
+                                                 : (uint16_t)(combatant.hp * 2u);
+  } else if (mechanic == BMECH_MEGA) {
+    combatant.activeMechanic = mechanic;
+    applyMegaForm(combatant);
+  }
+  return true;
+}
+
+static void endDynamax(Combatant &combatant) {
+  if (combatant.activeMechanic != BMECH_DYNAMAX) return;
+  uint16_t oldMax = combatant.maxHp;
+  uint16_t normal = combatant.normalMaxHp ? combatant.normalMaxHp
+                                          : (uint16_t)((oldMax + 1u) / 2u);
+  if (combatant.hp && oldMax) {
+    uint32_t hp = ((uint32_t)combatant.hp * normal + oldMax - 1u) / oldMax;
+    combatant.hp = hp ? (uint16_t)hp : 1;
+  }
+  combatant.maxHp = normal ? normal : 1;
+  combatant.normalMaxHp = 0;
+  combatant.dynamaxTurns = 0;
+  combatant.activeMechanic = BMECH_NONE;
+}
+
+void battleAfterAction(Combatant &combatant) {
+  if (combatant.activeMechanic != BMECH_DYNAMAX) return;
+  if (combatant.dynamaxTurns) combatant.dynamaxTurns--;
+  if (!combatant.dynamaxTurns || combatant.fainted()) endDynamax(combatant);
+}
+
+void battleOnSwitchOut(Combatant &combatant) {
+  endDynamax(combatant);
+  combatant.protectedTurn = false;
+}
+
+BattleMechanic wildBattleMechanic(uint8_t eventRoll, uint8_t choiceRoll,
+                                  bool megaEligible, bool zEligible) {
+  if (eventRoll >= 30) return BMECH_NONE;
+  BattleMechanic choices[3];
+  uint8_t count = 0;
+  if (zEligible) choices[count++] = BMECH_Z_MOVE;
+  choices[count++] = BMECH_DYNAMAX;
+  if (megaEligible) choices[count++] = BMECH_MEGA;
+  return choices[choiceRoll % count];
 }
 
 // ---------- stat stages ----------
@@ -62,8 +269,13 @@ static uint16_t effStat(const Combatant &c, uint8_t idx) {
 // roll is 217..255, the series' damage spread, passed in so tests can pin it.
 uint16_t battleDamage(const Combatant &atk, const Combatant &def, MoveId mv,
                       bool crit, uint8_t roll) {
-  if (!mv || mv >= moveCount()) return 0;
-  const MoveEntry &m = moveEntry(mv);
+  return battleDamage(atk, def, battleMove(mv), crit, roll);
+}
+
+uint16_t battleDamage(const Combatant &atk, const Combatant &def,
+                      const BattleMove &move, bool crit, uint8_t roll) {
+  if (!move.valid()) return 0;
+  const MoveEntry &m = move.entry;
   if (m.cat == MC_STATUS) return 0;
 
   if (m.effect == EF_FIXED_LVL) return atk.level ? atk.level : 1;
@@ -81,8 +293,8 @@ uint16_t battleDamage(const Combatant &atk, const Combatant &def, MoveId mv,
 
   uint32_t dmg = (2UL * atk.level / 5 + 2) * m.power * A / D / 50 + 2;
   if (crit) dmg *= 2;
-  if (hasStab(atk.dex, m.type)) dmg = dmg * 3 / 2;
-  uint16_t eff = typeEffVsDex(m.type, def.dex);
+  if (combatantHasType(atk, m.type)) dmg = dmg * 3 / 2;
+  uint16_t eff = typeEffVsCombatant(m.type, def);
   dmg = dmg * eff / 100;
   if (eff == 0) return 0;               // immune: no chip, no minimum
   dmg = dmg * roll / 255;
@@ -93,10 +305,15 @@ uint16_t battleDamage(const Combatant &atk, const Combatant &def, MoveId mv,
 
 bool battleMovesFirst(const Combatant &a, MoveId ma,
                       const Combatant &b, MoveId mb) {
-  int pa = (ma && ma < moveCount() && moveEntry(ma).effect == EF_PRIORITY)
-               ? moveEntry(ma).param : 0;
-  int pb = (mb && mb < moveCount() && moveEntry(mb).effect == EF_PRIORITY)
-               ? moveEntry(mb).param : 0;
+  return battleMovesFirst(a, battleMove(ma), b, battleMove(mb));
+}
+
+bool battleMovesFirst(const Combatant &a, const BattleMove &ma,
+                      const Combatant &b, const BattleMove &mb) {
+  int pa = ma.valid() && (ma.entry.effect == EF_PRIORITY || ma.entry.effect == EF_PROTECT)
+               ? ma.entry.param : 0;
+  int pb = mb.valid() && (mb.entry.effect == EF_PRIORITY || mb.entry.effect == EF_PROTECT)
+               ? mb.entry.param : 0;
   if (pa != pb) return pa > pb;
   uint16_t sa = effStat(a, SI_SPE), sb = effStat(b, SI_SPE);
   if (sa != sb) return sa > sb;
@@ -131,8 +348,16 @@ static uint16_t heal(Combatant &c, uint16_t amount) {
 
 void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log,
                uint8_t effectPercent) {
+  battleAct(atk, def, battleMove(mv), log, effectPercent);
+}
+
+void battleAct(Combatant &atk, Combatant &def, const BattleMove &selected,
+               TurnLog &log, uint8_t effectPercent) {
+  BattleMove move = selected;
   log = TurnLog();
-  log.move = mv;
+  log.move = move.source;
+  log.mechanic = move.mechanic;
+  log.moveType = move.entry.type;
   if (effectPercent > 100) effectPercent = 100;
   if (atk.fainted() || def.fainted()) { log.skipped = true; return; }
 
@@ -163,19 +388,21 @@ void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log,
   // A wound-up EF_CHARGE move fires this turn instead of whatever was picked.
   // The answer gates the move before a fresh charge is stored, so a failed
   // answer cannot bank an attack for a later turn.
-  bool firingCharge = atk.charging != 0;
-  if (firingCharge) { mv = atk.charging; atk.charging = 0; }
-  log.move = mv;
+  bool firingCharge = atk.charging != 0 && move.mechanic == BMECH_NONE;
+  if (firingCharge) { move = battleMove(atk.charging); atk.charging = 0; }
+  log.move = move.source;
+  log.mechanic = move.mechanic;
+  log.moveType = move.entry.type;
   if (!effectPercent) { log.missed = true; return; }
-  if (!firingCharge && mv && mv < moveCount() && moveEntry(mv).effect == EF_CHARGE) {
-    atk.charging = mv;
+  if (!firingCharge && move.valid() && move.entry.effect == EF_CHARGE) {
+    atk.charging = move.source;
     log.charged = true;
     return;
   }
 
-  if (!mv || mv >= moveCount()) { log.skipped = true; return; }
-  const MoveEntry &m = moveEntry(mv);
-  log.move = mv;
+  if (!move.valid()) { log.skipped = true; return; }
+  const MoveEntry &m = move.entry;
+  log.move = move.source;
 
   // --- accuracy. acc 0 means it cannot miss (SWIFT, and every status move)
   if (m.acc && m.effect != EF_NEVER_MISS && random(100) >= m.acc) {
@@ -184,7 +411,9 @@ void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log,
   }
 
   if (m.cat == MC_STATUS) {
-    if (m.effect == EF_HEAL) {
+    if (m.effect == EF_PROTECT) {
+      atk.protectedTurn = true;
+    } else if (m.effect == EF_HEAL) {
       log.healed = heal(atk, (uint32_t)atk.maxHp * (m.param > 0 ? m.param : 50) / 100) != 0;
     } else if (m.effect == EF_STAGE) {
       Combatant &t = (m.target == TG_SELF) ? atk : def;
@@ -194,15 +423,20 @@ void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log,
     return;
   }
 
+  if (def.protectedTurn) {
+    log.missed = true;
+    return;
+  }
+
   // --- damage, including multi-hit
   uint8_t hits = (m.effect == EF_MULTI) ? (uint8_t)(2 + random(4)) : 1;
   uint32_t rawTotal = 0;
   uint16_t total = 0;
-  log.effPct = typeEffVsDex(m.type, def.dex);
+  log.effPct = typeEffVsCombatant(m.type, def);
   if (log.effPct == 0) { log.immune = true; return; }
   for (uint8_t h = 0; h < hits; h++) {
     bool crit = random(16) == 0;                 // ~6%, the series' base rate
-    uint16_t d = battleDamage(atk, def, mv, crit, (uint8_t)(217 + random(39)));
+    uint16_t d = battleDamage(atk, def, move, crit, (uint8_t)(217 + random(39)));
     rawTotal += d;
     uint32_t scaledTotal = (rawTotal * effectPercent + 50u) / 100u;
     if (scaledTotal > UINT16_MAX) scaledTotal = UINT16_MAX;
@@ -219,9 +453,12 @@ void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log,
     hurt(atk, total / m.param ? total / m.param : 1);
   if (m.effect == EF_DRAIN && m.param > 0) heal(atk, total * m.param / 100);
   if (m.effect == EF_RECHARGE) atk.recharge = true;
-  if (m.effect == EF_STAGE) {
-    Combatant &t = (m.target == TG_SELF) ? atk : def;
-    log.stageMask = applyStages(t, m.statMask, m.stages);
+
+  if (m.statMask && m.stages &&
+      (m.target == TG_SELF || !def.fainted())) {
+    Combatant &stageTarget = m.target == TG_SELF ? atk : def;
+    applyStages(stageTarget, m.statMask, m.stages);
+    log.stageMask = m.statMask;
     log.stageDelta = m.stages;
   }
 
@@ -236,10 +473,10 @@ void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log,
       }
     } else if (def.ailment == AIL_NONE) {
       // a type cannot be given the status it is made of
-      bool immune = (m.ailment == AIL_BURN && hasStab(def.dex, T_FIRE)) ||
-                    (m.ailment == AIL_FREEZE && hasStab(def.dex, T_ICE)) ||
-                    (m.ailment == AIL_POISON && hasStab(def.dex, T_POISON)) ||
-                    (m.ailment == AIL_PARA && hasStab(def.dex, T_ELECTRIC));
+      bool immune = (m.ailment == AIL_BURN && combatantHasType(def, T_FIRE)) ||
+                    (m.ailment == AIL_FREEZE && combatantHasType(def, T_ICE)) ||
+                    (m.ailment == AIL_POISON && combatantHasType(def, T_POISON)) ||
+                    (m.ailment == AIL_PARA && combatantHasType(def, T_ELECTRIC));
       if (!immune) {
         def.ailment = m.ailment;
         if (m.ailment == AIL_SLEEP) def.ailTurns = 2 + random(3);
