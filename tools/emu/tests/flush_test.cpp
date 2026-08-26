@@ -22,14 +22,14 @@ extern const char *const SCREEN_NAME[];
 extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern QuizRuntime quiz;
-extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, navMenuOpen, partyOpen, partyPick;
+extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, navMenuOpen, boxOpen, partyPick;
 extern bool trainOpen, movePickOpen, battleOpen, gymOpen, playerOpen;
 extern uint8_t cardPage;
 void startBattle(int16_t dex, uint8_t lvl);
 
 static int bad = 0;
 static void clearAll(){
-  cardOpen=galleryOpen=clockOpen=kbOpen=menuOpen=navMenuOpen=partyOpen=partyPick=false;
+  cardOpen=galleryOpen=clockOpen=kbOpen=menuOpen=navMenuOpen=boxOpen=partyPick=false;
   trainOpen=movePickOpen=battleOpen=gymOpen=playerOpen=false;
 }
 static void check(const char *name){
@@ -65,7 +65,7 @@ int main(){
   clearAll(); playerOpen=true;   check("player");
   clearAll(); menuOpen=true;     check("menu");
   clearAll(); navMenuOpen=true;  check("navmenu");
-  clearAll(); partyOpen=true;    check("party");
+  clearAll(); boxOpen=true;      check("box");
   clearAll(); clockOpen=true;    check("clock");
   for (uint8_t p=0;p<4;p++){ clearAll(); cardOpen=true; cardPage=p;
     char n[16]; snprintf(n,sizeof(n),"card%u",p); check(n); }
@@ -77,7 +77,7 @@ int main(){
   clearAll(); trainOpen=true;       crumbIs("train");
   clearAll(); menuOpen=true;        crumbIs("menu");
   clearAll(); navMenuOpen=true;     crumbIs("menu");
-  clearAll(); partyOpen=true;       crumbIs("party");
+  clearAll(); boxOpen=true;         crumbIs("box");
   clearAll(); gymOpen=true;         crumbIs("gym");
   clearAll(); playerOpen=true;      crumbIs("player");
   clearAll(); movePickOpen=true;    crumbIs("movepick");

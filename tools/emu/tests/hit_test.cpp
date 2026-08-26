@@ -35,7 +35,6 @@ extern uint8_t btlMenu;
 extern Combatant btlYou;
 void startBattle(int16_t dex, uint8_t lvl);
 int btlCellIndexAt(int16_t x, int16_t y);
-void partyButtonRects(int *boxTop, int *boxBot, int *closeTop, int *closeBot);
 void uiButtonHeights(int *out, int max, int *n);
 void gymHeaderRects(int *pillTop, int *pillBot, int *rowTop);
 void gymPickerFooterRects(int *rowBottom, int *lanTop, int *lanBottom,
@@ -157,20 +156,6 @@ int main(){
   ck(beginBattleQuiz(0) && !quiz.active,
      "a disabled battle question resolves the move without a popup");
   quiz.config.questionTypes = QUIZ_TYPE_ARITHMETIC;
-
-  // The party screen's BOX and CLOSE buttons must not share a pixel. Padding
-  // BOX to make it easier to hit pushed its hit area 8 px into CLOSE, so taps
-  // meant to close the screen opened the box instead -- fixing one target by
-  // stealing from its neighbour.
-  {
-    int boxTop, boxBot, clTop, clBot;
-    partyButtonRects(&boxTop, &boxBot, &clTop, &clBot);
-    ck(boxBot < clTop, "BOX and CLOSE hit areas do not overlap");
-    ck(clTop - boxBot >= 4, "and there is a real gap between them");
-    ck(clBot < 466 && boxTop > 0, "both stay on the panel");
-    printf("      BOX %d..%d, CLOSE %d..%d, gap %d px\n",
-           boxTop, boxBot, clTop, clBot, clTop - boxBot);
-  }
 
   // Three separate "hard to hit" reports came in from the board, all the same
   // mistake: a button sized to fit its label rather than a finger. This holds

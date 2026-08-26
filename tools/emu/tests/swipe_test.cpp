@@ -19,15 +19,15 @@ bool petNavTap(int16_t x, int16_t y);
 bool navMenuTap(int16_t x, int16_t y);
 void navMenuButtonPoint(uint8_t index, int *x, int *y);
 extern Pet pet;
-extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyOpen, partyPick;
+extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyPick;
 extern bool trainOpen, movePickOpen, battleOpen, gymOpen, playerOpen, boxOpen, pickOpen;
 extern bool bagOpen, captureOpen, navMenuOpen;
-extern uint8_t cardPage, gymPage, playerPage, movePickPage, boxPage, pickPage, partyDetail;
+extern uint8_t cardPage, gymPage, playerPage, movePickPage, boxPage, pickPage;
 extern int galleryPage; extern bool galleryDirty; extern uint8_t galleryDetail;
 extern uint8_t galleryRegion;
 extern uint8_t gymRegion;
 extern bool gymPick, galleryPick;
-extern uint8_t movePickSlot, movePickParty, boxSel, boxSwapFrom;
+extern uint8_t movePickSlot, movePickParty, boxSel;
 extern uint16_t squadMask;
 extern uint8_t pickTrainer; extern bool pickHard;
 void pickDefault(uint8_t);
@@ -46,10 +46,10 @@ static uint8_t RPICK_PER_PAGE_T(){ uint8_t n=rpickRegions(rpickModeNow()), p=rpi
 static int bad=0;
 static void clearAll(){
   gymPick=galleryPick=false;
-  cardOpen=galleryOpen=clockOpen=kbOpen=menuOpen=partyOpen=partyPick=false;
+  cardOpen=galleryOpen=clockOpen=kbOpen=menuOpen=partyPick=false;
   trainOpen=movePickOpen=battleOpen=gymOpen=playerOpen=boxOpen=pickOpen=false;
   bagOpen=captureOpen=navMenuOpen=false;
-  partyDetail=0; boxSel=boxSwapFrom=0;
+  boxSel=0;
 }
 // swipe left; the page must advance and the screen must stay open
 static void check(const char *name, bool *open, uint8_t *page){
@@ -77,7 +77,7 @@ int main(){
   clearAll(); cardOpen=true;                      check("card",     &cardOpen,     &cardPage);
   clearAll(); gymOpen=true; gymPick=false;        check("gyms",     &gymOpen,      &gymPage);
   clearAll(); playerOpen=true;                    check("player",   &playerOpen,   &playerPage);
-  clearAll(); partyOpen=true; boxOpen=true;       check("box",      &boxOpen,      &boxPage);
+  clearAll(); boxOpen=true;                       check("box",      &boxOpen,      &boxPage);
   clearAll(); movePickOpen=true; movePickParty=0; movePickSlot=0;
                                                   check("movepick", &movePickOpen, &movePickPage);
   clearAll(); pickTrainer=7; pickHard=false; pickDefault(squadCap(7,false)); pickOpen=true;
@@ -175,8 +175,8 @@ int main(){
     onSwipeV(1);
     navMenuButtonPoint(0, &menuX, &menuY);
     navMenuTap(menuX, menuY);
-    if (!bagOpen || partyOpen) { printf("FAIL  bag        menu button did not open the bag\n"); bad++; }
-    else printf("PASS  %-10s opens without opening the party\n", "bag");
+    if (!bagOpen || boxOpen) { printf("FAIL  bag        menu button did not open the bag\n"); bad++; }
+    else printf("PASS  %-10s opens without opening the Box\n", "bag");
   }
 
   // THE REGION CHOOSER IS PAGED NOW, and every paged screen in this sketch has

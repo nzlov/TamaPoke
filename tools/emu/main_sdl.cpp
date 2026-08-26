@@ -166,8 +166,7 @@ extern Link lan;
 void startLinkBattle();
 extern uint8_t playerPage;
 extern bool gymHard, pickOpen;
-extern uint8_t partyDetail;
-extern bool boxOpen; extern uint8_t boxSwapFrom;
+extern bool boxOpen;
 extern bool btlNewBadge; extern uint32_t btlWinUntil;
 extern uint8_t pickTrainer, pickPage;
 void pickDefault(uint8_t cap);
@@ -183,7 +182,7 @@ void loop();
 void render();
 extern Arduino_Canvas *gfx;
 extern Pet pet;
-extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyOpen, partyPick, trainOpen, movePickOpen;
+extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyPick, trainOpen, movePickOpen;
 extern bool bagOpen, captureOpen;
 extern bool btlWild;
 extern uint8_t capturePage;
@@ -270,9 +269,21 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   if (!strcmp(screen, "starterj")) onTap(233, 108 + 72 + 30);  // JOHTO
   for (int i = 0; i < 2; i++) loop();          // pick up the sprite for the new species
   cardOpen = galleryOpen = clockOpen = kbOpen = false;
-  menuOpen = navMenuOpen = partyOpen = partyPick = trainOpen = movePickOpen = false;
+  menuOpen = navMenuOpen = partyPick = trainOpen = movePickOpen = false;
+  boxOpen = false;
   bagOpen = captureOpen = false;
   if (!strcmp(screen, "main")) pet.ageMinutes = 0;
+  else if (!strcmp(screen, "mainroster")) {
+    pet.ageMinutes = 0;
+    party.captureActive(pet, false);
+    PartyMon second; second.dex = 25; second.level = 18;
+    second.ageMinutes = 17UL * MINUTES_PER_LEVEL;
+    PartyMon third; third.dex = 143; third.level = 32;
+    third.ageMinutes = 31UL * MINUTES_PER_LEVEL;
+    party.replaceAt(1, second);
+    party.replaceAt(2, third);
+    expireShotCelebrations();
+  }
   else if (!strcmp(screen, "evolvecta")) {
     pet.dbgHatchAs(1, false);
     pet.ageMinutes = 19UL * MINUTES_PER_LEVEL;
@@ -519,11 +530,11 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     for(int i=0;i<6;i++){ PartyMon m; m.dex=f[i]; m.level=40+i*5;
       m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=25; party.replaceAt(i,m); }
     static const int b[]={6,65,68,143,12,131,94,25};
-    for(int i=0;i<8;i++){ PartyMon m; m.dex=b[i]; m.level=30+i*4;
+    for(int i=0;i<4;i++){ PartyMon m; m.dex=b[i]; m.level=30+i*4;
       m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20; m.shiny=(i==3);
       party.box[i]=m; }
     party.boxSave();
-    partyOpen=true; boxOpen=true; boxSwapFrom=1;
+    boxOpen=true; boxSel=0;
   }
   else if (!strcmp(screen, "boxreplace")) {
     static const int fill[] = { 9, 25, 143, 94, 131, 3 };
@@ -535,22 +546,23 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     PartyMon stored; stored.dex = 6; stored.level = 58;
     stored.ivAtk = stored.ivDef = stored.ivSpe = stored.ivHp = 27;
     party.box[0] = stored;
-    partyOpen = true; boxOpen = false; boxSel = 1;
+    boxOpen = true; boxSel = 1;
+  }
+  else if (!strcmp(screen, "boxdeposit")) {
+    static const int fill[] = { 9, 25, 143 };
+    for (int i = 0; i < 3; i++) {
+      PartyMon m; m.dex = fill[i]; m.level = 24 + i * 6;
+      m.ivAtk = m.ivDef = m.ivSpe = m.ivHp = 22;
+      party.replaceAt(i, m);
+    }
+    PartyMon stored; stored.dex = 6; stored.level = 36;
+    party.box[0] = stored;
+    boxOpen = true; boxSel = 2;
   }
   else if (!strcmp(screen, "win")) {
     startTrainerBattle(2, true);
     btlNewBadge = true; btlWinUntil = 60000; pet.badgesHard = 0x07;
     btlIvReward = GYM_IV_GAINED; btlIvWhich = 2;
-  }
-  else if (!strcmp(screen, "pmon")) {
-    Pet t; t.dbgHatchAs(131,false); t.ivAtk=t.ivDef=t.ivSpe=t.ivHp=27;
-    t.ageMinutes=53UL*MINUTES_PER_LEVEL; t.relearnFromLevel();
-    PartyMon m; m.dex=131; m.level=54; m.shiny=1;
-    m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=27; m.trAtk=m.trDef=m.trSpe=40;
-    for(int k=0;k<MOVE_SLOTS;k++) m.moves[k]=t.moves[k];
-    snprintf(m.nick,sizeof(m.nick),"NESSIE");
-    party.replaceAt(0,m);
-    partyOpen = true; partyDetail = 1;
   }
   else if (!strcmp(screen, "pick")) {
     static const int fill[]={9,25,143,94,131,3};
@@ -583,21 +595,6 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.relearnFromLevel();
     pet.lastLearnLevel = 0;
     pet.checkLearnGates();
-  }
-  else if (!strcmp(screen, "party") || !strcmp(screen, "partyfull")) {
-    partyOpen = true;
-    static const int fill[] = { 6, 25, 149, 94, 143, 131 };
-    static const char *nk[] = { "EMBER", "SPARK", "", "SPOOK", "", "" };
-    int n = !strcmp(screen, "partyfull") ? 6 : 3;
-    for (int i = 0; i < n; i++) {
-      PartyMon m;
-      m.dex = fill[i]; m.level = 40 + i * 7; m.shiny = (i == 2);
-      m.ageMinutes = (uint32_t)(m.level - 1) * MINUTES_PER_LEVEL;
-      m.ivAtk = m.ivDef = m.ivSpe = m.ivHp = 25;
-      snprintf(m.nick, sizeof(m.nick), "%s", nk[i]);
-      party.replaceAt(i, m);
-    }
-    if (!strcmp(screen, "partyfull")) partyPick = true;
   }
   render();
   writePPM(out);

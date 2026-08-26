@@ -284,12 +284,16 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 - The **six party slots are all cultivation slots**. Every occupied slot keeps its
   complete care, growth, move, IV, training and lifecycle state; all six advance
   together even though only one is shown on the main screen.
-- Swipe horizontally or tap one of the six indicators to change the displayed
-  creature. The indicators sit above the creature name; swipe down for the
-  **bag / battle centre / badges** navigation page.
+- Swipe horizontally to change the displayed creature. The indicators above
+  the creature name show only occupied cultivation slots; tapping them opens
+  the Box. Swipe down for the **bag / battle centre / badges** navigation page.
 - The **Box holds 24 creatures** across four pages of six. Box state is frozen;
   exchanging a creature with a cultivation slot resumes it with no state reset.
-- Party and Box cards use the same 2× thumbnails, vertically centred in each row.
+- The Box is the only cultivation-management screen. Tap any Box cell, then
+  choose an existing cultivation member: an empty cell deposits that member,
+  while an occupied cell exchanges the two creatures.
+- Box cells and embedded cultivation-member cards use the same 2× thumbnails,
+  vertically centred in each row.
 - A **runaway does not join.** It's the one ending with a cost, and letting a
   neglected pet come back on the team would remove it.
 - A newcomer uses a free cultivation slot first, then a free Box slot. If both
@@ -571,9 +575,9 @@ If one bottoms out it counts as a *slip-up*.
 - **Tap the name** at the top = the **menu** (stats / Pokédex / Settings / early
   retirement). Close it
   with the CLOSE row, by tapping anywhere outside the panel, or with any swipe.
-- Tap one of the six indicators above the name to switch cultivation slots.
+- Tap the occupied-slot indicators above the name to open the Box.
 - Tap the creature = pet it (+happiness, bond).
-- Horizontal swipe = switch between the six cultivation slots.
+- Horizontal swipe = switch between the occupied cultivation slots.
 - Vertical swipe up = open the **stat card** (4 pages: Profile / Battle / Moves /
   Progress; swipe between them; tap the name on Profile to rename; on Battle the
   "Train strength" button opens the bag).

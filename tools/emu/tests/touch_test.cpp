@@ -52,7 +52,6 @@ extern Combatant btlSquad[7];
 extern int8_t btlSwapWho;
 extern bool btlHard;
 extern bool gymOpen, gymHard; extern uint8_t gymPage;
-extern bool partyOpen;
 extern bool pickOpen, pickHard; extern uint8_t pickTrainer; extern uint16_t squadMask;
 uint8_t squadCap(uint8_t idx, bool hard);
 uint8_t pickChosen(); uint8_t pickCandidates(); void pickDefault(uint8_t);
@@ -483,11 +482,10 @@ int main(int argc, char **argv) {
   click(233, 110 + 2 * 50 + 20);
   if (pickOpen) { printf("FAIL: easy progress unlocked the hard ladder\n"); return 1; }
   printf("PASS: hard mode keeps its own unlock order\n");
-  gymOpen = true; partyOpen = false;
+  gymOpen = true;
   click(327, 61);
-  if (!partyOpen || !gymOpen) { printf("FAIL: battle-centre team icon did not open the party in context\n"); return 1; }
-  printf("PASS: battle-centre team icon opens the party without losing context\n");
-  partyOpen = false;
+  if (!gymOpen) { printf("FAIL: tapping the cleared battle-centre corner changed context\n"); return 1; }
+  printf("PASS: battle-centre top-right team entry is removed\n");
   gymHard = false; gymOpen = false; pet.badges = 0;
 
   // ---- the six cultivation slots are the complete candidate pool. The old
