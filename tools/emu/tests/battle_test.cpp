@@ -118,18 +118,47 @@ int main() {
   battleAct(healer, healTarget, findMove("RECOVER"), lg, 17);
   ck(healer.hp == hurtHp + healer.maxHp / 2 && lg.healed,
      "a correct healing move keeps its full effect at any positive stage");
+  healer.hp = healer.maxHp;
+  battleAct(healer, healTarget, findMove("RECOVER"), lg);
+  ck(!lg.healed, "healing feedback is omitted when no HP changed");
 
   // --- GROWL lowers the FOE, not the user
   Combatant g1, g2;
   mk(g1, 6, 50); mk(g2, 9, 50);
   battleAct(g1, g2, findMove("GROWL"), lg);
   ck(g2.stage[SI_ATK] == -1 && g1.stage[SI_ATK] == 0, "GROWL lowers the target's ATK only");
+  g2.stage[SI_ATK] = -6;
+  battleAct(g1, g2, findMove("GROWL"), lg);
+  ck(g2.stage[SI_ATK] == -6 && lg.stageMask == 0,
+     "stage feedback is omitted when the target is already at the limit");
 
   // --- DRAGON DANCE moves two stats at once
   Combatant d1, d2;
   mk(d1, 6, 50); mk(d2, 9, 50);
   battleAct(d1, d2, findMove("DRAGON DANCE"), lg);
   ck(d1.stage[SI_ATK] == 1 && d1.stage[SI_SPE] == 1, "DRAGON DANCE raises ATK and SPE");
+
+  // --- damaging EF_STAGE moves apply their secondary stat change
+  Combatant sb1, sb2;
+  mk(sb1, 12, 50); mk(sb2, 65, 50);
+  battleAct(sb1, sb2, findMove("STRUGGLE BUG"), lg);
+  ck(lg.damage > 0 && sb2.stage[SI_SPA] == -1 && sb1.stage[SI_SPA] == 0 &&
+     lg.stageMask == ST_SPA && lg.stageDelta == -1,
+     "STRUGGLE BUG damages and lowers the target's Sp. Atk");
+
+  Combatant sn1, sn2;
+  mk(sn1, 491, 50); mk(sn2, 65, 50);
+  battleAct(sn1, sn2, findMove("SNARL"), lg);
+  ck(lg.damage > 0 && sn2.stage[SI_SPA] == -1 && sn1.stage[SI_SPA] == 0,
+     "SNARL damages and lowers the target's Sp. Atk");
+
+  Combatant cc1, cc2;
+  mk(cc1, 68, 50); mk(cc2, 143, 50);
+  battleAct(cc1, cc2, findMove("CLOSE COMBAT"), lg);
+  ck(lg.damage > 0 && cc1.stage[SI_DEF] == -1 && cc1.stage[SI_SPD] == -1 &&
+     cc2.stage[SI_DEF] == 0 && cc2.stage[SI_SPD] == 0 &&
+     lg.stageMask == (ST_DEF | ST_SPD) && lg.stageDelta == -1,
+     "CLOSE COMBAT damages and lowers the user's defenses");
 
   // --- turn order follows speed, and priority beats it
   Combatant fast, slow;

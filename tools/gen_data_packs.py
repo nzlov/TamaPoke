@@ -34,7 +34,11 @@ from dex_stats import BASE_STATS  # noqa: E402
 from dex_types import TYPES, TYPE_ORDER, CHART  # noqa: E402
 from dex_learnsets import LEARNSETS  # noqa: E402
 from dex_moves import (  # noqa: E402
-    MOVES, AIL_NONE, MC_PHYS, MC_SPEC, MC_STATUS,
+    MOVES, AIL_NONE, AIL_PARA, AIL_BURN, AIL_POISON, AIL_SLEEP, AIL_FREEZE,
+    AIL_CONFUSE, EF_NONE, EF_STAGE, EF_RECOIL, EF_DRAIN, EF_FIXED_LVL,
+    EF_FIXED, EF_PRIORITY, EF_NEVER_MISS, EF_MULTI, EF_HEAL, EF_RECHARGE,
+    EF_CHARGE, MC_PHYS, MC_SPEC, MC_STATUS, ST_ATK, ST_DEF, ST_SPA, ST_SPD,
+    ST_SPE, TG_SELF,
 )
 from dex_presentation import BIOME_OVERRIDE, TYPE_BIOME, rgb565  # noqa: E402
 
@@ -444,13 +448,74 @@ def unpack_move(row: tuple) -> tuple:
     return tuple(row) + ((AIL_NONE, 0) if len(row) == 11 else ())
 
 
+STAT_LABELS = {
+    "en-US": ((ST_ATK, "Attack"), (ST_DEF, "Defense"), (ST_SPA, "Sp. Atk"),
+              (ST_SPD, "Sp. Def"), (ST_SPE, "Speed")),
+    "zh-CN": ((ST_ATK, "攻击"), (ST_DEF, "防御"), (ST_SPA, "特攻"),
+              (ST_SPD, "特防"), (ST_SPE, "速度")),
+}
+
+AILMENT_LABELS = {
+    "en-US": {AIL_PARA: "paralysis", AIL_BURN: "a burn", AIL_POISON: "poison",
+              AIL_SLEEP: "sleep", AIL_FREEZE: "freezing", AIL_CONFUSE: "confusion"},
+    "zh-CN": {AIL_PARA: "麻痹", AIL_BURN: "灼伤", AIL_POISON: "中毒",
+              AIL_SLEEP: "睡眠", AIL_FREEZE: "冰冻", AIL_CONFUSE: "混乱"},
+}
+
+
+def stat_names(mask: int, locale: str) -> str:
+    names = [name for bit, name in STAT_LABELS[locale] if mask & bit]
+    return (" and " if locale == "en-US" else "和").join(names)
+
+
+def move_effect_text(category: int, effect: int, param: int, mask: int,
+                     stages: int, target: int, locale: str) -> str:
+    if effect == EF_NONE or effect == EF_NEVER_MISS:
+        return ""
+    if effect == EF_STAGE:
+        stats = stat_names(mask, locale)
+        if locale == "en-US":
+            owner = "user's" if target == TG_SELF else "foe's"
+            verb = "Raises" if stages > 0 else "Lowers"
+            prefix = "Also " if category != MC_STATUS else ""
+            return f"{prefix}{verb.lower() if prefix else verb} {owner} {stats} by {abs(stages)} stage{'s' if abs(stages) != 1 else ''}."
+        owner = "自身" if target == TG_SELF else "对手的"
+        prefix = "同时" if category != MC_STATUS else ""
+        if stages > 0:
+            return f"{prefix}使{owner}{stats}提高{stages}级。"
+        return f"{prefix}使{owner}{stats}-{abs(stages)}级。"
+    if locale == "en-US":
+        return {
+            EF_RECOIL: f"User takes 1/{param} of damage dealt as recoil.",
+            EF_DRAIN: f"Restores HP equal to {param}% of damage dealt.",
+            EF_FIXED_LVL: "Damage equals the user's level.",
+            EF_FIXED: f"Deals exactly {param} damage.",
+            EF_PRIORITY: "Usually moves first.",
+            EF_MULTI: "Hits 2-5 times.",
+            EF_HEAL: f"Restores {param}% of the user's maximum HP.",
+            EF_RECHARGE: "User must recharge on the next turn.",
+            EF_CHARGE: "Charges on the first turn and attacks on the next.",
+        }[effect]
+    return {
+        EF_RECOIL: f"使用者的生命也会变少，数值为伤害的1/{param}。",
+        EF_DRAIN: f"回复造成伤害{param}%的生命。",
+        EF_FIXED_LVL: "造成等同于使用者等级的伤害。",
+        EF_FIXED: f"造成{param}点伤害。",
+        EF_PRIORITY: "通常会提前行动。",
+        EF_MULTI: "连续攻击2-5次。",
+        EF_HEAL: f"回复使用者最大生命的{param}%。",
+        EF_RECHARGE: "下一回合无法行动。",
+        EF_CHARGE: "首回合准备，下一回合攻击。",
+    }[effect]
+
+
 def move_descriptions(rows: list[tuple]) -> dict[str, list[str]]:
     category_en = {MC_PHYS: "Physical", MC_SPEC: "Special", MC_STATUS: "Status"}
     category_zh = {MC_PHYS: "物理", MC_SPEC: "特殊", MC_STATUS: "变化"}
     english = ["Empty move slot."]
     chinese = ["空招式槽。"]
     for row in rows:
-        name, _slug, typ, category, power, accuracy, effect, param, _mask, stages, _target, ailment, chance = unpack_move(row)
+        _name, _slug, typ, category, power, accuracy, effect, param, mask, stages, target, ailment, chance = unpack_move(row)
         accuracy_text = "never misses" if accuracy == 0 else f"accuracy {accuracy}%"
         en = f"{typ.title()} {category_en[category]} move; power {power}, {accuracy_text}."
         zh_acc = "必中" if accuracy == 0 else f"命中{accuracy}%"
@@ -458,12 +523,14 @@ def move_descriptions(rows: list[tuple]) -> dict[str, list[str]]:
         if category == MC_STATUS:
             en = f"{typ.title()} status move; {accuracy_text}."
             zh = f"{TYPE_ZH[typ]}属性变化招式；{zh_acc}。"
-        if effect:
-            en += f" Effect {effect}, parameter {param}, stages {stages}."
-            zh += f" 效果{effect}，参数{param}，能力阶级{stages}。"
+        en_effect = move_effect_text(category, effect, param, mask, stages, target, "en-US")
+        zh_effect = move_effect_text(category, effect, param, mask, stages, target, "zh-CN")
+        if en_effect:
+            en += f" {en_effect}"
+            zh += f" {zh_effect}"
         if ailment:
-            en += f" Ailment {ailment}: {chance}% chance."
-            zh += f" 异常状态{ailment}：{chance}%概率。"
+            en += f" Has a {chance}% chance to cause {AILMENT_LABELS['en-US'][ailment]}."
+            zh += f" 有{chance}%概率使对手陷入{AILMENT_LABELS['zh-CN'][ailment]}。"
         english.append(en)
         chinese.append(zh)
     return {"en-US": english, "zh-CN": chinese}

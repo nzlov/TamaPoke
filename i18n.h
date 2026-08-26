@@ -142,6 +142,10 @@ enum StrId : uint8_t {
   S_WILD, S_CAUGHT, S_JOIN, S_ITEM_FOUND_FMT,
   // persistent battle death and burial (append-only)
   S_DEAD, S_BURY, S_BURY_Q, S_BTL_RUN_FAILED, S_BTL_FOE_RAN,
+  // battle effect feedback (append-only)
+  S_STAT_SPA, S_STAT_SPD,
+  S_BTL_STAGE_FMT,  // combatant, stat label, signed stage delta
+  S_BTL_HEALED,     // combatant recovered HP
   STR_COUNT
 };
 

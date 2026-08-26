@@ -103,22 +103,28 @@ bool battleMovesFirst(const Combatant &a, MoveId ma,
 
 // ---------- one action ----------
 
-static void applyStages(Combatant &c, uint8_t mask, int8_t delta) {
+static uint8_t applyStages(Combatant &c, uint8_t mask, int8_t delta) {
   static const uint8_t BIT[SI_COUNT] = { ST_ATK, ST_DEF, ST_SPA, ST_SPD, ST_SPE };
+  uint8_t changed = 0;
   for (int i = 0; i < SI_COUNT; i++) {
     if (!(mask & BIT[i])) continue;
+    int8_t before = c.stage[i];
     int v = c.stage[i] + delta;
     c.stage[i] = v > 6 ? 6 : (v < -6 ? -6 : (int8_t)v);
+    if (c.stage[i] != before) changed |= BIT[i];
   }
+  return changed;
 }
 
 static void hurt(Combatant &c, uint16_t amount) {
   c.hp = (amount >= c.hp) ? 0 : c.hp - amount;
 }
 
-static void heal(Combatant &c, uint16_t amount) {
+static uint16_t heal(Combatant &c, uint16_t amount) {
+  uint16_t before = c.hp;
   uint32_t v = (uint32_t)c.hp + amount;
   c.hp = v > c.maxHp ? c.maxHp : (uint16_t)v;
+  return c.hp - before;
 }
 
 void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log,
@@ -177,12 +183,10 @@ void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log,
 
   if (m.cat == MC_STATUS) {
     if (m.effect == EF_HEAL) {
-      heal(atk, (uint32_t)atk.maxHp * (m.param > 0 ? m.param : 50) / 100);
-      log.healed = true;
+      log.healed = heal(atk, (uint32_t)atk.maxHp * (m.param > 0 ? m.param : 50) / 100) != 0;
     } else if (m.effect == EF_STAGE) {
       Combatant &t = (m.target == TG_SELF) ? atk : def;
-      applyStages(t, m.statMask, m.stages);
-      log.stageMask = m.statMask;
+      log.stageMask = applyStages(t, m.statMask, m.stages);
       log.stageDelta = m.stages;
     }
     return;
@@ -213,6 +217,11 @@ void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log,
     hurt(atk, total / m.param ? total / m.param : 1);
   if (m.effect == EF_DRAIN && m.param > 0) heal(atk, total * m.param / 100);
   if (m.effect == EF_RECHARGE) atk.recharge = true;
+  if (m.effect == EF_STAGE) {
+    Combatant &t = (m.target == TG_SELF) ? atk : def;
+    log.stageMask = applyStages(t, m.statMask, m.stages);
+    log.stageDelta = m.stages;
+  }
 
   // --- secondary ailment. Never overwrites an existing one, and confusion is
   // tracked separately so it can stack with a real status, as in the games.

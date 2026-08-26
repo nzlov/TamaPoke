@@ -70,8 +70,12 @@ int main() {
 
   bool englishDescriptions = english >= 0 && uiActivateLocale((uint8_t)english);
   MoveId thunderbolt = MOVE_NONE;
+  MoveId growl = MOVE_NONE, dragonDance = MOVE_NONE, recover = MOVE_NONE;
   for (MoveId move = 1; move < moveCount(); move++)
     if (!strcmp(moveEntry(move).name, "THUNDERBOLT")) thunderbolt = move;
+    else if (!strcmp(moveEntry(move).name, "GROWL")) growl = move;
+    else if (!strcmp(moveEntry(move).name, "DRAGON DANCE")) dragonDance = move;
+    else if (!strcmp(moveEntry(move).name, "RECOVER")) recover = move;
   ck(englishDescriptions && !strcmp(speciesName(25), "PIKACHU") &&
      thunderbolt && !strcmp(moveName(thunderbolt), "THUNDERBOLT") &&
      !strcmp(packedTypeName(T_NORMAL), "NORMAL") &&
@@ -83,6 +87,11 @@ int main() {
   for (MoveId move = 0; englishDescriptions && move < moveCount(); move++)
     englishDescriptions = moveDescription(move, "en-US") != nullptr;
   ck(englishDescriptions, "species and move descriptions load from their own packs");
+  ck(growl && dragonDance && recover &&
+     strstr(moveDescription(growl, "en-US"), "Lowers foe's Attack by 1 stage.") &&
+     strstr(moveDescription(dragonDance, "en-US"), "Attack and Speed by 1 stage.") &&
+     strstr(moveDescription(recover, "en-US"), "Restores 50%"),
+     "English move descriptions explain targets, stats and healing without internal codes");
   ck(speciesDescription(1, "es-ES") == nullptr && moveDescription(1, "es-ES") == nullptr,
      "missing description locales stay hidden");
 
@@ -93,6 +102,10 @@ int main() {
      !strcmp(regionName(0), "关都") && !strcmp(trainerName(0, 0), "小刚") &&
      !strcmp(trainerPlace(0, 0), "深灰市"),
      "Chinese species, move, type and regional names resolve from their content packs");
+  ck(growl && strstr(moveDescription(growl, "zh-CN"), "使对手的攻击-1级。") &&
+     !strstr(moveDescription(growl, "zh-CN"), "效果") &&
+     !strstr(moveDescription(growl, "zh-CN"), "参数"),
+     "Chinese move descriptions present player-facing effects instead of ABI fields");
   uint8_t *fontData = nullptr;
   uint32_t fontSize = 0;
   bool vectorReady = uiFontFormat() == UI_FONT_OPENTYPE &&

@@ -4053,6 +4053,17 @@ static void btlNarrate(const Combatant &actor, const Combatant &target, const Tu
   if (lg.crit) btlSay(T(S_BTL_CRIT));
   if (lg.damage && lg.effPct > 100) btlSay(T(S_BTL_SUPER));
   else if (lg.damage && lg.effPct < 100) btlSay(T(S_BTL_WEAK));
+  if (lg.stageMask && lg.move) {
+    static const uint8_t BIT[SI_COUNT] = { ST_ATK, ST_DEF, ST_SPA, ST_SPD, ST_SPE };
+    static const StrId LABEL[SI_COUNT] = {
+      S_STAT_ATK, S_STAT_DEF, S_STAT_SPA, S_STAT_SPD, S_STAT_SPE,
+    };
+    const Combatant &changed = moveEntry(lg.move).target == TG_SELF ? actor : target;
+    for (uint8_t stat = 0; stat < SI_COUNT; stat++)
+      if (lg.stageMask & BIT[stat])
+        btlSay(T(S_BTL_STAGE_FMT), displayCombatantName(changed), T(LABEL[stat]), lg.stageDelta);
+  }
+  if (lg.healed) btlSay(T(S_BTL_HEALED), displayCombatantName(actor));
   if (lg.inflicted) {
     static const StrId AIL_STR[] = { S_AIL_PARA, S_AIL_PARA, S_AIL_BURN, S_AIL_POISON,
                                      S_AIL_SLEEP, S_AIL_FREEZE, S_AIL_CONFUSE };
