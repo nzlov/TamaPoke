@@ -24,6 +24,38 @@ static void ck(bool ok, const char *what) {
 }
 
 int main() {
+  BattleField meadowClear = wildBattleField(0, 49);
+  BattleField meadowSun = wildBattleField(0, 50);
+  BattleField meadowRain = wildBattleField(0, 80);
+  BattleField meadowStorm = wildBattleField(0, 90);
+  ck(meadowClear.weather == BWEATHER_NONE && meadowClear.terrain == BTERRAIN_NONE,
+     "the first half of meadow encounters has no environment");
+  ck(meadowSun.baseWeather == BWEATHER_SUN && meadowSun.baseTerrain == BTERRAIN_NONE,
+     "meadow rolls 50-79 start in sun");
+  ck(meadowRain.baseWeather == BWEATHER_RAIN && meadowRain.baseTerrain == BTERRAIN_NONE,
+     "meadow rolls 80-89 start in ordinary rain");
+  ck(meadowStorm.baseWeather == BWEATHER_RAIN &&
+     meadowStorm.baseTerrain == BTERRAIN_ELECTRIC,
+     "meadow rolls 90-99 start a rain and Electric Terrain thunderstorm");
+
+  BattleField cave = wildBattleField(3, 90);
+  BattleField snow = wildBattleField(5, 90);
+  ck(cave.baseWeather == BWEATHER_SAND && cave.baseTerrain == BTERRAIN_NONE,
+     "cave gives the thunderstorm share to its secondary sand weather");
+  ck(snow.baseWeather == BWEATHER_SUN && snow.baseTerrain == BTERRAIN_NONE,
+     "snow gives the thunderstorm share to its secondary sun weather");
+  ck(wildBattleField(1, 50).baseWeather == BWEATHER_RAIN &&
+     wildBattleField(1, 80).baseWeather == BWEATHER_SUN,
+     "beach uses rain as primary weather and sun as secondary");
+  ck(wildBattleField(2, 50).baseWeather == BWEATHER_RAIN &&
+     wildBattleField(2, 80).baseWeather == BWEATHER_SUN,
+     "forest uses rain as primary weather and sun as secondary");
+  ck(wildBattleField(4, 50).baseWeather == BWEATHER_SAND &&
+     wildBattleField(4, 80).baseWeather == BWEATHER_SNOW,
+     "mountain uses sand as primary weather and snow as secondary");
+  ck(wildBattleField(6, 99).weather == BWEATHER_NONE,
+     "an invalid biome safely produces a clear field");
+
   ck(wildEncounterMaxLevel(1, false) == 6,
      "normal encounters include five levels above the player");
   ck(wildEncounterMaxLevel(94, false) == 99,

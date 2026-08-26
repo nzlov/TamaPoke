@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """The move list, hand-authored. Source of truth for the move data pack.
 
-93 moves, trimmed from the main-series catalogues for this battle model:
-80 attacking moves, 11 stat-stage moves and 2 heals.
+101 moves, trimmed from the main-series catalogues for this battle model:
+80 attacking moves, 11 stat-stage moves, 2 heals and 8 field setters.
 
 Not a pure Gen 1 list, and it can't be. dex_types.py gives the 151 their
 CURRENT typings, so the dex contains Fairy (Clefable, Mr. Mime), Steel
@@ -13,9 +13,9 @@ in for that reason: they buy STAB for a typing the game already committed to.
 Ghost is the same story -- Gen 1 Ghost had no usable attacking move at all,
 hence SHADOW BALL.
 
-Display names are capped at 12 characters: four move buttons have to fit
-across a 466 px round panel at text size 2. ANCIENTPOWER is the games' own
-Gen 3 spelling; DAZZLE GLEAM is ours.
+Most display names are capped at 12 characters. The four canonical Terrain
+move names appended below are longer; the compact battle grid and full-width
+move rows both accommodate them without changing their canonical names.
 
 No PP by design. Secondary battle ailments are authored here with each move;
 they are battle-only state and are never persisted on a pet.
@@ -55,6 +55,17 @@ EF_MULTI = 8        # hits 2-5 times, power is per hit
 EF_HEAL = 9         # param = percent of max VIT restored
 EF_RECHARGE = 10    # user loses the following turn, exposed
 EF_CHARGE = 11      # turn 1 charges; param 1 = invulnerable while charging
+EF_PROTECT = 12     # runtime Max Guard; not authored in the pack
+EF_SET_WEATHER = 13 # param = BattleWeather
+EF_SET_TERRAIN = 14 # param = BattleTerrain
+
+BWEATHER_SUN, BWEATHER_RAIN, BWEATHER_SAND, BWEATHER_SNOW = 1, 2, 3, 4
+BTERRAIN_ELECTRIC, BTERRAIN_GRASSY, BTERRAIN_MISTY, BTERRAIN_PSYCHIC = 1, 2, 3, 4
+
+MF_RAIN_ACCURATE = 1
+MF_SNOW_ACCURATE = 2
+MF_SOLAR_CHARGE = 4
+MF_GRASSY_WEAKENED = 8
 
 # Stat bitmask for EF_STAGE. One delta applies to every bit set, which is how
 # DRAGON DANCE (ATK+SPE) and BULK UP (ATK+DEF) get to be one table row.
@@ -62,7 +73,7 @@ ST_ATK, ST_DEF, ST_SPA, ST_SPD, ST_SPE = 1, 2, 4, 8, 16
 
 TG_SELF, TG_FOE = 0, 1
 
-# name (<=12 chars), pokeapi slug, type, category, power, accuracy,
+# display name, pokeapi slug, type, category, power, accuracy,
 # effect, param, statMask, stages, target
 #
 # accuracy 0 means the move cannot miss (only ever paired with EF_NEVER_MISS
@@ -219,9 +230,28 @@ MOVES = [
     ("SNARL",        "snarl",         'dark',     MC_SPEC,  55,  95, EF_STAGE,     0, ST_SPA, -1, TG_FOE),
     ("ASTONISH",     "astonish",      'ghost',    MC_PHYS,  30, 100, EF_NONE,      0, 0, 0, TG_FOE),
     ("CLOSE COMBAT", "close-combat", 'fighting', MC_PHYS, 120, 100, EF_STAGE,     0, ST_DEF | ST_SPD, -1, TG_SELF),
+    # Weather and Terrain setters. These stay append-only because their IDs are
+    # persisted raw in every active and banked creature.
+    ("SUNNY DAY",        "sunny-day",        'fire',     MC_STATUS, 0, 0, EF_SET_WEATHER, BWEATHER_SUN,       0, 0, TG_SELF),
+    ("RAIN DANCE",       "rain-dance",       'water',    MC_STATUS, 0, 0, EF_SET_WEATHER, BWEATHER_RAIN,      0, 0, TG_SELF),
+    ("SANDSTORM",        "sandstorm",        'rock',     MC_STATUS, 0, 0, EF_SET_WEATHER, BWEATHER_SAND,      0, 0, TG_SELF),
+    ("SNOWSCAPE",        "snowscape",        'ice',      MC_STATUS, 0, 0, EF_SET_WEATHER, BWEATHER_SNOW,      0, 0, TG_SELF),
+    ("ELECTRIC TERRAIN", "electric-terrain", 'electric', MC_STATUS, 0, 0, EF_SET_TERRAIN, BTERRAIN_ELECTRIC, 0, 0, TG_SELF),
+    ("GRASSY TERRAIN",   "grassy-terrain",   'grass',    MC_STATUS, 0, 0, EF_SET_TERRAIN, BTERRAIN_GRASSY,   0, 0, TG_SELF),
+    ("MISTY TERRAIN",    "misty-terrain",    'fairy',    MC_STATUS, 0, 0, EF_SET_TERRAIN, BTERRAIN_MISTY,    0, 0, TG_SELF),
+    ("PSYCHIC TERRAIN",  "psychic-terrain",  'psychic',  MC_STATUS, 0, 0, EF_SET_TERRAIN, BTERRAIN_PSYCHIC,  0, 0, TG_SELF),
 ]
 
 # Accuracy drops (SAND ATTACK, SMOKESCREEN, FLASH) are deliberately left out:
 # accuracy stages are a whole second stage system for one marginal effect.
 
 SLUG_TO_NAME = {slug: name for name, slug, *_ in MOVES if slug}
+
+# Additive semantics that cannot share MoveEntry.effect with an existing move
+# such as Solar Beam's charge. gen_data_packs.py writes these to optional MFLG.
+FIELD_MOVE_FLAGS = {
+    "thunder": MF_RAIN_ACCURATE,
+    "blizzard": MF_SNOW_ACCURATE,
+    "solar-beam": MF_SOLAR_CHARGE,
+    "earthquake": MF_GRASSY_WEAKENED,
+}

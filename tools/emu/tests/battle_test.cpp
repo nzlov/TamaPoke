@@ -44,6 +44,7 @@ static uint8_t findMove(const char *name) {
 }
 
 int main() {
+  BattleField field;
   // --- stat stages: the series' own fractions
   ck(stagedStat(100, 0) == 100, "stage 0 is 1x");
   ck(stagedStat(100, 2) == 200, "stage +2 is 2x (SWORDS DANCE)");
@@ -55,8 +56,8 @@ int main() {
   Combatant zard, blast, venu;
   mk(zard, 6, 50); mk(blast, 9, 50); mk(venu, 3, 50);
   uint8_t flame = findMove("FLAMETHROWER"), surf = findMove("SURF");
-  uint16_t vsGrass = battleDamage(zard, venu, flame, false, 255);
-  uint16_t vsWater = battleDamage(zard, blast, flame, false, 255);
+  uint16_t vsGrass = battleDamage(zard, venu, field, flame, false, 255);
+  uint16_t vsWater = battleDamage(zard, blast, field, flame, false, 255);
   printf("     FLAMETHROWER: vs VENUSAUR %u, vs BLASTOISE %u\n", vsGrass, vsWater);
   ck(vsGrass > vsWater * 2, "fire hits grass far harder than water");
 
@@ -64,13 +65,13 @@ int main() {
   Combatant fullAtk = zard, fullDef = venu, halfAtk = zard, halfDef = venu;
   TurnLog fullLog, halfLog, failedLog;
   g_seed = 0xB4771E;
-  battleAct(fullAtk, fullDef, flame, fullLog, 100);
+  battleAct(fullAtk, fullDef, field, flame, fullLog, 100);
   g_seed = 0xB4771E;
-  battleAct(halfAtk, halfDef, flame, halfLog, 50);
+  battleAct(halfAtk, halfDef, field, flame, halfLog, 50);
   ck(fullLog.damage > 0 && halfLog.damage == (fullLog.damage * 50 + 50) / 100,
      "a 50 percent answer scales final attack damage to 50 percent");
   Combatant failedAtk = zard, failedDef = venu;
-  battleAct(failedAtk, failedDef, flame, failedLog, 0);
+  battleAct(failedAtk, failedDef, field, flame, failedLog, 0);
   ck(failedLog.missed && failedLog.damage == 0 && failedDef.hp == failedDef.maxHp,
      "a failed answer makes a damaging move fail completely");
 
@@ -82,10 +83,10 @@ int main() {
     multiFullDef.maxHp = multiFullDef.hp = 60000;
     multiThirdDef.maxHp = multiThirdDef.hp = 60000;
     g_seed = seed;
-    battleAct(multiFullAtk, multiFullDef, findMove("FURY ATTACK"), multiFullLog, 100);
+    battleAct(multiFullAtk, multiFullDef, field, findMove("FURY ATTACK"), multiFullLog, 100);
     if (multiFullLog.hits < 2) continue;
     g_seed = seed;
-    battleAct(multiThirdAtk, multiThirdDef, findMove("FURY ATTACK"), multiThirdLog, 33);
+    battleAct(multiThirdAtk, multiThirdDef, field, findMove("FURY ATTACK"), multiThirdLog, 33);
   }
   printf("     FURY ATTACK: full %u in %u hits, 33%% %u in %u hits\n",
          multiFullLog.damage, multiFullLog.hits, multiThirdLog.damage, multiThirdLog.hits);
@@ -97,13 +98,13 @@ int main() {
   Combatant m1, m2;
   mk(m1, 68, 50); mk(m2, 68, 50);
   uint8_t chop = findMove("KARATE CHOP");
-  uint16_t before = battleDamage(m1, m2, chop, false, 255);
+  uint16_t before = battleDamage(m1, m2, field, chop, false, 255);
   TurnLog lg;
-  battleAct(m1, m2, findMove("SWORDS DANCE"), lg, 0);
+  battleAct(m1, m2, field, findMove("SWORDS DANCE"), lg, 0);
   ck(m1.stage[SI_ATK] == 0 && lg.missed,
      "a failed answer also blocks a status move");
-  battleAct(m1, m2, findMove("SWORDS DANCE"), lg, 17);
-  uint16_t after = battleDamage(m1, m2, chop, false, 255);
+  battleAct(m1, m2, field, findMove("SWORDS DANCE"), lg, 17);
+  uint16_t after = battleDamage(m1, m2, field, chop, false, 255);
   printf("     KARATE CHOP before %u, after SWORDS DANCE %u (stage %d)\n",
          before, after, m1.stage[SI_ATK]);
   ck(m1.stage[SI_ATK] == 2, "SWORDS DANCE sets +2 ATK");
@@ -112,49 +113,49 @@ int main() {
   Combatant healer = zard, healTarget = venu;
   healer.hp = healer.maxHp / 4;
   uint16_t hurtHp = healer.hp;
-  battleAct(healer, healTarget, findMove("RECOVER"), lg, 0);
+  battleAct(healer, healTarget, field, findMove("RECOVER"), lg, 0);
   ck(healer.hp == hurtHp && lg.missed,
      "a failed answer also blocks a healing move");
-  battleAct(healer, healTarget, findMove("RECOVER"), lg, 17);
+  battleAct(healer, healTarget, field, findMove("RECOVER"), lg, 17);
   ck(healer.hp == hurtHp + healer.maxHp / 2 && lg.healed,
      "a correct healing move keeps its full effect at any positive stage");
   healer.hp = healer.maxHp;
-  battleAct(healer, healTarget, findMove("RECOVER"), lg);
+  battleAct(healer, healTarget, field, findMove("RECOVER"), lg);
   ck(!lg.healed, "healing feedback is omitted when no HP changed");
 
   // --- GROWL lowers the FOE, not the user
   Combatant g1, g2;
   mk(g1, 6, 50); mk(g2, 9, 50);
-  battleAct(g1, g2, findMove("GROWL"), lg);
+  battleAct(g1, g2, field, findMove("GROWL"), lg);
   ck(g2.stage[SI_ATK] == -1 && g1.stage[SI_ATK] == 0, "GROWL lowers the target's ATK only");
   g2.stage[SI_ATK] = -6;
-  battleAct(g1, g2, findMove("GROWL"), lg);
+  battleAct(g1, g2, field, findMove("GROWL"), lg);
   ck(g2.stage[SI_ATK] == -6 && lg.stageMask == 0,
      "stage feedback is omitted when the target is already at the limit");
 
   // --- DRAGON DANCE moves two stats at once
   Combatant d1, d2;
   mk(d1, 6, 50); mk(d2, 9, 50);
-  battleAct(d1, d2, findMove("DRAGON DANCE"), lg);
+  battleAct(d1, d2, field, findMove("DRAGON DANCE"), lg);
   ck(d1.stage[SI_ATK] == 1 && d1.stage[SI_SPE] == 1, "DRAGON DANCE raises ATK and SPE");
 
   // --- damaging EF_STAGE moves apply their secondary stat change
   Combatant sb1, sb2;
   mk(sb1, 12, 50); mk(sb2, 65, 50);
-  battleAct(sb1, sb2, findMove("STRUGGLE BUG"), lg);
+  battleAct(sb1, sb2, field, findMove("STRUGGLE BUG"), lg);
   ck(lg.damage > 0 && sb2.stage[SI_SPA] == -1 && sb1.stage[SI_SPA] == 0 &&
      lg.stageMask == ST_SPA && lg.stageDelta == -1,
      "STRUGGLE BUG damages and lowers the target's Sp. Atk");
 
   Combatant sn1, sn2;
   mk(sn1, 491, 50); mk(sn2, 65, 50);
-  battleAct(sn1, sn2, findMove("SNARL"), lg);
+  battleAct(sn1, sn2, field, findMove("SNARL"), lg);
   ck(lg.damage > 0 && sn2.stage[SI_SPA] == -1 && sn1.stage[SI_SPA] == 0,
      "SNARL damages and lowers the target's Sp. Atk");
 
   Combatant cc1, cc2;
   mk(cc1, 68, 50); mk(cc2, 143, 50);
-  battleAct(cc1, cc2, findMove("CLOSE COMBAT"), lg);
+  battleAct(cc1, cc2, field, findMove("CLOSE COMBAT"), lg);
   ck(lg.damage > 0 && cc1.stage[SI_DEF] == -1 && cc1.stage[SI_SPD] == -1 &&
      cc2.stage[SI_DEF] == 0 && cc2.stage[SI_SPD] == 0 &&
      lg.stageMask == (ST_DEF | ST_SPD) && lg.stageDelta == -1,
@@ -181,7 +182,7 @@ int main() {
   for (int i = 0; i < 400 && !burned; i++) {
     f2.ailment = AIL_NONE;
     f2.hp = f2.maxHp;
-    battleAct(f1, f2, flame, lg);
+    battleAct(f1, f2, field, flame, lg);
     if (f2.ailment == AIL_BURN) burned = true;
   }
   ck(!burned, "a FIRE type never catches a burn");
@@ -189,12 +190,14 @@ int main() {
   // --- burn chips and halves physical attack
   Combatant b1, b2;
   mk(b1, 68, 50); mk(b2, 68, 50);
-  uint16_t clean = battleDamage(b1, b2, chop, false, 255);
+  uint16_t clean = battleDamage(b1, b2, field, chop, false, 255);
   b1.ailment = AIL_BURN;
-  uint16_t burnt = battleDamage(b1, b2, chop, false, 255);
+  uint16_t burnt = battleDamage(b1, b2, field, chop, false, 255);
   ck(burnt < clean * 6 / 10, "burn roughly halves physical damage");
   uint16_t hpWas = b1.hp;
-  battleEndTurn(b1, lg);
+  TurnLog endA, endB;
+  FieldLog endField;
+  battleEndRound(field, b1, b2, endA, endB, endField);
   ck(b1.hp < hpWas, "burn chips at end of turn");
 
   // --- immunity: no damage at all, not chip
@@ -202,7 +205,7 @@ int main() {
   mk(gh, 94, 50);    // Gengar, Ghost
   mk(norm, 143, 50); // Snorlax, Normal
   uint8_t slam = findMove("BODY SLAM");
-  ck(battleDamage(norm, gh, slam, false, 255) == 0, "NORMAL does nothing to a GHOST");
+  ck(battleDamage(norm, gh, field, slam, false, 255) == 0, "NORMAL does nothing to a GHOST");
 
   // --- a full fight terminates and someone wins
   Combatant A, B;
@@ -214,10 +217,9 @@ int main() {
     Combatant *first = &A, *second = &B;
     uint8_t mf = ma, ms = mb;
     if (!battleMovesFirst(A, ma, B, mb)) { first = &B; second = &A; mf = mb; ms = ma; }
-    battleAct(*first, *second, mf, lg);
-    if (!second->fainted()) battleAct(*second, *first, ms, lg);
-    battleEndTurn(A, lg);
-    battleEndTurn(B, lg);
+    battleAct(*first, *second, field, mf, lg);
+    if (!second->fainted()) battleAct(*second, *first, field, ms, lg);
+    battleEndRound(field, A, B, endA, endB, endField);
   }
   printf("     fight ended on turn %d: CHARIZARD %u/%u, BLASTOISE %u/%u\n",
          turn, A.hp, A.maxHp, B.hp, B.maxHp);
@@ -240,9 +242,9 @@ int main() {
             uint8_t mx = X.moves[random(MOVE_SLOTS)], my = Y.moves[random(MOVE_SLOTS)];
             Combatant *f = &X, *sd = &Y; uint8_t mf = mx, ms = my;
             if (!battleMovesFirst(X, mx, Y, my)) { f = &Y; sd = &X; mf = my; ms = mx; }
-            battleAct(*f, *sd, mf, lg);
-            if (!sd->fainted()) battleAct(*sd, *f, ms, lg);
-            battleEndTurn(X, lg); battleEndTurn(Y, lg);
+            battleAct(*f, *sd, field, mf, lg);
+            if (!sd->fainted()) battleAct(*sd, *f, field, ms, lg);
+            battleEndRound(field, X, Y, endA, endB, endField);
           }
           total += t; fights++;
           if (t < shortest) shortest = t;

@@ -151,6 +151,7 @@ static const DexEntry MISSING_SPECIES = {
 };
 static const MoveEntry MISSING_MOVE = {
   "-", T_NORMAL, MC_STATUS, 0, 0, EF_NONE, 0, 0, 0, TG_SELF, AIL_NONE, 0,
+  MF_NONE,
 };
 static const RegionInfo MISSING_REGION = { "?", 0, 0, nullptr, 0 };
 static const UiLocaleInfo MISSING_LOCALE = { "", "--", "Recovery", true, false };
@@ -538,7 +539,7 @@ static bool loadMovePack(uint8_t packIndex) {
     uint16_t id = rd16(row);
     uint32_t nameOffset = rd32(row + 13);
     if (id >= moveRecords || row[2] >= TYPE_COUNT || row[3] > MC_STATUS ||
-        row[6] > EF_PROTECT || row[10] > TG_FOE || row[11] > AIL_CONFUSE ||
+        row[6] > EF_SET_TERRAIN || row[10] > TG_FOE || row[11] > AIL_CONFUSE ||
         row[12] > 100 || !validString(names, nameSize, nameOffset)) {
       free(rawMoves); free(names); free(table); return false;
     }
@@ -548,11 +549,29 @@ static bool loadMovePack(uint8_t packIndex) {
     move.effect = row[6]; move.param = rdI8(row + 7); move.statMask = row[8];
     move.stages = rdI8(row + 9); move.target = row[10]; move.ailment = row[11];
     move.ailChance = row[12];
+    move.fieldFlags = MF_NONE;
   }
   for (uint32_t i = 0; i < moveRecords; i++) {
     if (!table[i].name) { free(rawMoves); free(names); free(table); return false; }
   }
   free(rawMoves);
+
+  const SectionRef *fieldFlagSection = findSection(pack, "MFLG");
+  if (fieldFlagSection) {
+    uint32_t flagSize = 0, flagCount = 0;
+    uint8_t *flags = readSection(pack, "MFLG", &flagSize, &flagCount);
+    if (!flags || flagSize != moveRecords || flagCount != moveRecords) {
+      free(flags); free(names); free(table); return false;
+    }
+    for (uint32_t i = 0; i < moveRecords; i++) {
+      if (flags[i] & ~(MF_RAIN_ACCURATE | MF_SNOW_ACCURATE |
+                       MF_SOLAR_CHARGE | MF_GRASSY_WEAKENED)) {
+        free(flags); free(names); free(table); return false;
+      }
+      table[i].fieldFlags = flags[i];
+    }
+    free(flags);
+  }
 
   uint32_t offsetSize = 0, offsetCount = 0, learnSize = 0, learnCountValue = 0;
   uint8_t *offsetRaw = readSection(pack, "LOFS", &offsetSize, &offsetCount);

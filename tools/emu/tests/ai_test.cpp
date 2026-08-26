@@ -28,19 +28,20 @@ static void mk(Combatant &c,int16_t dex,uint8_t lvl){
 // returns true if side A won
 static bool duel(int16_t da,int16_t db,uint8_t lvl,bool aSmart,bool bSmart){
   Combatant A,B; mk(A,da,lvl); mk(B,db,lvl);
-  TurnLog lg; int t=0;
+  BattleField field; TurnLog lg,aEnd,bEnd; FieldLog fieldEnd; int t=0;
   while(!A.fainted()&&!B.fainted()&&t<300){
     t++;
-    uint8_t ma=aiChooseMove(A,B,aSmart), mb=aiChooseMove(B,A,bSmart);
+    uint8_t ma=aiChooseMove(A,B,field,aSmart), mb=aiChooseMove(B,A,field,bSmart);
     Combatant *f=&A,*s=&B; uint8_t mf=ma,ms=mb;
     if(!battleMovesFirst(A,ma,B,mb)){f=&B;s=&A;mf=mb;ms=ma;}
-    battleAct(*f,*s,mf,lg);
-    if(!s->fainted()) battleAct(*s,*f,ms,lg);
-    battleEndTurn(A,lg); battleEndTurn(B,lg);
+    battleAct(*f,*s,field,mf,lg);
+    if(!s->fainted()) battleAct(*s,*f,field,ms,lg);
+    battleEndRound(field,A,B,aEnd,bEnd,fieldEnd);
   }
   return !A.fainted();
 }
 int main(){
+  BattleField field;
   // mirror matches: same species both sides, so only the choosing differs
   const int16_t roster[]={6,9,3,65,68,143,25,94};
   int smartWins=0,total=0;
@@ -56,8 +57,8 @@ int main(){
   // it must take a kill when one is available
   Combatant me,foe; mk(me,6,50); mk(foe,3,50);
   foe.hp=6;                         // one hit from fainting
-  uint8_t pick=aiChooseMove(me,foe,true);
-  uint16_t dmg=battleDamage(me,foe,pick,false,236);
+  uint8_t pick=aiChooseMove(me,foe,field,true);
+  uint16_t dmg=battleDamage(me,foe,field,pick,false,236);
   printf("     foe at 6hp: picks %s for ~%u\n",moveEntry(pick).name,dmg);
   ck(dmg>=foe.hp,"it takes the kill when one is on the table");
 
@@ -65,15 +66,15 @@ int main(){
   Combatant norm,ghost; mk(norm,143,50); mk(ghost,94,50);
   bool everImmune=false;
   for(int i=0;i<40;i++){
-    uint8_t p2=aiChooseMove(norm,ghost,true);
+    uint8_t p2=aiChooseMove(norm,ghost,field,true);
     if(moveEntry(p2).cat!=MC_STATUS && typeEffVsDex(moveEntry(p2).type,ghost.dex)==0) everImmune=true;
   }
   ck(!everImmune,"it never picks a move the target is immune to");
 
   // and easy mode must stay dumb, or hard mode means nothing
   Combatant e1,e2; mk(e1,6,50); mk(e2,3,50);
-  bool varied=false; uint8_t first=aiChooseMove(e1,e2,false);
-  for(int i=0;i<40 && !varied;i++) if(aiChooseMove(e1,e2,false)!=first) varied=true;
+  bool varied=false; uint8_t first=aiChooseMove(e1,e2,field,false);
+  for(int i=0;i<40 && !varied;i++) if(aiChooseMove(e1,e2,field,false)!=first) varied=true;
   ck(varied,"easy mode still picks at random");
 
   printf("%s\n",bad?"FAILURES":"all good");

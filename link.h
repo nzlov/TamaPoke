@@ -32,7 +32,7 @@
 // whole handshake without a radio, and a deliberately lossy transport exercises
 // all of the above. Only the radio itself is unverifiable here.
 
-#define LINK_PROTO 5        // bump on ANY wire change; a mismatch is refused
+#define LINK_PROTO 6        // bump on ANY wire change; a mismatch is refused
 #define LINK_MAX_PAYLOAD 200
 #define LINK_NAME_LEN 12
 
@@ -115,6 +115,8 @@ struct LinkResult {
   BattleMechanic hostMoveMechanic, guestMoveMechanic;
   uint8_t hostDynamaxTurns, guestDynamaxTurns;
   uint8_t hostUsedMask, guestUsedMask;
+  uint8_t baseWeather, weather, weatherTurns;
+  uint8_t baseTerrain, terrain, terrainTurns;
   uint16_t hostBase[SI_COUNT], guestBase[SI_COUNT];
   BattleMechanic hostMemberMechanic[TRAINER_TEAM_MAX];
   BattleMechanic guestMemberMechanic[TRAINER_TEAM_MAX];

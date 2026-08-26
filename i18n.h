@@ -147,6 +147,11 @@ enum StrId : uint8_t {
   S_BTL_STAGE_FMT,  // combatant, stat label, signed stage delta
   S_BTL_HEALED,     // combatant recovered HP
   S_BOX_WITHDRAW,   // move a Box member into the first free cultivation slot
+  // weather and terrain feedback (append-only)
+  S_FIELD_SUN, S_FIELD_RAIN, S_FIELD_SAND, S_FIELD_SNOW,
+  S_FIELD_ELECTRIC, S_FIELD_GRASSY, S_FIELD_MISTY, S_FIELD_PSYCHIC,
+  S_BTL_FIELD_BEGAN, S_BTL_FIELD_ENDED, S_BTL_FIELD_BLOCKED,
+  S_BTL_SAND_HURT,
   STR_COUNT
 };
 

@@ -6,7 +6,9 @@
 #include "battle.h"
 #include "party.h"
 #include "pet.h"
+#include <chrono>
 #include <cstring>
+#include <thread>
 
 uint32_t g_seed = 0xC0FFEE;
 FakeSerial Serial;
@@ -63,6 +65,7 @@ int main() {
   onSwipe(-1);
   check(btlFoeDetailPage == 2, "the moves page is reachable");
 
+  std::this_thread::sleep_for(std::chrono::milliseconds(310));
   battleTap(233, 410);
   check(!btlFoeDetailOpen && btlMenu == 0 &&
             memcmp(&before, &btlFoe, sizeof(before)) == 0,

@@ -18,7 +18,7 @@ REQUIRED_SECTIONS = {
     1: {b"META", b"STRS", b"FONT", b"LAYT"},
     2: {b"SPEC", b"EVOS", b"NAME", b"LNAM", b"REGN", b"RLNM", b"SPRI", b"SBLB", b"THMB",
         b"LOCL", b"BTTL", b"TRNR", b"GSTR", b"BADG", b"BBLB"},
-    3: {b"MOVE", b"NAME", b"LNAM", b"LOFS", b"LERN", b"TYPS", b"TSTR", b"TLNM",
+    3: {b"MOVE", b"MFLG", b"NAME", b"LNAM", b"LOFS", b"LERN", b"TYPS", b"TSTR", b"TLNM",
         b"CHRT", b"LOCL", b"ITEM", b"INAM", b"ILNM", b"ILOC", b"MEGA"},
     4: {b"QLOC", b"QIDX", b"QDAT"},
 }
@@ -172,6 +172,12 @@ def validate(path: Path, expected: dict) -> None:
     elif kind == 2:
         validate_localized_strings(sections[b"RLNM"], section_counts[b"RLNM"])
     elif kind == 3:
+        move_count = section_counts[b"MOVE"]
+        if len(sections[b"MOVE"]) != move_count * 17 or \
+                len(sections[b"MFLG"]) != move_count or \
+                section_counts[b"MFLG"] != move_count or \
+                any(flag & ~0x0F for flag in sections[b"MFLG"]):
+            raise ValueError("invalid move field flags")
         item_record = struct.Struct("<HBBBBhHBBI")
         item_count = section_counts[b"ITEM"]
         if not item_count or len(sections[b"ITEM"]) != item_count * item_record.size:

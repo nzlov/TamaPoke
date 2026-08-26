@@ -405,6 +405,45 @@ quietly leaning on TMs to fill the gap.
 Changing difficulty or rematching cannot claim it twice for that creature, but
 a different creature has its own claim map.
 
+### Battle weather and terrain
+
+Trainer and LAN battles start with a clear field. A wild battle instead rolls
+the foe biome's persistent environment: **50% clear, 30% primary weather, 10%
+secondary weather, and 10% thunderstorm**. Cave and snow biomes cannot roll a
+thunderstorm, so their secondary-weather chance is 20%.
+
+| Biome | Primary | Secondary |
+|---|---|---|
+| Meadow | Harsh sun | Rain |
+| Beach / Forest | Rain | Harsh sun |
+| Cave / Volcano | Harsh sun | Sandstorm |
+| Mountain | Sandstorm | Snow |
+| Snow | Snow | Harsh sun |
+
+A thunderstorm combines rain with Electric Terrain. This environmental weather
+and terrain does not count down. **Sunny Day, Rain Dance, Sandstorm, Snowscape,
+Electric Terrain, Grassy Terrain, Misty Terrain, and Psychic Terrain** cover the
+matching layer for five turns, then reveal the wild baseline again. Damaging Max
+moves set the corresponding Fire/Water/Rock/Ice weather or
+Electric/Grass/Fairy/Psychic terrain.
+
+- Harsh sun boosts Fire by 50%, halves Water, prevents freezing, and lets Solar
+  Beam fire immediately. Rain boosts Water, halves Fire, and makes Thunder hit.
+- Sandstorm chips non-Rock/Ground/Steel creatures by 1/16 and raises Rock
+  special defence by 50%. Snow raises Ice physical defence by 50% and makes
+  Blizzard hit.
+- Electric, Grassy, and Psychic Terrain boost a grounded attack of their type by
+  30%. Electric prevents sleep; Grassy heals grounded creatures by 1/16 and
+  halves Earthquake against them; Psychic blocks positive-priority attacks
+  against them.
+- Misty Terrain halves Dragon damage against grounded targets and prevents their
+  status conditions and confusion. With no ability system, only Flying-type
+  creatures count as airborne.
+
+The active weather and terrain are shown as localized HUD pills and animated
+overlays. In LAN play the host sends absolute field state with every result, so a
+dropped packet cannot leave the guest on a different field.
+
 ### Wild color and sparkle
 
 Wild encounters make two separate rolls, so color and sparkle may appear alone

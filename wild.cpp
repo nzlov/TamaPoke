@@ -1,6 +1,29 @@
 #include "wild.h"
 #include "dex.h"
 
+BattleField wildBattleField(uint8_t biome, uint8_t roll) {
+  BattleField field;
+  if (biome >= 6 || roll < 50) return field;
+
+  static const BattleWeather PRIMARY[6] = {
+    BWEATHER_SUN, BWEATHER_RAIN, BWEATHER_RAIN,
+    BWEATHER_SUN, BWEATHER_SAND, BWEATHER_SNOW,
+  };
+  static const BattleWeather SECONDARY[6] = {
+    BWEATHER_RAIN, BWEATHER_SUN, BWEATHER_SUN,
+    BWEATHER_SAND, BWEATHER_SNOW, BWEATHER_SUN,
+  };
+  bool thunderAllowed = biome != 3 && biome != 5;
+  BattleWeather weather = roll < 80 ? PRIMARY[biome] : SECONDARY[biome];
+  BattleTerrain terrain = BTERRAIN_NONE;
+  if (thunderAllowed && roll >= 90) {
+    weather = BWEATHER_RAIN;
+    terrain = BTERRAIN_ELECTRIC;
+  }
+  battleSetEnvironment(field, weather, terrain);
+  return field;
+}
+
 uint8_t wildEncounterMaxLevel(uint8_t playerLevel, bool hard) {
   if (hard) return 100;
   uint16_t limit = (uint16_t)playerLevel + 5;

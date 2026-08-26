@@ -22,6 +22,14 @@ def main() -> None:
         ("SNARL", "en-US"): "Also lowers foe's Sp. Atk by 1 stage.",
         ("CLOSE COMBAT", "zh-CN"): "同时使自身防御和特防-1级。",
         ("FLAMETHROWER", "zh-CN"): "有10%概率使对手陷入灼伤。",
+        ("SUNNY DAY", "en-US"): "Creates sun for 5 turns.",
+        ("SNOWSCAPE", "zh-CN"): "使天气变为雪，持续5回合。",
+        ("ELECTRIC TERRAIN", "en-US"): "Creates Electric Terrain for 5 turns.",
+        ("MISTY TERRAIN", "zh-CN"): "形成薄雾场地，持续5回合。",
+        ("THUNDER", "en-US"): "Always hits in rain; accuracy is 50% in harsh sun.",
+        ("BLIZZARD", "zh-CN"): "雪天必中。",
+        ("SOLAR BEAM", "en-US"): "Attacks immediately in harsh sun; power is halved in other weather.",
+        ("EARTHQUAKE", "zh-CN"): "对青草场地上的地面目标威力减半。",
     }
     for (move, locale), expected in cases.items():
         actual = description(move, locale)

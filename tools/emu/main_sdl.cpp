@@ -143,10 +143,12 @@ void nvsSave(const char *path) {
 void startBattle(int16_t dex, uint8_t lvl);
 extern Combatant btlYou, btlFoe;
 extern uint32_t btlLungeUntil[2], btlHitUntil[2];
-extern uint8_t btlMenu;
+extern uint8_t btlMenu, btlMsgCount;
+extern char btlMsg[6][64];
 extern uint16_t btlHpShown[2];
 extern BattleSideMechanics btlYourMechanics;
 extern BattleMechanic btlPendingMechanic;
+extern BattleField btlField;
 void startTrainerBattle(uint8_t idx, bool hard);
 void onTap(int16_t x, int16_t y);   // the first-boot shots tap their way in
 void refreshUiFont();
@@ -500,6 +502,15 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
     pet.relearnFromLevel();
     startBattle(25, 42);
+  }
+  else if (!strcmp(screen, "btlfield")) {
+    pet.dbgHatchAs(6, false);
+    pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
+    pet.relearnFromLevel();
+    startBattle(25, 42);
+    battleSetEnvironment(btlField, BWEATHER_RAIN, BTERRAIN_ELECTRIC);
+    btlMsgCount = 1;
+    snprintf(btlMsg[0], sizeof(btlMsg[0]), T(S_BTL_FIELD_BEGAN), T(S_FIELD_RAIN));
   }
   else if (!strcmp(screen, "btldynamax")) {
     pet.dbgHatchAs(6, false);

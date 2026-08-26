@@ -618,6 +618,7 @@ const char *const SCREEN_NAME[SCR_COUNT] = {
 };
 
 Combatant btlYou, btlFoe;
+BattleField btlField;
 bool btlOver = false;
 bool btlWon = false;
 bool btlWild = false;
@@ -3783,9 +3784,7 @@ int drawTypeChip(int x, int y, uint8_t type) {
   int w = gfx->textWidth(nm) + 10;
   gfx->fillRoundRect(x, y, w, MOVE_CHIP_H, 4, typeColor(type));
   gfx->setTextColor(typeColorIsLight(type) ? UI_INK : UI_WHITE);
-  int compactH = uiLayoutMetric(1, 8);
-  gfx->setCursor(x + 5, y + (MOVE_CHIP_H - compactH) / 2);
-  gfx->print(nm);
+  uiDrawCenteredIn(nm, x, y, w, MOVE_CHIP_H);
   return w;
 }
 
@@ -3989,6 +3988,105 @@ static void drawBattleBack() {
   drawBack(BACKS[bi][night ? 1 : 0], 30);
 }
 
+static const char *btlWeatherName(BattleWeather weather) {
+  static const StrId NAME[] = {
+    S_FIELD_SUN, S_FIELD_RAIN, S_FIELD_SAND, S_FIELD_SNOW,
+  };
+  return weather > BWEATHER_NONE && weather <= BWEATHER_SNOW
+      ? T(NAME[weather - 1]) : "";
+}
+
+static const char *btlTerrainName(BattleTerrain terrain) {
+  static const StrId NAME[] = {
+    S_FIELD_ELECTRIC, S_FIELD_GRASSY, S_FIELD_MISTY, S_FIELD_PSYCHIC,
+  };
+  return terrain > BTERRAIN_NONE && terrain <= BTERRAIN_PSYCHIC
+      ? T(NAME[terrain - 1]) : "";
+}
+
+static void drawBattleFieldEffects(uint32_t now) {
+  if (btlField.weather == BWEATHER_SUN) {
+    gfx->fillCircle(401, 67, 18, 0xFFE0);
+    static const int8_t DX[8] = { 1, 1, 0, -1, -1, -1, 0, 1 };
+    static const int8_t DY[8] = { 0, 1, 1, 1, 0, -1, -1, -1 };
+    for (int i = 0; i < 8; i++) {
+      gfx->drawLine(401 + DX[i] * 23, 67 + DY[i] * 23,
+                    401 + DX[i] * 30, 67 + DY[i] * 30, 0xFFE0);
+    }
+  } else if (btlField.weather == BWEATHER_RAIN) {
+    for (int i = 0; i < 18; i++) {
+      int x = 14 + (i * 47 + (int)(now / 24)) % 438;
+      int y = 38 + (i * 31 + (int)(now / 12)) % 194;
+      gfx->drawLine(x, y, x - 5, y + 13, 0x45BF);
+    }
+  } else if (btlField.weather == BWEATHER_SAND) {
+    for (int i = 0; i < 16; i++) {
+      int x = 18 + (i * 53 + (int)(now / 18)) % 430;
+      int y = 45 + (i * 29) % 185;
+      gfx->drawLine(x, y, x + 11, y + 2, 0xD5A6);
+    }
+  } else if (btlField.weather == BWEATHER_SNOW) {
+    for (int i = 0; i < 16; i++) {
+      int x = 16 + (i * 59 + (int)(now / 60)) % 434;
+      int y = 38 + (i * 37 + (int)(now / 28)) % 194;
+      gfx->fillCircle(x, y, 2 + (i & 1), UI_WHITE);
+    }
+  }
+
+  if (btlField.terrain == BTERRAIN_ELECTRIC) {
+    for (int i = 0; i < 5; i++) {
+      int x = 40 + i * 92 + (int)((now / 100 + i) % 7);
+      gfx->drawLine(x, 247, x + 9, 238, 0xFFE0);
+      gfx->drawLine(x + 9, 238, x + 16, 249, 0xFFE0);
+    }
+  } else if (btlField.terrain == BTERRAIN_GRASSY) {
+    for (int i = 0; i < 14; i++) {
+      int x = 24 + i * 32;
+      gfx->drawLine(x, 252, x + ((i & 1) ? 5 : -5), 239, 0x47E8);
+    }
+  } else if (btlField.terrain == BTERRAIN_MISTY) {
+    for (int i = 0; i < 8; i++)
+      gfx->drawCircle(44 + i * 54, 242 - (i & 1) * 7, 10 + (i % 3), 0xE71C);
+  } else if (btlField.terrain == BTERRAIN_PSYCHIC) {
+    for (int i = 0; i < 6; i++)
+      gfx->drawCircle(53 + i * 72, 244, 8 + (int)((now / 120 + i) % 5), 0xB81F);
+  }
+}
+
+static void drawBattleFieldHud() {
+  const char *labels[2];
+  uint16_t colors[2];
+  uint8_t count = 0;
+  if (btlField.weather != BWEATHER_NONE) {
+    labels[count] = btlWeatherName(btlField.weather);
+    colors[count++] = btlField.weather == BWEATHER_RAIN ? 0x45BF
+                      : btlField.weather == BWEATHER_SAND ? 0xD5A6
+                      : btlField.weather == BWEATHER_SNOW ? UI_WHITE : 0xFFE0;
+  }
+  if (btlField.terrain != BTERRAIN_NONE) {
+    labels[count] = btlTerrainName(btlField.terrain);
+    colors[count++] = btlField.terrain == BTERRAIN_ELECTRIC ? 0xFFE0
+                      : btlField.terrain == BTERRAIN_GRASSY ? 0x47E8
+                      : btlField.terrain == BTERRAIN_MISTY ? 0xE71C : 0xB81F;
+  }
+  if (!count) return;
+  gfx->setTextSize(1);
+  int widths[2] = {0, 0};
+  int total = count > 1 ? 6 : 0;
+  for (uint8_t i = 0; i < count; i++) {
+    widths[i] = gfx->textWidth(labels[i]) + 14;
+    total += widths[i];
+  }
+  int x = CX - total / 2;
+  for (uint8_t i = 0; i < count; i++) {
+    gfx->fillRoundRect(x, 34, widths[i], 18, 7, colors[i]);
+    gfx->drawRoundRect(x, 34, widths[i], 18, 7, UI_INK);
+    gfx->setTextColor(UI_INK);
+    uiDrawCenteredIn(labels[i], x, 34, widths[i], 18);
+    x += widths[i] + 6;
+  }
+}
+
 // Streams a side's sprite if its species, shiny state or battle form changed.
 // Render may call this every frame; the compact key makes the steady path free.
 static void btlSyncSprite(uint8_t who, const Combatant &c) {
@@ -4045,7 +4143,14 @@ static void btlNarrate(const Combatant &actor, const Combatant &target, const Tu
   if (lg.charged) { btlSay(T(S_BTL_USED), displayCombatantName(actor), usedName); return; }
   if (lg.move) btlSay(T(S_BTL_USED), displayCombatantName(actor), usedName);
   if (lg.missed) { btlSay(T(S_BTL_MISS), displayCombatantName(actor)); return; }
+  if (lg.blockedByField) { btlSay("%s", T(S_BTL_FIELD_BLOCKED)); return; }
   if (lg.immune) { btlSay(T(S_BTL_IMMUNE)); return; }
+  if (lg.weatherSet != BWEATHER_NONE)
+    btlSay(T(S_BTL_FIELD_BEGAN), btlWeatherName(lg.weatherSet));
+  if (lg.terrainSet != BTERRAIN_NONE)
+    btlSay(T(S_BTL_FIELD_BEGAN), btlTerrainName(lg.terrainSet));
+  if (lg.weatherDamage == BWEATHER_SAND)
+    btlSay(T(S_BTL_SAND_HURT), displayCombatantName(actor));
   if (lg.crit) btlSay(T(S_BTL_CRIT));
   if (lg.damage && lg.effPct > 100) btlSay(T(S_BTL_SUPER));
   else if (lg.damage && lg.effPct < 100) btlSay(T(S_BTL_WEAK));
@@ -4067,6 +4172,17 @@ static void btlNarrate(const Combatant &actor, const Combatant &target, const Tu
       btlSay(T(S_BTL_STATUS), displayCombatantName(target), T(AIL_STR[lg.inflicted]));
   }
   if (lg.targetFainted) btlSay(T(S_BTL_FAINT), displayCombatantName(target));
+}
+
+static void btlNarrateFieldEnd(const FieldLog &log) {
+  if (log.weatherExpired != BWEATHER_NONE)
+    btlSay(T(S_BTL_FIELD_ENDED), btlWeatherName(log.weatherExpired));
+  if (log.weatherRestored != BWEATHER_NONE)
+    btlSay(T(S_BTL_FIELD_BEGAN), btlWeatherName(log.weatherRestored));
+  if (log.terrainExpired != BTERRAIN_NONE)
+    btlSay(T(S_BTL_FIELD_ENDED), btlTerrainName(log.terrainExpired));
+  if (log.terrainRestored != BTERRAIN_NONE)
+    btlSay(T(S_BTL_FIELD_BEGAN), btlTerrainName(log.terrainRestored));
 }
 
 static_assert((uint8_t)BMECH_Z_MOVE == ITEM_MECHANIC_Z_MOVE &&
@@ -4095,6 +4211,7 @@ static void btlResetMechanics() {
   btlPendingMechanic = BMECH_NONE;
   btlWildMechanic = BMECH_NONE;
   btlMyMechanic = BMECH_NONE;
+  btlField = BattleField();
 }
 
 static void btlScaleShownHp(uint8_t who, uint16_t oldMaxHp, uint16_t newMaxHp) {
@@ -4350,6 +4467,7 @@ void startWildBattle(uint8_t region, bool hard) {
   btlWildMon = foe.toPartyMon();
   combatantFromParty(btlFoe, btlWildMon);
   btlResetMechanics();
+  btlField = wildBattleField(dexEntry(btlFoe.dex).biome, (uint8_t)random(100));
   // 252 is divisible by both possible pool sizes (2 or 3), so modulo selection
   // stays exactly uniform after filtering out unusable mechanics.
   btlWildMechanic = wildBattleMechanic(
@@ -4362,6 +4480,10 @@ void startWildBattle(uint8_t region, bool hard) {
   btlLink = false;
   btlFoeAt = 0;
   btlMsgCount = 0;
+  if (btlField.weather != BWEATHER_NONE)
+    btlSay(T(S_BTL_FIELD_BEGAN), btlWeatherName(btlField.weather));
+  if (btlField.terrain != BTERRAIN_NONE)
+    btlSay(T(S_BTL_FIELD_BEGAN), btlTerrainName(btlField.terrain));
   btlOver = false;
   btlWon = false;
   btlFoeDetailOpen = false;
@@ -4393,6 +4515,7 @@ static void btlApplyResult() {
   LinkResult r;
   memcpy(&r, lan.result, sizeof(r));
   lan.resultNew = false;
+  BattleField previousField = btlField;
 
   // The wire says "host"/"guest"; here we are always the guest, so their fields
   // are the foe's and ours are ours.
@@ -4424,6 +4547,22 @@ static void btlApplyResult() {
   btlFoe.hp = r.hostHp > btlFoe.maxHp ? btlFoe.maxHp : r.hostHp;
   btlYou.ailment = r.guestAil;
   btlFoe.ailment = r.hostAil;
+  // GLUE: LinkResult is the stable byte-oriented wire shape; remove this
+  // mapping only if the protocol gains a BattleField serializer of its own.
+  btlField.baseWeather = r.baseWeather <= BWEATHER_SNOW
+      ? (BattleWeather)r.baseWeather : BWEATHER_NONE;
+  btlField.weather = r.weather <= BWEATHER_SNOW
+      ? (BattleWeather)r.weather : BWEATHER_NONE;
+  btlField.weatherTurns = r.weatherTurns <= BATTLE_FIELD_TURNS
+      ? r.weatherTurns : BATTLE_FIELD_TURNS;
+  btlField.baseTerrain = r.baseTerrain <= BTERRAIN_PSYCHIC
+      ? (BattleTerrain)r.baseTerrain : BTERRAIN_NONE;
+  btlField.terrain = r.terrain <= BTERRAIN_PSYCHIC
+      ? (BattleTerrain)r.terrain : BTERRAIN_NONE;
+  btlField.terrainTurns = r.terrainTurns <= BATTLE_FIELD_TURNS
+      ? r.terrainTurns : BATTLE_FIELD_TURNS;
+  if (!btlField.weatherTurns) btlField.weather = btlField.baseWeather;
+  if (!btlField.terrainTurns) btlField.terrain = btlField.baseTerrain;
   btlYou.type1 = r.guestType1; btlYou.type2 = r.guestType2;
   btlFoe.type1 = r.hostType1; btlFoe.type2 = r.hostType2;
   btlYou.activeMechanic = r.guestActive;
@@ -4464,6 +4603,18 @@ static void btlApplyResult() {
   }
   if (r.hostMove) btlSay(T(S_BTL_USED), displayCombatantName(btlFoe), hostUsed);
   if (r.guestMove) btlSay(T(S_BTL_USED), displayCombatantName(btlYou), guestUsed);
+  if (previousField.weather != btlField.weather) {
+    if (previousField.weather != BWEATHER_NONE)
+      btlSay(T(S_BTL_FIELD_ENDED), btlWeatherName(previousField.weather));
+    if (btlField.weather != BWEATHER_NONE)
+      btlSay(T(S_BTL_FIELD_BEGAN), btlWeatherName(btlField.weather));
+  }
+  if (previousField.terrain != btlField.terrain) {
+    if (previousField.terrain != BTERRAIN_NONE)
+      btlSay(T(S_BTL_FIELD_ENDED), btlTerrainName(previousField.terrain));
+    if (btlField.terrain != BTERRAIN_NONE)
+      btlSay(T(S_BTL_FIELD_BEGAN), btlTerrainName(btlField.terrain));
+  }
   if (r.guestDmg) { btlHitUntil[0] = now + BTL_HIT_MS; sfxPlay(SFX_HIT); }
   if (r.hostDmg) { btlHitUntil[1] = now + BTL_HIT_MS; sfxPlay(SFX_HIT); }
   if (btlYou.fainted()) {
@@ -4539,6 +4690,14 @@ static void btlShipResult(const BattleMove &yourMove, const BattleMove &theirMov
   r.guestDynamaxTurns = btlFoe.dynamaxTurns;
   r.hostUsedMask = btlYourMechanics.usedMask;
   r.guestUsedMask = btlFoeMechanics.usedMask;
+  // GLUE: the protocol keeps fixed-width bytes while BattleField keeps the
+  // domain enums; this is the single host-side conversion boundary.
+  r.baseWeather = btlField.baseWeather;
+  r.weather = btlField.weather;
+  r.weatherTurns = btlField.weatherTurns;
+  r.baseTerrain = btlField.baseTerrain;
+  r.terrain = btlField.terrain;
+  r.terrainTurns = btlField.terrainTurns;
   for (uint8_t i = 0; i < SI_COUNT; i++) {
     r.hostBase[i] = btlYou.base[i];
     r.guestBase[i] = btlFoe.base[i];
@@ -4696,7 +4855,7 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
     lan.pendingPercent = 0;
     lan.pendingMechanic = BMECH_NONE;
   } else {
-    foeMove = aiChooseMove(btlFoe, btlYou, btlHard);
+    foeMove = aiChooseMove(btlFoe, btlYou, btlField, btlHard);
   }
   (void)foeSwitched;
 
@@ -4722,11 +4881,11 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
   BattleMove mb = youFirst ? foeBattleMove : yourBattleMove;
 
   uint16_t hp0You = btlYou.hp, hp0Foe = btlFoe.hp;
-  battleAct(*a, *b, ma, lg, a == &btlYou ? yourPercent : foePercent);
+  battleAct(*a, *b, btlField, ma, lg, a == &btlYou ? yourPercent : foePercent);
   btlNarrate(*a, *b, lg);
   if (lg.damage && !lg.hurtSelf) btlLungeUntil[a == &btlYou ? 0 : 1] = now + BTL_LUNGE_MS;
   if (!b->fainted()) {
-    battleAct(*b, *a, mb, lg, b == &btlYou ? yourPercent : foePercent);
+    battleAct(*b, *a, btlField, mb, lg, b == &btlYou ? yourPercent : foePercent);
     btlNarrate(*b, *a, lg);
     if (lg.damage && !lg.hurtSelf)
       btlLungeUntil[b == &btlYou ? 0 : 1] = now + BTL_LUNGE_MS + BTL_LUNGE_MS;
@@ -4734,12 +4893,12 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
   // whoever actually lost health flinches, whichever side dealt it
   if (btlYou.hp < hp0You) btlHitUntil[0] = now + BTL_HIT_MS;
   if (btlFoe.hp < hp0Foe) btlHitUntil[1] = now + BTL_HIT_MS;
-  if (!btlYou.fainted() && !btlFoe.fainted()) {
-    battleEndTurn(btlYou, lg);
-    if (lg.damage) btlNarrate(btlYou, btlYou, lg);
-    battleEndTurn(btlFoe, lg);
-    if (lg.damage) btlNarrate(btlFoe, btlFoe, lg);
-  }
+  TurnLog youEnd, foeEnd;
+  FieldLog fieldEnd;
+  battleEndRound(btlField, btlYou, btlFoe, youEnd, foeEnd, fieldEnd);
+  if (youEnd.damage || youEnd.healed) btlNarrate(btlYou, btlYou, youEnd);
+  if (foeEnd.damage || foeEnd.healed) btlNarrate(btlFoe, btlFoe, foeEnd);
+  btlNarrateFieldEnd(fieldEnd);
   uint16_t oldYouMaxHp = btlYou.maxHp, oldFoeMaxHp = btlFoe.maxHp;
   if (yourMove) battleAfterAction(btlYou);
   if (foeMove) battleAfterAction(btlFoe);
@@ -4793,43 +4952,49 @@ static void btlMechanicAura(int cx, int groundY, BattleMechanic mechanic, uint32
 static void btlSide(int tx, int ty, int sx, int sy, const Combatant &c, uint8_t who) {
   // the scenes are busy, so the name and bar sit on their own plate rather
   // than fighting the artwork for contrast
-  int ph = 54;
-  gfx->fillRoundRect(tx - 8, ty - 8, 158, ph, 8, UI_BG_DAY);
-  gfx->drawRoundRect(tx - 8, ty - 8, 158, ph, 8, UI_INK);
-  char l[64];
-  snprintf(l, sizeof(l), "%s Lv.%u", displayCombatantName(c), c.level);
+  const int px = tx - 8, py = ty - 8, pw = 158, ph = 64;
+  gfx->fillRoundRect(px, py, pw, ph, 8, UI_BG_DAY);
+  gfx->drawRoundRect(px, py, pw, ph, 8, UI_INK);
+  char name[64];
+  snprintf(name, sizeof(name), "%s Lv.%u", displayCombatantName(c), c.level);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(1);
-  gfx->setCursor(tx, ty);
-  gfx->print(l);
+  uiDrawCenteredIn(name, px + 6, py + 4, pw - 12, 14);
   gfx->setTextColor(UI_BAR_WARN);
-  gfx->setCursor(tx, ty + 14);
-  gfx->print("HP");
-  btlHpBar(tx + 18, ty + 12, 122, c, btlHpShown[who]);
+  uiDrawCenteredIn("HP", px + 6, py + 20, 20, 14);
+  btlHpBar(px + 28, py + 20, pw - 34, c, btlHpShown[who]);
+
+  // The last row is divided between whichever metadata actually exists, so
+  // HP, status and mechanic labels stay centred without colliding.
+  const char *meta[3];
+  uint16_t metaColor[3];
+  uint8_t metaCount = 0;
+  char hp[16], mechanic[12];
   if (who == 0) {                 // your own numbers, as the games do
-    char hp[16];
     snprintf(hp, sizeof(hp), "%u/%u", btlHpShown[who], c.maxHp);
-    gfx->setTextColor(UI_INK);
-    gfx->setCursor(uiRightX(hp, tx + 140), ty + 28);
-    gfx->print(hp);
+    meta[metaCount] = hp;
+    metaColor[metaCount++] = UI_INK;
   }
   if (c.ailment != AIL_NONE) {   // a status is the thing you most need to see
     static const StrId AIL_STR[] = { S_AIL_PARA, S_AIL_PARA, S_AIL_BURN, S_AIL_POISON,
                                      S_AIL_SLEEP, S_AIL_FREEZE, S_AIL_CONFUSE };
-    gfx->setTextColor(UI_BAR_BAD);
-    gfx->setCursor(tx + 18, ty + 28);
-    gfx->print(T(AIL_STR[c.ailment]));
+    meta[metaCount] = T(AIL_STR[c.ailment]);
+    metaColor[metaCount++] = UI_BAR_BAD;
   }
   if (c.activeMechanic != BMECH_NONE) {
-    char mechanic[12];
     if (c.activeMechanic == BMECH_DYNAMAX)
       snprintf(mechanic, sizeof(mechanic), "MAX %u", c.dynamaxTurns);
     else
       snprintf(mechanic, sizeof(mechanic), "MEGA");
-    gfx->setTextColor(c.activeMechanic == BMECH_MEGA ? UI_BAR_WARN : UI_BAR_BAD);
+    meta[metaCount] = mechanic;
+    metaColor[metaCount++] = c.activeMechanic == BMECH_MEGA ? UI_BAR_WARN : UI_BAR_BAD;
+  }
+  for (uint8_t i = 0; i < metaCount; i++) {
+    int x0 = px + 6 + (pw - 12) * i / metaCount;
+    int x1 = px + 6 + (pw - 12) * (i + 1) / metaCount;
+    gfx->setTextColor(metaColor[i]);
     gfx->setTextSize(1);
-    gfx->setCursor(uiRightX(mechanic, tx + 140), ty + 40);
-    gfx->print(mechanic);
+    uiDrawCenteredIn(meta[i], x0, py + 40, x1 - x0, 16);
   }
   // a platform under each creature, so they stand in the scene rather than
   // floating over it
@@ -5115,6 +5280,7 @@ void renderBattle() {
   btlEaseBars();
   gfx->fillScreen(RGB565_BLACK);
   drawBattleBack();
+  drawBattleFieldEffects(millis());
   // the lower band stays flat so the move grid and the HP text keep their
   // contrast against it
   gfx->fillRect(0, 254, 466, 212, UI_BG_DAY);
@@ -5125,6 +5291,7 @@ void renderBattle() {
   // name like BLASTOISE was losing its first characters off the edge
   btlSide(82, 82, 300, 40, btlFoe, 1);    // foe reads top-left, sprite top-right
   btlSide(250, 190, 76, 168, btlYou, 0);  // you read bottom-right, sprite bottom-left
+  drawBattleFieldHud();
 
   // Waiting on the other device. Without this the screen is identical to the
   // one where it is your turn, so a tap that has been sent and a tap that was
@@ -5138,20 +5305,19 @@ void renderBattle() {
     gfx->setTextColor(UI_MUTED);
     gfx->setTextSize(1);
     const char *w = T(S_LAN_WAITFOE);
-    gfx->setCursor(uiCenterX(w), BTL_GRID_Y + 40);
-    gfx->print(w);
+    uiDrawCenteredIn(w, BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8);
   } else if (btlMsgCount) {            // narration takes over the menu area
     gfx->fillRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_WHITE);
     gfx->drawRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_INK);
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(1);
-    for (uint8_t i = 0; i < btlMsgCount && i < 4; i++) {
-      gfx->setCursor(uiCenterX(btlMsg[i]), BTL_GRID_Y + 14 + i * 18);
-      gfx->print(btlMsg[i]);
-    }
+    uint8_t lines = btlMsgCount < 4 ? btlMsgCount : 4;
+    int lineH = 16;
+    int top = BTL_GRID_Y + 8 + (64 - lines * lineH) / 2;
+    for (uint8_t i = 0; i < lines; i++)
+      uiDrawCenteredIn(btlMsg[i], BTL_GRID_X + 8, top + i * lineH, 312, lineH);
     gfx->setTextColor(UI_MUTED);
-    gfx->setCursor(CX - 30, BTL_GRID_Y + 84);
-    gfx->print("tap...");
+    uiDrawCenteredIn("tap...", BTL_GRID_X, BTL_GRID_Y + 76, 328, 16);
   } else if (btlMenu == 0) {
     const char *actions[4] = { T(S_FIGHT), T(S_BAG), T(S_BTL_SWITCH), T(S_BTL_RUN) };
     for (int i = 0; i < 4; i++) {
@@ -5177,12 +5343,10 @@ void renderBattle() {
       gfx->drawRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, usable ? UI_INK : 0x8410);
       gfx->setTextColor(usable ? UI_INK : 0x8410);
       gfx->setTextSize(1);
-      gfx->setCursor(x + 10, y + 11);
-      gfx->print(itemName(item->key));
+      uiDrawCenteredIn(itemName(item->key), x + 6, y + 3, BTL_CELL_W - 12, 18);
       char amount[8];
       snprintf(amount, sizeof(amount), "x%u", stack->count);
-      gfx->setCursor(x + 10, y + 28);
-      gfx->print(amount);
+      uiDrawCenteredIn(amount, x + 6, y + 23, BTL_CELL_W - 12, 16);
     }
     if (pages > 1)
       for (uint8_t page = 0; page < pages; page++) {
@@ -5203,12 +5367,11 @@ void renderBattle() {
       gfx->drawRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, usable ? UI_INK : 0x8410);
       gfx->setTextColor(usable ? UI_INK : 0x8410);
       gfx->setTextSize(1);
-      gfx->setCursor(x + 10, y + 10);
-      gfx->print(member ? displayCombatantName(*member) : "-");
+      uiDrawCenteredIn(member ? displayCombatantName(*member) : "-",
+                       x + 6, y + 3, BTL_CELL_W - 12, 18);
       char hp[20];
       snprintf(hp, sizeof(hp), "%u/%u", member ? member->hp : 0, member ? member->maxHp : 0);
-      gfx->setCursor(x + 10, y + 28);
-      gfx->print(hp);
+      uiDrawCenteredIn(hp, x + 6, y + 23, BTL_CELL_W - 12, 16);
     }
   } else if (btlMenu == 2) {
     drawBtlBack();
@@ -5223,12 +5386,10 @@ void renderBattle() {
       gfx->drawRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, usable ? UI_INK : 0x8410);
       gfx->setTextColor(usable ? UI_INK : 0x8410);
       gfx->setTextSize(1);
-      gfx->setCursor(x + 10, y + 10);
-      gfx->print(displayCombatantName(m));
+      uiDrawCenteredIn(displayCombatantName(m), x + 6, y + 3, BTL_CELL_W - 12, 18);
       char hp[20];
       snprintf(hp, sizeof(hp), "%u/%u", m.hp, m.maxHp);
-      gfx->setCursor(x + 10, y + 28);
-      gfx->print(hp);
+      uiDrawCenteredIn(hp, x + 6, y + 23, BTL_CELL_W - 12, 16);
     }
   } else {
     drawBtlBack();
@@ -5237,8 +5398,7 @@ void renderBattle() {
       const char *label = armed ? itemName(armed->key) : "";
       gfx->setTextColor(UI_BAR_WARN);
       gfx->setTextSize(1);
-      gfx->setCursor(uiCenterX(label), 260);
-      gfx->print(label);
+      uiDrawCenteredIn(label, BTL_GRID_X, 254, 328, 18);
     }
     for (int i = 0; i < MOVE_SLOTS; i++) {
       int x = BTL_CELL_X(i), y = BTL_CELL_Y(i);
@@ -5251,22 +5411,41 @@ void renderBattle() {
       if (!mv) continue;
       gfx->setTextColor(UI_INK);
       gfx->setTextSize(1);
-      gfx->setCursor(x + 10, y + 12);
-      if (btlPendingMechanic == BMECH_Z_MOVE) gfx->print("Z-");
-      else if (btlYou.activeMechanic == BMECH_DYNAMAX) gfx->print("MAX ");
-      gfx->print((btlPendingMechanic == BMECH_Z_MOVE ||
-                  btlYou.activeMechanic == BMECH_DYNAMAX)
-                     ? typeName(moveEntry(mv).type) : moveName(mv));
-      // Same chip as the move list: in a fight the type IS the decision, and
-      // grey 6px text was the least visible thing on the busiest screen.
-      int cw = drawTypeChip(x + 10, y + 26, moveEntry(mv).type);
-      if ((btlYou.type1 == moveEntry(mv).type || btlYou.type2 == moveEntry(mv).type) &&
-          moveEntry(mv).cat != MC_STATUS) {
-        gfx->setTextSize(1);
-        gfx->setTextColor(dexEntry(btlYou.dex).accent);
-        gfx->setCursor(x + 10 + cw + 4, y + 30);
-        gfx->print("+");
-      }
+      char moveLabel[64];
+      const char *shown = (btlPendingMechanic == BMECH_Z_MOVE ||
+                           btlYou.activeMechanic == BMECH_DYNAMAX)
+                              ? typeName(moveEntry(mv).type) : moveName(mv);
+      snprintf(moveLabel, sizeof(moveLabel), "%s%s",
+               btlPendingMechanic == BMECH_Z_MOVE ? "Z-"
+               : btlYou.activeMechanic == BMECH_DYNAMAX ? "MAX " : "",
+               shown);
+      int16_t left, top, right, bottom;
+      if (gfx->textInkBounds(moveLabel, &left, &top, &right, &bottom))
+        gfx->setCursor(x + 10 - left, y + 5 - top);
+      else
+        gfx->setCursor(x + 10, y + 5);
+      gfx->print(moveLabel);
+
+      // Match the move list's information order: name at top-left, type below,
+      // and the effective power (including Z/Max conversion) on the right.
+      BattleMove displayed = battleMoveFor(btlYou, mv, btlPendingMechanic);
+      drawTypeChip(x + 10, y + 24, displayed.entry.type);
+      bool stab = (btlYou.type1 == displayed.entry.type ||
+                   btlYou.type2 == displayed.entry.type) &&
+                  displayed.entry.cat != MC_STATUS;
+      char power[24];
+      if (displayed.entry.cat == MC_STATUS)
+        snprintf(power, sizeof(power), "%s", T(S_MOVE_STATUS));
+      else
+        snprintf(power, sizeof(power), T(S_MOVE_PWR), displayed.entry.power);
+      gfx->setTextColor(stab ? dexEntry(btlYou.dex).accent : UI_INK);
+      gfx->setTextSize(1);
+      if (gfx->textInkBounds(power, &left, &top, &right, &bottom))
+        gfx->setCursor(x + BTL_CELL_W - 10 - (right - left) - left,
+                       y + (BTL_CELL_H - (bottom - top)) / 2 - top);
+      else
+        gfx->setCursor(uiRightX(power, x + BTL_CELL_W - 10), y + 16);
+      gfx->print(power);
     }
   }
   gfx->flush();

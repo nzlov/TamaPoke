@@ -42,6 +42,7 @@ static Combatant mon(SpeciesId species, MoveId move) {
 }
 
 int main() {
+  BattleField field;
   contentBegin();
   MoveId flame = findMove("FLAMETHROWER");
   MoveId recover = findMove("RECOVER");
@@ -57,8 +58,8 @@ int main() {
   CHECK(zMove.mechanic == BMECH_Z_MOVE && zMove.entry.power > normal.entry.power);
   Combatant target = mon(3, flame);
   target.type1 = T_GRASS;
-  CHECK(battleDamage(zUser, target, zMove, false, 255) >
-        battleDamage(zUser, target, normal, false, 255));
+  CHECK(battleDamage(zUser, target, field, zMove, false, 255) >
+        battleDamage(zUser, target, field, normal, false, 255));
   CHECK(zMove.entry.acc == 0 && zMove.entry.ailment == AIL_NONE);
   Combatant another = mon(9, flame);
   CHECK(!battleMechanicAvailable(side, another, BMECH_Z_MOVE, flame));
@@ -70,8 +71,39 @@ int main() {
   CHECK(maxUser.hp == 80 && maxUser.maxHp == 200 && maxUser.dynamaxTurns == 3);
   BattleMove maxMove = battleMoveFor(maxUser, flame);
   CHECK(maxMove.mechanic == BMECH_DYNAMAX && maxMove.entry.power > normal.entry.power);
-  CHECK(battleDamage(maxUser, target, maxMove, false, 255) >
-        battleDamage(maxUser, target, normal, false, 255));
+  CHECK(maxMove.entry.effect == EF_SET_WEATHER &&
+        maxMove.entry.param == BWEATHER_SUN);
+  CHECK(battleDamage(maxUser, target, field, maxMove, false, 255) >
+        battleDamage(maxUser, target, field, normal, false, 255));
+  TurnLog maxLog;
+  battleAct(maxUser, target, field, maxMove, maxLog);
+  CHECK(field.weather == BWEATHER_SUN && field.weatherTurns == BATTLE_FIELD_TURNS &&
+        maxLog.weatherSet == BWEATHER_SUN);
+  field = BattleField();
+  const uint8_t maxTypes[] = {
+    T_FIRE, T_WATER, T_ROCK, T_ICE, T_ELECTRIC, T_GRASS, T_FAIRY, T_PSYCHIC,
+  };
+  const uint8_t maxEffects[] = {
+    EF_SET_WEATHER, EF_SET_WEATHER, EF_SET_WEATHER, EF_SET_WEATHER,
+    EF_SET_TERRAIN, EF_SET_TERRAIN, EF_SET_TERRAIN, EF_SET_TERRAIN,
+  };
+  const int8_t maxParams[] = {
+    BWEATHER_SUN, BWEATHER_RAIN, BWEATHER_SAND, BWEATHER_SNOW,
+    BTERRAIN_ELECTRIC, BTERRAIN_GRASSY, BTERRAIN_MISTY, BTERRAIN_PSYCHIC,
+  };
+  Combatant mappingUser = mon(9, flame);
+  mappingUser.activeMechanic = BMECH_DYNAMAX;
+  for (uint8_t i = 0; i < sizeof(maxTypes); i++) {
+    MoveId typed = MOVE_NONE;
+    for (MoveId move = 1; move < moveCount(); move++)
+      if (moveEntry(move).type == maxTypes[i] && moveEntry(move).cat != MC_STATUS) {
+        typed = move;
+        break;
+      }
+    CHECK(typed != MOVE_NONE);
+    BattleMove mapped = battleMoveFor(mappingUser, typed);
+    CHECK(mapped.entry.effect == maxEffects[i] && mapped.entry.param == maxParams[i]);
+  }
   battleAfterAction(maxUser);
   battleAfterAction(maxUser);
   CHECK(maxUser.activeMechanic == BMECH_DYNAMAX && maxUser.dynamaxTurns == 1);
@@ -107,9 +139,9 @@ int main() {
   CHECK(guardMove.entry.effect == EF_PROTECT);
   CHECK(battleMovesFirst(guard, guardMove, attacker, normal));
   TurnLog log;
-  battleAct(guard, attacker, guardMove, log);
+  battleAct(guard, attacker, field, guardMove, log);
   uint16_t hpBefore = guard.hp;
-  battleAct(attacker, guard, normal, log);
+  battleAct(attacker, guard, field, normal, log);
   CHECK(log.missed && guard.hp == hpBefore);
 
   CHECK(wildBattleMechanic(30, 0, true) == BMECH_NONE);

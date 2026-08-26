@@ -115,6 +115,11 @@ int main() {
     printf("WRONG BOX WITHDRAW LABEL  en-US: %s\n", T(S_BOX_WITHDRAW));
     bad++;
   }
+  if (strcmp(T(S_FIELD_RAIN), "RAIN") || strcmp(T(S_FIELD_ELECTRIC), "ELECTRIC TERRAIN")) {
+    printf("WRONG FIELD LABELS  en-US: %s / %s\n",
+           T(S_FIELD_RAIN), T(S_FIELD_ELECTRIC));
+    bad++;
+  }
   int8_t chinese = uiFindLocale("zh-CN");
   if (chinese >= 0) {
     setLang((Lang)chinese);
@@ -124,6 +129,11 @@ int main() {
     }
     if (strcmp(T(S_BOX_WITHDRAW), "取出")) {
       printf("WRONG BOX WITHDRAW LABEL  zh-CN: %s\n", T(S_BOX_WITHDRAW));
+      bad++;
+    }
+    if (strcmp(T(S_FIELD_RAIN), "雨天") || strcmp(T(S_FIELD_ELECTRIC), "电气场地")) {
+      printf("WRONG FIELD LABELS  zh-CN: %s / %s\n",
+             T(S_FIELD_RAIN), T(S_FIELD_ELECTRIC));
       bad++;
     }
   }

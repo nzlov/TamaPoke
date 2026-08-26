@@ -49,6 +49,31 @@ static uint16_t typeEffVsCombatant(uint8_t attack, const Combatant &defender) {
   return typeEffPct(attack, defender.type1, defender.type2);
 }
 
+void battleSetEnvironment(BattleField &field, BattleWeather weather,
+                          BattleTerrain terrain) {
+  field = BattleField();
+  if (weather > BWEATHER_SNOW) weather = BWEATHER_NONE;
+  if (terrain > BTERRAIN_PSYCHIC) terrain = BTERRAIN_NONE;
+  field.baseWeather = field.weather = weather;
+  field.baseTerrain = field.terrain = terrain;
+}
+
+void battleSetWeather(BattleField &field, BattleWeather weather) {
+  if (weather > BWEATHER_SNOW) return;
+  field.weather = weather == BWEATHER_NONE ? field.baseWeather : weather;
+  field.weatherTurns = weather == BWEATHER_NONE ? 0 : BATTLE_FIELD_TURNS;
+}
+
+void battleSetTerrain(BattleField &field, BattleTerrain terrain) {
+  if (terrain > BTERRAIN_PSYCHIC) return;
+  field.terrain = terrain == BTERRAIN_NONE ? field.baseTerrain : terrain;
+  field.terrainTurns = terrain == BTERRAIN_NONE ? 0 : BATTLE_FIELD_TURNS;
+}
+
+bool battleGrounded(const Combatant &combatant) {
+  return !combatantHasType(combatant, T_FLYING);
+}
+
 BattleMove battleMove(MoveId move) {
   BattleMove result;
   if (!moveValid(move)) return result;
@@ -84,6 +109,14 @@ static void setMaxStageEffect(MoveEntry &move) {
   move.stages = 0;
   move.target = TG_SELF;
   switch (move.type) {
+    case T_FIRE:     move.effect = EF_SET_WEATHER; move.param = BWEATHER_SUN; break;
+    case T_WATER:    move.effect = EF_SET_WEATHER; move.param = BWEATHER_RAIN; break;
+    case T_ROCK:     move.effect = EF_SET_WEATHER; move.param = BWEATHER_SAND; break;
+    case T_ICE:      move.effect = EF_SET_WEATHER; move.param = BWEATHER_SNOW; break;
+    case T_ELECTRIC: move.effect = EF_SET_TERRAIN; move.param = BTERRAIN_ELECTRIC; break;
+    case T_GRASS:    move.effect = EF_SET_TERRAIN; move.param = BTERRAIN_GRASSY; break;
+    case T_FAIRY:    move.effect = EF_SET_TERRAIN; move.param = BTERRAIN_MISTY; break;
+    case T_PSYCHIC:  move.effect = EF_SET_TERRAIN; move.param = BTERRAIN_PSYCHIC; break;
     case T_NORMAL:   move.statMask = ST_SPE; move.stages = -1; move.target = TG_FOE; break;
     case T_FIGHTING: move.statMask = ST_ATK; move.stages = 1; break;
     case T_FLYING:   move.statMask = ST_SPE; move.stages = 1; break;
@@ -94,7 +127,7 @@ static void setMaxStageEffect(MoveEntry &move) {
     case T_DRAGON:   move.statMask = ST_ATK; move.stages = -1; move.target = TG_FOE; break;
     case T_DARK:     move.statMask = ST_SPD; move.stages = -1; move.target = TG_FOE; break;
     case T_STEEL:    move.statMask = ST_DEF; move.stages = 1; break;
-    default: break;  // weather and terrain effects are outside the compact ruleset
+    default: break;
   }
 }
 
@@ -112,11 +145,13 @@ BattleMove battleMoveFor(const Combatant &attacker, MoveId move,
     result.entry.stages = 0;
     result.entry.ailment = AIL_NONE;
     result.entry.ailChance = 0;
+    result.entry.fieldFlags = MF_NONE;
   } else if (attacker.activeMechanic == BMECH_DYNAMAX) {
     result.mechanic = BMECH_DYNAMAX;
     result.entry.acc = 0;
     result.entry.ailment = AIL_NONE;
     result.entry.ailChance = 0;
+    result.entry.fieldFlags = MF_NONE;
     if (result.entry.cat == MC_STATUS) {
       result.entry.effect = EF_PROTECT;
       result.entry.param = 4;  // Max Guard priority
@@ -267,13 +302,14 @@ static uint16_t effStat(const Combatant &c, uint8_t idx) {
 // ---------- damage ----------
 
 // roll is 217..255, the series' damage spread, passed in so tests can pin it.
-uint16_t battleDamage(const Combatant &atk, const Combatant &def, MoveId mv,
-                      bool crit, uint8_t roll) {
-  return battleDamage(atk, def, battleMove(mv), crit, roll);
+uint16_t battleDamage(const Combatant &atk, const Combatant &def,
+                      const BattleField &field, MoveId mv, bool crit, uint8_t roll) {
+  return battleDamage(atk, def, field, battleMove(mv), crit, roll);
 }
 
 uint16_t battleDamage(const Combatant &atk, const Combatant &def,
-                      const BattleMove &move, bool crit, uint8_t roll) {
+                      const BattleField &field, const BattleMove &move,
+                      bool crit, uint8_t roll) {
   if (!move.valid()) return 0;
   const MoveEntry &m = move.entry;
   if (m.cat == MC_STATUS) return 0;
@@ -289,11 +325,36 @@ uint16_t battleDamage(const Combatant &atk, const Combatant &def,
     A = (m.cat == MC_PHYS) ? atk.base[SI_ATK] : atk.base[SI_SPA];
     D = (m.cat == MC_PHYS) ? def.base[SI_DEF] : def.base[SI_SPD];
   }
+  if (m.cat == MC_PHYS && field.weather == BWEATHER_SNOW &&
+      combatantHasType(def, T_ICE))
+    D = (uint16_t)((uint32_t)D * 3u / 2u);
+  if (m.cat == MC_SPEC && field.weather == BWEATHER_SAND &&
+      combatantHasType(def, T_ROCK))
+    D = (uint16_t)((uint32_t)D * 3u / 2u);
   if (!D) D = 1;
 
   uint32_t dmg = (2UL * atk.level / 5 + 2) * m.power * A / D / 50 + 2;
   if (crit) dmg *= 2;
+  if ((field.weather == BWEATHER_SUN && m.type == T_FIRE) ||
+      (field.weather == BWEATHER_RAIN && m.type == T_WATER))
+    dmg = dmg * 3u / 2u;
+  if ((field.weather == BWEATHER_SUN && m.type == T_WATER) ||
+      (field.weather == BWEATHER_RAIN && m.type == T_FIRE))
+    dmg /= 2u;
+  if ((m.fieldFlags & MF_SOLAR_CHARGE) && field.weather != BWEATHER_NONE &&
+      field.weather != BWEATHER_SUN)
+    dmg /= 2u;
   if (combatantHasType(atk, m.type)) dmg = dmg * 3 / 2;
+  if (battleGrounded(atk) &&
+      ((field.terrain == BTERRAIN_ELECTRIC && m.type == T_ELECTRIC) ||
+       (field.terrain == BTERRAIN_GRASSY && m.type == T_GRASS) ||
+       (field.terrain == BTERRAIN_PSYCHIC && m.type == T_PSYCHIC)))
+    dmg = dmg * 13u / 10u;
+  if (field.terrain == BTERRAIN_MISTY && m.type == T_DRAGON && battleGrounded(def))
+    dmg /= 2u;
+  if (field.terrain == BTERRAIN_GRASSY &&
+      (m.fieldFlags & MF_GRASSY_WEAKENED) && battleGrounded(def))
+    dmg /= 2u;
   uint16_t eff = typeEffVsCombatant(m.type, def);
   dmg = dmg * eff / 100;
   if (eff == 0) return 0;               // immune: no chip, no minimum
@@ -346,13 +407,13 @@ static uint16_t heal(Combatant &c, uint16_t amount) {
   return c.hp - before;
 }
 
-void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log,
-               uint8_t effectPercent) {
-  battleAct(atk, def, battleMove(mv), log, effectPercent);
+void battleAct(Combatant &atk, Combatant &def, BattleField &field, MoveId mv,
+               TurnLog &log, uint8_t effectPercent) {
+  battleAct(atk, def, field, battleMove(mv), log, effectPercent);
 }
 
-void battleAct(Combatant &atk, Combatant &def, const BattleMove &selected,
-               TurnLog &log, uint8_t effectPercent) {
+void battleAct(Combatant &atk, Combatant &def, BattleField &field,
+               const BattleMove &selected, TurnLog &log, uint8_t effectPercent) {
   BattleMove move = selected;
   log = TurnLog();
   log.move = move.source;
@@ -394,7 +455,9 @@ void battleAct(Combatant &atk, Combatant &def, const BattleMove &selected,
   log.mechanic = move.mechanic;
   log.moveType = move.entry.type;
   if (!effectPercent) { log.missed = true; return; }
-  if (!firingCharge && move.valid() && move.entry.effect == EF_CHARGE) {
+  bool sunnyCharge = move.valid() && (move.entry.fieldFlags & MF_SOLAR_CHARGE) &&
+                     field.weather == BWEATHER_SUN;
+  if (!firingCharge && !sunnyCharge && move.valid() && move.entry.effect == EF_CHARGE) {
     atk.charging = move.source;
     log.charged = true;
     return;
@@ -404,8 +467,18 @@ void battleAct(Combatant &atk, Combatant &def, const BattleMove &selected,
   const MoveEntry &m = move.entry;
   log.move = move.source;
 
+  if (m.target == TG_FOE && m.effect == EF_PRIORITY && m.param > 0 &&
+      field.terrain == BTERRAIN_PSYCHIC && battleGrounded(def)) {
+    log.blockedByField = true;
+    return;
+  }
+
   // --- accuracy. acc 0 means it cannot miss (SWIFT, and every status move)
-  if (m.acc && m.effect != EF_NEVER_MISS && random(100) >= m.acc) {
+  uint8_t accuracy = m.acc;
+  if ((m.fieldFlags & MF_RAIN_ACCURATE) && field.weather == BWEATHER_RAIN) accuracy = 0;
+  else if ((m.fieldFlags & MF_RAIN_ACCURATE) && field.weather == BWEATHER_SUN) accuracy = 50;
+  if ((m.fieldFlags & MF_SNOW_ACCURATE) && field.weather == BWEATHER_SNOW) accuracy = 0;
+  if (accuracy && m.effect != EF_NEVER_MISS && random(100) >= accuracy) {
     log.missed = true;
     return;
   }
@@ -419,6 +492,14 @@ void battleAct(Combatant &atk, Combatant &def, const BattleMove &selected,
       Combatant &t = (m.target == TG_SELF) ? atk : def;
       log.stageMask = applyStages(t, m.statMask, m.stages);
       log.stageDelta = m.stages;
+    } else if (m.effect == EF_SET_WEATHER && m.param > BWEATHER_NONE &&
+               m.param <= BWEATHER_SNOW) {
+      battleSetWeather(field, (BattleWeather)m.param);
+      log.weatherSet = (BattleWeather)m.param;
+    } else if (m.effect == EF_SET_TERRAIN && m.param > BTERRAIN_NONE &&
+               m.param <= BTERRAIN_PSYCHIC) {
+      battleSetTerrain(field, (BattleTerrain)m.param);
+      log.terrainSet = (BattleTerrain)m.param;
     }
     return;
   }
@@ -436,7 +517,8 @@ void battleAct(Combatant &atk, Combatant &def, const BattleMove &selected,
   if (log.effPct == 0) { log.immune = true; return; }
   for (uint8_t h = 0; h < hits; h++) {
     bool crit = random(16) == 0;                 // ~6%, the series' base rate
-    uint16_t d = battleDamage(atk, def, move, crit, (uint8_t)(217 + random(39)));
+    uint16_t d = battleDamage(atk, def, field, move, crit,
+                              (uint8_t)(217 + random(39)));
     rawTotal += d;
     uint32_t scaledTotal = (rawTotal * effectPercent + 50u) / 100u;
     if (scaledTotal > UINT16_MAX) scaledTotal = UINT16_MAX;
@@ -453,6 +535,16 @@ void battleAct(Combatant &atk, Combatant &def, const BattleMove &selected,
     hurt(atk, total / m.param ? total / m.param : 1);
   if (m.effect == EF_DRAIN && m.param > 0) heal(atk, total * m.param / 100);
   if (m.effect == EF_RECHARGE) atk.recharge = true;
+  if (m.effect == EF_SET_WEATHER && m.param > BWEATHER_NONE &&
+      m.param <= BWEATHER_SNOW) {
+    battleSetWeather(field, (BattleWeather)m.param);
+    log.weatherSet = (BattleWeather)m.param;
+  }
+  if (m.effect == EF_SET_TERRAIN && m.param > BTERRAIN_NONE &&
+      m.param <= BTERRAIN_PSYCHIC) {
+    battleSetTerrain(field, (BattleTerrain)m.param);
+    log.terrainSet = (BattleTerrain)m.param;
+  }
 
   if (m.statMask && m.stages &&
       (m.target == TG_SELF || !def.fainted())) {
@@ -466,6 +558,11 @@ void battleAct(Combatant &atk, Combatant &def, const BattleMove &selected,
   // tracked separately so it can stack with a real status, as in the games.
   if (m.ailment != AIL_NONE && m.ailChance && !def.fainted() &&
       random(100) < m.ailChance) {
+    bool blocked = (field.weather == BWEATHER_SUN && m.ailment == AIL_FREEZE) ||
+                   (battleGrounded(def) &&
+                    ((field.terrain == BTERRAIN_ELECTRIC && m.ailment == AIL_SLEEP) ||
+                     field.terrain == BTERRAIN_MISTY));
+    if (blocked) return;
     if (m.ailment == AIL_CONFUSE) {
       if (!def.confuseTurns) {
         def.confuseTurns = 2 + random(3);
@@ -489,22 +586,63 @@ void battleAct(Combatant &atk, Combatant &def, const BattleMove &selected,
 
 // ---------- end of turn ----------
 
-void battleEndTurn(Combatant &c, TurnLog &log) {
+static void battleEndCombatant(const BattleField &field, Combatant &c, TurnLog &log) {
   log = TurnLog();
   if (c.fainted()) return;
   if (c.ailment == AIL_BURN || c.ailment == AIL_POISON) {
     uint16_t chip = c.maxHp / 16;
     if (!chip) chip = 1;
+    uint16_t before = c.hp;
     hurt(c, chip);
-    log.damage = chip;
+    log.damage = before - c.hp;
     log.inflicted = c.ailment;
-    log.targetFainted = c.fainted();
+  }
+  if (!c.fainted() && field.weather == BWEATHER_SAND &&
+      !combatantHasType(c, T_ROCK) && !combatantHasType(c, T_GROUND) &&
+      !combatantHasType(c, T_STEEL)) {
+    uint16_t chip = c.maxHp / 16;
+    if (!chip) chip = 1;
+    uint16_t before = c.hp;
+    hurt(c, chip);
+    log.damage += before - c.hp;
+    log.weatherDamage = BWEATHER_SAND;
+  }
+  if (!c.fainted() && field.terrain == BTERRAIN_GRASSY && battleGrounded(c)) {
+    uint16_t amount = c.maxHp / 16;
+    if (!amount) amount = 1;
+    log.healed = heal(c, amount) != 0;
+    if (log.healed) log.terrainHeal = BTERRAIN_GRASSY;
+  }
+  log.targetFainted = c.fainted();
+}
+
+void battleEndRound(BattleField &field, Combatant &a, Combatant &b,
+                    TurnLog &aLog, TurnLog &bLog, FieldLog &fieldLog) {
+  battleEndCombatant(field, a, aLog);
+  battleEndCombatant(field, b, bLog);
+  fieldLog = FieldLog();
+  if (field.weatherTurns && --field.weatherTurns == 0) {
+    BattleWeather expired = field.weather;
+    field.weather = field.baseWeather;
+    if (expired != field.weather) {
+      fieldLog.weatherExpired = expired;
+      fieldLog.weatherRestored = field.weather;
+    }
+  }
+  if (field.terrainTurns && --field.terrainTurns == 0) {
+    BattleTerrain expired = field.terrain;
+    field.terrain = field.baseTerrain;
+    if (expired != field.terrain) {
+      fieldLog.terrainExpired = expired;
+      fieldLog.terrainRestored = field.terrain;
+    }
   }
 }
 
 // ---------- move choice ----------
 
-MoveId aiChooseMove(const Combatant &self, const Combatant &foe, bool smart) {
+MoveId aiChooseMove(const Combatant &self, const Combatant &foe,
+                    const BattleField &field, bool smart) {
   MoveId legal[MOVE_SLOTS];
   uint8_t n = 0;
   for (int i = 0; i < MOVE_SLOTS; i++)
@@ -536,15 +674,46 @@ MoveId aiChooseMove(const Combatant &self, const Combatant &foe, bool smart) {
         sc = 26 - (stacked * 12 / hit);
         // and never set up when one more hit would finish you
         if (self.hp * 3 < self.maxHp) sc -= 40;
+      } else if (m.effect == EF_SET_WEATHER) {
+        BattleWeather wanted = (BattleWeather)m.param;
+        if (wanted <= BWEATHER_NONE || wanted > BWEATHER_SNOW) sc = -100;
+        else if (field.weather == wanted && field.weatherTurns >= 3) sc = -50;
+        else {
+          sc = 18;
+          for (uint8_t k = 0; k < MOVE_SLOTS; k++) {
+            if (!moveValid(self.moves[k])) continue;
+            uint8_t type = moveEntry(self.moves[k]).type;
+            if ((wanted == BWEATHER_SUN && type == T_FIRE) ||
+                (wanted == BWEATHER_RAIN && type == T_WATER)) sc += 8;
+          }
+        }
+      } else if (m.effect == EF_SET_TERRAIN) {
+        BattleTerrain wanted = (BattleTerrain)m.param;
+        if (wanted <= BTERRAIN_NONE || wanted > BTERRAIN_PSYCHIC) sc = -100;
+        else if (field.terrain == wanted && field.terrainTurns >= 3) sc = -50;
+        else {
+          sc = 18;
+          uint8_t boosted = wanted == BTERRAIN_ELECTRIC ? T_ELECTRIC
+                            : wanted == BTERRAIN_GRASSY ? T_GRASS
+                            : wanted == BTERRAIN_PSYCHIC ? T_PSYCHIC : T_NONE;
+          for (uint8_t k = 0; boosted != T_NONE && k < MOVE_SLOTS; k++)
+            if (moveValid(self.moves[k]) && moveEntry(self.moves[k]).type == boosted) sc += 8;
+        }
       } else {
         sc = 5;
       }
     } else {
-      uint16_t dmg = battleDamage(self, foe, mv, false, 236);  // average roll
+      uint16_t dmg = battleDamage(self, foe, field, mv, false, 236);  // average roll
       sc = dmg;
+      bool blocked = field.terrain == BTERRAIN_PSYCHIC && battleGrounded(foe) &&
+                     m.effect == EF_PRIORITY && m.param > 0;
       if (dmg >= foe.hp) sc += 1000;              // a kill this turn beats all
       uint8_t acc = m.acc ? m.acc : 100;
+      if ((m.fieldFlags & MF_RAIN_ACCURATE) && field.weather == BWEATHER_RAIN) acc = 100;
+      else if ((m.fieldFlags & MF_RAIN_ACCURATE) && field.weather == BWEATHER_SUN) acc = 50;
+      if ((m.fieldFlags & MF_SNOW_ACCURATE) && field.weather == BWEATHER_SNOW) acc = 100;
       sc = sc * acc / 100;                        // discount what tends to miss
+      if (blocked) sc = -1000;
       if (m.effect == EF_RECHARGE) sc -= dmg / 4; // a free turn for the foe
       if (m.effect == EF_RECOIL) sc -= dmg / 6;
       if (m.effect == EF_CHARGE) sc -= dmg / 3;   // a turn spent winding up

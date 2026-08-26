@@ -6,7 +6,14 @@ enum : uint8_t { MC_PHYS = 0, MC_SPEC = 1, MC_STATUS = 2 };
 enum : uint8_t {
   EF_NONE = 0, EF_STAGE, EF_RECOIL, EF_DRAIN, EF_FIXED_LVL, EF_FIXED,
   EF_PRIORITY, EF_NEVER_MISS, EF_MULTI, EF_HEAL, EF_RECHARGE, EF_CHARGE,
-  EF_PROTECT,
+  EF_PROTECT, EF_SET_WEATHER, EF_SET_TERRAIN,
+};
+enum : uint8_t {
+  MF_NONE = 0,
+  MF_RAIN_ACCURATE = 1,
+  MF_SNOW_ACCURATE = 2,
+  MF_SOLAR_CHARGE = 4,
+  MF_GRASSY_WEAKENED = 8,
 };
 enum : uint8_t { ST_ATK = 1, ST_DEF = 2, ST_SPA = 4, ST_SPD = 8, ST_SPE = 16 };
 enum : uint8_t { TG_SELF = 0, TG_FOE = 1 };
@@ -26,6 +33,7 @@ struct MoveEntry {
   uint8_t statMask;
   int8_t stages;
   uint8_t target, ailment, ailChance;
+  uint8_t fieldFlags;
 };
 
 enum LearnMethod : uint8_t { LM_LEVEL_UP = 0, LM_TM = 1, LM_TUTOR = 2, LM_EGG = 3 };

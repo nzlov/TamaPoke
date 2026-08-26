@@ -13,7 +13,9 @@
 #include "battle.h"
 #include "link.h"
 #include "quiz.h"
+#include <chrono>
 #include <cstdio>
+#include <thread>
 uint32_t g_seed=5; FakeSerial Serial; FakeESP ESP; FakeWire Wire;
 volatile int g_touchX=0,g_touchY=0; volatile bool g_touchDown=false;
 void FakeESP::restart(){exit(0);}
@@ -28,9 +30,11 @@ extern bool battleOpen, btlLink, btlLinkHost, btlOver, btlWon, lanOpen;
 extern Combatant btlYou, btlFoe;
 extern Combatant btlSquad[];
 extern uint8_t btlSquadN, btlSquadAt, btlFoeAt, btlMenu, btlMsgCount;
+extern char btlMsg[6][64];
 extern uint8_t btlMyAct, btlMyPercent, btlFoeSquadN;
 extern Combatant btlFoeSquad[];
 extern BattleSideMechanics btlYourMechanics, btlFoeMechanics;
+extern BattleField btlField;
 extern uint16_t squadMask;
 extern bool pickOpen, lanWantHost;
 extern uint8_t pickTrainer, pickPage;
@@ -133,6 +137,7 @@ int main(){
 
   // --- a guest answers locally before its move is sent. The answer ratio is
   // part of that turn's action, while LM_WAIT keeps a long question alive.
+  std::this_thread::sleep_for(std::chrono::milliseconds(310));
   lan.state = LINK_READY;
   btlMenu = 1;
   sent = 0;
@@ -156,6 +161,7 @@ int main(){
   btlMenu = 1;                       // the move grid
   uint16_t hpWas = btlFoe.hp;
   sent = 0;
+  std::this_thread::sleep_for(std::chrono::milliseconds(310));
   battleTap(69 + 10, 286 + 10);      // move slot 0
   ck(quiz.active && !btlMyAct && sent==1 && lastPkt[0]==LM_WAIT,
      "the host also answers before latching its move");
@@ -230,6 +236,12 @@ int main(){
   r.guestDynamaxTurns = 2;
   r.hostUsedMask = battleMechanicBit(BMECH_MEGA);
   r.guestUsedMask = battleMechanicBit(BMECH_DYNAMAX);
+  r.baseWeather = BWEATHER_RAIN;
+  r.weather = BWEATHER_SUN;
+  r.weatherTurns = 3;
+  r.baseTerrain = BTERRAIN_ELECTRIC;
+  r.terrain = BTERRAIN_GRASSY;
+  r.terrainTurns = 2;
   r.hostMemberMechanic[0] = BMECH_MEGA;
   r.guestMemberMechanic[0] = BMECH_DYNAMAX;
   for (uint8_t i=0;i<SI_COUNT;i++) { r.hostBase[i]=btlFoe.base[i]; r.guestBase[i]=btlYou.base[i]; }
@@ -243,6 +255,15 @@ int main(){
   ck(btlYourMechanics.used(BMECH_DYNAMAX) &&
      btlFoeMechanics.used(BMECH_MEGA) && btlYou.usedMechanic==BMECH_DYNAMAX,
      "and restores the per-team and per-creature mechanic limits");
+  ck(btlField.baseWeather==BWEATHER_RAIN && btlField.weather==BWEATHER_SUN &&
+     btlField.weatherTurns==3 && btlField.baseTerrain==BTERRAIN_ELECTRIC &&
+     btlField.terrain==BTERRAIN_GRASSY && btlField.terrainTurns==2,
+     "and restores the host-authoritative field state");
+  bool narratedField = false;
+  for (uint8_t i=0;i<btlMsgCount;i++)
+    narratedField |= strstr(btlMsg[i], "HARSH SUN") ||
+                     strstr(btlMsg[i], "GRASSY TERRAIN");
+  ck(narratedField, "and narrates a field transition in the guest's locale");
   ck(!lan.resultNew, "a result is consumed once");
   uint16_t hpNow = btlYou.hp;
   render();

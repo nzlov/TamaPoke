@@ -111,6 +111,12 @@ int main(){
   // the real payload: what the guest actually renders a turn from
   ck(sizeof(LinkResult) <= LINK_MAX_PAYLOAD, "a result fits in one packet");
   LinkResult r{};
+  r.baseWeather = BWEATHER_RAIN;
+  r.weather = BWEATHER_SUN;
+  r.weatherTurns = 3;
+  r.baseTerrain = BTERRAIN_ELECTRIC;
+  r.terrain = BTERRAIN_GRASSY;
+  r.terrainTurns = 2;
   r.hostHp=111; r.guestHp=222; r.hostMove=33; r.guestMove=44;
   r.hostDmg=9; r.guestDmg=8; r.hostIdx=1; r.guestIdx=0; r.guestAil=AIL_BURN;
   r.hostMaxHp=333; r.guestMaxHp=444; r.hostActive=BMECH_MEGA;
@@ -121,6 +127,10 @@ int main(){
   A.pendingAct = LINK_ACT_MOVE(0);
   A.sendResult((const uint8_t*)&r,(uint8_t)sizeof(r));
   LinkResult got{}; memcpy(&got,B.result,sizeof(got));
+  ck(got.baseWeather == BWEATHER_RAIN && got.weather == BWEATHER_SUN &&
+     got.weatherTurns == 3 && got.baseTerrain == BTERRAIN_ELECTRIC &&
+     got.terrain == BTERRAIN_GRASSY && got.terrainTurns == 2,
+     "absolute field state survives a result packet");
   ck(B.resultNew && B.resultN==sizeof(r), "a full result arrives whole");
   ck(got.hostHp==111 && got.guestHp==222 && got.guestAil==AIL_BURN,
      "health and ailments survive the wire");

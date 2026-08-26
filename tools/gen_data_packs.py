@@ -38,8 +38,11 @@ from dex_moves import (  # noqa: E402
     MOVES, AIL_NONE, AIL_PARA, AIL_BURN, AIL_POISON, AIL_SLEEP, AIL_FREEZE,
     AIL_CONFUSE, EF_NONE, EF_STAGE, EF_RECOIL, EF_DRAIN, EF_FIXED_LVL,
     EF_FIXED, EF_PRIORITY, EF_NEVER_MISS, EF_MULTI, EF_HEAL, EF_RECHARGE,
-    EF_CHARGE, MC_PHYS, MC_SPEC, MC_STATUS, ST_ATK, ST_DEF, ST_SPA, ST_SPD,
-    ST_SPE, TG_SELF,
+    EF_CHARGE, EF_SET_WEATHER, EF_SET_TERRAIN, BWEATHER_SUN, BWEATHER_RAIN,
+    BWEATHER_SAND, BWEATHER_SNOW, BTERRAIN_ELECTRIC, BTERRAIN_GRASSY,
+    BTERRAIN_MISTY, BTERRAIN_PSYCHIC, FIELD_MOVE_FLAGS, MF_RAIN_ACCURATE,
+    MF_SNOW_ACCURATE, MF_SOLAR_CHARGE, MF_GRASSY_WEAKENED, MC_PHYS, MC_SPEC,
+    MC_STATUS, ST_ATK, ST_DEF, ST_SPA, ST_SPD, ST_SPE, TG_SELF,
 )
 from dex_presentation import BIOME_OVERRIDE, TYPE_BIOME, rgb565  # noqa: E402
 
@@ -507,6 +510,26 @@ def move_effect_text(category: int, effect: int, param: int, mask: int,
         if stages > 0:
             return f"{prefix}使{owner}{stats}提高{stages}级。"
         return f"{prefix}使{owner}{stats}-{abs(stages)}级。"
+    if effect == EF_SET_WEATHER:
+        names = {
+            "en-US": {BWEATHER_SUN: "sun", BWEATHER_RAIN: "rain",
+                      BWEATHER_SAND: "a sandstorm", BWEATHER_SNOW: "snow"},
+            "zh-CN": {BWEATHER_SUN: "晴天", BWEATHER_RAIN: "雨天",
+                      BWEATHER_SAND: "沙暴", BWEATHER_SNOW: "雪"},
+        }
+        return (f"Creates {names[locale][param]} for 5 turns."
+                if locale == "en-US" else f"使天气变为{names[locale][param]}，持续5回合。")
+    if effect == EF_SET_TERRAIN:
+        names = {
+            "en-US": {BTERRAIN_ELECTRIC: "Electric Terrain",
+                      BTERRAIN_GRASSY: "Grassy Terrain",
+                      BTERRAIN_MISTY: "Misty Terrain",
+                      BTERRAIN_PSYCHIC: "Psychic Terrain"},
+            "zh-CN": {BTERRAIN_ELECTRIC: "电气场地", BTERRAIN_GRASSY: "青草场地",
+                      BTERRAIN_MISTY: "薄雾场地", BTERRAIN_PSYCHIC: "精神场地"},
+        }
+        return (f"Creates {names[locale][param]} for 5 turns."
+                if locale == "en-US" else f"形成{names[locale][param]}，持续5回合。")
     if locale == "en-US":
         return {
             EF_RECOIL: f"User takes 1/{param} of damage dealt as recoil.",
@@ -551,6 +574,19 @@ def move_descriptions(rows: list[tuple]) -> dict[str, list[str]]:
         if en_effect:
             en += f" {en_effect}"
             zh += f" {zh_effect}"
+        field_flag = FIELD_MOVE_FLAGS.get(_slug, 0)
+        if field_flag & MF_RAIN_ACCURATE:
+            en += " Always hits in rain; accuracy is 50% in harsh sun."
+            zh += " 雨天必中；晴天命中率为50%。"
+        if field_flag & MF_SNOW_ACCURATE:
+            en += " Always hits in snow."
+            zh += " 雪天必中。"
+        if field_flag & MF_SOLAR_CHARGE:
+            en += " Attacks immediately in harsh sun; power is halved in other weather."
+            zh += " 晴天立即攻击；其他天气下威力减半。"
+        if field_flag & MF_GRASSY_WEAKENED:
+            en += " Power is halved against grounded targets on Grassy Terrain."
+            zh += " 对青草场地上的地面目标威力减半。"
         if ailment:
             en += f" Has a {chance}% chance to cause {AILMENT_LABELS['en-US'][ailment]}."
             zh += f" 有{chance}%概率使对手陷入{AILMENT_LABELS['zh-CN'][ailment]}。"
@@ -608,12 +644,14 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
     names_blob, name_offsets = string_pool([row[0] for row in move_rows])
     move_record = struct.Struct("<HBBBBBbBbBBBI")
     move_blob = bytearray()
+    field_flags = bytearray()
     for move_id, (row, name_offset) in enumerate(zip(move_rows, name_offsets)):
         name, _slug, typ, category, power, accuracy, effect, param, mask, stages, target, ailment, chance = unpack_move(row)
         move_blob.extend(move_record.pack(
             move_id, type_ids[typ], category, power, accuracy, effect, param,
             mask, stages, target, ailment, chance, name_offset,
         ))
+        field_flags.append(FIELD_MOVE_FLAGS.get(_slug, 0))
 
     by_slug = {slug: index + 1 for index, (_name, slug, *_rest) in enumerate(MOVES) if slug}
     offsets = [0]
@@ -688,10 +726,11 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
         previous_species = species
 
     mechanics_hash = binascii.crc32(
-        move_blob + learn + offset_blob + chart + item_blob + mega_blob
+        move_blob + field_flags + learn + offset_blob + chart + item_blob + mega_blob
     ) & 0xFFFFFFFF
     sections = [
         ("MOVE", bytes(move_blob), len(move_rows)),
+        ("MFLG", bytes(field_flags), len(move_rows)),
         ("NAME", names_blob, len(move_rows)),
         ("LNAM", localized_names, len(move_rows)),
         ("LOFS", offset_blob, len(offsets)),

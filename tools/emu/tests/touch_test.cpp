@@ -47,6 +47,7 @@ extern bool btlFoeDetailOpen;
 extern uint8_t btlFoeDetailPage;
 extern PartyMon btlWildMon;
 extern Combatant btlYou, btlFoe;
+extern BattleField btlField;
 extern QuizRuntime quiz;
 extern uint8_t btlMsgCount;
 extern uint8_t gymRegion, btlRegion;
@@ -102,6 +103,12 @@ static void click(int x, int y) {
   pump(3);                       // finger up: gesture resolves as a tap
 }
 
+// Direct calls skip the physical press/release time represented by click().
+static void directBattleTap(int x, int y) {
+  std::this_thread::sleep_for(std::chrono::milliseconds(310));
+  battleTap(x, y);
+}
+
 static bool answerActiveQuiz() {
   if (!quiz.active) return false;
   uint32_t now = millis();
@@ -119,7 +126,7 @@ static bool answerActiveQuiz() {
 }
 
 static int bestMoveSlot() {
-  MoveId best = aiChooseMove(btlYou, btlFoe, true);
+  MoveId best = aiChooseMove(btlYou, btlFoe, btlField, true);
   for (int i = 0; i < MOVE_SLOTS; i++) {
     if (btlYou.moves[i] == best) return i;
   }
@@ -354,6 +361,7 @@ int main(int argc, char **argv) {
     return 1;
   }
   printf("PASS: wild opponent moves are reachable on the third page\n");
+  pump(4);  // direct onSwipe calls omit the time a physical swipe would take
   click(233, 410);
   if (btlFoeDetailOpen || btlFoe.dex != detailDex || btlFoe.hp != detailHp ||
       memcmp(detailMoves, btlFoe.moves, sizeof(detailMoves)) != 0 || btlMenu != 0) {
@@ -441,7 +449,7 @@ int main(int argc, char **argv) {
         btlFoe.hp = 0;
         btlSwapWho = 1;
         btlMsgCount = 1;
-        battleTap(0, 0);                  // dismiss faint text and send the next one
+        directBattleTap(0, 0);            // dismiss faint text and send the next one
         if (btlRegion != region || btlFoeAt != member ||
             btlFoe.dex != expected.team[member].dex ||
             btlFoe.level != expected.team[member].level) {
@@ -629,15 +637,15 @@ int main(int argc, char **argv) {
     return 1;
   }
   printf("PASS: a low-HP wild foe can escape without killing the player's pet\n");
-  battleTap(0, 0);
+  directBattleTap(0, 0);
   startBattle(150, 100);
   if (btlAttemptRun(99) || !pet.isDead() || btlOver || btlSwapWho != 0) {
     printf("FAIL: a failed escape did not kill the active pet and queue its reserve\n");
     return 1;
   }
   printf("PASS: a failed escape kills the active pet but continues with a reserve\n");
-  battleTap(0, 0);                           // faint text -> reserve enters
-  battleTap(0, 0);                           // clear GO text
+  directBattleTap(0, 0);                     // faint text -> reserve enters
+  directBattleTap(0, 0);                     // clear GO text
   if (btlSquadAt != 1 || btlYou.dex != reserve.dex) {
     printf("FAIL: the living reserve did not replace the dead pet\n"); return 1;
   }
@@ -653,24 +661,24 @@ int main(int argc, char **argv) {
   uint8_t reviveBefore = inventory.count(revive->key);
   for (MoveId &move : btlFoe.moves) move = MOVE_NONE;
   btlPendingItem = revive->key; btlTargetPage = 0; btlMenu = 4;
-  battleTap(BTL_CELL_X(0) + 40, BTL_CELL_Y(0) + 20);
+  directBattleTap(BTL_CELL_X(0) + 40, BTL_CELL_Y(0) + 20);
   if (pet.isDead() || inventory.count(revive->key) != reviveBefore - 1 ||
       btlSquad[0].fainted()) {
     printf("FAIL: an in-battle revive did not restore persistent life\n"); return 1;
   }
   printf("PASS: a battle item revives a dead team member persistently\n");
-  while (btlMsgCount && !btlOver) battleTap(0, 0);
+  while (btlMsgCount && !btlOver) directBattleTap(0, 0);
 
   if (btlAttemptRun(99) || !party.slots[reserveSlot].dead() || btlOver) {
     printf("FAIL: the reserve's failed escape did not persist its death\n"); return 1;
   }
-  battleTap(0, 0);                           // reserve faints -> revived pet enters
-  battleTap(0, 0);                           // clear GO text
+  directBattleTap(0, 0);                     // reserve faints -> revived pet enters
+  directBattleTap(0, 0);                     // clear GO text
   if (btlSquadAt != 0 || btlAttemptRun(99) || !pet.isDead() || !btlOver) {
     printf("FAIL: battle did not end only after every team member died\n"); return 1;
   }
   printf("PASS: battle ends only after the whole selected team is dead\n");
-  battleTap(0, 0);                           // close the concluded fight
+  directBattleTap(0, 0);                     // close the concluded fight
   if (battleOpen) { printf("FAIL: concluded death battle did not close\n"); return 1; }
 
   if (!inventory.add(revive->key)) {

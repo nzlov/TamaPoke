@@ -11,6 +11,43 @@
 
 enum : uint8_t { SI_ATK = 0, SI_DEF, SI_SPA, SI_SPD, SI_SPE, SI_COUNT };
 
+enum BattleWeather : uint8_t {
+  BWEATHER_NONE = 0,
+  BWEATHER_SUN,
+  BWEATHER_RAIN,
+  BWEATHER_SAND,
+  BWEATHER_SNOW,
+};
+
+enum BattleTerrain : uint8_t {
+  BTERRAIN_NONE = 0,
+  BTERRAIN_ELECTRIC,
+  BTERRAIN_GRASSY,
+  BTERRAIN_MISTY,
+  BTERRAIN_PSYCHIC,
+};
+
+constexpr uint8_t BATTLE_FIELD_TURNS = 5;
+
+// Weather and terrain belong to the battle, not either creature. Wild battles
+// may provide a persistent environment; moves temporarily cover that baseline
+// and reveal it again when their five turns end.
+struct BattleField {
+  BattleWeather baseWeather = BWEATHER_NONE;
+  BattleWeather weather = BWEATHER_NONE;
+  uint8_t weatherTurns = 0;
+  BattleTerrain baseTerrain = BTERRAIN_NONE;
+  BattleTerrain terrain = BTERRAIN_NONE;
+  uint8_t terrainTurns = 0;
+};
+
+struct FieldLog {
+  BattleWeather weatherExpired = BWEATHER_NONE;
+  BattleWeather weatherRestored = BWEATHER_NONE;
+  BattleTerrain terrainExpired = BTERRAIN_NONE;
+  BattleTerrain terrainRestored = BTERRAIN_NONE;
+};
+
 enum BattleMechanic : uint8_t {
   BMECH_NONE = 0,
   BMECH_Z_MOVE = 1,
@@ -91,7 +128,18 @@ struct TurnLog {
   bool charged = false;    // spent the turn winding up
   bool healed = false;
   bool targetFainted = false;
+  bool blockedByField = false;
+  BattleWeather weatherSet = BWEATHER_NONE;
+  BattleTerrain terrainSet = BTERRAIN_NONE;
+  BattleWeather weatherDamage = BWEATHER_NONE;
+  BattleTerrain terrainHeal = BTERRAIN_NONE;
 };
+
+void battleSetEnvironment(BattleField &field, BattleWeather weather,
+                          BattleTerrain terrain = BTERRAIN_NONE);
+void battleSetWeather(BattleField &field, BattleWeather weather);
+void battleSetTerrain(BattleField &field, BattleTerrain terrain);
+bool battleGrounded(const Combatant &combatant);
 
 BattleMove battleMove(MoveId move);
 BattleMove battleMoveFor(const Combatant &attacker, MoveId move,
@@ -108,10 +156,11 @@ BattleMechanic wildBattleMechanic(uint8_t eventRoll, uint8_t choiceRoll,
                                   bool megaEligible, bool zEligible = true);
 
 uint16_t stagedStat(uint16_t base, int8_t stage);
-uint16_t battleDamage(const Combatant &atk, const Combatant &def, MoveId mv,
-                      bool crit, uint8_t roll);
 uint16_t battleDamage(const Combatant &atk, const Combatant &def,
-                      const BattleMove &move, bool crit, uint8_t roll);
+                      const BattleField &field, MoveId mv, bool crit, uint8_t roll);
+uint16_t battleDamage(const Combatant &atk, const Combatant &def,
+                      const BattleField &field, const BattleMove &move,
+                      bool crit, uint8_t roll);
 
 // True if `a` using `ma` acts before `b` using `mb`. Priority first, then the
 // staged speed, and paralysis halves it.
@@ -122,16 +171,19 @@ bool battleMovesFirst(const Combatant &a, const BattleMove &ma,
 
 // One creature's action. `effectPercent` comes from the local answer: damaging
 // moves scale their final damage, while 0 makes every move category fail.
-void battleAct(Combatant &atk, Combatant &def, MoveId mv, TurnLog &log,
-               uint8_t effectPercent = 100);
-void battleAct(Combatant &atk, Combatant &def, const BattleMove &move,
+void battleAct(Combatant &atk, Combatant &def, BattleField &field, MoveId mv,
                TurnLog &log, uint8_t effectPercent = 100);
+void battleAct(Combatant &atk, Combatant &def, BattleField &field,
+               const BattleMove &move, TurnLog &log,
+               uint8_t effectPercent = 100);
 
-// Burn and poison chip damage, applied to one creature after both have acted.
-void battleEndTurn(Combatant &c, TurnLog &log);
+// Applies both combatants' status/weather chip and terrain healing, then ticks
+// temporary field layers once after both actions.
+void battleEndRound(BattleField &field, Combatant &a, Combatant &b,
+                    TurnLog &aLog, TurnLog &bLog, FieldLog &fieldLog);
 
 // Picks the attacker's move. `smart` is what separates hard mode from easy:
-// easy picks uniformly at random, hard reads the type chart, accuracy, whether
-// a move kills this turn, and whether a status or a stat boost is worth the
-// turn it costs.
-MoveId aiChooseMove(const Combatant &self, const Combatant &foe, bool smart);
+// easy picks uniformly at random, hard reads the field, type chart, accuracy,
+// whether a move kills this turn, and whether setup is worth its turn.
+MoveId aiChooseMove(const Combatant &self, const Combatant &foe,
+                    const BattleField &field, bool smart);
