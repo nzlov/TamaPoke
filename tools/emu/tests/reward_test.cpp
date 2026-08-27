@@ -32,6 +32,7 @@ int main(){
     Pet p; p.begin(); p.newEgg(); p.dbgHatchAs(6,false);
     p.ivAtk=p.ivSpe=p.ivHp=31; p.ivDef=20;
     uint8_t which=0;
+    g_seed=4;  // isolates the encoded DEF branch from egg-pool RNG consumption
     ck(p.rewardGymIv(0, 0, which)==GYM_IV_GAINED && which==1 && p.ivDef==21,
        "Kanto gym 0 can grant exactly one defence IV");
     ck(p.gymIvRewards[0]==2, "byte 0 equals 2 for that defence-IV reward");

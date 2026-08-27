@@ -230,6 +230,54 @@
     "dropWeight": 0,
     "dailyMin": 0,
     "names": {"en-US": "MEGA STONE", "zh-CN": "超级石"},
-    "descriptions": {"en-US": "Consumed to Mega Evolve one eligible Pokemon for the battle.", "zh-CN": "消耗后让一只符合条件的宝可梦在本场战斗中超级进化。"}
+    "descriptions": {"en-US": "Consumed to Mega Evolve a Pokemon with one standard Mega form.", "zh-CN": "消耗后让仅有普通超级形态的宝可梦在本场战斗中超级进化。"}
+  },
+  {
+    "key": 1604,
+    "category": 8,
+    "effect": 8,
+    "rarity": 4,
+    "flags": 3,
+    "param": 1,
+    "dropWeight": 0,
+    "dailyMin": 0,
+    "names": {"en-US": "MEGA STONE X", "zh-CN": "超级石X"},
+    "descriptions": {"en-US": "Consumed to trigger an eligible Pokemon's Mega X form.", "zh-CN": "消耗后让符合条件的宝可梦进化为超级X形态。"}
+  },
+  {
+    "key": 1605,
+    "category": 8,
+    "effect": 8,
+    "rarity": 4,
+    "flags": 3,
+    "param": 2,
+    "dropWeight": 0,
+    "dailyMin": 0,
+    "names": {"en-US": "MEGA STONE Y", "zh-CN": "超级石Y"},
+    "descriptions": {"en-US": "Consumed to trigger an eligible Pokemon's Mega Y form.", "zh-CN": "消耗后让符合条件的宝可梦进化为超级Y形态。"}
+  },
+  {
+    "key": 1606,
+    "category": 8,
+    "effect": 8,
+    "rarity": 4,
+    "flags": 3,
+    "param": 3,
+    "dropWeight": 0,
+    "dailyMin": 0,
+    "names": {"en-US": "MEGA STONE Z", "zh-CN": "超级石Z"},
+    "descriptions": {"en-US": "Consumed to trigger an eligible Pokemon's Mega Z form.", "zh-CN": "消耗后让符合条件的宝可梦进化为超级Z形态。"}
+  },
+  {
+    "key": 1607,
+    "category": 5,
+    "effect": 9,
+    "rarity": 4,
+    "flags": 0,
+    "param": 0,
+    "dropWeight": 1,
+    "dailyMin": 0,
+    "names": {"en-US": "MAX SOUP", "zh-CN": "极巨汤"},
+    "descriptions": {"en-US": "Gives an eligible Pokemon the Gigantamax Factor.", "zh-CN": "让符合条件的宝可梦获得超极巨化因子。"}
   }
 ]

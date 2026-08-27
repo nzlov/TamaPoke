@@ -77,11 +77,18 @@ bool itemApplyToCombatant(const ItemEntry &item, Combatant &target) {
 }
 
 bool itemCanApplyToPet(const ItemEntry &item, const Pet &target) {
+  if (item.effect == ITEM_EFFECT_GIGANTAMAX_FACTOR)
+    return !target.isEgg() && !target.gigantamaxFactor &&
+           battleGigantamaxEligible(target.speciesId);
   TrainingStat stat = TRAINING_ATK;
   return itemTrainingStat(item, stat) && target.canRaiseTrainingFloor(stat);
 }
 
 bool itemApplyToPet(const ItemEntry &item, Pet &target) {
+  if (item.effect == ITEM_EFFECT_GIGANTAMAX_FACTOR) {
+    if (!itemCanApplyToPet(item, target)) return false;
+    return target.giveGigantamaxFactor();
+  }
   TrainingStat stat = TRAINING_ATK;
   return itemTrainingStat(item, stat) &&
          target.raiseTrainingFloor(stat, (uint8_t)item.param);

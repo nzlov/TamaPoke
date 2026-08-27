@@ -343,6 +343,13 @@ Box、完整生命周期（初始蛋 → 进化 → 告别/放生/出走）、�
 野外对手在**普通难度有 5% 概率、困难难度有 20% 概率**使用一种可用的特殊机制：
 Z 招式、极巨化或超级进化。
 
+- Z 纯晶适用于任何拥有攻击招式的物种，按该招式属性转化为通用 Z 招式。
+- 除苍响、藏玛然特和无极汰那外，所有物种均可极巨化。只有官方支持超极巨化的物种，
+  且该个体持久拥有超极巨化因子时，才会进入超极巨化状态；符合条件的野生个体独立有
+  **5%** 概率携带因子，也可之后使用极巨汤获得。
+- 超级进化仅限官方拥有超级形态的物种。普通、X、Y、Z 超级石相互区分，并精确决定
+  进化分支；未进化时 X/Y/Z 共用同一套普通或异色外观，仅在超级进化后分化。
+
 ### 战斗天气与场地
 
 训练家和局域网对战以无天气、无场地开始。野外战斗按对手生态抽取常驻环境：**50%
@@ -481,10 +488,15 @@ tools/emu/tamapoke-emu --scale 2 --fast 60
 
 所有精灵来自 **[PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)**
 （CC BY-NC）。`gen_data_packs.py` 直接读取逐物种生成的 TPK2/TPTH 文件，将其与 UI、
-物种、招式、说明、训练家、战斗和徽章数据合并，不生成地区中间包。
+物种、招式、说明、训练家、战斗和徽章数据合并，不生成地区中间包。新打包的精灵还
+包含背面待机、受伤和攻击动作，因此玩家一侧在战斗中背对玩家；缺少某个背面动作时
+回退到相应正面动作。上游缺失的 Mega、Mega 异色或超极巨化图片会回退到该个体可用的
+普通/异色基础图，并明确列入覆盖报告，不会伪造形态图。
 
 ```bash
-python3 tools/pack_pmd.py       # 获取并打包当前目录及异色输入
+python3 tools/pack_pmd.py --report base-sprite-coverage.json
+python3 tools/pack_pmd.py --mega --mega-report mega-sprite-coverage.json
+# Mega 输出名为 pmNNN-{standard,x,y,z}[-shiny].bin
 python3 tools/make_thumbs.py    # 从 PMD 精灵生成图鉴缩略图 -> thumbs.bin
 python3 tools/gen_data_packs.py # web/packs/*.tui、*.tmove、*.tregion、*.tquiz + index.json
 python3 tools/check_data_packs.py

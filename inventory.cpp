@@ -109,13 +109,16 @@ ItemKey Inventory::grantWeightedDrop(uint32_t roll) {
   return ITEM_KEY_NONE;
 }
 
-ItemKey Inventory::grantMechanicReward(ItemMechanicKind mechanic) {
+ItemKey Inventory::grantMechanicReward(ItemMechanicKind mechanic,
+                                       MegaFormKind megaForm) {
   if (mechanic < ITEM_MECHANIC_Z_MOVE || mechanic > ITEM_MECHANIC_MEGA)
     return ITEM_KEY_NONE;
   for (uint16_t i = 0; i < itemCount(); i++) {
     const ItemEntry *item = itemAt(i);
     if (!item || item->effect != ITEM_EFFECT_BATTLE_MECHANIC ||
-        item->flags != (uint8_t)mechanic) continue;
+        item->flags != (uint8_t)mechanic ||
+        (mechanic == ITEM_MECHANIC_MEGA && megaForm != MEGA_FORM_NONE &&
+         item->param != megaForm)) continue;
     return add(item->key) ? item->key : ITEM_KEY_NONE;
   }
   return ITEM_KEY_NONE;

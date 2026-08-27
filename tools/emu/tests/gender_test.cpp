@@ -28,7 +28,8 @@ int main(){
   bool variants=true;
   for(const SpriteCase &item:sprites){
     uint8_t *data=nullptr; uint32_t size=0; uint8_t scale=0;
-    if(!contentLoadSprite(1,item.shiny,item.gender,false,&data,&size,&scale) ||
+    if(!contentLoadSprite(1,item.shiny,item.gender,false,MEGA_FORM_NONE,
+                          &data,&size,&scale) ||
        size<9 || scale!=4 ||
        (uint16_t)(data[7] | (data[8] << 8))!=item.expected) variants=false;
     free(data);

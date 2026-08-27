@@ -4,6 +4,7 @@
 
 constexpr uint8_t WILD_COLOR_BASE_CHANCE = 5;
 constexpr uint8_t WILD_SPARKLE_BASE_CHANCE = 1;
+constexpr uint8_t WILD_GIGANTAMAX_FACTOR_CHANCE = 5;
 constexpr uint8_t WILD_RARE_BONUS_MAX = 15;
 constexpr uint8_t WILD_ANGRY_ESCAPE_BONUS = 5;
 
@@ -20,6 +21,7 @@ WildTraits wildTraitsForRolls(uint8_t colorRoll, uint8_t sparkleRoll,
                               uint8_t bonus);
 void wildApplyTraits(const WildTraits &traits, uint8_t &ivAtk, uint8_t &ivDef,
                      uint8_t &ivSpe, uint8_t &ivHp);
+bool wildGigantamaxFactorForRoll(SpeciesId species, uint8_t roll);
 
 // Capture probability is derived from pack-owned rarity plus live battle
 // state. ballModifier is a percentage supplied by the selected item, or the

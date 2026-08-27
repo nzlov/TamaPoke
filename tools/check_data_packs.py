@@ -21,10 +21,10 @@ REQUIRED_SECTIONS = {
     2: {b"SPEC", b"EVOS", b"NAME", b"LNAM", b"REGN", b"RLNM", b"SPRI", b"SBLB", b"THMB",
         b"LOCL", b"BTTL", b"TRNR", b"GSTR", b"BADG", b"BBLB"},
     3: {b"MOVE", b"MFLG", b"NAME", b"LNAM", b"LOFS", b"LERN", b"TYPS", b"TSTR", b"TLNM",
-        b"CHRT", b"LOCL", b"ITEM", b"INAM", b"ILNM", b"ILOC", b"MEGA"},
+        b"CHRT", b"LOCL", b"ITEM", b"INAM", b"ILNM", b"ILOC", b"MEGA", b"GMAX"},
     4: {b"QLOC", b"QIDX", b"QDAT"},
 }
-OPTIONAL_SECTIONS = {3: {b"MSPI", b"MSBL", b"IICO"}}
+OPTIONAL_SECTIONS = {2: {b"MFSP", b"MFBL"}, 3: {b"IICO"}}
 
 QLOC = struct.Struct("<16sII")
 QIDX = struct.Struct("<III")
@@ -172,23 +172,34 @@ def validate(path: Path, expected: dict) -> None:
         validate_ui_font(sections[b"FONT"], section_counts[b"FONT"])
     elif kind == 2:
         validate_localized_strings(sections[b"RLNM"], section_counts[b"RLNM"])
-        sprite_record = struct.Struct("<HIIIIB")
+        sprite_record = struct.Struct("<HIIIIIIIIB")
         sprite_count = section_counts[b"SPRI"]
         if not sprite_count or len(sections[b"SPRI"]) != sprite_count * sprite_record.size:
             raise ValueError("invalid regional sprite index")
         previous_species = 0
         sprite_blob = sections[b"SBLB"]
         for offset in range(0, len(sections[b"SPRI"]), sprite_record.size):
-            species, normal_at, normal_size, shiny_at, shiny_size, display_scale = \
-                sprite_record.unpack_from(sections[b"SPRI"], offset)
+            (species, normal_at, normal_size, shiny_at, shiny_size,
+             female_at, female_size, female_shiny_at, female_shiny_size,
+             display_scale) = sprite_record.unpack_from(sections[b"SPRI"], offset)
             if species <= previous_species or normal_at > len(sprite_blob) or \
                     normal_size > len(sprite_blob) - normal_at or \
                     shiny_at > len(sprite_blob) or shiny_size > len(sprite_blob) - shiny_at or \
-                    (not normal_size and (shiny_size or display_scale)):
+                    female_at > len(sprite_blob) or female_size > len(sprite_blob) - female_at or \
+                    female_shiny_at > len(sprite_blob) or \
+                    female_shiny_size > len(sprite_blob) - female_shiny_at or \
+                    (not normal_size and
+                     (shiny_size or female_size or female_shiny_size or display_scale)) or \
+                    (female_shiny_size and not female_size):
                 raise ValueError("invalid regional sprite record")
             normal = sprite_blob[normal_at:normal_at + normal_size]
             shiny = sprite_blob[shiny_at:shiny_at + shiny_size]
-            if display_scale != pmd_pair_display_scale(normal, shiny):
+            female = sprite_blob[female_at:female_at + female_size]
+            female_shiny = sprite_blob[female_shiny_at:female_shiny_at + female_shiny_size]
+            expected_scale = min((pmd_display_scale(blob)
+                                  for blob in (normal, shiny, female, female_shiny) if blob),
+                                 default=0)
+            if display_scale != expected_scale:
                 raise ValueError("regional sprite display scale does not match Idle bounds")
             previous_species = species
     elif kind == 3:
@@ -210,7 +221,7 @@ def validate(path: Path, expected: dict) -> None:
             battle_boost = effect == 7
             battle_mechanic = effect == 8
             catch_item = effect == 1
-            if not key or not 1 <= category <= 8 or not 1 <= effect <= 8 or \
+            if not key or not 1 <= category <= 8 or not 1 <= effect <= 9 or \
                     not 1 <= rarity <= 4 or daily > 99 or reserved:
                 raise ValueError("invalid item record")
             if training_item and (category != 6 or flags not in (1, 2, 16) or param <= 0):
@@ -221,8 +232,11 @@ def validate(path: Path, expected: dict) -> None:
                                  not 1 <= param <= 6):
                 raise ValueError("invalid battle booster")
             if battle_mechanic and (category != 8 or flags not in (1, 2, 3) or
-                                    param or weight or daily):
+                                    (flags != 3 and param) or not 0 <= param <= 3 or
+                                    weight or daily):
                 raise ValueError("invalid battle mechanic item")
+            if effect == 9 and (category != 5 or flags or param or daily):
+                raise ValueError("invalid Max Soup item")
             keys.append(key)
         if len(keys) != len(set(keys)):
             raise ValueError("duplicate item key")
@@ -259,41 +273,48 @@ def validate(path: Path, expected: dict) -> None:
                             for pixel in icon[pixels_at:]):
                     raise ValueError("invalid TIC1 item icon data")
                 previous_end = icon_at + icon_size
-        mega_record = struct.Struct("<HBBBBBBB")
+        mega_record = struct.Struct("<HBBBBBBBB")
         mega_count = section_counts[b"MEGA"]
         if not mega_count or len(sections[b"MEGA"]) != mega_count * mega_record.size:
             raise ValueError("invalid mega form table size")
-        previous_species = 0
+        previous_key = (0, -1)
         type_count = section_counts[b"TYPS"]
         for offset in range(0, len(sections[b"MEGA"]), mega_record.size):
-            species, type1, type2, *stats = mega_record.unpack_from(sections[b"MEGA"], offset)
-            if species <= previous_species or type1 >= type_count or \
+            species, form, type1, type2, *stats = mega_record.unpack_from(
+                sections[b"MEGA"], offset)
+            if (species, form) <= previous_key or form > 3 or type1 >= type_count or \
                     (type2 != 255 and type2 >= type_count) or any(not value for value in stats):
                 raise ValueError("invalid mega form record")
-            previous_species = species
-        if (b"MSPI" in sections) != (b"MSBL" in sections):
-            raise ValueError("incomplete mega sprite sections")
-        if b"MSPI" in sections:
-            sprite_record = struct.Struct("<HIIB")
-            sprite_count = section_counts[b"MSPI"]
-            if not sprite_count or len(sections[b"MSPI"]) != sprite_count * sprite_record.size:
-                raise ValueError("invalid mega sprite index")
-            previous_species = 0
-            mega_species = {
-                mega_record.unpack_from(sections[b"MEGA"], offset)[0]
-                for offset in range(0, len(sections[b"MEGA"]), mega_record.size)
-            }
-            for offset in range(0, len(sections[b"MSPI"]), sprite_record.size):
-                species, sprite_at, sprite_size, display_scale = sprite_record.unpack_from(
-                    sections[b"MSPI"], offset)
-                if species <= previous_species or species not in mega_species or not sprite_size or \
-                        sprite_at > len(sections[b"MSBL"]) or \
-                        sprite_size > len(sections[b"MSBL"]) - sprite_at:
-                    raise ValueError("invalid mega sprite record")
-                sprite = sections[b"MSBL"][sprite_at:sprite_at + sprite_size]
-                if display_scale != pmd_display_scale(sprite):
-                    raise ValueError("mega sprite display scale does not match Idle bounds")
-                previous_species = species
+            previous_key = (species, form)
+        gmax_count = section_counts[b"GMAX"]
+        if not gmax_count or len(sections[b"GMAX"]) != gmax_count * 2:
+            raise ValueError("invalid Gigantamax species table size")
+        species = struct.unpack(f"<{gmax_count}H", sections[b"GMAX"])
+        if any(not value for value in species) or any(
+                left >= right for left, right in zip(species, species[1:])):
+            raise ValueError("invalid Gigantamax species table")
+    if kind == 2 and ((b"MFSP" in sections) != (b"MFBL" in sections)):
+        raise ValueError("incomplete regional Mega sprite sections")
+    if kind == 2 and b"MFSP" in sections:
+        sprite_record = struct.Struct("<HBBIIII")
+        sprite_count = section_counts[b"MFSP"]
+        if not sprite_count or len(sections[b"MFSP"]) != sprite_count * sprite_record.size:
+            raise ValueError("invalid regional Mega sprite index")
+        previous_key = (0, -1)
+        for offset in range(0, len(sections[b"MFSP"]), sprite_record.size):
+            species, form, display_scale, normal_at, normal_size, shiny_at, shiny_size = \
+                sprite_record.unpack_from(sections[b"MFSP"], offset)
+            if (species, form) <= previous_key or form > 3 or not normal_size or \
+                    normal_at > len(sections[b"MFBL"]) or \
+                    normal_size > len(sections[b"MFBL"]) - normal_at or \
+                    shiny_at > len(sections[b"MFBL"]) or \
+                    shiny_size > len(sections[b"MFBL"]) - shiny_at:
+                raise ValueError("invalid regional Mega sprite record")
+            normal = sections[b"MFBL"][normal_at:normal_at + normal_size]
+            shiny = sections[b"MFBL"][shiny_at:shiny_at + shiny_size]
+            if display_scale != pmd_pair_display_scale(normal, shiny):
+                raise ValueError("regional Mega sprite display scale does not match Idle bounds")
+            previous_key = (species, form)
     elif kind == 4:
         validate_quiz(sections, section_counts)
     if kind in (2, 3) and mechanics_hash == 0:
@@ -302,7 +323,7 @@ def validate(path: Path, expected: dict) -> None:
 
 def main() -> int:
     index = json.loads((PACKS / "index.json").read_text(encoding="utf-8"))
-    if index.get("schema") != 1 or index.get("packAbi") != 3:
+    if index.get("schema") != 1 or index.get("packAbi") != 4:
         raise SystemExit("unsupported index schema")
     packages = index.get("packages", [])
     ids = {item["id"] for item in packages}

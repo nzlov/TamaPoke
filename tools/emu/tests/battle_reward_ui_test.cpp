@@ -66,6 +66,7 @@ static bool screenIs(const char *name) {
 
 int main() {
   setup();
+  if (pet.awaitingStarter()) pet.chooseStarter(1);
   pet.speciesId = 1;
   pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
   pet.ivAtk = pet.ivDef = pet.ivSpe = pet.ivHp = 31;

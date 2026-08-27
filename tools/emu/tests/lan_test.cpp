@@ -132,7 +132,8 @@ int main(){
   ck(sent==1 && lastPkt[0]==LM_ACT, "it sends the request instead");
   ck(LINK_ACT_IS_SWITCH(lastPkt[3]) && LINK_ACT_SLOT(lastPkt[3])==1,
      "and the request names the slot it wants");
-  ck(lastPkt[1]==4 && lastPkt[4]==100 && lastPkt[5]==BMECH_NONE,
+  ck(lastPkt[1]==5 && lastPkt[4]==100 && lastPkt[5]==BMECH_NONE &&
+     lastPkt[6]==MEGA_FORM_NONE,
      "a switch carries the fixed full-effect percentage");
 
   // --- a guest answers locally before its move is sent. The answer ratio is
@@ -145,7 +146,7 @@ int main(){
   ck(quiz.active && sent==1 && lastPkt[0]==LM_WAIT,
      "the guest sends only a keepalive while answering");
   ck(answerBattleQuiz(15000), "the guest can finish its local battle question");
-  ck(lan.state==LINK_WAITING && lastPkt[0]==LM_ACT && lastPkt[1]==4,
+  ck(lan.state==LINK_WAITING && lastPkt[0]==LM_ACT && lastPkt[1]==5,
      "the guest sends its move only after feedback");
   ck(lastPkt[4]==50, "the guest's 50 percent answer travels with that move");
 
@@ -232,7 +233,9 @@ int main(){
   r.hostType1 = btlFoe.type1; r.hostType2 = btlFoe.type2;
   r.guestType1 = btlYou.type1; r.guestType2 = btlYou.type2;
   r.hostActive = BMECH_MEGA;
+  r.hostMegaForm = MEGA_FORM_X;
   r.guestActive = BMECH_DYNAMAX;
+  r.guestGigantamax = 1;
   r.guestDynamaxTurns = 2;
   r.hostUsedMask = battleMechanicBit(BMECH_MEGA);
   r.guestUsedMask = battleMechanicBit(BMECH_DYNAMAX);
@@ -252,6 +255,8 @@ int main(){
   ck(btlYou.maxHp==guestNormalMaxHp*2 && btlYou.normalMaxHp==guestNormalMaxHp &&
      btlYou.activeMechanic==BMECH_DYNAMAX && btlYou.dynamaxTurns==2,
      "and restores the guest's absolute Dynamax state");
+  ck(btlYou.gigantamax && btlFoe.megaForm==MEGA_FORM_X,
+     "and restores exact Gigantamax and Mega forms");
   ck(btlYourMechanics.used(BMECH_DYNAMAX) &&
      btlFoeMechanics.used(BMECH_MEGA) && btlYou.usedMechanic==BMECH_DYNAMAX,
      "and restores the per-team and per-creature mechanic limits");

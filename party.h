@@ -46,6 +46,7 @@ enum : uint8_t {
 // decides whether time advances.
 enum PartyMonState : uint32_t {
   PARTY_MON_DEAD = 1u << 0,
+  PARTY_MON_GIGANTAMAX_FACTOR = 1u << 1,
 };
 struct PartyMon {
   int16_t dex = 0;      // 0 = empty, -1 = egg, positive = Pokedex number
@@ -101,9 +102,14 @@ struct PartyMon {
   bool isEgg() const { return dex < 0; }
   bool battleReady() const { return dex > 0; }
   bool dead() const { return (state & PARTY_MON_DEAD) != 0; }
+  bool gigantamaxFactor() const { return (state & PARTY_MON_GIGANTAMAX_FACTOR) != 0; }
   void setDead(bool value) {
     if (value) state |= PARTY_MON_DEAD;
     else state &= ~((uint32_t)PARTY_MON_DEAD);
+  }
+  void setGigantamaxFactor(bool value) {
+    if (value) state |= PARTY_MON_GIGANTAMAX_FACTOR;
+    else state &= ~((uint32_t)PARTY_MON_GIGANTAMAX_FACTOR);
   }
 };
 static_assert(offsetof(PartyMon, state) == 252,

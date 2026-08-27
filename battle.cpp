@@ -26,6 +26,7 @@ void combatantFromPet(Combatant &c, const Pet &p) {
   c.shiny = p.shiny;
   c.sparkle = p.sparkle;
   c.gender = p.gender;
+  c.gigantamaxFactor = p.gigantamaxFactor;
   const char *nm = p.nick[0] ? p.nick : dexEntry(p.speciesId).name;
   snprintf(c.name, sizeof(c.name), "%s", nm);
 }
@@ -37,6 +38,7 @@ void combatantFromParty(Combatant &c, const PartyMon &m) {
   c.shiny = m.shiny != 0;
   c.sparkle = m.sparkle != 0;
   c.gender = m.gender;
+  c.gigantamaxFactor = m.gigantamaxFactor();
   const char *nm = m.nick[0] ? m.nick : dexEntry(m.dex).name;
   snprintf(c.name, sizeof(c.name), "%s", nm);
 }
@@ -169,8 +171,16 @@ BattleMove battleMoveFor(const Combatant &attacker, MoveId move,
   return result;
 }
 
-bool battleMegaEligible(SpeciesId species) {
-  return megaFormFor(species) != nullptr;
+bool battleMegaEligible(SpeciesId species, MegaFormKind form) {
+  return megaFormFor(species, form) != nullptr;
+}
+
+bool battleDynamaxEligible(SpeciesId species) {
+  return dexValid(species) && species != 888 && species != 889 && species != 890;
+}
+
+bool battleGigantamaxEligible(SpeciesId species) {
+  return contentGigantamaxEligible(species);
 }
 
 static bool hasDamagingMove(const Combatant &combatant) {
@@ -182,20 +192,21 @@ static bool hasDamagingMove(const Combatant &combatant) {
 
 bool battleMechanicAvailable(const BattleSideMechanics &side,
                              const Combatant &combatant,
-                             BattleMechanic mechanic, MoveId move) {
+                             BattleMechanic mechanic, MoveId move,
+                             MegaFormKind megaForm) {
   if (mechanic == BMECH_NONE || combatant.fainted() ||
       combatant.usedMechanic != BMECH_NONE ||
       side.used(mechanic)) return false;
-  if (mechanic == BMECH_MEGA) return battleMegaEligible(combatant.dex);
+  if (mechanic == BMECH_MEGA) return battleMegaEligible(combatant.dex, megaForm);
   if (mechanic == BMECH_Z_MOVE) {
     if (moveValid(move)) return moveEntry(move).cat != MC_STATUS;
     return hasDamagingMove(combatant);
   }
-  return mechanic == BMECH_DYNAMAX;
+  return mechanic == BMECH_DYNAMAX && battleDynamaxEligible(combatant.dex);
 }
 
-static void applyMegaForm(Combatant &combatant) {
-  const MegaFormEntry *form = megaFormFor(combatant.dex);
+static void applyMegaForm(Combatant &combatant, MegaFormKind requested) {
+  const MegaFormEntry *form = megaFormFor(combatant.dex, requested);
   if (!form) return;
   if (dexValid(combatant.dex)) {
     const DexEntry &baseSpecies = dexEntry(combatant.dex);
@@ -220,15 +231,19 @@ static void applyMegaForm(Combatant &combatant) {
   }
   combatant.type1 = form->type1;
   combatant.type2 = form->type2;
+  combatant.megaForm = form->form;
 }
 
 bool battleActivateMechanic(BattleSideMechanics &side, Combatant &combatant,
-                            BattleMechanic mechanic, MoveId move) {
-  if (!battleMechanicAvailable(side, combatant, mechanic, move)) return false;
+                            BattleMechanic mechanic, MoveId move,
+                            MegaFormKind megaForm) {
+  if (!battleMechanicAvailable(side, combatant, mechanic, move, megaForm)) return false;
   side.usedMask |= battleMechanicBit(mechanic);
   combatant.usedMechanic = mechanic;
   if (mechanic == BMECH_DYNAMAX) {
     combatant.activeMechanic = mechanic;
+    combatant.gigantamax = combatant.gigantamaxFactor &&
+                           battleGigantamaxEligible(combatant.dex);
     combatant.dynamaxTurns = 3;
     combatant.normalMaxHp = combatant.maxHp;
     combatant.maxHp = combatant.maxHp > UINT16_MAX / 2 ? UINT16_MAX
@@ -237,7 +252,7 @@ bool battleActivateMechanic(BattleSideMechanics &side, Combatant &combatant,
                                                  : (uint16_t)(combatant.hp * 2u);
   } else if (mechanic == BMECH_MEGA) {
     combatant.activeMechanic = mechanic;
-    applyMegaForm(combatant);
+    applyMegaForm(combatant, megaForm);
   }
   return true;
 }
@@ -255,6 +270,7 @@ static void endDynamax(Combatant &combatant) {
   combatant.normalMaxHp = 0;
   combatant.dynamaxTurns = 0;
   combatant.activeMechanic = BMECH_NONE;
+  combatant.gigantamax = false;
 }
 
 void battleAfterAction(Combatant &combatant) {
@@ -269,13 +285,15 @@ void battleOnSwitchOut(Combatant &combatant) {
 }
 
 BattleMechanic wildBattleMechanic(uint8_t eventRoll, uint8_t choiceRoll,
-                                  bool hard, bool megaEligible, bool zEligible) {
+                                  bool hard, bool megaEligible, bool zEligible,
+                                  bool dynamaxEligible) {
   if (eventRoll >= (hard ? 20 : 5)) return BMECH_NONE;
   BattleMechanic choices[3];
   uint8_t count = 0;
   if (zEligible) choices[count++] = BMECH_Z_MOVE;
-  choices[count++] = BMECH_DYNAMAX;
+  if (dynamaxEligible) choices[count++] = BMECH_DYNAMAX;
   if (megaEligible) choices[count++] = BMECH_MEGA;
+  if (!count) return BMECH_NONE;
   return choices[choiceRoll % count];
 }
 

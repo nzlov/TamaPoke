@@ -61,10 +61,13 @@ struct ContentPackInfo {
 
 struct MegaFormEntry {
   SpeciesId species = SPECIES_NONE;
+  MegaFormKind form = MEGA_FORM_STANDARD;
   uint8_t type1 = T_NORMAL, type2 = T_NONE;
   uint8_t bAtk = 1, bDef = 1, bSpA = 1, bSpD = 1, bSpe = 1;
   uint8_t spriteScale = 0;
+  uint8_t spritePack = 0xFF;
   uint32_t spriteAt = 0, spriteSize = 0;
+  uint32_t shinySpriteAt = 0, shinySpriteSize = 0;
 };
 
 struct ItemIconView {
@@ -151,7 +154,9 @@ uint16_t itemCount();
 const ItemEntry *itemAt(uint16_t index);
 const ItemEntry *itemByKey(ItemKey key);
 bool contentItemIcon(ItemKey key, ItemIconView &out);
-const MegaFormEntry *megaFormFor(SpeciesId species);
+const MegaFormEntry *megaFormFor(SpeciesId species,
+                                 MegaFormKind form = MEGA_FORM_NONE);
+bool contentGigantamaxEligible(SpeciesId species);
 
 uint8_t typeEffectTenth(uint8_t attack, uint8_t defense);
 const char *packedTypeName(uint8_t type);
@@ -160,7 +165,8 @@ bool packedTypeColorIsLight(uint8_t type);
 
 // The caller owns the returned PSRAM/malloc buffer and frees it with free().
 bool contentLoadSprite(SpeciesId species, bool shiny, uint8_t gender, bool mega,
-                       uint8_t **out, uint32_t *size, uint8_t *displayScale);
+                       MegaFormKind megaForm, uint8_t **out, uint32_t *size,
+                       uint8_t *displayScale);
 bool contentLoadThumbs(uint8_t **out, uint32_t *size);
 
 // Serial/Web diagnostics. The text is one line per installed pack and ends in

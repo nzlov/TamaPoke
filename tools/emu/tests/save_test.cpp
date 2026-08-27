@@ -29,6 +29,7 @@ int main(){
   pet.begin();
   pet.dbgHatchAs(6,true);
   pet.sparkle = true;
+  pet.gigantamaxFactor = true;
   pet.raisedMinutes = 1234;
   pet.wildRareBonus = 15;
   pet.ageMinutes = 72UL*MINUTES_PER_LEVEL;
@@ -127,8 +128,8 @@ int main(){
 
   Pet p2; Party q2;
   p2.begin(); q2.begin(); q2.attach(p2);
-  ck(p2.speciesId==6 && p2.shiny && p2.sparkle,
-     "the creature is back with color and sparkle independently");
+  ck(p2.speciesId==6 && p2.shiny && p2.sparkle && p2.gigantamaxFactor,
+     "the creature is back with color, sparkle, and Gigantamax factor independently");
   ck(p2.isDead(), "the active creature's death state is restored");
   ck(p2.raisedMinutes==1234 && p2.wildRareBonus==15,
      "cultivation time and the player-wide wild bonus survive");

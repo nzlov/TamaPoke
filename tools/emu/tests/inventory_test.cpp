@@ -176,6 +176,16 @@ int main() {
   }
   ck(mechanicRewards, "each wild mechanic grants its one corresponding reward item");
 
+  bool megaVariants = true;
+  for (uint8_t form = MEGA_FORM_STANDARD; form <= MEGA_FORM_Z; form++) {
+    ItemKey granted = loaded.grantMechanicReward(ITEM_MECHANIC_MEGA,
+                                                 (MegaFormKind)form);
+    const ItemEntry *item = itemByKey(granted);
+    if (!item || item->flags != ITEM_MECHANIC_MEGA || item->param != form)
+      megaVariants = false;
+  }
+  ck(megaVariants, "wild Mega rewards preserve the exact standard/X/Y/Z stone");
+
   printf("%s\n", bad ? "FAILURES" : "all good");
   return bad ? 1 : 0;
 }

@@ -21,7 +21,8 @@ public:
   const InventoryStack *stackAt(uint8_t index) const;
   void ensureDailySupply(uint32_t day);
   ItemKey grantWeightedDrop(uint32_t roll);
-  ItemKey grantMechanicReward(ItemMechanicKind mechanic);
+  ItemKey grantMechanicReward(ItemMechanicKind mechanic,
+                              MegaFormKind megaForm = MEGA_FORM_NONE);
   void save();
 
 private:

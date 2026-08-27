@@ -69,6 +69,20 @@ int main() {
   maxUser.hp = 40;
   CHECK(battleActivateMechanic(side, maxUser, BMECH_DYNAMAX, flame));
   CHECK(maxUser.hp == 80 && maxUser.maxHp == 200 && maxUser.dynamaxTurns == 3);
+  CHECK(battleDynamaxEligible(6));
+  CHECK(!battleDynamaxEligible(0));
+  CHECK(!battleDynamaxEligible(888) && !battleDynamaxEligible(889) &&
+        !battleDynamaxEligible(890));
+  BattleSideMechanics forbiddenSide;
+  Combatant forbidden = mon(890, flame);
+  CHECK(!battleActivateMechanic(forbiddenSide, forbidden, BMECH_DYNAMAX, flame));
+
+  BattleSideMechanics gmaxSide;
+  Combatant gmaxUser = mon(6, flame);
+  gmaxUser.gigantamaxFactor = true;
+  CHECK(battleGigantamaxEligible(6) && !battleGigantamaxEligible(7));
+  CHECK(battleActivateMechanic(gmaxSide, gmaxUser, BMECH_DYNAMAX, flame));
+  CHECK(gmaxUser.gigantamax);
   BattleMove maxMove = battleMoveFor(maxUser, flame);
   CHECK(maxMove.mechanic == BMECH_DYNAMAX && maxMove.entry.power > normal.entry.power);
   CHECK(maxMove.entry.effect == EF_SET_WEATHER &&
@@ -118,18 +132,36 @@ int main() {
   CHECK(switched.activeMechanic == BMECH_NONE && switched.hp == 25 && switched.maxHp == 100);
 
   Combatant megaUser = mon(6, flame);
-  CHECK(battleMegaEligible(megaUser.dex));
+  CHECK(battleMegaEligible(megaUser.dex, MEGA_FORM_X));
+  CHECK(battleMegaEligible(megaUser.dex, MEGA_FORM_Y));
+  CHECK(!battleMegaEligible(megaUser.dex, MEGA_FORM_STANDARD));
   CHECK(battleMegaEligible(719));
   CHECK(battleMegaEligible(998));
-  const MegaFormEntry *charizardMega = megaFormFor(megaUser.dex);
+  const MegaFormEntry *charizardMega = megaFormFor(megaUser.dex, MEGA_FORM_X);
   uint16_t expectedMegaAtk = dexValid(megaUser.dex)
       ? (uint16_t)(100 + charizardMega->bAtk - dexEntry(megaUser.dex).bAtk)
       : 120;
-  CHECK(battleActivateMechanic(side, megaUser, BMECH_MEGA, flame));
+  CHECK(!battleActivateMechanic(side, megaUser, BMECH_MEGA, flame,
+                                MEGA_FORM_STANDARD));
+  CHECK(battleActivateMechanic(side, megaUser, BMECH_MEGA, flame, MEGA_FORM_X));
   CHECK(megaUser.activeMechanic == BMECH_MEGA &&
         megaUser.base[SI_ATK] == expectedMegaAtk);
   CHECK(megaUser.type1 == T_FIRE && megaUser.type2 == T_DRAGON);
+  CHECK(megaUser.megaForm == MEGA_FORM_X);
   CHECK(side.used(BMECH_Z_MOVE) && side.used(BMECH_DYNAMAX) && side.used(BMECH_MEGA));
+
+  BattleSideMechanics ySide;
+  Combatant charizardY = mon(6, flame);
+  CHECK(battleActivateMechanic(ySide, charizardY, BMECH_MEGA, flame, MEGA_FORM_Y));
+  const MegaFormEntry *charizardYMega = megaFormFor(6, MEGA_FORM_Y);
+  CHECK(charizardY.type1 == T_FIRE && charizardY.type2 == T_FLYING &&
+        charizardYMega && charizardYMega->bSpA > charizardMega->bSpA);
+
+  BattleSideMechanics singleSide;
+  Combatant venusaur = mon(3, flame);
+  CHECK(battleActivateMechanic(singleSide, venusaur, BMECH_MEGA, flame,
+                               MEGA_FORM_STANDARD));
+  CHECK(!battleMegaEligible(3, MEGA_FORM_X));
 
   BattleSideMechanics guardSide;
   Combatant guard = mon(9, recover);

@@ -26,6 +26,7 @@ const SaveField SAVE_FIELDS[] = {
   { "mvs", SK_BYTES },  { "mvlv", SK_U8 },
   // flags
   { "bk", SK_BOOL },    { "shy", SK_BOOL },   { "spkl", SK_BOOL },
+  { "gmax", SK_BOOL },
   { "eshy", SK_BOOL },
   { "stpk", SK_BOOL },  { "evop", SK_U8 },    { "slpa", SK_U8 },    { "rtpn", SK_BOOL },
   // the player: outlives every creature, which is exactly why it must be here

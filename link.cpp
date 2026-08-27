@@ -47,6 +47,7 @@ void linkMonFrom(LinkMon &out, const Combatant &c) {
   out.shiny = c.shiny ? 1 : 0;
   out.sparkle = c.sparkle ? 1 : 0;
   out.gender = (uint8_t)c.gender;
+  out.gigantamaxFactor = c.gigantamaxFactor ? 1 : 0;
   snprintf(out.name, sizeof(out.name), "%s", c.name);
 }
 
@@ -68,6 +69,7 @@ void linkMonTo(Combatant &out, const LinkMon &m) {
   out.sparkle = m.sparkle != 0;
   out.gender = genderValid((PetGender)m.gender) ? (PetGender)m.gender
                                                  : GENDER_NONE;
+  out.gigantamaxFactor = m.gigantamaxFactor != 0;
   // NOT snprintf("%s"): a name off the wire need not be terminated, and reading
   // it as a C string would run off the end of the struct.
   uint8_t n = sizeof(out.name) - 1;
@@ -144,6 +146,7 @@ void Link::begin(bool host, const char *myName) {
   pendingAct = 0;
   pendingPercent = 0;
   pendingMechanic = BMECH_NONE;
+  pendingMegaForm = MEGA_FORM_NONE;
   resultN = 0;
   resultNew = false;
   youWon = false;
@@ -172,14 +175,16 @@ void Link::start() {
   sendHello(*this);
 }
 
-void Link::sendAct(uint8_t act, uint8_t percent, BattleMechanic mechanic) {
+void Link::sendAct(uint8_t act, uint8_t percent, BattleMechanic mechanic,
+                   MegaFormKind megaForm) {
   if (state != LINK_READY || !act) return;
   if (percent > 100) percent = 100;
   if (mechanic > BMECH_MEGA) mechanic = BMECH_NONE;
-  if (LINK_ACT_IS_SWITCH(act)) mechanic = BMECH_NONE;
-  uint8_t b[4] = { turn, act, LINK_ACT_IS_SWITCH(act) ? (uint8_t)100 : percent,
-                   (uint8_t)mechanic };
-  put(*this, LM_ACT, b, 4, true);   // kept: the host may never have heard it
+  if (mechanic != BMECH_MEGA || megaForm > MEGA_FORM_Z) megaForm = MEGA_FORM_NONE;
+  if (LINK_ACT_IS_SWITCH(act)) { mechanic = BMECH_NONE; megaForm = MEGA_FORM_NONE; }
+  uint8_t b[5] = { turn, act, LINK_ACT_IS_SWITCH(act) ? (uint8_t)100 : percent,
+                   (uint8_t)mechanic, (uint8_t)megaForm };
+  put(*this, LM_ACT, b, 5, true);   // kept: the host may never have heard it
   if (!isHost) state = LINK_WAITING;
 }
 
@@ -200,6 +205,7 @@ void Link::sendResult(const uint8_t *blob, uint8_t len) {
   pendingAct = 0;
   pendingPercent = 0;
   pendingMechanic = BMECH_NONE;
+  pendingMegaForm = MEGA_FORM_NONE;
 }
 
 void Link::sendEnd(bool hostWon) {
@@ -230,6 +236,7 @@ void Link::rearm() {
   pendingAct = 0;
   pendingPercent = 0;
   pendingMechanic = BMECH_NONE;
+  pendingMegaForm = MEGA_FORM_NONE;
   resultN = 0;
   resultNew = false;
   youWon = false;
@@ -341,17 +348,20 @@ void Link::onPacket(const uint8_t *buf, uint8_t len) {
       return;
     }
     case LM_ACT:
-      if (!isHost || n < 4) return;    // only the host acts on an action
+      if (!isHost || n < 5) return;    // only the host acts on an action
       // A resend of a turn already resolved is not a new choice. Without this
       // the retransmissions that make the link reliable would themselves
       // desync it -- every repeat would spend another turn.
       if (body[0] != turn) return;
       if (!body[1]) return;            // 0 is not an action, it means silence
       if (body[2] > 100) return;
-      if (body[3] > BMECH_MEGA || (LINK_ACT_IS_SWITCH(body[1]) && body[3])) return;
+      if (body[3] > BMECH_MEGA ||
+          (body[3] == BMECH_MEGA ? body[4] > MEGA_FORM_Z : body[4] != MEGA_FORM_NONE) ||
+          (LINK_ACT_IS_SWITCH(body[1]) && body[3])) return;
       pendingAct = body[1];
       pendingPercent = LINK_ACT_IS_SWITCH(body[1]) ? 100 : body[2];
       pendingMechanic = (BattleMechanic)body[3];
+      pendingMegaForm = (MegaFormKind)body[4];
       return;
     case LM_WAIT:
       if (n < 2 || body[0] != turn || body[1] > 1 ||

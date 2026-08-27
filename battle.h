@@ -3,6 +3,7 @@
 #include "pet.h"
 #include "party.h"
 #include "moves.h"
+#include "items.h"
 
 // Turn resolution. Deliberately free of any UI or hardware so the whole thing
 // can be simulated headlessly -- see tools/emu.
@@ -88,11 +89,14 @@ struct Combatant {
   bool protectedTurn = false;
   BattleMechanic usedMechanic = BMECH_NONE;
   BattleMechanic activeMechanic = BMECH_NONE;
+  MegaFormKind megaForm = MEGA_FORM_NONE;
   uint8_t dynamaxTurns = 0;
   uint16_t normalMaxHp = 0;
   bool shiny = false;        // which color sprite variant to stream
   bool sparkle = false;      // independent persistent particle effect
   PetGender gender = GENDER_UNKNOWN;
+  bool gigantamaxFactor = false;
+  bool gigantamax = false;
   char name[12] = "";
 
   bool fainted() const { return hp == 0; }
@@ -147,17 +151,23 @@ bool battleGrounded(const Combatant &combatant);
 BattleMove battleMove(MoveId move);
 BattleMove battleMoveFor(const Combatant &attacker, MoveId move,
                          BattleMechanic requested = BMECH_NONE);
-bool battleMegaEligible(SpeciesId species);
+bool battleMegaEligible(SpeciesId species,
+                        MegaFormKind form = MEGA_FORM_NONE);
+bool battleDynamaxEligible(SpeciesId species);
+bool battleGigantamaxEligible(SpeciesId species);
 bool battleMechanicAvailable(const BattleSideMechanics &side,
                              const Combatant &combatant,
-                             BattleMechanic mechanic, MoveId move = MOVE_NONE);
+                             BattleMechanic mechanic, MoveId move = MOVE_NONE,
+                             MegaFormKind megaForm = MEGA_FORM_NONE);
 bool battleActivateMechanic(BattleSideMechanics &side, Combatant &combatant,
-                            BattleMechanic mechanic, MoveId move = MOVE_NONE);
+                            BattleMechanic mechanic, MoveId move = MOVE_NONE,
+                            MegaFormKind megaForm = MEGA_FORM_NONE);
 void battleAfterAction(Combatant &combatant);
 void battleOnSwitchOut(Combatant &combatant);
 BattleMechanic wildBattleMechanic(uint8_t eventRoll, uint8_t choiceRoll,
                                   bool hard, bool megaEligible,
-                                  bool zEligible = true);
+                                  bool zEligible = true,
+                                  bool dynamaxEligible = true);
 
 uint16_t stagedStat(uint16_t base, int8_t stage);
 uint16_t battleEffectiveStat(const Combatant &combatant, uint8_t statIndex);

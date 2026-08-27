@@ -33,7 +33,8 @@ static void recoverPackUploads() {
   }
 }
 
-bool PmdMon::load(int16_t dexNum, bool shiny, uint8_t gender, bool mega) {
+bool PmdMon::load(int16_t dexNum, bool shiny, uint8_t gender, bool mega,
+                  MegaFormKind megaForm) {
   // int16_t, NOT uint8_t. The dex reached 386 and this did not follow, so
   // everything from 256 up wrapped into Kanto: MARSHTOMP (258) opened
   // p002.bin and drew an IVYSAUR. Evolution and trainer species IDs were hit by
@@ -41,7 +42,7 @@ bool PmdMon::load(int16_t dexNum, bool shiny, uint8_t gender, bool mega) {
   if (!dexValid(dexNum)) return false;
   unload();
   uint32_t size = 0;
-  if (!contentLoadSprite((SpeciesId)dexNum, shiny, gender, mega,
+  if (!contentLoadSprite((SpeciesId)dexNum, shiny, gender, mega, megaForm,
                          &blob, &size, &displayScale) ||
       displayScale < 2 || displayScale > 6 ||
       size < 7 || size > 3UL * 1024 * 1024 || memcmp(blob, "TPK2", 4) != 0) {
@@ -60,7 +61,7 @@ bool PmdMon::load(int16_t dexNum, bool shiny, uint8_t gender, bool mega) {
   for (uint8_t i = 0; i < nActs && p + 4 <= end; i++) {
     uint8_t id = p[0], w = p[1], h = p[2], nf = p[3];
     p += 4;
-    if (id >= PMD_NACTS || nf > 24) { unload(); return false; }
+    if (id >= PMD_STORAGE_ACTS || nf > 24) { unload(); return false; }
     // valida que ms[] y los datos del frame caben en el blob (archivo truncado)
     uint32_t bytes = (uint32_t)nf * 2 + (uint32_t)w * h * nf;
     if (w == 0 || h == 0 || nf == 0 || p + bytes > end) { unload(); return false; }

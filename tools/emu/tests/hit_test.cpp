@@ -37,6 +37,7 @@ extern uint8_t choiceKind;
 extern uint8_t btlMenu;
 extern Combatant btlYou;
 extern BattleMechanic btlPendingMechanic;
+extern ItemKey btlPendingItem;
 extern BattleSideMechanics btlYourMechanics;
 void startBattle(int16_t dex, uint8_t lvl);
 void commitBattleMove(uint8_t moveSlot, uint8_t percent);
@@ -193,11 +194,13 @@ int main(){
   MoveId damagingMove = btlYou.moves[0];
   if (statusMove) btlYou.moves[3] = statusMove;
   btlPendingMechanic = BMECH_Z_MOVE;
+  btlPendingItem = zItem->key;
   commitBattleMove(3, 100);
   ck(inventory.count(zItem->key) == itemBefore &&
      !btlYourMechanics.used(BMECH_Z_MOVE),
      "an invalid Z-Move commit does not consume its item");
   btlPendingMechanic = BMECH_Z_MOVE;
+  btlPendingItem = zItem->key;
   btlYou.moves[0] = damagingMove;
   commitBattleMove(0, 100);
   ck(inventory.count(zItem->key) + 1 == itemBefore &&

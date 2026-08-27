@@ -158,7 +158,7 @@ void Party::sanitize(PartyMon &m, bool boxed) {
         reward != GYM_IV_REWARD_LEGACY_CLAIMED) reward = 0;
   if (m.dex > 0 && !natureValid(m.nature))
     m.nature = natureForLegacy(m.dex, m.ivAtk, m.ivDef, m.ivSpe, m.ivHp);
-  m.state &= PARTY_MON_DEAD;
+  m.state &= (PARTY_MON_DEAD | PARTY_MON_GIGANTAMAX_FACTOR);
   if (m.dex <= 0) m.state = 0;
   m.nick[sizeof(m.nick) - 1] = 0;
   uint8_t version = m.stateVersion;

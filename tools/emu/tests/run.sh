@@ -112,6 +112,10 @@ for src in "$HERE"/*_test.cpp; do
   elif [ "$name" = corrupt_test ]; then
     python3 "$HERE/make_corrupt_fixture.py" "$ROOT/web/packs" "$OUT/corrupt-packs"
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/corrupt-packs\"")
+  elif [ "$name" = sprite_test ] && [ -n "${SPRITE_TEST_CONTENT_DIR:-}" ]; then
+    test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$SPRITE_TEST_CONTENT_DIR\"")
+  elif [ "$name" = region_test ] && [ -n "${REGION_TEST_CONTENT_DIR:-}" ]; then
+    test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$REGION_TEST_CONTENT_DIR\"")
   elif [ "$name" = pack_reader_test ]; then
     mkdir -p "$OUT/reader-packs"
     python3 "$HERE/make_pack_fixture.py" "$OUT/reader-packs/reader-test.tregion"

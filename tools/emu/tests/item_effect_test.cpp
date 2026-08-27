@@ -38,8 +38,9 @@ int main() {
   const ItemEntry *revive = effect(ITEM_EFFECT_REVIVE);
   const ItemEntry *training = effect(ITEM_EFFECT_TRAINING_FLOOR);
   const ItemEntry *boost = effect(ITEM_EFFECT_BATTLE_STAGE);
-  CHECK(heal && cure && revive && training && boost);
-  if (!heal || !cure || !revive || !training || !boost) return 1;
+  const ItemEntry *maxSoup = effect(ITEM_EFFECT_GIGANTAMAX_FACTOR);
+  CHECK(heal && cure && revive && training && boost && maxSoup);
+  if (!heal || !cure || !revive || !training || !boost || !maxSoup) return 1;
 
   Combatant target;
   target.maxHp = 100;
@@ -79,6 +80,11 @@ int main() {
   while (itemApplyToPet(*training, pet)) {}
   CHECK(pet.trMinAtk == pet.trMaxAtk());
   CHECK(!itemCanApplyToPet(*training, pet));
+  CHECK(itemCanApplyToPet(*maxSoup, pet));
+  CHECK(itemApplyToPet(*maxSoup, pet) && pet.gigantamaxFactor);
+  pet.speciesId = 7;
+  pet.gigantamaxFactor = false;
+  CHECK(!itemCanApplyToPet(*maxSoup, pet) && !itemApplyToPet(*maxSoup, pet));
 
   Combatant boosted;
   boosted.maxHp = boosted.hp = 100;

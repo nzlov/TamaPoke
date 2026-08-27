@@ -64,6 +64,11 @@ uint8_t wildSparkleChance(uint8_t bonus) {
   return WILD_SPARKLE_BASE_CHANCE + rareBonus(bonus);
 }
 
+bool wildGigantamaxFactorForRoll(SpeciesId species, uint8_t roll) {
+  return battleGigantamaxEligible(species) &&
+         roll < WILD_GIGANTAMAX_FACTOR_CHANCE;
+}
+
 WildTraits wildTraitsForRolls(uint8_t colorRoll, uint8_t sparkleRoll,
                               uint8_t bonus) {
   WildTraits out;

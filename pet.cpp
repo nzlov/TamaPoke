@@ -53,6 +53,7 @@ void Pet::newEgg() {
   // deliberately neutral rather than another route into the wild economy.
   shiny = false;
   sparkle = false;
+  gigantamaxFactor = false;
   eggShiny = false;
   eggTaps = 0;
   fullness = 80;
@@ -279,6 +280,7 @@ void Pet::importState(const PartyMon &m) {
   prevSpeciesId = -1;
   shiny = m.shiny != 0;
   sparkle = m.sparkle != 0;
+  gigantamaxFactor = m.gigantamaxFactor();
   nature = natureValid(m.nature) ? m.nature
                                  : natureForLegacy(m.dex, m.ivAtk, m.ivDef,
                                                    m.ivSpe, m.ivHp);
@@ -336,6 +338,7 @@ void Pet::exportState(PartyMon &out) const {
   out.trMinAtk = trMinAtk; out.trMinDef = trMinDef; out.trMinSpe = trMinSpe;
   out.shiny = shiny ? 1 : 0;
   out.sparkle = sparkle ? 1 : 0;
+  out.setGigantamaxFactor(gigantamaxFactor);
   out.nature = nature;
   out.setDead(dead);
   out.gender = gender;
@@ -584,6 +587,13 @@ void Pet::setDead(bool value) {
   dead = value;
   if (dead) sleeping = false;
   save();
+}
+
+bool Pet::giveGigantamaxFactor() {
+  if (isEgg() || gigantamaxFactor) return false;
+  gigantamaxFactor = true;
+  save();
+  return true;
 }
 
 // la racha y el vinculo mejoran el sorteo del huevo (0..~14)
@@ -1020,6 +1030,7 @@ void Pet::hatch() {
   dead = false;
   shiny = eggShiny;
   sparkle = false;
+  gigantamaxFactor = false;
   // IV del individuo (cada crianza es unica). Se tiran ANTES de resetear el
   // vinculo a proposito: el careBonus que los empuja es el del bicho anterior.
   rollIVs();
@@ -1424,6 +1435,7 @@ void Pet::save() {
   prefs.putBool("bk", berryKnown);
   prefs.putBool("shy", shiny);
   prefs.putBool("spkl", sparkle);
+  prefs.putBool("gmax", gigantamaxFactor);
   prefs.putBool("eshy", eggShiny);
   prefs.putBool("stpk", starterPick);
   prefs.putUChar("slpa", sleepAuto);
@@ -1488,6 +1500,7 @@ void Pet::load() {
   berryKnown = prefs.getBool("bk", false);
   shiny = prefs.getBool("shy", false);
   sparkle = prefs.getBool("spkl", false);
+  gigantamaxFactor = prefs.getBool("gmax", false);
   eggShiny = prefs.getBool("eshy", false);
   starterPick = prefs.getBool("stpk", false);
   sleepAuto = prefs.getUChar("slpa", SLEEP_NONE);

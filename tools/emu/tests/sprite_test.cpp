@@ -93,6 +93,16 @@ int main(){
     ck(!m.load(9999, false), "nor one past the table");
   }
 
+  // Battle rendering prefers these rear-facing actions for the player's side.
+  // A legacy TPK2 without them remains valid and falls back to its front action.
+  PmdMon m;
+  bool loaded = m.load(6, false);
+  ck(loaded && m.has(pmdFacingAction(PMD_IDLE, true)) &&
+     m.has(pmdFacingAction(PMD_HURT, true)) &&
+     m.has(pmdFacingAction(PMD_ATTACK, true)),
+     "newly packed base art provides player-facing-back battle actions");
+  m.unload();
+
   // Thumbnail offsets and palette indices are dereferenced by every gallery
   // render, so contentLoadThumbs validates the complete embedded TPTH first.
   {

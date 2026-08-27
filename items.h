@@ -31,6 +31,7 @@ enum ItemEffect : uint8_t {
   ITEM_EFFECT_TRAINING_FLOOR,
   ITEM_EFFECT_BATTLE_STAGE,
   ITEM_EFFECT_BATTLE_MECHANIC,
+  ITEM_EFFECT_GIGANTAMAX_FACTOR,
 };
 
 enum ItemStatMask : uint8_t {
@@ -45,6 +46,14 @@ enum ItemMechanicKind : uint8_t {
   ITEM_MECHANIC_Z_MOVE = 1,
   ITEM_MECHANIC_DYNAMAX = 2,
   ITEM_MECHANIC_MEGA = 3,
+};
+
+enum MegaFormKind : uint8_t {
+  MEGA_FORM_STANDARD = 0,
+  MEGA_FORM_X = 1,
+  MEGA_FORM_Y = 2,
+  MEGA_FORM_Z = 3,
+  MEGA_FORM_NONE = 0xFF,
 };
 
 struct ItemEntry {

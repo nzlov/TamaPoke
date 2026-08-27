@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include "items.h"
 
 // acciones de los sprites PMD (formato TPK2)
 enum : uint8_t {
@@ -7,6 +8,10 @@ enum : uint8_t {
   PMD_ATTACK, PMD_POSE, PMD_HOP, PMD_NOD, PMD_BREATH, PMD_SIT,
   PMD_NACTS
 };
+constexpr uint8_t PMD_STORAGE_ACTS = PMD_NACTS * 2;
+constexpr uint8_t pmdFacingAction(uint8_t action, bool back) {
+  return back ? (uint8_t)(action + PMD_NACTS) : action;
+}
 
 struct PmdAct {
   uint8_t w = 0, h = 0, frames = 0;
@@ -27,12 +32,12 @@ struct PmdMon {
   uint16_t pal[256];
   uint8_t *blob = nullptr;
   uint8_t displayScale = 0;  // precomputed from the pack's opaque Idle bounds
-  PmdAct acts[PMD_NACTS];
+  PmdAct acts[PMD_STORAGE_ACTS];
 
   bool load(int16_t dexNum, bool shiny = false, uint8_t gender = 0,
-            bool mega = false);
+            bool mega = false, MegaFormKind megaForm = MEGA_FORM_NONE);
   void unload();
-  bool has(uint8_t a) const { return loaded && a < PMD_NACTS && acts[a].frames > 0; }
+  bool has(uint8_t a) const { return loaded && a < PMD_STORAGE_ACTS && acts[a].frames > 0; }
 };
 
 inline uint8_t pmdDisplayScale(const PmdMon &mon, const PmdAct &action,

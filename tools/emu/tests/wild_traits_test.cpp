@@ -30,6 +30,10 @@ int main() {
      "the shared bonus caps both chances at fifteen points");
   ck(wildColorChance(99) == 20 && wildSparkleChance(99) == 16,
      "corrupt or future bonuses cannot exceed the cap");
+  ck(wildGigantamaxFactorForRoll(6, 4) &&
+     !wildGigantamaxFactorForRoll(6, 5) &&
+     !wildGigantamaxFactorForRoll(7, 0),
+     "only eligible wild species receive the five-percent Gigantamax factor");
 
   WildTraits none = wildTraitsForRolls(5, 1, 0);
   WildTraits color = wildTraitsForRolls(4, 1, 0);

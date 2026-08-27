@@ -21,7 +21,7 @@ Acciones: 0 Idle, 1 WalkL, 2 WalkR, 3 Sleep, 4 Eat, 5 Hurt, 6 Attack,
   python3 tools/pack_pmd.py kanto       # solo una region (johto, hoenn)
   python3 tools/pack_pmd.py 7 25        # dex concretos
   python3 tools/pack_pmd.py normal 1 4  # solo normales
-  python3 tools/pack_pmd.py --mega 6    # formas Mega configuradas, pmNNN.bin
+  python3 tools/pack_pmd.py --mega 6    # formas Mega configuradas, pmNNN-forma.bin
 
 Necesita Pillow: pip3 install Pillow
 """
@@ -64,6 +64,12 @@ ACTIONS = [
     (10, 'DeepBreath', 0),
     (11, 'Sit', 0),
 ]
+PMD_NACTS = len(ACTIONS)
+PACK_ACTIONS = [(aid, name, row, False) for aid, name, row in ACTIONS]
+PACK_ACTIONS += [
+    (PMD_NACTS + aid, name, 4, True)
+    for aid, name, _row in ACTIONS if aid in (0, 5, 6)
+]
 
 
 def fetch(url, dest):
@@ -74,8 +80,11 @@ def fetch(url, dest):
     if os.path.exists(dest):
         return True
     os.makedirs(os.path.dirname(dest), exist_ok=True)
-    r = subprocess.run(['curl', '-fsSL', '--retry', '2', '-A', 'Mozilla/5.0',
-                        '-o', dest, url], capture_output=True)
+    r = subprocess.run([
+        'curl', '-fsSL', '--connect-timeout', '10', '--max-time', '45',
+        '--retry', '3', '--retry-connrefused', '--retry-delay', '1',
+        '-A', 'Mozilla/5.0', '-o', dest, url,
+    ], capture_output=True)
     if r.returncode != 0:
         if os.path.exists(dest):
             os.remove(dest)
@@ -108,17 +117,17 @@ def load_animdata(folder):
     return anims
 
 
-def pack(dexnum, shiny=False, female=False, form_path=None):
+def pack(dexnum, shiny=False, female=False, form_path=None, form_name='standard'):
     if form_path:
-        sub = f'/{form_path}'
-        suffix = 'm'
+        sub = f'/{form_path}/0001' if shiny else f'/{form_path}'
+        suffix = f'm-{form_name}' + ('-shiny' if shiny else '')
     elif female:
         sub = f'/0000/{"0001" if shiny else "0000"}/0002'
         suffix = ('f' if female else '') + ('s' if shiny else '')
     else:
         sub = '/0000/0001' if shiny else ''
         suffix = 's' if shiny else ''
-    folder = os.path.join(CACHE, f'{dexnum:04d}{suffix}')
+    folder = os.path.join(CACHE, f'{dexnum:04d}-{suffix or "normal"}')
     base = f'{BASE}/{dexnum:04d}{sub}'
     if not fetch(f'{base}/AnimData.xml', os.path.join(folder, 'AnimData.xml')):
         raise RuntimeError('sin AnimData.xml')
@@ -126,7 +135,7 @@ def pack(dexnum, shiny=False, female=False, form_path=None):
 
     colmap, pal = {}, []
     packed = []
-    for aid, name, row in ACTIONS:
+    for aid, name, row, back_only in PACK_ACTIONS:
         if name not in anims or anims[name] is None:
             continue
         fw, fh, durs, srcname = anims[name]
@@ -135,6 +144,8 @@ def pack(dexnum, shiny=False, female=False, form_path=None):
             continue
         im = Image.open(png).convert('RGBA')
         rows = im.size[1] // fh
+        if back_only and rows <= row:
+            continue
         r = row if rows > row else 0
         nf = min(len(durs), im.size[0] // fw, 24)
         data = bytearray()
@@ -163,7 +174,8 @@ def pack(dexnum, shiny=False, female=False, form_path=None):
         raise RuntimeError('sin Idle')
 
     os.makedirs(OUT, exist_ok=True)
-    path = os.path.join(OUT, f'p{suffix}{dexnum:03d}.bin')
+    path = os.path.join(OUT, f'p{suffix}{dexnum:03d}.bin') if not form_path else \
+        os.path.join(OUT, f'pm{dexnum:03d}-{form_name}' + ('-shiny' if shiny else '') + '.bin')
     with open(path, 'wb') as f:
         f.write(b'TPK2')
         f.write(struct.pack('<BH', len(packed), len(pal)))
@@ -174,7 +186,7 @@ def pack(dexnum, shiny=False, female=False, form_path=None):
             f.write(struct.pack(f'<{nf}H', *ms))
             f.write(data)
     kb = os.path.getsize(path) / 1024
-    print(f"  -> p{suffix}{dexnum:03d}.bin: {len(packed)} acciones, "
+    print(f"  -> {os.path.basename(path)}: {len(packed)} acciones, "
           f"{len(pal)} colores, {kb:.0f} KB")
 
 
@@ -183,12 +195,18 @@ if __name__ == '__main__':
     parser.add_argument('--workers', type=int, default=10,
                         help='tareas concurrentes de descarga/empaquetado (predeterminado: 10)')
     parser.add_argument('--mega', action='store_true',
-                        help='download configured Mega forms as pmNNN.bin')
+                        help='download configured Mega forms')
+    parser.add_argument('--mega-report', metavar='PATH',
+                        help='write configured Mega sprite coverage as JSON')
+    parser.add_argument('--report', metavar='PATH',
+                        help='write base sprite packing results as JSON')
     parser.add_argument('selectors', nargs='*',
                         help='regiones, numeros del dex o "normal"')
     options = parser.parse_args()
     if options.workers < 1:
         parser.error('--workers debe ser al menos 1')
+    if options.mega and options.report:
+        parser.error('--report is for base sprites; use --mega-report with --mega')
     args = options.selectors
     solo_normal = 'normal' in args
     # The whole dex by default, not the old hardcoded 151. A region is easy to
@@ -212,20 +230,54 @@ if __name__ == '__main__':
         with open(os.path.join(os.path.dirname(__file__), 'mega_data.json'),
                   encoding='utf-8') as mega_file:
             mega_data = json.load(mega_file)
-        paths = {int(row['species']): row.get('spritePath') for row in mega_data}
-        jobs = [(n, False, False, paths[n]) for n in nums if paths.get(n)]
+        with open(os.path.join(os.path.dirname(__file__), 'gigantamax_data.json'),
+                  encoding='utf-8') as gigantamax_file:
+            gigantamax_data = json.load(gigantamax_file)
+        selected = [row for row in mega_data if int(row['species']) in nums]
+        jobs = []
+        for row in selected:
+            path = row.get('spritePath')
+            if not path:
+                continue
+            form_name = row.get('form', 'standard')
+            jobs.append((int(row['species']), False, False, path, form_name))
+            if row.get('shiny'):
+                jobs.append((int(row['species']), True, False, path, form_name))
+        if options.mega_report:
+            report = {
+                'sourceRevision': PMD_REVISION,
+                'forms': len(selected),
+                'normalAvailable': sum(bool(row.get('spritePath')) for row in selected),
+                'shinyAvailable': sum(bool(row.get('shiny')) for row in selected),
+                'missingNormal': [
+                    {'species': int(row['species']), 'form': row.get('form', 'standard')}
+                    for row in selected if not row.get('spritePath')
+                ],
+                'missingShiny': [
+                    {'species': int(row['species']), 'form': row.get('form', 'standard')}
+                    for row in selected if not row.get('shiny')
+                ],
+                'gigantamaxForms': len(gigantamax_data),
+                'gigantamaxNormalAvailable': 0,
+                'gigantamaxShinyAvailable': 0,
+                'missingGigantamaxNormal': [int(row['species']) for row in gigantamax_data],
+                'missingGigantamaxShiny': [int(row['species']) for row in gigantamax_data],
+            }
+            with open(options.mega_report, 'w', encoding='utf-8') as report_file:
+                json.dump(report, report_file, ensure_ascii=False, indent=2)
+                report_file.write('\n')
     else:
-        jobs = [(n, sh, female, None) for n in nums
+        jobs = [(n, sh, female, None, 'standard') for n in nums
                 for female in [False, True]
                 for sh in ([False] if solo_normal else [False, True])]
 
     def run_job(job):
-        n, sh, female, form_path = job
+        n, sh, female, form_path, form_name = job
         try:
             label = (' Mega' if form_path else '') + \
                     (' female' if female else '') + (' shiny' if sh else '')
             print(f"#{n:03d}{label}", flush=True)
-            pack(n, sh, female, form_path)
+            pack(n, sh, female, form_path, form_name)
             return None
         except Exception as e:
             # Female art only exists for species with an authored visual
@@ -234,8 +286,32 @@ if __name__ == '__main__':
                 print(f"#{n:03d}{label} sin variante", flush=True)
                 return None
             print(f"#{n:03d}{label} FALLO: {e}", flush=True)
-            return n, sh, female
+            return n, sh
 
     with ThreadPoolExecutor(max_workers=options.workers) as executor:
         fallos = [failed for failed in executor.map(run_job, jobs) if failed]
+    if options.report:
+        failed_set = set(fallos)
+        base_jobs = [(number, shiny) for number, shiny, female, path, _form in jobs
+                     if not female and not path]
+        report = {
+            'sourceRevision': PMD_REVISION,
+            'jobs': len(base_jobs),
+            'succeeded': len(base_jobs) - len(fallos),
+            'normalSucceeded': sum(
+                not shiny and (number, shiny) not in failed_set
+                for number, shiny in base_jobs
+            ),
+            'shinySucceeded': sum(
+                shiny and (number, shiny) not in failed_set
+                for number, shiny in base_jobs
+            ),
+            'failures': [
+                {'species': number, 'shiny': shiny}
+                for number, shiny in fallos
+            ],
+        }
+        with open(options.report, 'w', encoding='utf-8') as report_file:
+            json.dump(report, report_file, ensure_ascii=False, indent=2)
+            report_file.write('\n')
     print(f"FALLOS: {fallos}" if fallos else "TODOS EMPAQUETADOS")

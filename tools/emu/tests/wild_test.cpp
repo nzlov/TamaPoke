@@ -80,6 +80,8 @@ int main() {
      "hard encounter mechanics stop at twenty percent");
   ck(wildBattleMechanic(0, 0, false, false, false) == BMECH_DYNAMAX,
      "wild encounters omit unavailable Z-Moves and Mega Evolution");
+  ck(wildBattleMechanic(0, 0, false, false, false, false) == BMECH_NONE,
+     "a species with no officially supported mechanic receives none");
   ck(wildEscapeChance(50, 50) == 90 && wildEscapeChance(80, 50) == 90,
      "escape defaults to ninety percent when not under-levelled");
   ck(wildEscapeChance(50, 100) == 45,

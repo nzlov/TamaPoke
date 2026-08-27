@@ -127,6 +127,7 @@ public:
   bool berryKnown = false;  // ya descubrio su baya favorita
   bool shiny = false;       // rare color variant
   bool sparkle = false;     // independent rare trait; persistent particle FX
+  bool gigantamaxFactor = false;
   uint32_t ageMinutes = 0;
   uint32_t raisedMinutes = 0;  // time cultivated by this player; Box is frozen
   int16_t speciesId = -1;      // numero de Pokedex (1..dexCount()), -1 = huevo
@@ -232,6 +233,7 @@ public:
   void syncClockFrom(uint32_t nowEpoch, uint32_t seenEpoch, bool persist);
   bool isDead() const { return dead; }
   void setDead(bool value);
+  bool giveGigantamaxFactor();
   void registerCaught(SpeciesId dex, bool color) {
     registerSpecies(dex, color);
     save();

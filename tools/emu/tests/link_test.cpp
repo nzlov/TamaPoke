@@ -52,6 +52,7 @@ int main(){
   LinkMon rare = mon(6,50,"BLAZE");
   rare.shiny = 1;
   rare.sparkle = 1;
+  rare.gigantamaxFactor = 1;
   A.addMon(rare); A.addMon(mon(9,50,"SHELL"));
   B.addMon(mon(65,50,"SPOON"));
   A.start();
@@ -59,8 +60,8 @@ int main(){
   ck(B.theirsN==2 && A.theirsN==1, "each ends up with the other's squad");
   ck(B.theirs[0].dex==6 && A.theirs[0].dex==65, "and the right creatures in it");
   ck(!strcmp(B.theirs[1].name,"SHELL"), "names survive the wire");
-  ck(B.theirs[0].shiny && B.theirs[0].sparkle,
-     "color and sparkle survive independently on the wire");
+  ck(B.theirs[0].shiny && B.theirs[0].sparkle && B.theirs[0].gigantamaxFactor,
+     "color, sparkle, and Gigantamax factor survive independently on the wire");
   ck(B.theirs[0].gender==A.mine[0].gender, "gender survives the wire");
   ck(A.isHost && !B.isHost, "the roles stay as they were offered");
 
@@ -68,7 +69,8 @@ int main(){
   Combatant back; linkMonTo(back, B.theirs[0]);
   ck(back.dex==6 && back.level==50 && back.hp==back.maxHp,
      "a wire creature restores at full health");
-  ck(back.shiny && back.sparkle, "the restored combatant keeps both rare traits");
+  ck(back.shiny && back.sparkle && back.gigantamaxFactor,
+     "the restored combatant keeps all individual traits");
   ck(back.base[SI_ATK]==A.mine[0].base[SI_ATK], "with its stats intact");
   ck(back.type1==T_FIRE && back.type2==T_FLYING,
      "and restores the species types used by battle resolution");
@@ -83,12 +85,13 @@ int main(){
   ck(A.state==LINK_READY && B.state==LINK_READY &&
      A.txLive && B.txLive && A.tx[0]==LM_WAIT && B.tx[0]==LM_WAIT,
      "both sides can keep the link alive while answering");
-  B.sendAct(LINK_ACT_MOVE(0), 50, BMECH_Z_MOVE);
+  B.sendAct(LINK_ACT_MOVE(0), 50, BMECH_MEGA, MEGA_FORM_Y);
   ck(A.hasPeerAct(), "the host receives the guest's action");
   ck(LINK_ACT_SLOT(A.pendingAct)==0 && !LINK_ACT_IS_SWITCH(A.pendingAct),
      "move slot 0 survives -- it is not confused with silence");
   ck(A.pendingPercent==50, "the answer percentage travels with the move");
-  ck(A.pendingMechanic==BMECH_Z_MOVE, "the requested battle mechanic travels with the move");
+  ck(A.pendingMechanic==BMECH_MEGA && A.pendingMegaForm==MEGA_FORM_Y,
+     "the requested Mega form travels with the move");
   ck(B.state==LINK_WAITING, "and the guest waits rather than resolving");
 
   A.pendingAct = 0;
@@ -121,6 +124,8 @@ int main(){
   r.hostHp=111; r.guestHp=222; r.hostMove=33; r.guestMove=44;
   r.hostDmg=9; r.guestDmg=8; r.hostIdx=1; r.guestIdx=0; r.guestAil=AIL_BURN;
   r.hostMaxHp=333; r.guestMaxHp=444; r.hostActive=BMECH_MEGA;
+  r.hostMegaForm=MEGA_FORM_X;
+  r.guestGigantamax=1;
   r.guestActive=BMECH_DYNAMAX; r.guestDynamaxTurns=2;
   r.hostUsedMask=battleMechanicBit(BMECH_MEGA);
   r.guestUsedMask=battleMechanicBit(BMECH_DYNAMAX);
@@ -137,7 +142,8 @@ int main(){
      "health and ailments survive the wire");
   ck(got.hostIdx==1 && got.guestIdx==0, "so does which creature is out");
   ck(got.hostMaxHp==333 && got.guestMaxHp==444 && got.hostActive==BMECH_MEGA &&
-     got.guestActive==BMECH_DYNAMAX && got.guestDynamaxTurns==2,
+     got.hostMegaForm==MEGA_FORM_X && got.guestActive==BMECH_DYNAMAX &&
+     got.guestDynamaxTurns==2 && got.guestGigantamax,
      "absolute mechanic and maximum-HP state survives the wire");
   ck(!A.pendingAct, "resolving clears the action, so it cannot be spent twice");
 

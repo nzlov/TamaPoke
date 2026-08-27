@@ -28,7 +28,7 @@ KIND_MOVE = 3
 
 sys.path.insert(0, str(HERE))
 from pack_format import PACK_ABI, PACK_REVISION, pack  # noqa: E402
-from pmd_layout import pmd_display_scale  # noqa: E402
+from pmd_layout import pmd_display_scale, pmd_pair_display_scale  # noqa: E402
 from quiz_pack import build_quiz_pack  # noqa: E402
 from dex_data import (  # noqa: E402
     DEX, TYPE_ACCENTS, RARE, LEGENDARY, REGIONS, EVOLUTION_BRANCHES,
@@ -59,6 +59,7 @@ SPECIES_DESCRIPTION_LOCALES = sorted(
     SPECIES_DESCRIPTION_DATA.get("species", [{}])[0].get("descriptions", {})
 )
 MEGA_DATA = json.loads((HERE / "mega_data.json").read_text(encoding="utf-8"))
+GIGANTAMAX_DATA = json.loads((HERE / "gigantamax_data.json").read_text(encoding="utf-8"))
 
 TYPE_COLORS = [
     0xAD4F, 0xF406, 0x6C9E, 0xFE86, 0x7E4A, 0x9EDB,
@@ -372,7 +373,8 @@ def append_region_manifest(manifest: list[dict], path: Path, region_name: str,
     manifest.append(item)
 
 
-def build_region_packs(manifest: list[dict], sprite_dir: Path) -> None:
+def build_region_packs(manifest: list[dict], sprite_dir: Path,
+                       allow_empty_art: bool = False) -> None:
     region_battles = json.loads((HERE / "region_data.json").read_text(encoding="utf-8"))
     battle_by_name = {row["name"].upper(): row for row in region_battles["regions"]}
     rarities = rarity_rows()
@@ -388,7 +390,12 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path) -> None:
         rows = [row for row in DEX if lo <= row[0] <= hi]
         normal_sources = [sprite_dir / f"p{row[0]:03d}.bin" for row in rows]
         normal_count = sum(source.exists() for source in normal_sources)
-        if normal_count == 0:
+        mega_source_count = sum(
+            (sprite_dir / f"pm{int(form['species']):03d}-{form.get('form', 'standard')}.bin").exists()
+            for form in MEGA_DATA
+            if lo <= int(form["species"]) <= hi and form.get("spritePath")
+        )
+        if normal_count == 0 and mega_source_count == 0 and not allow_empty_art:
             if not path.exists():
                 raise FileNotFoundError(
                     f"{sprite_dir} has no regional sprite sources and there is no existing "
@@ -398,8 +405,10 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path) -> None:
             continue
         if normal_count != len(rows):
             print(f"{region_name}: packing {normal_count}/{len(rows)} species with art")
+        if mega_source_count:
+            print(f"{region_name}: packing {mega_source_count} Mega forms with art")
         thumbs_path = sprite_dir / "thumbs.bin"
-        if not thumbs_path.exists():
+        if not thumbs_path.exists() and not allow_empty_art:
             raise FileNotFoundError(f"{thumbs_path} is required to rebuild regional packs")
         names_blob, name_offsets = string_pool([row[2] for row in rows])
         specs = bytearray()
@@ -483,10 +492,34 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path) -> None:
             sprite_index.extend(sprite_record.pack(
                 number, normal_at, len(normal), shiny_at, len(shiny),
                 female_at, len(female), female_shiny_at, len(female_shiny),
-                min(pmd_display_scale(blob)
-                    for blob in (normal, shiny, female, female_shiny) if blob),
+                min((pmd_display_scale(blob)
+                     for blob in (normal, shiny, female, female_shiny) if blob),
+                    default=0),
             ))
-        thumbs = thumbs_path.read_bytes()
+        mega_sprites = bytearray()
+        mega_sprite_index = bytearray()
+        mega_sprite_record = struct.Struct("<HBBIIII")
+        form_ids = {"standard": 0, "x": 1, "y": 2, "z": 3}
+        for form in MEGA_DATA:
+            species = int(form["species"])
+            if not lo <= species <= hi or not form.get("spritePath"):
+                continue
+            form_name = form.get("form", "standard")
+            normal_path = sprite_dir / f"pm{species:03d}-{form_name}.bin"
+            normal = normal_path.read_bytes() if normal_path.exists() else b""
+            shiny_path = sprite_dir / f"pm{species:03d}-{form_name}-shiny.bin"
+            shiny = shiny_path.read_bytes() if normal and shiny_path.exists() else b""
+            if not normal:
+                continue
+            normal_at = len(mega_sprites)
+            mega_sprites.extend(normal)
+            shiny_at = len(mega_sprites)
+            mega_sprites.extend(shiny)
+            mega_sprite_index.extend(mega_sprite_record.pack(
+                species, form_ids[form_name], pmd_pair_display_scale(normal, shiny),
+                normal_at, len(normal), shiny_at, len(shiny),
+            ))
+        thumbs = thumbs_path.read_bytes() if thumbs_path.exists() else b""
         locales = localized_strings(species_descriptions(rows), len(rows))
         localized_names = localized_strings(species_names(rows), len(rows))
         localized_regional_names = localized_strings(
@@ -495,7 +528,7 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path) -> None:
         mechanics_hash = binascii.crc32(
             specs + evolutions + region + battle_meta + trainers
         ) & 0xFFFFFFFF
-        blob = pack(KIND_REGION, f"region-{region_name.lower()}", mechanics_hash, [
+        sections = [
             ("SPEC", bytes(specs), len(rows)),
             ("EVOS", bytes(evolutions), len(evolutions) // evolution_record.size),
             ("NAME", names_blob, len(rows)),
@@ -511,7 +544,15 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path) -> None:
             ("GSTR", gym_strings, len(battle["trainers"]) * 2),
             ("BADG", bytes(badge_index), len(battle["badges"])),
             ("BBLB", bytes(badge_blob), len(battle["badges"])),
-        ])
+        ]
+        if mega_sprite_index:
+            sections.extend([
+                ("MFSP", bytes(mega_sprite_index),
+                 len(mega_sprite_index) // mega_sprite_record.size),
+                ("MFBL", bytes(mega_sprites),
+                 len(mega_sprite_index) // mega_sprite_record.size),
+            ])
+        blob = pack(KIND_REGION, f"region-{region_name.lower()}", mechanics_hash, sections)
         path.write_bytes(blob)
         append_region_manifest(manifest, path, region_name, lo, hi, battle)
 
@@ -742,38 +783,40 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
     }, len(ITEM_DATA))
     item_icons = packed_item_icons(ITEM_DATA)
 
-    mega_record = struct.Struct("<HBBBBBBB")
+    mega_record = struct.Struct("<HBBBBBBBB")
     mega_blob = bytearray()
-    mega_sprite_record = struct.Struct("<HIIB")
-    mega_sprite_index = bytearray()
-    mega_sprites = bytearray()
-    previous_species = 0
+    form_ids = {"standard": 0, "x": 1, "y": 2, "z": 3}
+    previous_key = (0, -1)
     for form in MEGA_DATA:
         species = int(form["species"])
+        form_id = form_ids[form.get("form", "standard")]
         types = form["types"]
         stats = form["stats"]
-        if species <= previous_species or species > 0xFFFF:
-            raise ValueError("mega species IDs must be unique and sorted")
+        if (species, form_id) <= previous_key or species > 0xFFFF:
+            raise ValueError("mega form keys must be unique and sorted")
         if not 1 <= len(types) <= 2 or any(name not in type_ids for name in types):
             raise ValueError(f"invalid mega types for species {species}")
         if len(stats) != 5 or any(not 0 < int(value) <= 255 for value in stats):
             raise ValueError(f"invalid mega stats for species {species}")
         mega_blob.extend(mega_record.pack(
-            species, type_ids[types[0]], type_ids[types[1]] if len(types) == 2 else 255,
+            species, form_id, type_ids[types[0]],
+            type_ids[types[1]] if len(types) == 2 else 255,
             *(int(value) for value in stats),
         ))
-        sprite_path = sprite_dir / f"pm{species:03d}.bin"
-        if form.get("spritePath") and sprite_path.exists():
-            sprite = sprite_path.read_bytes()
-            sprite_at = len(mega_sprites)
-            mega_sprites.extend(sprite)
-            mega_sprite_index.extend(mega_sprite_record.pack(
-                species, sprite_at, len(sprite), pmd_display_scale(sprite),
-            ))
+        previous_key = (species, form_id)
+
+    gigantamax_blob = bytearray()
+    previous_species = 0
+    for entry in GIGANTAMAX_DATA:
+        species = int(entry["species"])
+        if species <= previous_species or species > 0xFFFF:
+            raise ValueError("Gigantamax species IDs must be unique and sorted")
+        gigantamax_blob.extend(struct.pack("<H", species))
         previous_species = species
 
     mechanics_hash = binascii.crc32(
-        move_blob + field_flags + learn + offset_blob + chart + item_blob + mega_blob
+        move_blob + field_flags + learn + offset_blob + chart + item_blob + mega_blob +
+        gigantamax_blob
     ) & 0xFFFFFFFF
     sections = [
         ("MOVE", bytes(move_blob), len(move_rows)),
@@ -792,14 +835,8 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
         ("ILNM", item_localized_names, len(ITEM_DATA)),
         ("ILOC", item_localized_descriptions, len(ITEM_DATA)),
         ("MEGA", bytes(mega_blob), len(MEGA_DATA)),
+        ("GMAX", bytes(gigantamax_blob), len(GIGANTAMAX_DATA)),
     ]
-    if mega_sprite_index:
-        sections.extend([
-            ("MSPI", bytes(mega_sprite_index),
-             len(mega_sprite_index) // mega_sprite_record.size),
-            ("MSBL", bytes(mega_sprites),
-             len(mega_sprite_index) // mega_sprite_record.size),
-        ])
     if item_icons:
         sections.append(("IICO", item_icons, len(ITEM_DATA)))
     blob = pack(KIND_MOVE, "moves-core", mechanics_hash, sections)
@@ -846,6 +883,8 @@ def main() -> int:
                         help="directory containing pNNN.bin, psNNN.bin and thumbs.bin sources")
     parser.add_argument("--move-only", action="store_true",
                         help="rebuild only moves-core.tmove without requiring regional art")
+    parser.add_argument("--allow-empty-art", action="store_true",
+                        help="build test packs without copyrighted sprite inputs")
     args = parser.parse_args()
     WEB_PACKS.mkdir(parents=True, exist_ok=True)
     if args.move_only:
@@ -871,7 +910,7 @@ def main() -> int:
     manifest: list[dict] = []
     build_ui_packs(manifest)
     build_move_pack(manifest, args.sprite_dir.resolve())
-    build_region_packs(manifest, args.sprite_dir.resolve())
+    build_region_packs(manifest, args.sprite_dir.resolve(), args.allow_empty_art)
     build_quiz_packs(manifest)
     expected_regions = {item["file"] for item in manifest if item["kind"] == "region"}
     for obsolete in WEB_PACKS.glob("*.tregion"):

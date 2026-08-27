@@ -32,7 +32,7 @@
 // whole handshake without a radio, and a deliberately lossy transport exercises
 // all of the above. Only the radio itself is unverifiable here.
 
-#define LINK_PROTO 7        // bump on ANY wire change; a mismatch is refused
+#define LINK_PROTO 8        // bump on ANY wire change; a mismatch is refused
 #define LINK_MAX_PAYLOAD 200
 #define LINK_NAME_LEN 12
 
@@ -94,6 +94,7 @@ struct LinkMon {
   uint8_t shiny;
   uint8_t sparkle;
   uint8_t gender;
+  uint8_t gigantamaxFactor;
   char name[LINK_NAME_LEN];
 };
 
@@ -113,6 +114,8 @@ struct LinkResult {
   uint8_t flags;               // bit0 crit, bit1 super, bit2 a faint happened
   uint8_t hostType1, hostType2, guestType1, guestType2;
   BattleMechanic hostActive, guestActive;
+  MegaFormKind hostMegaForm, guestMegaForm;
+  uint8_t hostGigantamax, guestGigantamax;
   BattleMechanic hostMoveMechanic, guestMoveMechanic;
   uint8_t hostDynamaxTurns, guestDynamaxTurns;
   uint8_t hostUsedMask, guestUsedMask;
@@ -121,6 +124,8 @@ struct LinkResult {
   uint16_t hostBase[SI_COUNT], guestBase[SI_COUNT];
   BattleMechanic hostMemberMechanic[TRAINER_TEAM_MAX];
   BattleMechanic guestMemberMechanic[TRAINER_TEAM_MAX];
+  MegaFormKind hostMemberMegaForm[TRAINER_TEAM_MAX];
+  MegaFormKind guestMemberMegaForm[TRAINER_TEAM_MAX];
 };
 
 struct Link {
@@ -143,6 +148,7 @@ struct Link {
   uint8_t pendingAct = 0;      // host: the guest's action for `turn`, 0 = none
   uint8_t pendingPercent = 0;  // host: answer effect for that move, 0..100
   BattleMechanic pendingMechanic = BMECH_NONE;
+  MegaFormKind pendingMegaForm = MEGA_FORM_NONE;
   bool youWon = false;
 
   // guest: the last turn the host resolved. `resultNew` is cleared by whoever
@@ -172,7 +178,8 @@ struct Link {
   void tick(uint32_t now);            // resend + timeout; call once a frame
 
   void sendAct(uint8_t act, uint8_t percent = 100,
-               BattleMechanic mechanic = BMECH_NONE);  // guest -> host
+               BattleMechanic mechanic = BMECH_NONE,
+               MegaFormKind megaForm = MEGA_FORM_NONE);  // guest -> host
   void sendWait();                    // request reciprocal proof of life while answering
   void sendResult(const uint8_t *blob, uint8_t len);   // host -> guest
   void sendEnd(bool hostWon);

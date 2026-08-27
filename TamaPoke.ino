@@ -1028,6 +1028,8 @@ uint8_t btlTargetPage = 0;
 ItemKey btlPendingItem = ITEM_KEY_NONE;
 BattleMechanic btlPendingMechanic = BMECH_NONE;
 BattleMechanic btlWildMechanic = BMECH_NONE;
+MegaFormKind btlPendingMegaForm = MEGA_FORM_NONE;
+MegaFormKind btlWildMegaForm = MEGA_FORM_NONE;
 BattleSideMechanics btlYourMechanics, btlFoeMechanics;
 #define BTL_LUNGE_MS 260
 #define BTL_HIT_MS 420
@@ -4267,13 +4269,16 @@ static void drawBattleFieldHud() {
 // Render may call this every frame; the compact key makes the steady path free.
 static void btlSyncSprite(uint8_t who, const Combatant &c) {
   bool mega = c.activeMechanic == BMECH_MEGA;
-  int32_t key = ((int32_t)c.dex << 4) | (c.shiny ? 8 : 0) |
-                (mega ? 4 : 0) | ((uint8_t)c.gender & 3);
+  uint8_t formKey = mega && c.megaForm != MEGA_FORM_NONE
+      ? (uint8_t)(c.megaForm + 1) : 0;
+  int32_t key = ((int32_t)c.dex << 8) | ((int32_t)formKey << 3) |
+                (c.shiny ? 4 : 0) | ((uint8_t)c.gender & 3);
   if (btlPmdKey[who] == key && btlPmd[who].loaded) return;
   btlPmd[who].unload();
   btlPmdKey[who] = 0;
   if (c.dex < 1 || c.dex > dexCount()) return;
-  if (btlPmd[who].load(c.dex, c.shiny, c.gender, mega)) btlPmdKey[who] = key;
+  if (btlPmd[who].load(c.dex, c.shiny, c.gender, mega, c.megaForm))
+    btlPmdKey[who] = key;
 }
 
 static void btlFreeSprites() {
@@ -4374,10 +4379,19 @@ static BattleMechanic btlMechanicFromItem(const ItemEntry &item) {
   return (BattleMechanic)item.flags;
 }
 
-static const ItemEntry *btlMechanicItem(BattleMechanic mechanic) {
+static MegaFormKind btlMegaFormFromItem(const ItemEntry &item) {
+  return btlMechanicFromItem(item) == BMECH_MEGA &&
+         item.param >= MEGA_FORM_STANDARD && item.param <= MEGA_FORM_Z
+      ? (MegaFormKind)item.param : MEGA_FORM_NONE;
+}
+
+static const ItemEntry *btlMechanicItem(BattleMechanic mechanic,
+                                        MegaFormKind megaForm = MEGA_FORM_NONE) {
   for (uint16_t i = 0; i < itemCount(); i++) {
     const ItemEntry *item = itemAt(i);
-    if (item && btlMechanicFromItem(*item) == mechanic) return item;
+    if (item && btlMechanicFromItem(*item) == mechanic &&
+        (mechanic != BMECH_MEGA || megaForm == MEGA_FORM_NONE ||
+         btlMegaFormFromItem(*item) == megaForm)) return item;
   }
   return nullptr;
 }
@@ -4388,6 +4402,8 @@ static void btlResetMechanics() {
   btlPendingMechanic = BMECH_NONE;
   btlWildMechanic = BMECH_NONE;
   btlMyMechanic = BMECH_NONE;
+  btlPendingMegaForm = MEGA_FORM_NONE;
+  btlWildMegaForm = MEGA_FORM_NONE;
   btlField = BattleField();
 }
 
@@ -4648,6 +4664,8 @@ void startWildBattle(uint8_t region, bool hard) {
   foe.raisedMinutes = 0;
   foe.relearnFromLevel();
   btlWildMon = foe.toPartyMon();
+  btlWildMon.setGigantamaxFactor(
+      wildGigantamaxFactorForRoll(dex, (uint8_t)random(100)));
   combatantFromParty(btlFoe, btlWildMon);
   btlResetMechanics();
   btlField = wildBattleField(dexEntry(btlFoe.dex).biome, (uint8_t)random(100));
@@ -4656,7 +4674,12 @@ void startWildBattle(uint8_t region, bool hard) {
   btlWildMechanic = wildBattleMechanic(
       (uint8_t)random(100), (uint8_t)random(252), hard,
       battleMegaEligible(btlFoe.dex),
-      battleMechanicAvailable(btlFoeMechanics, btlFoe, BMECH_Z_MOVE));
+      battleMechanicAvailable(btlFoeMechanics, btlFoe, BMECH_Z_MOVE),
+      battleDynamaxEligible(btlFoe.dex));
+  if (btlWildMechanic == BMECH_MEGA) {
+    const MegaFormEntry *form = megaFormFor(btlFoe.dex);
+    btlWildMegaForm = form ? form->form : MEGA_FORM_NONE;
+  }
   btlRegion = region;
   btlTrainer = -1;
   btlHard = hard;
@@ -4753,6 +4776,10 @@ static void btlApplyResult() {
   btlFoe.type1 = r.hostType1; btlFoe.type2 = r.hostType2;
   btlYou.activeMechanic = r.guestActive;
   btlFoe.activeMechanic = r.hostActive;
+  btlYou.megaForm = r.guestMegaForm;
+  btlFoe.megaForm = r.hostMegaForm;
+  btlYou.gigantamax = r.guestGigantamax != 0;
+  btlFoe.gigantamax = r.hostGigantamax != 0;
   btlYou.dynamaxTurns = r.guestDynamaxTurns;
   btlFoe.dynamaxTurns = r.hostDynamaxTurns;
   btlYou.normalMaxHp = btlYou.activeMechanic == BMECH_DYNAMAX
@@ -4765,10 +4792,16 @@ static void btlApplyResult() {
   }
   btlYourMechanics.usedMask = r.guestUsedMask;
   btlFoeMechanics.usedMask = r.hostUsedMask;
-  for (uint8_t i = 0; i < btlSquadN && i < TRAINER_TEAM_MAX; i++)
-    (i == btlSquadAt ? btlYou : btlSquad[i]).usedMechanic = r.guestMemberMechanic[i];
-  for (uint8_t i = 0; i < btlFoeSquadN && i < TRAINER_TEAM_MAX; i++)
-    (i == btlFoeAt ? btlFoe : btlFoeSquad[i]).usedMechanic = r.hostMemberMechanic[i];
+  for (uint8_t i = 0; i < btlSquadN && i < TRAINER_TEAM_MAX; i++) {
+    Combatant &member = i == btlSquadAt ? btlYou : btlSquad[i];
+    member.usedMechanic = r.guestMemberMechanic[i];
+    if (i != btlSquadAt) member.megaForm = r.guestMemberMegaForm[i];
+  }
+  for (uint8_t i = 0; i < btlFoeSquadN && i < TRAINER_TEAM_MAX; i++) {
+    Combatant &member = i == btlFoeAt ? btlFoe : btlFoeSquad[i];
+    member.usedMechanic = r.hostMemberMechanic[i];
+    if (i != btlFoeAt) member.megaForm = r.hostMemberMegaForm[i];
+  }
   if (btlYou.fainted()) btlSetPersistentDead(btlSquadAt, true);
 
   btlMsgCount = 0;
@@ -4871,6 +4904,9 @@ static void btlShipResult(const BattleMove &yourMove, const BattleMove &theirMov
   r.hostType1 = btlYou.type1; r.hostType2 = btlYou.type2;
   r.guestType1 = btlFoe.type1; r.guestType2 = btlFoe.type2;
   r.hostActive = btlYou.activeMechanic; r.guestActive = btlFoe.activeMechanic;
+  r.hostMegaForm = btlYou.megaForm; r.guestMegaForm = btlFoe.megaForm;
+  r.hostGigantamax = btlYou.gigantamax ? 1 : 0;
+  r.guestGigantamax = btlFoe.gigantamax ? 1 : 0;
   r.hostMoveMechanic = yourMove.mechanic; r.guestMoveMechanic = theirMove.mechanic;
   r.hostDynamaxTurns = btlYou.dynamaxTurns;
   r.guestDynamaxTurns = btlFoe.dynamaxTurns;
@@ -4888,10 +4924,16 @@ static void btlShipResult(const BattleMove &yourMove, const BattleMove &theirMov
     r.hostBase[i] = btlYou.base[i];
     r.guestBase[i] = btlFoe.base[i];
   }
-  for (uint8_t i = 0; i < btlSquadN && i < TRAINER_TEAM_MAX; i++)
-    r.hostMemberMechanic[i] = (i == btlSquadAt ? btlYou : btlSquad[i]).usedMechanic;
-  for (uint8_t i = 0; i < btlFoeSquadN && i < TRAINER_TEAM_MAX; i++)
-    r.guestMemberMechanic[i] = (i == btlFoeAt ? btlFoe : btlFoeSquad[i]).usedMechanic;
+  for (uint8_t i = 0; i < btlSquadN && i < TRAINER_TEAM_MAX; i++) {
+    const Combatant &member = i == btlSquadAt ? btlYou : btlSquad[i];
+    r.hostMemberMechanic[i] = member.usedMechanic;
+    r.hostMemberMegaForm[i] = member.megaForm;
+  }
+  for (uint8_t i = 0; i < btlFoeSquadN && i < TRAINER_TEAM_MAX; i++) {
+    const Combatant &member = i == btlFoeAt ? btlFoe : btlFoeSquad[i];
+    r.guestMemberMechanic[i] = member.usedMechanic;
+    r.guestMemberMegaForm[i] = member.megaForm;
+  }
   if (btlYou.fainted() || btlFoe.fainted()) r.flags |= 0x04;
   lan.sendResult((const uint8_t *)&r, (uint8_t)sizeof(r));
 }
@@ -4966,7 +5008,7 @@ void btlFinish(bool won) {
   if (btlWon && btlWild) {
     btlGrantWildRewards();
     ItemKey mechanicDrop = inventory.grantMechanicReward(
-        (ItemMechanicKind)btlWildMechanic);
+        (ItemMechanicKind)btlWildMechanic, btlWildMegaForm);
     btlRememberRewardItem(mechanicDrop);
     btlWinUntil = millis() + 60000;
     return;
@@ -5047,8 +5089,10 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
       foeMove = btlFoe.moves[LINK_ACT_SLOT(act) % MOVE_SLOTS];
       foePercent = lan.pendingPercent;
       BattleMechanic requested = lan.pendingMechanic;
+      MegaFormKind requestedForm = lan.pendingMegaForm;
       uint16_t oldMaxHp = btlFoe.maxHp;
-      if (battleActivateMechanic(btlFoeMechanics, btlFoe, requested, foeMove)) {
+      if (battleActivateMechanic(btlFoeMechanics, btlFoe, requested, foeMove,
+                                 requestedForm)) {
         foeMechanic = requested;
         btlScaleShownHp(1, oldMaxHp, btlFoe.maxHp);
       }
@@ -5056,18 +5100,21 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
     lan.pendingAct = 0;
     lan.pendingPercent = 0;
     lan.pendingMechanic = BMECH_NONE;
+    lan.pendingMegaForm = MEGA_FORM_NONE;
   } else {
     foeMove = aiChooseMove(btlFoe, btlYou, btlField, btlHard);
   }
   (void)foeSwitched;
 
   if (btlWild && btlWildMechanic != BMECH_NONE &&
-      battleMechanicAvailable(btlFoeMechanics, btlFoe, btlWildMechanic, foeMove)) {
+      battleMechanicAvailable(btlFoeMechanics, btlFoe, btlWildMechanic, foeMove,
+                              btlWildMegaForm)) {
     foeMechanic = btlWildMechanic;
     uint16_t oldMaxHp = btlFoe.maxHp;
-    battleActivateMechanic(btlFoeMechanics, btlFoe, foeMechanic, foeMove);
+    battleActivateMechanic(btlFoeMechanics, btlFoe, foeMechanic, foeMove,
+                           btlWildMegaForm);
     btlScaleShownHp(1, oldMaxHp, btlFoe.maxHp);
-    const ItemEntry *item = btlMechanicItem(foeMechanic);
+    const ItemEntry *item = btlMechanicItem(foeMechanic, btlWildMegaForm);
     if (item) btlSay("%s: %s", displayCombatantName(btlFoe), itemName(item->key));
   }
 
@@ -5205,7 +5252,8 @@ static void btlSide(int tx, int ty, int sx, int sy, const Combatant &c, uint8_t 
   }
   if (c.activeMechanic != BMECH_NONE) {
     if (c.activeMechanic == BMECH_DYNAMAX)
-      snprintf(mechanic, sizeof(mechanic), "MAX %u", c.dynamaxTurns);
+      snprintf(mechanic, sizeof(mechanic), "%s %u",
+               c.gigantamax ? "G-MAX" : "MAX", c.dynamaxTurns);
     else
       snprintf(mechanic, sizeof(mechanic), "MEGA");
     meta[metaCount] = mechanic;
@@ -5255,6 +5303,14 @@ static void btlSide(int tx, int ty, int sx, int sy, const Combatant &c, uint8_t 
     act = PMD_HURT; loop = false; t = now - (btlHitUntil[who] - BTL_HIT_MS);
   } else if (now < btlLungeUntil[who]) {
     act = PMD_ATTACK; loop = false; t = now - (btlLungeUntil[who] - BTL_LUNGE_MS);
+  }
+  if (btlPmd[who].loaded) {
+    uint8_t facingAct = pmdFacingAction(act, who == 0);
+    if (btlPmd[who].has(facingAct)) act = facingAct;
+    else if (!btlPmd[who].has(act)) {
+      act = pmdFacingAction(PMD_IDLE, who == 0);
+      if (!btlPmd[who].has(act)) act = PMD_IDLE;
+    }
   }
   if (angryLoop && act == PMD_IDLE)
     ox += ((int)(now / 90) % 3 - 1) * 3;
@@ -5460,7 +5516,8 @@ static const InventoryStack *btlWarehouseAt(uint8_t index) {
 static bool btlItemUsable(const ItemEntry &item) {
   BattleMechanic mechanic = btlMechanicFromItem(item);
   if (mechanic != BMECH_NONE)
-    return battleMechanicAvailable(btlYourMechanics, btlYou, mechanic);
+    return battleMechanicAvailable(btlYourMechanics, btlYou, mechanic,
+                                   MOVE_NONE, btlMegaFormFromItem(item));
   if (item.effect == ITEM_EFFECT_CATCH)
     return btlWild && !btlFoe.fainted();
   if (item.effect == ITEM_EFFECT_HEAL_HP || item.effect == ITEM_EFFECT_CURE_STATUS ||
@@ -5839,7 +5896,7 @@ void renderBattle() {
   } else {
     drawBtlBack();
     if (btlPendingMechanic != BMECH_NONE) {
-      const ItemEntry *armed = btlMechanicItem(btlPendingMechanic);
+      const ItemEntry *armed = itemByKey(btlPendingItem);
       const char *label = armed ? itemName(armed->key) : "";
       gfx->setTextColor(UI_BAR_WARN);
       gfx->setTextSize(1);
@@ -5971,13 +6028,18 @@ void commitBattleMove(uint8_t moveSlot, uint8_t percent) {
   if (!battleOpen || btlOver || moveSlot >= MOVE_SLOTS || !btlYou.moves[moveSlot]) return;
   MoveId move = btlYou.moves[moveSlot];
   BattleMechanic mechanic = btlPendingMechanic;
+  MegaFormKind megaForm = btlPendingMegaForm;
   btlPendingMechanic = BMECH_NONE;
+  btlPendingMegaForm = MEGA_FORM_NONE;
+  ItemKey armedKey = btlPendingItem;
+  btlPendingItem = ITEM_KEY_NONE;
   if (mechanic != BMECH_NONE) {
-    const ItemEntry *item = btlMechanicItem(mechanic);
+    const ItemEntry *item = itemByKey(armedKey);
     uint16_t oldMaxHp = btlYou.maxHp;
     Combatant activated = btlYou;
     BattleSideMechanics activatedSide = btlYourMechanics;
-    if (!item || !battleActivateMechanic(activatedSide, activated, mechanic, move) ||
+    if (!item || !battleActivateMechanic(activatedSide, activated, mechanic, move,
+                                         megaForm) ||
         !inventory.consume(item->key)) {
       sfxPlay(SFX_DENY);
       return;
@@ -5989,7 +6051,7 @@ void commitBattleMove(uint8_t moveSlot, uint8_t percent) {
   }
   uint8_t act = LINK_ACT_MOVE(moveSlot);
   if (btlLink && !btlLinkHost) {
-    lan.sendAct(act, percent, mechanic);  // the guest asks; the host decides
+    lan.sendAct(act, percent, mechanic, megaForm);  // the guest asks; the host decides
     return;
   }
   if (btlLink) {
@@ -6025,6 +6087,8 @@ static bool btlBackTap(int16_t x, int16_t y) {
       y < BTL_BACK_Y || y > BTL_BACK_Y + BTL_BACK_H) return false;
   btlMenu = 0;
   btlPendingMechanic = BMECH_NONE;
+  btlPendingMegaForm = MEGA_FORM_NONE;
+  btlPendingItem = ITEM_KEY_NONE;
   sfxPlay(SFX_TAP);
   return true;
 }
@@ -6196,7 +6260,8 @@ static bool btlDispatchTap(int16_t x, int16_t y) {
       BattleMechanic mechanic = btlMechanicFromItem(*item);
       if (mechanic != BMECH_NONE) {
         btlPendingMechanic = mechanic;
-        btlPendingItem = ITEM_KEY_NONE;
+        btlPendingMegaForm = btlMegaFormFromItem(*item);
+        btlPendingItem = item->key;
         btlMenu = 1;
         sfxPlay(SFX_TAP);
         return true;
@@ -6278,6 +6343,8 @@ static bool btlDispatchTap(int16_t x, int16_t y) {
   }
   btlMenu = 0;        // a tap off the grid goes back to FIGHT/POKEMON
   btlPendingMechanic = BMECH_NONE;
+  btlPendingMegaForm = MEGA_FORM_NONE;
+  btlPendingItem = ITEM_KEY_NONE;
   return true;
 }
 

@@ -543,6 +543,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   }
   else if (!strcmp(screen, "btldynamax")) {
     pet.dbgHatchAs(6, false);
+    pet.gigantamaxFactor = true;
     pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
     pet.relearnFromLevel();
     startBattle(25, 42);
@@ -556,7 +557,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.relearnFromLevel();
     startBattle(25, 42);
     battleActivateMechanic(btlYourMechanics, btlYou, BMECH_MEGA,
-                           btlYou.moves[0]);
+                           btlYou.moves[0], MEGA_FORM_X);
     btlHpShown[0] = btlYou.hp;
   }
   else if (!strcmp(screen, "btlrevive")) {

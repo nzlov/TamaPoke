@@ -15,12 +15,13 @@ regional `.tregion` correspondiente.
 
 | Formato | Script | Fuente | Qué es |
 |---|---|---|---|
-| **TPK2** `pNNN.bin` / `psNNN.bin` | `pack_pmd.py` | [PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab) (CC BY-NC) | Animaciones multi-acción (idle, walk, sleep, eat, hurt, attack, gestos) — usadas en **todo**: pantalla principal y **Pokédex / galería** |
+| **TPK2** `pNNN.bin` / `psNNN.bin` / `pmNNN-form[-shiny].bin` | `pack_pmd.py` | [PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab) (CC BY-NC) | Animaciones multi-acción, incluidas las vistas traseras de batalla cuando existen — usadas en **todo**: pantalla principal, combate y **Pokédex / galería** |
 | **TPTH** `thumbs.bin` | `make_thumbs.py` | (deriva de los TPK2) | Miniaturas 40×40 de la galería |
 | **TIC1** `*.ticon` | `fetch_item_icons.py` | [PokeAPI/sprites](https://github.com/PokeAPI/sprites/tree/master/sprites/items) | Iconos de objetos 24×24/30×30; caché local opcional incluida en `moves-core.tmove` |
 
 ```bash
-python3 tools/pack_pmd.py     # el catalogo actual + shiny -> tools/sdcard/mons/p[s]NNN.bin
+python3 tools/pack_pmd.py --report base-sprite-coverage.json
+python3 tools/pack_pmd.py --mega --mega-report mega-sprite-coverage.json
 python3 tools/make_thumbs.py  # -> tools/sdcard/mons/thumbs.bin
 python3 tools/fetch_item_icons.py # -> tools/item_icon_cache/*.ticon
 python3 tools/gen_data_packs.py # lee las entradas directamente y genera web/packs/*.tregion

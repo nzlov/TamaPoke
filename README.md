@@ -434,6 +434,17 @@ a different creature has its own claim map.
 Wild opponents have a **5% chance on normal difficulty and 20% on hard** to use
 one available special mechanic: a Z-Move, Dynamax, or Mega Evolution.
 
+- A Z-Crystal works for any species that has a damaging move; the move's type
+  determines the generic Z-Move.
+- Dynamax works for every species except Zacian, Zamazenta and Eternatus. An
+  eligible Gigantamax species uses its Gigantamax state only when that individual
+  has the persistent Gigantamax Factor. Eligible wild individuals have an
+  independent **5%** chance to carry it, and Max Soup can grant it later.
+- Mega Evolution is limited to species with an official Mega form. The standard,
+  X, Y and Z stones are distinct and select that exact branch. The untransformed
+  Pokemon has one shared normal/shiny appearance; the branch appears only after
+  Mega Evolution.
+
 ### Battle weather and terrain
 
 Trainer and LAN battles start with a clear field. A wild battle instead rolls
@@ -601,11 +612,17 @@ catalogue layout.
 All sprites come from **[PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)**
 (CC BY-NC). `gen_data_packs.py` reads the generated per-species TPK2/TPTH files
 directly and combines them with UI, species, move, description, trainer, battle
-and badge data. No regional intermediate bundle is created.
+and badge data. No regional intermediate bundle is created. Newly packed sprites
+also carry rear Idle/Hurt/Attack actions, so the player's battle Pokemon faces
+away from the player. A missing rear action falls back to the matching front
+action. Missing Mega, shiny Mega, or Gigantamax community art falls back to that
+individual's available base normal/shiny sprite and remains listed in a coverage
+report; the generator never invents a form image.
 
 ```bash
-python3 tools/pack_pmd.py       # fetch + pack the current catalogue + color inputs
-python3 tools/pack_pmd.py --mega kanto  # optional Mega-form PMD inputs -> pmNNN.bin
+python3 tools/pack_pmd.py --report base-sprite-coverage.json
+python3 tools/pack_pmd.py --mega --mega-report mega-sprite-coverage.json
+# Mega outputs are pmNNN-{standard,x,y,z}[-shiny].bin
 python3 tools/make_thumbs.py    # Pokédex thumbnails (from the PMD sprites) -> thumbs.bin
 python3 tools/fetch_species_descriptions.py # append descriptions for newly added dex numbers
 python3 tools/gen_data_packs.py # web/packs/*.tui, *.tmove, *.tregion, *.tquiz + index.json
