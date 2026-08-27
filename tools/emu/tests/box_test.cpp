@@ -4,6 +4,7 @@
 #include "Preferences.h"
 #include "pet.h"
 #include "party.h"
+#include "content.h"
 #include "dex.h"
 #include "save.h"
 #include <cstdio>
@@ -229,8 +230,9 @@ int main(){
        "reviving clears the persistent death state");
   }
 
-  // Roster state v3 used the same byte for retired evolution debt. Gender now
-  // reuses that byte, so the per-creature state version must drive migration.
+  // Roster state v3 used the same byte for retired evolution debt. If that
+  // creature's pack is absent, gender migration must be deferred rather than
+  // guessed from the missing-species fallback.
   {
     Preferences seed; seed.begin("tamapoke", false); seed.clear();
     PartyMon oldParty[PARTY_SLOTS];
@@ -248,14 +250,51 @@ int main(){
     seed.end();
     Party migrated; migrated.begin();
     PetGender first = migrated.slots[3].gender;
-    ck(genderValid(first),
-       "the pre-gender roster gains a valid stable gender");
-    ck(migrated.box[6].gender == GENDER_NONE,
-       "the pre-gender Box keeps genderless species neutral");
+    ck(first == GENDER_UNKNOWN,
+       "the pre-gender roster defers gender while its pack is absent");
+    ck(migrated.box[6].gender == GENDER_UNKNOWN,
+       "the pre-gender Box also avoids guessing from missing content");
     migrated.save(); migrated.boxSave();
     Party again; again.begin();
     ck(again.slots[3].gender == first && again.slots[3].stateVersion == 4,
-       "the migrated roster gender persists with its new state version");
+       "the deferred gender remains eligible for migration after reload");
+  }
+
+  // A regional pack can be temporarily absent while its creature records are
+  // still valid saves. Loading or migrating that roster must never turn those
+  // records into empty slots merely because the current catalogue cannot
+  // resolve their names and sprites yet.
+  {
+    Preferences seed; seed.begin("tamapoke", false); seed.clear();
+    SpeciesId unavailable = (SpeciesId)(dexCount() + 1);
+    ck(unavailable <= CONTENT_MAX_SPECIES && !dexValid(unavailable),
+       "the fixture provides an unloaded but structurally valid species id");
+    PartyMon oldParty[PARTY_SLOTS];
+    PartyMon oldBoxPage[BOX_PAGE_SLOTS];
+    oldParty[0] = mk(unavailable, 52);
+    oldParty[0].nature = NATURE_HARDY;
+    oldParty[0].gender = GENDER_MALE;
+    oldParty[0].stateVersion = 4;
+    oldBoxPage[0] = mk((SpeciesId)(unavailable + 1), 47);
+    oldBoxPage[0].nature = NATURE_BOLD;
+    oldBoxPage[0].gender = GENDER_FEMALE;
+    oldBoxPage[0].stateVersion = 4;
+    putPreDeathMons(seed, "team1", oldParty);
+    putPreDeathMons(seed, "box10", oldBoxPage);
+    seed.putUShort("rostv", 1);
+    seed.putUChar("active", 0);
+    seed.end();
+
+    Party migrated; migrated.begin();
+    ck(migrated.slots[0].dex == unavailable &&
+       migrated.box[0].dex == unavailable + 1,
+       "missing regional content does not erase party or Box records");
+    ck(migrated.hasUnavailableSpecies(),
+       "the roster reports that its missing regional pack is required");
+    Party reloaded; reloaded.begin();
+    ck(reloaded.slots[0].dex == unavailable &&
+       reloaded.box[0].dex == unavailable + 1,
+       "a roster migration does not persist those temporary absences as empty slots");
   }
 
   printf("%s\n", bad?"FAILURES":"all good");

@@ -142,7 +142,9 @@ void Party::sanitize(PartyMon &m, bool boxed) {
   if (m.empty()) { m = PartyMon(); return; }
   if (m.dex < -1) { m = PartyMon(); return; }
   if (boxed && m.isEgg()) { m = PartyMon(); return; }
-  if (m.dex > 0 && m.dex > dexCount()) { m = PartyMon(); return; }
+  // A save remains valid when its regional pack is temporarily absent. The
+  // loaded catalogue is availability, not the persistence boundary.
+  if (m.dex > CONTENT_MAX_SPECIES) { m = PartyMon(); return; }
   for (MoveId &move : m.moves) if (!moveValid(move)) move = MOVE_NONE;
   if (m.learnQCount > sizeof(m.learnQueue) / sizeof(m.learnQueue[0]))
     m.learnQCount = sizeof(m.learnQueue) / sizeof(m.learnQueue[0]);
@@ -182,9 +184,12 @@ void Party::sanitize(PartyMon &m, bool boxed) {
   // rare creature, then mirror the combined state for backward compatibility.
   m.shiny = (m.shiny || m.sparkle) ? 1 : 0;
   m.sparkle = m.shiny;
-  if (m.dex > 0 && (version < 4 || !genderValid(m.gender)))
-    m.gender = genderForLegacy(m.dex, dexEntry(m.dex).femaleRate,
-                               m.ivAtk, m.ivDef, m.ivSpe, m.ivHp);
+  if (m.dex > 0 && (version < 4 || !genderValid(m.gender))) {
+    m.gender = dexValid(m.dex)
+        ? genderForLegacy(m.dex, dexEntry(m.dex).femaleRate,
+                          m.ivAtk, m.ivDef, m.ivSpe, m.ivHp)
+        : GENDER_UNKNOWN;
+  }
   if (m.dex <= 0) m.gender = GENDER_UNKNOWN;
   m.stateVersion = 4;
   auto sanitizeTraining = [](uint8_t &training, uint8_t &floor, uint8_t iv) {
@@ -330,6 +335,14 @@ uint8_t Party::boxCount() const {
   for (auto &s : box)
     if (!s.empty()) n++;
   return n;
+}
+
+bool Party::hasUnavailableSpecies() const {
+  for (const auto &m : slots)
+    if (m.dex > 0 && !dexValid(m.dex)) return true;
+  for (const auto &m : box)
+    if (m.dex > 0 && !dexValid(m.dex)) return true;
+  return false;
 }
 
 int Party::boxFirstFree() const {

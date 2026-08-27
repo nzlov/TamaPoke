@@ -15,6 +15,7 @@ from pack_format import pack  # noqa: E402
 
 output = Path(sys.argv[1])
 output.mkdir(parents=True, exist_ok=True)
+region_hi = int(sys.argv[2]) if len(sys.argv) > 2 else 1025
 
 # Use the real move-pack builder so stored move ids remain valid in migration
 # tests without requiring the release packs to be present in the worktree.
@@ -42,7 +43,7 @@ spec = b"".join([
 ])
 region = struct.pack(
     "<B16sHHB16H",
-    0, b"FIXTURE".ljust(16, b"\0"), 1, 1025, 1,
+    0, b"FIXTURE".ljust(16, b"\0"), 1, region_hi, 1,
     1, *([0] * 15),
 )
 
