@@ -8197,13 +8197,8 @@ uint8_t pmdFrameAt(const PmdAct &a, uint32_t t, bool loop) {
 void drawPmdActM(PmdMon &m, uint8_t actId, int cx, int groundY, uint32_t t,
                  bool loop, bool sil, uint8_t maxS, uint8_t scaleBonus) {
   const PmdAct &a = m.acts[actId];
-  if (!a.frames) return;
-  uint8_t sBase = m.acts[PMD_IDLE].h ? 170 / m.acts[PMD_IDLE].h : 5;
-  if (sBase < 2) sBase = 2;
-  sBase += scaleBonus;
-  if (sBase > maxS) sBase = maxS;
-  uint8_t s = sBase;
-  while (s > 2 && a.h * s > 250) s--;  // acciones con frame grande (ataque)
+  uint8_t s = pmdDisplayScale(m, a, maxS, scaleBonus);
+  if (!s) return;
   uint8_t fi = pmdFrameAt(a, t, loop);
   const uint8_t *fr = a.data + (uint32_t)fi * a.w * a.h;
   // anclar por los pies (a.base), no por el alto del lienzo: asi las acciones

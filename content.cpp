@@ -51,6 +51,7 @@ struct PackRef {
 
 struct SpriteRef {
   uint8_t pack = 0xFF;
+  uint8_t displayScale = 0;
   uint16_t localIndex = 0;
   uint32_t normalAt = 0, normalSize = 0;
   uint32_t shinyAt = 0, shinySize = 0;
@@ -307,9 +308,7 @@ static ContentPackValidation validatePackHeader(const char *path, Reader &reader
       headerSize != COMMON_SIZE + sectionCount * SECTION_SIZE || headerSize > reader.size)
     return CONTENT_PACK_HEADER_INVALID;
   uint16_t abi = rd16(common + 4);
-  if (abi != CONTENT_PACK_ABI &&
-      !(kind == CONTENT_PACK_REGION && abi == CONTENT_PACK_REGION_COMPAT_ABI))
-    return CONTENT_PACK_ABI_MISMATCH;
+  if (abi != CONTENT_PACK_ABI) return CONTENT_PACK_ABI_MISMATCH;
   if (rd32(common + 8) != reader.size) return CONTENT_PACK_SIZE_MISMATCH;
   return CONTENT_PACK_VALID;
 }
@@ -727,6 +726,7 @@ static bool loadMovePack(uint8_t packIndex) {
     form.type1 = row[2]; form.type2 = row[3];
     form.bAtk = row[4]; form.bDef = row[5]; form.bSpA = row[6];
     form.bSpD = row[7]; form.bSpe = row[8];
+    form.spriteScale = 0;
     form.spriteAt = form.spriteSize = 0;
     if (!form.species || form.species > CONTENT_MAX_SPECIES ||
         (i && form.species <= previousSpecies) || form.type1 >= TYPE_COUNT ||
@@ -753,7 +753,7 @@ static bool loadMovePack(uint8_t packIndex) {
   if (megaSpriteIndex) {
     uint32_t indexSize = 0, indexCount = 0;
     uint8_t *index = readSection(pack, "MSPI", &indexSize, &indexCount);
-    if (!index || indexSize != indexCount * 10u || indexCount > megaRecords) {
+    if (!index || indexSize != indexCount * 11u || indexCount > megaRecords) {
       free(index); free(megaForms); free(itemNames); free(itemLocalizedNames);
       free(itemLocales); free(items); free(locales); free(localizedNames);
       free(localizedTypeNames); free(typeNames); free(offsets); free(entries);
@@ -761,13 +761,15 @@ static bool loadMovePack(uint8_t packIndex) {
     }
     SpeciesId previousSprite = SPECIES_NONE;
     for (uint32_t i = 0; i < indexCount; i++) {
-      const uint8_t *row = index + i * 10u;
+      const uint8_t *row = index + i * 11u;
       SpeciesId species = rd16(row);
       uint32_t relative = rd32(row + 2), length = rd32(row + 6);
+      uint8_t displayScale = row[10];
       MegaFormEntry *form = nullptr;
       for (uint32_t j = 0; j < megaRecords; j++)
         if (megaForms[j].species == species) { form = &megaForms[j]; break; }
-      if (!form || !length || (i && species <= previousSprite) ||
+      if (!form || !length || displayScale < 2 || displayScale > 6 ||
+          (i && species <= previousSprite) ||
           relative > megaSpriteBlob->size || length > megaSpriteBlob->size - relative) {
         free(index); free(megaForms); free(itemNames); free(itemLocalizedNames);
         free(itemLocales); free(items); free(locales); free(localizedNames);
@@ -776,6 +778,7 @@ static bool loadMovePack(uint8_t packIndex) {
       }
       form->spriteAt = megaSpriteBlob->offset + relative;
       form->spriteSize = length;
+      form->spriteScale = displayScale;
       previousSprite = species;
     }
     free(index);
@@ -1029,11 +1032,11 @@ static bool loadRegionPack(uint8_t packIndex) {
   const SectionRef *spriteBlob = findSection(pack, "SBLB");
   uint32_t spriteSize = 0, spriteCount = 0;
   uint8_t *spriteIndex = readSection(pack, "SPRI", &spriteSize, &spriteCount);
-  if (!spriteBlob || !spriteIndex || spriteCount != specCount || spriteSize != spriteCount * 18u) {
+  if (!spriteBlob || !spriteIndex || spriteCount != specCount || spriteSize != spriteCount * 19u) {
     rollback(); free(touched); free(spriteIndex); free(names); return false;
   }
   for (uint32_t i = 0; i < spriteCount; i++) {
-    const uint8_t *row = spriteIndex + i * 18;
+    const uint8_t *row = spriteIndex + i * 19;
     SpeciesId id = rd16(row);
     if (!dexValid(id)) {
       rollback(); free(touched); free(spriteIndex); free(names); return false;
@@ -1041,8 +1044,11 @@ static bool loadRegionPack(uint8_t packIndex) {
     SpriteRef &sprite = gSprites[id];
     sprite.normalAt = spriteBlob->offset + rd32(row + 2); sprite.normalSize = rd32(row + 6);
     sprite.shinyAt = spriteBlob->offset + rd32(row + 10); sprite.shinySize = rd32(row + 14);
+    sprite.displayScale = row[18];
     uint32_t normalOffset = rd32(row + 2), shinyOffset = rd32(row + 10);
-    if (normalOffset > spriteBlob->size || sprite.normalSize > spriteBlob->size - normalOffset ||
+    if ((sprite.normalSize && (sprite.displayScale < 2 || sprite.displayScale > 6)) ||
+        (!sprite.normalSize && sprite.displayScale) ||
+        normalOffset > spriteBlob->size || sprite.normalSize > spriteBlob->size - normalOffset ||
         shinyOffset > spriteBlob->size || sprite.shinySize > spriteBlob->size - shinyOffset) {
       rollback(); free(touched); free(spriteIndex); free(names); return false;
     }
@@ -1606,17 +1612,19 @@ bool spriteAvailable(SpeciesId species) {
          gSprites[species].normalSize != 0;
 }
 bool contentLoadSprite(SpeciesId species, bool shiny, bool mega,
-                       uint8_t **out, uint32_t *size) {
-  if (!out || !size || !spriteAvailable(species)) return false;
+                       uint8_t **out, uint32_t *size, uint8_t *displayScale) {
+  if (!out || !size || !displayScale) return false;
+  *out = nullptr; *size = 0; *displayScale = 0;
+  if (!spriteAvailable(species)) return false;
   if (mega) {
     const MegaFormEntry *form = megaFormFor(species);
-    if (form && form->spriteSize && gMegaSpritePack < gPackCount) {
+    if (form && form->spriteSize && form->spriteScale && gMegaSpritePack < gPackCount) {
       uint8_t *data = (uint8_t *)contentAlloc(form->spriteSize);
       if (!data || !readRange(gPacks[gMegaSpritePack], form->spriteAt,
                               data, form->spriteSize)) {
         free(data); return false;
       }
-      *out = data; *size = form->spriteSize;
+      *out = data; *size = form->spriteSize; *displayScale = form->spriteScale;
       return true;
     }
   }
@@ -1627,7 +1635,7 @@ bool contentLoadSprite(SpeciesId species, bool shiny, bool mega,
   uint8_t *data = (uint8_t *)contentAlloc(length);
   const PackRef &pack = gPacks[gRegionPacks[sprite.pack].packRef];
   if (!data || !readRange(pack, offset, data, length)) { free(data); return false; }
-  *out = data; *size = length;
+  *out = data; *size = length; *displayScale = sprite.displayScale;
   return true;
 }
 bool contentLoadThumbs(uint8_t **out, uint32_t *size) {

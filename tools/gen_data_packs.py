@@ -27,6 +27,7 @@ KIND_MOVE = 3
 
 sys.path.insert(0, str(HERE))
 from pack_format import PACK_ABI, PACK_REVISION, pack  # noqa: E402
+from pmd_layout import pmd_display_scale, pmd_pair_display_scale  # noqa: E402
 from quiz_pack import build_quiz_pack  # noqa: E402
 from dex_data import (  # noqa: E402
     DEX, TYPE_ACCENTS, RARE, LEGENDARY, REGIONS, EVOLUTION_BRANCHES,
@@ -345,7 +346,7 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path) -> None:
     type_ids = {name: index for index, name in enumerate(TYPE_ORDER)}
     spec_record = struct.Struct("<HBBH10BI")
     evolution_record = struct.Struct("<HH")
-    sprite_record = struct.Struct("<HIIII")
+    sprite_record = struct.Struct("<HIIIIB")
     trainer_record = struct.Struct("<BBBBII" + "HB" * 6)
     badge_record = struct.Struct("<BBBBII")
     for region_id, (region_name, lo, hi, starters) in enumerate(REGIONS):
@@ -439,6 +440,7 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path) -> None:
             sprites.extend(shiny)
             sprite_index.extend(sprite_record.pack(
                 number, normal_at, len(normal), shiny_at, len(shiny),
+                pmd_pair_display_scale(normal, shiny),
             ))
         thumbs = thumbs_path.read_bytes()
         locales = localized_strings(species_descriptions(rows), len(rows))
@@ -697,7 +699,7 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
 
     mega_record = struct.Struct("<HBBBBBBB")
     mega_blob = bytearray()
-    mega_sprite_record = struct.Struct("<HII")
+    mega_sprite_record = struct.Struct("<HIIB")
     mega_sprite_index = bytearray()
     mega_sprites = bytearray()
     previous_species = 0
@@ -721,7 +723,7 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
             sprite_at = len(mega_sprites)
             mega_sprites.extend(sprite)
             mega_sprite_index.extend(mega_sprite_record.pack(
-                species, sprite_at, len(sprite),
+                species, sprite_at, len(sprite), pmd_display_scale(sprite),
             ))
         previous_species = species
 

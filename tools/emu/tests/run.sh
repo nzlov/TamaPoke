@@ -79,7 +79,7 @@ needs_sketch() { case "$1" in touch_test|flush_test|joy_test|anim_test|capture_a
 # and these are standalone: gbsynth.cpp has no Arduino dependency at all, which
 # is the point of it -- linking the game core in would only demand stubs for
 # symbols the test never calls.
-standalone() { case "$1" in synth_test) return 0;; *) return 1;; esac; }
+standalone() { case "$1" in synth_test|pmd_layout_test) return 0;; *) return 1;; esac; }
 
 # sprite_test drives PmdMon from a regional pack, so it needs the host's SD
 # stubs but none of the sketch.
@@ -93,7 +93,10 @@ for src in "$HERE"/*_test.cpp; do
   needs_sketch "$name" && extra=("$EMU/sketch.cpp" "$EMU/host_impl.cpp" "$EMU/font.cpp" "$EMU/clock.cpp")
   needs_host "$name" && extra=("$EMU/host_impl.cpp" "$EMU/font.cpp")
   srcs=("${CORE[@]}")
-  standalone "$name" && srcs=("$ROOT/gbsynth.cpp")
+  if standalone "$name"; then
+    srcs=()
+    [ "$name" != synth_test ] || srcs=("$ROOT/gbsynth.cpp")
+  fi
   test_flags=("${FLAGS[@]}")
   if [ "$name" = recovery_test ]; then
     mkdir -p "$OUT/empty-packs"

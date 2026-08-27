@@ -8,6 +8,8 @@ import json
 import struct
 from pathlib import Path
 
+from pmd_layout import pmd_display_scale, pmd_pair_display_scale
+
 
 ROOT = Path(__file__).resolve().parent.parent
 PACKS = ROOT / "web" / "packs"
@@ -171,6 +173,25 @@ def validate(path: Path, expected: dict) -> None:
         validate_ui_font(sections[b"FONT"], section_counts[b"FONT"])
     elif kind == 2:
         validate_localized_strings(sections[b"RLNM"], section_counts[b"RLNM"])
+        sprite_record = struct.Struct("<HIIIIB")
+        sprite_count = section_counts[b"SPRI"]
+        if not sprite_count or len(sections[b"SPRI"]) != sprite_count * sprite_record.size:
+            raise ValueError("invalid regional sprite index")
+        previous_species = 0
+        sprite_blob = sections[b"SBLB"]
+        for offset in range(0, len(sections[b"SPRI"]), sprite_record.size):
+            species, normal_at, normal_size, shiny_at, shiny_size, display_scale = \
+                sprite_record.unpack_from(sections[b"SPRI"], offset)
+            if species <= previous_species or normal_at > len(sprite_blob) or \
+                    normal_size > len(sprite_blob) - normal_at or \
+                    shiny_at > len(sprite_blob) or shiny_size > len(sprite_blob) - shiny_at or \
+                    (not normal_size and (shiny_size or display_scale)):
+                raise ValueError("invalid regional sprite record")
+            normal = sprite_blob[normal_at:normal_at + normal_size]
+            shiny = sprite_blob[shiny_at:shiny_at + shiny_size]
+            if display_scale != pmd_pair_display_scale(normal, shiny):
+                raise ValueError("regional sprite display scale does not match Idle bounds")
+            previous_species = species
     elif kind == 3:
         move_count = section_counts[b"MOVE"]
         if len(sections[b"MOVE"]) != move_count * 17 or \
@@ -220,7 +241,7 @@ def validate(path: Path, expected: dict) -> None:
         if (b"MSPI" in sections) != (b"MSBL" in sections):
             raise ValueError("incomplete mega sprite sections")
         if b"MSPI" in sections:
-            sprite_record = struct.Struct("<HII")
+            sprite_record = struct.Struct("<HIIB")
             sprite_count = section_counts[b"MSPI"]
             if not sprite_count or len(sections[b"MSPI"]) != sprite_count * sprite_record.size:
                 raise ValueError("invalid mega sprite index")
@@ -230,12 +251,15 @@ def validate(path: Path, expected: dict) -> None:
                 for offset in range(0, len(sections[b"MEGA"]), mega_record.size)
             }
             for offset in range(0, len(sections[b"MSPI"]), sprite_record.size):
-                species, sprite_at, sprite_size = sprite_record.unpack_from(
+                species, sprite_at, sprite_size, display_scale = sprite_record.unpack_from(
                     sections[b"MSPI"], offset)
                 if species <= previous_species or species not in mega_species or not sprite_size or \
                         sprite_at > len(sections[b"MSBL"]) or \
                         sprite_size > len(sections[b"MSBL"]) - sprite_at:
                     raise ValueError("invalid mega sprite record")
+                sprite = sections[b"MSBL"][sprite_at:sprite_at + sprite_size]
+                if display_scale != pmd_display_scale(sprite):
+                    raise ValueError("mega sprite display scale does not match Idle bounds")
                 previous_species = species
     elif kind == 4:
         validate_quiz(sections, section_counts)

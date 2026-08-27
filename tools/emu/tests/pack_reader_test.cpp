@@ -53,11 +53,19 @@ int main() {
   };
   bool precise = loaded &&
       mutationIs(0, CONTENT_PACK_HEADER_INVALID) &&
-      mutationIs(4, CONTENT_PACK_VALID) &&
+      mutationIs(4, CONTENT_PACK_ABI_MISMATCH) &&
       mutationIs(5, CONTENT_PACK_ABI_MISMATCH) &&
       mutationIs(8, CONTENT_PACK_SIZE_MISMATCH) &&
       mutationIs(52, CONTENT_PACK_DIRECTORY_INVALID) &&
       mutationIs(raw.size() - 1, CONTENT_PACK_CHECKSUM_MISMATCH);
+  uint8_t savedAbi = raw[4];
+  raw[4] = 2;
+  FILE *oldPack = fopen(badPath.c_str(), "wb");
+  bool oldWritten = oldPack && fwrite(raw.data(), 1, raw.size(), oldPack) == raw.size();
+  if (oldPack) fclose(oldPack);
+  bool abi2Rejected = oldWritten &&
+      contentValidatePackFile(badPath.c_str()) == CONTENT_PACK_ABI_MISMATCH;
+  raw[4] = savedAbi;
   remove(badPath.c_str());
   raw.back() ^= 1;
   FILE *installed = fopen(PACK_READER_FIXTURE, "wb");
@@ -70,9 +78,9 @@ int main() {
          sequential ? "PASS" : "FAIL");
   printf("%s  pack validation reports the failing format stage\n",
          precise ? "PASS" : "FAIL");
-  printf("%s  ABI 2 region packs remain readable under the ABI 3 move schema\n",
-         precise ? "PASS" : "FAIL");
+  printf("%s  ABI 2 region packs are rejected by the ABI 3 schema\n",
+         abi2Rejected ? "PASS" : "FAIL");
   printf("%s  startup discovers packs without rescanning payload CRC\n",
          discoverySkipsCrc ? "PASS" : "FAIL");
-  return ok && sequential && precise && discoverySkipsCrc ? 0 : 1;
+  return ok && sequential && precise && abi2Rejected && discoverySkipsCrc ? 0 : 1;
 }

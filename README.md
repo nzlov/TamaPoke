@@ -75,6 +75,8 @@ operations require confirmation; restart the device after changing the card.
 > **Upgrade note:** the first migration to runtime packages clears saves made by
 > older firmware. For later same-schema updates, leave **Erase device** unchecked
 > to preserve the current save; flashing does not delete packages on the microSD.
+> ABI 3 precomputes sprite display scales in every region pack, so redeploy all
+> region packs together with this firmware; older ABI 2 region packs are rejected.
 > Region packages are large (a 40 MB package normally takes 10–15 minutes over
 > USB serial). Restart the device after deployment.
 

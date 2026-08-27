@@ -26,12 +26,22 @@ struct PmdMon {
   uint16_t palCount = 0;
   uint16_t pal[256];
   uint8_t *blob = nullptr;
+  uint8_t displayScale = 0;  // precomputed from the pack's opaque Idle bounds
   PmdAct acts[PMD_NACTS];
 
   bool load(int16_t dexNum, bool shiny = false, bool mega = false);
   void unload();
   bool has(uint8_t a) const { return loaded && a < PMD_NACTS && acts[a].frames > 0; }
 };
+
+inline uint8_t pmdDisplayScale(const PmdMon &mon, const PmdAct &action,
+                               uint8_t maxScale, uint8_t scaleBonus) {
+  if (!action.frames || !mon.displayScale || !maxScale) return 0;
+  uint16_t scale = (uint16_t)mon.displayScale + scaleBonus;
+  if (scale > maxScale) scale = maxScale;
+  while (scale > 2 && (uint16_t)action.h * scale > 250) scale--;
+  return (uint8_t)scale;
+}
 
 // miniaturas de la galeria (thumbs.bin entero en PSRAM)
 struct SdThumbs {

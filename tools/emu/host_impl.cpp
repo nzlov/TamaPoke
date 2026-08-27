@@ -17,7 +17,11 @@ bool PmdMon::load(int16_t dexNum, bool shiny, bool mega) {
   if (!dexValid(dexNum)) return false;
   unload();
   uint32_t size = 0;
-  if (!contentLoadSprite((SpeciesId)dexNum, shiny, mega, &blob, &size)) return false;
+  if (!contentLoadSprite((SpeciesId)dexNum, shiny, mega, &blob, &size, &displayScale) ||
+      displayScale < 2 || displayScale > 6) {
+    unload();
+    return false;
+  }
   if (size < 7 || memcmp(blob, "TPK2", 4) != 0) { unload(); return false; }
 
   uint8_t nActs = blob[4];
@@ -56,6 +60,7 @@ bool PmdMon::load(int16_t dexNum, bool shiny, bool mega) {
 void PmdMon::unload() {
   if (blob) { free(blob); blob = nullptr; }
   for (auto &a : acts) { a.w = a.h = a.frames = a.base = 0; a.data = nullptr; }
+  displayScale = 0;
   loaded = false;
 }
 
