@@ -96,6 +96,13 @@ int main() {
      "wild foe escape chance reaches and keeps its thirty percent cap");
   ck(wildFoeEscapeChance(0, 100) == 0 && wildFoeEscapeChance(10, 0) == 0,
      "fainted foes and invalid HP cannot escape");
+  ck(wildFoeEscapeChance(41, 100, true) == 5 &&
+     wildFoeEscapeChance(40, 100, true) == 15 &&
+     wildFoeEscapeChance(10, 100, true) == 35,
+     "anger adds five percentage points to wild escape chance");
+  ck(wildFoeEscapeChance(0, 100, true) == 0 &&
+     wildFoeEscapeChance(10, 0, true) == 0,
+     "anger cannot make fainted or invalid foes escape");
 
   uint8_t commonFull = wildCaptureChance(R_COMUN, 100, 100, false, 100);
   uint8_t commonLow = wildCaptureChance(R_COMUN, 1, 100, false, 100);

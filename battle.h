@@ -10,6 +10,7 @@
 // Integer maths only, like types.h: no floats anywhere on the MCU.
 
 enum : uint8_t { SI_ATK = 0, SI_DEF, SI_SPA, SI_SPD, SI_SPE, SI_COUNT };
+constexpr uint8_t BATTLE_ANGRY_STAT_PERCENT = 105;
 
 enum BattleWeather : uint8_t {
   BWEATHER_NONE = 0,
@@ -81,6 +82,7 @@ struct Combatant {
   uint8_t ailment = AIL_NONE;
   uint8_t ailTurns = 0;      // sleep/freeze countdown
   uint8_t confuseTurns = 0;  // confusion runs alongside a real ailment
+  bool angry = false;        // wild capture failure; battle-only and non-stacking
   bool recharge = false;     // EF_RECHARGE spent this creature's next turn
   MoveId charging = 0;       // EF_CHARGE move already wound up
   bool protectedTurn = false;
@@ -157,6 +159,7 @@ BattleMechanic wildBattleMechanic(uint8_t eventRoll, uint8_t choiceRoll,
                                   bool zEligible = true);
 
 uint16_t stagedStat(uint16_t base, int8_t stage);
+uint16_t battleEffectiveStat(const Combatant &combatant, uint8_t statIndex);
 uint16_t battleDamage(const Combatant &atk, const Combatant &def,
                       const BattleField &field, MoveId mv, bool crit, uint8_t roll);
 uint16_t battleDamage(const Combatant &atk, const Combatant &def,

@@ -818,6 +818,29 @@ uint32_t btlEnterUntil[2] = { 0, 0 };
 int8_t btlSwapWho = -1;        // 0 = your side, 1 = the foe's, -1 = nothing due
 #define BTL_FAINT_MS 700
 #define BTL_ENTER_MS 420
+// Capture is a battle animation, not a separate screen: the item and random
+// roll settle once, then rendering advances through these non-blocking beats.
+enum : uint8_t {
+  BTL_CAPTURE_NONE = 0,
+  BTL_CAPTURE_CENTER,
+  BTL_CAPTURE_THROW,
+  BTL_CAPTURE_ABSORB,
+  BTL_CAPTURE_SHAKE,
+  BTL_CAPTURE_SUCCESS,
+  BTL_CAPTURE_FAILURE,
+  BTL_CAPTURE_RETURN,
+};
+bool btlCaptureAnimating = false;
+bool btlCaptureSuccess = false;
+bool btlCaptureCuePlayed = false;
+uint32_t btlCaptureStartedAt = 0;
+ItemKey btlCaptureItem = ITEM_KEY_NONE;
+#define BTL_CAPTURE_CENTER_MS 600UL
+#define BTL_CAPTURE_THROW_MS 650UL
+#define BTL_CAPTURE_ABSORB_MS 350UL
+#define BTL_CAPTURE_SHAKE_MS 1350UL
+#define BTL_CAPTURE_RESULT_MS 700UL
+#define BTL_CAPTURE_RETURN_MS 600UL
 // battle menu: root, moves, switch, direct warehouse view, revive target
 uint8_t btlMenu = 0;
 uint8_t btlItemPage = 0;
@@ -3867,13 +3890,12 @@ void renderMovePick() {
 
 // ---------- battle ----------
 
-// Draws a battle backdrop scaled 2x. Emitted as runs of identical indices
-// rather than a write per pixel: this is flat pixel art with long horizontal
-// runs, and 240x112 at 2x would otherwise be 26,880 fillRect calls a frame.
+// Draws a battle backdrop at the requested scale. Emitted as runs of identical
+// indices rather than a write per pixel: this is flat pixel art with long
+// horizontal runs, and 240x112 at 2x would otherwise be 26,880 fillRect calls.
 // The round bezel crops the overhang physically, so nothing is clipped here.
-static void drawBack(const BackScene &b, int y0) {
-  const int SC = 2;
-  int x0 = CX - (b.w * SC) / 2;
+static void drawBack(const BackScene &b, int y0, int scale) {
+  int x0 = CX - (b.w * scale) / 2;
   for (int r = 0; r < b.h; r++) {
     const uint8_t *row = b.idx + (uint32_t)r * b.w;
     int c = 0;
@@ -3882,7 +3904,8 @@ static void drawBack(const BackScene &b, int y0) {
       int run = 1;
       while (c + run < b.w && row[c + run] == v) run++;
       uint16_t col = b.pal[v];
-      gfx->fillRect(x0 + c * SC, y0 + r * SC, run * SC, SC, col);
+      gfx->fillRect(x0 + c * scale, y0 + r * scale,
+                    run * scale, scale, col);
       c += run;
     }
   }
@@ -3890,13 +3913,13 @@ static void drawBack(const BackScene &b, int y0) {
 
 // Which scene: the FOE's biome, since a battle happens where it lives, and the
 // same day/night split the main screen already uses.
-static void drawBattleBack() {
+static void drawBattleBack(int y0, int scale) {
   int16_t dex = btlFoe.dex;
   if (dex < 1 || dex > dexCount()) { gfx->fillCircle(CX, CY, 231, UI_BG_DAY); return; }
   uint8_t bi = dexEntry(dex).biome;
   if (bi >= BACK_BIOMES) bi = 0;
   bool night = sceneHour() < 6 || sceneHour() >= 20;
-  drawBack(BACKS[bi][night ? 1 : 0], 30);
+  drawBack(BACKS[bi][night ? 1 : 0], y0, scale);
 }
 
 static const char *btlWeatherName(BattleWeather weather) {
@@ -4232,6 +4255,8 @@ void startLinkBattle() {
   btlSwapPending = 0;
   btlFaintUntil[0] = btlFaintUntil[1] = 0;
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
+  btlCaptureAnimating = false;
+  btlCaptureItem = ITEM_KEY_NONE;
   btlHpShown[0] = btlYou.maxHp;
   btlHpShown[1] = btlFoe.maxHp;
   btlSyncSprite(0, btlYou);
@@ -4275,6 +4300,8 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   btlSwapPending = 0;
   btlFaintUntil[0] = btlFaintUntil[1] = 0;
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
+  btlCaptureAnimating = false;
+  btlCaptureItem = ITEM_KEY_NONE;
   btlHpShown[0] = btlYou.maxHp;
   btlHpShown[1] = btlFoe.maxHp;
   btlSyncSprite(0, btlYou);
@@ -4314,6 +4341,8 @@ void startBattle(int16_t dex, uint8_t lvl) {
   btlSwapPending = 0;
   btlFaintUntil[0] = btlFaintUntil[1] = 0;
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
+  btlCaptureAnimating = false;
+  btlCaptureItem = ITEM_KEY_NONE;
   btlHpShown[0] = btlYou.maxHp;
   btlHpShown[1] = btlFoe.maxHp;
   btlSyncSprite(0, btlYou);
@@ -4408,6 +4437,8 @@ void startWildBattle(uint8_t region, bool hard) {
   btlSwapPending = 0;
   btlFaintUntil[0] = btlFaintUntil[1] = 0;
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
+  btlCaptureAnimating = false;
+  btlCaptureItem = ITEM_KEY_NONE;
   btlHpShown[0] = btlYou.maxHp;
   btlHpShown[1] = btlFoe.maxHp;
   btlSyncSprite(0, btlYou);
@@ -4728,7 +4759,7 @@ static void btlHandleFaints() {
 // tests can prove the boundary values without depending on the global PRNG.
 bool btlAttemptFoeRun(uint8_t roll) {
   if (!battleOpen || btlOver || !btlWild || btlLink || btlFoe.fainted()) return false;
-  uint8_t chance = wildFoeEscapeChance(btlFoe.hp, btlFoe.maxHp);
+  uint8_t chance = wildFoeEscapeChance(btlFoe.hp, btlFoe.maxHp, btlFoe.angry);
   if (!chance || roll >= chance) return false;
   btlOver = true;
   btlWon = false;
@@ -4877,6 +4908,26 @@ static void btlMechanicAura(int cx, int groundY, BattleMechanic mechanic, uint32
   }
 }
 
+static void btlDrawSprite(int sx, int sy, const Combatant &c, uint8_t who,
+                          uint32_t now, uint8_t act, bool loop,
+                          uint32_t actTime, bool flash) {
+  int cx = sx + 24, ground = sy + 78;
+  btlMechanicAura(cx, ground, c.activeMechanic, now);
+  if (btlPmd[who].loaded) {
+    if (!btlPmd[who].has(act)) { act = PMD_IDLE; loop = true; actTime = now; }
+    uint8_t scaleBonus = c.activeMechanic == BMECH_DYNAMAX ? 1 : 0;
+    uint8_t maxScale = c.activeMechanic == BMECH_DYNAMAX ? 5 : 4;
+    drawPmdActM(btlPmd[who], act, cx, ground, actTime, loop,
+                false, maxScale, scaleBonus);
+    if (c.sparkle) drawSparkleParticles(cx, ground, now);
+    return;
+  }
+  const uint8_t *th = thumbs.get(c.dex);
+  if (!th) return;
+  drawThumb(th, sx, sy, 3, flash);
+  if (c.sparkle) drawSparkleParticles(cx, ground, now);
+}
+
 static void btlSide(int tx, int ty, int sx, int sy, const Combatant &c, uint8_t who) {
   // the scenes are busy, so the name and bar sit on their own plate rather
   // than fighting the artwork for contrast
@@ -4949,34 +5000,30 @@ static void btlSide(int tx, int ty, int sx, int sy, const Combatant &c, uint8_t 
     uint32_t left = btlHitUntil[who] - now;
     ox += ((left / 50) % 2) ? 5 : -5;      // jitter
   }
-  btlMechanicAura(sx + 24 + ox, sy + 78 + oy, c.activeMechanic, now);
-
   // Real PMD playback when the sprite streamed: attack while lunging, hurt
   // while flinching, idle otherwise. `has()` guards every one, because not
   // every species ships every action -- falling through to idle, and to the
   // flat thumbnail if the sprite is missing entirely (no SD).
-  if (btlPmd[who].loaded) {
-    uint8_t act = PMD_IDLE;
-    bool loop = true;
-    uint32_t t = now;
-    if (now < btlHitUntil[who] && btlPmd[who].has(PMD_HURT)) {
-      act = PMD_HURT; loop = false; t = now - (btlHitUntil[who] - BTL_HIT_MS);
-    } else if (now < btlLungeUntil[who] && btlPmd[who].has(PMD_ATTACK)) {
-      act = PMD_ATTACK; loop = false; t = now - (btlLungeUntil[who] - BTL_LUNGE_MS);
-    }
-    uint8_t scaleBonus = c.activeMechanic == BMECH_DYNAMAX ? 1 : 0;
-    uint8_t maxScale = c.activeMechanic == BMECH_DYNAMAX ? 5 : 4;
-    int cx = sx + 24 + ox, ground = sy + 78 + oy;
-    drawPmdActM(btlPmd[who], act, cx, ground, t, loop,
-                false, maxScale, scaleBonus);
-    if (c.sparkle) drawSparkleParticles(cx, ground, now);
-    return;
+  bool angryLoop = who == 1 && c.angry;
+  uint8_t act = PMD_IDLE;
+  bool loop = true;
+  uint32_t t = now;
+  if (now < btlHitUntil[who]) {
+    act = PMD_HURT; loop = false; t = now - (btlHitUntil[who] - BTL_HIT_MS);
+  } else if (now < btlLungeUntil[who]) {
+    act = PMD_ATTACK; loop = false; t = now - (btlLungeUntil[who] - BTL_LUNGE_MS);
   }
-  const uint8_t *th = thumbs.get(c.dex);
-  if (!th) return;
+  if (angryLoop && act == PMD_IDLE)
+    ox += ((int)(now / 90) % 3 - 1) * 3;
   if (now < btlHitUntil[who]) flash = ((btlHitUntil[who] - now) / 60) % 2 == 0;
-  drawThumb(th, sx + ox, sy + oy, 3, flash);
-  if (c.sparkle) drawSparkleParticles(sx + 24 + ox, sy + 78 + oy, now);
+  btlDrawSprite(sx + ox, sy + oy, c, who, now, act, loop, t, flash);
+  if (angryLoop && act == PMD_IDLE) {
+    int cx = sx + 24, top = sy + 18 - (int)((now / 120) % 3);
+    gfx->drawLine(cx + 24, top + 10, cx + 31, top, UI_BAR_BAD);
+    gfx->drawLine(cx + 31, top, cx + 34, top + 12, UI_BAR_BAD);
+    gfx->drawLine(cx + 39, top + 12, cx + 42, top, UI_BAR_BAD);
+    gfx->drawLine(cx + 42, top, cx + 49, top + 10, UI_BAR_BAD);
+  }
 }
 
 // Bars drain rather than snap: a hit that removes half your health should be
@@ -5269,13 +5316,162 @@ static void renderBattleFoeDetail() {
   gfx->flush();
 }
 
+uint8_t btlCaptureStageAt(uint32_t now) {
+  if (!btlCaptureAnimating) return BTL_CAPTURE_NONE;
+  uint32_t elapsed = now - btlCaptureStartedAt;
+  if (elapsed < BTL_CAPTURE_CENTER_MS) return BTL_CAPTURE_CENTER;
+  elapsed -= BTL_CAPTURE_CENTER_MS;
+  if (elapsed < BTL_CAPTURE_THROW_MS) return BTL_CAPTURE_THROW;
+  elapsed -= BTL_CAPTURE_THROW_MS;
+  if (elapsed < BTL_CAPTURE_ABSORB_MS) return BTL_CAPTURE_ABSORB;
+  elapsed -= BTL_CAPTURE_ABSORB_MS;
+  if (elapsed < BTL_CAPTURE_SHAKE_MS) return BTL_CAPTURE_SHAKE;
+  if (btlCaptureSuccess) return BTL_CAPTURE_SUCCESS;
+  elapsed -= BTL_CAPTURE_SHAKE_MS;
+  if (elapsed < BTL_CAPTURE_RESULT_MS) return BTL_CAPTURE_FAILURE;
+  return BTL_CAPTURE_RETURN;
+}
+
+uint8_t btlCaptureFoeAct(uint8_t stage) {
+  if (stage == BTL_CAPTURE_ABSORB) return PMD_HURT;
+  if (stage == BTL_CAPTURE_FAILURE || stage == BTL_CAPTURE_RETURN) return PMD_ATTACK;
+  return PMD_IDLE;
+}
+
+void btlUpdateCapture(uint32_t now) {
+  if (!btlCaptureAnimating) return;
+  uint32_t resultAt = BTL_CAPTURE_CENTER_MS + BTL_CAPTURE_THROW_MS +
+                      BTL_CAPTURE_ABSORB_MS + BTL_CAPTURE_SHAKE_MS;
+  uint32_t elapsed = now - btlCaptureStartedAt;
+  if (elapsed >= resultAt && !btlCaptureCuePlayed) {
+    btlCaptureCuePlayed = true;
+    if (btlCaptureSuccess) {
+      audioMusic(MUS_VICTORY);
+      sfxPlay(SFX_VICTORY);
+    } else {
+      btlFoe.angry = true;
+      sfxPlay(SFX_DENY);
+    }
+  }
+  uint32_t finishAt = resultAt + BTL_CAPTURE_RESULT_MS;
+  if (!btlCaptureSuccess) finishAt += BTL_CAPTURE_RETURN_MS;
+  if (elapsed < finishAt) return;
+
+  bool success = btlCaptureSuccess;
+  ItemKey item = btlCaptureItem;
+  btlCaptureAnimating = false;
+  btlCaptureItem = ITEM_KEY_NONE;
+  if (success) {
+    btlCompleteCapture();
+    return;
+  }
+
+  btlMenu = 0;
+  btlSay("%s", itemName(item));
+  btlResolve(0, 100);
+}
+
+static void renderBattleCapture(uint32_t now, uint8_t stage) {
+  uint32_t elapsed = now - btlCaptureStartedAt;
+  const int battleX = 300, battleY = 40;
+  const int centerX = 209, centerY = 205;
+  int foeX = centerX, foeY = centerY;
+  bool drawFoe = stage == BTL_CAPTURE_CENTER || stage == BTL_CAPTURE_THROW ||
+                 stage == BTL_CAPTURE_FAILURE || stage == BTL_CAPTURE_RETURN;
+  if (stage == BTL_CAPTURE_CENTER) {
+    uint32_t p = elapsed;
+    foeX = battleX + (centerX - battleX) * (int32_t)p / (int32_t)BTL_CAPTURE_CENTER_MS;
+    foeY = battleY + (centerY - battleY) * (int32_t)p / (int32_t)BTL_CAPTURE_CENTER_MS;
+  } else if (stage == BTL_CAPTURE_RETURN) {
+    uint32_t resultAt = BTL_CAPTURE_CENTER_MS + BTL_CAPTURE_THROW_MS +
+                        BTL_CAPTURE_ABSORB_MS + BTL_CAPTURE_SHAKE_MS;
+    uint32_t p = elapsed - resultAt - BTL_CAPTURE_RESULT_MS;
+    if (p > BTL_CAPTURE_RETURN_MS) p = BTL_CAPTURE_RETURN_MS;
+    foeX = centerX + (battleX - centerX) * (int32_t)p / (int32_t)BTL_CAPTURE_RETURN_MS;
+    foeY = centerY + (battleY - centerY) * (int32_t)p / (int32_t)BTL_CAPTURE_RETURN_MS;
+  } else if (stage == BTL_CAPTURE_ABSORB) {
+    uint32_t p = elapsed - BTL_CAPTURE_CENTER_MS - BTL_CAPTURE_THROW_MS;
+    drawFoe = p < BTL_CAPTURE_ABSORB_MS / 2;
+  }
+
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawBattleBack(65, 3);
+  btlSyncSprite(1, btlFoe);
+  if (drawFoe) {
+    uint8_t act = btlCaptureFoeAct(stage);
+    uint32_t actTime = now;
+    bool loop = true;
+    if (stage == BTL_CAPTURE_ABSORB) {
+      actTime = elapsed - BTL_CAPTURE_CENTER_MS - BTL_CAPTURE_THROW_MS;
+    } else if (stage == BTL_CAPTURE_FAILURE) {
+      actTime = elapsed - BTL_CAPTURE_CENTER_MS - BTL_CAPTURE_THROW_MS -
+                BTL_CAPTURE_ABSORB_MS - BTL_CAPTURE_SHAKE_MS;
+      loop = false;
+    }
+    btlDrawSprite(foeX, foeY, btlFoe, 1, now, act, loop, actTime, false);
+  }
+
+  int bx = 233, by = 278;
+  if (stage == BTL_CAPTURE_THROW) {
+    uint32_t local = elapsed - BTL_CAPTURE_CENTER_MS;
+    int32_t p = (int32_t)(local * 1000 / BTL_CAPTURE_THROW_MS);
+    bx = 80 + (233 - 80) * p / 1000;
+    by = 335 + (190 - 335) * p / 1000 -
+         (int)(90LL * 4 * p * (1000 - p) / 1000000LL);
+  } else if (stage == BTL_CAPTURE_ABSORB) {
+    uint32_t p = elapsed - BTL_CAPTURE_CENTER_MS - BTL_CAPTURE_THROW_MS;
+    by = 190 + (int)(p * 88 / BTL_CAPTURE_ABSORB_MS);
+    int r = 14 + (int)(p * 42 / BTL_CAPTURE_ABSORB_MS);
+    gfx->drawCircle(233, 200, r, UI_BAR_WARN);
+    gfx->drawCircle(233, 200, r + 8, UI_WHITE);
+  } else if (stage == BTL_CAPTURE_SHAKE) {
+    uint32_t p = elapsed - BTL_CAPTURE_CENTER_MS - BTL_CAPTURE_THROW_MS -
+                 BTL_CAPTURE_ABSORB_MS;
+    static const int8_t SHAKE_X[6] = { 0, -9, 8, -6, 6, 0 };
+    bx += SHAKE_X[(p / 90) % 6];
+  } else if (stage == BTL_CAPTURE_SUCCESS) {
+    int pulse = (int)((elapsed / 80) % 5);
+    gfx->drawCircle(bx, by, 34 + pulse, UI_BAR_OK);
+    for (int i = 0; i < 6; i++) {
+      int sx = bx - 55 + i * 22;
+      int sy = by - 50 + ((i * 19) % 34);
+      gfx->drawLine(sx - 5, sy, sx + 5, sy, UI_BAR_WARN);
+      gfx->drawLine(sx, sy - 5, sx, sy + 5, UI_BAR_WARN);
+    }
+  } else if (stage == BTL_CAPTURE_FAILURE) {
+    by = 312;
+  }
+
+  bool drawBall = stage == BTL_CAPTURE_THROW || stage == BTL_CAPTURE_ABSORB ||
+                  stage == BTL_CAPTURE_SHAKE || stage == BTL_CAPTURE_SUCCESS ||
+                  stage == BTL_CAPTURE_FAILURE;
+  if (drawBall) drawMap(SPR_ICON_PLAY, 16, bx - 24, by - 24, 3, false);
+  if (stage == BTL_CAPTURE_SUCCESS) {
+    gfx->drawLine(bx - 12, by + 2, bx - 3, by + 11, UI_BAR_OK);
+    gfx->drawLine(bx - 3, by + 11, bx + 14, by - 7, UI_BAR_OK);
+  } else if (stage == BTL_CAPTURE_FAILURE) {
+    gfx->drawLine(bx - 34, by - 34, bx + 34, by + 34, UI_BAR_BAD);
+    gfx->drawLine(bx + 34, by - 34, bx - 34, by + 34, UI_BAR_BAD);
+  }
+  gfx->flush();
+}
+
 void renderBattle() {
   if (btlWinUntil) { renderWin(); return; }
   if (btlFoeDetailOpen) { renderBattleFoeDetail(); return; }
+  uint32_t now = millis();
+  btlUpdateCapture(now);
+  if (btlWinUntil) { renderWin(); return; }
+  uint8_t captureStage = btlCaptureStageAt(now);
+  if (captureStage != BTL_CAPTURE_NONE) {
+    renderBattleCapture(now, captureStage);
+    return;
+  }
   btlEaseBars();
   gfx->fillScreen(RGB565_BLACK);
-  drawBattleBack();
-  drawBattleFieldEffects(millis());
+  drawBattleBack(30, 2);
+  drawBattleFieldEffects(now);
   // the lower band stays flat so the move grid and the HP text keep their
   // contrast against it
   gfx->fillRect(0, 254, 466, 212, UI_BG_DAY);
@@ -5644,22 +5840,29 @@ void btlCompleteCapture() {
   sfxPlay(SFX_VICTORY);
 }
 
-static void btlThrowBall(const ItemEntry &item) {
-  if (!btlWild || item.effect != ITEM_EFFECT_CATCH || !inventory.consume(item.key)) {
+bool btlStartCapture(const ItemEntry &item, uint8_t roll, uint32_t now) {
+  if (!battleOpen || btlOver || btlCaptureAnimating || !btlWild ||
+      item.effect != ITEM_EFFECT_CATCH || !inventory.consume(item.key)) {
     sfxPlay(SFX_DENY);
-    return;
+    return false;
   }
   uint8_t chance = wildCaptureChance(dexEntry(btlFoe.dex).rarity, btlFoe.hp,
                                      btlFoe.maxHp,
                                      btlFoe.ailment != AIL_NONE || btlFoe.confuseTurns,
                                      item.param > 0 ? (uint16_t)item.param : 100);
-  if ((uint8_t)random(100) < chance) {
-    btlCompleteCapture();
-    return;
-  }
+  btlCaptureSuccess = roll < chance;
+  btlCaptureAnimating = true;
+  btlCaptureCuePlayed = false;
+  btlCaptureStartedAt = now;
+  btlCaptureItem = item.key;
   btlMenu = 0;
-  btlSay("%s", itemName(item.key));
-  btlResolve(0, 100);
+  btlMsgCount = 0;
+  sfxPlay(SFX_PLAY);
+  return true;
+}
+
+static void btlThrowBall(const ItemEntry &item) {
+  btlStartCapture(item, (uint8_t)random(100), millis());
 }
 
 static void btlDismissWin() {
@@ -5678,6 +5881,7 @@ static void btlDismissWin() {
 }
 
 static bool btlDispatchTap(int16_t x, int16_t y) {
+  if (btlCaptureAnimating) return false;
   if (btlWinUntil) {          // dismiss the win screen and leave the fight
     btlDismissWin();
     return true;

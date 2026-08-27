@@ -5,6 +5,7 @@
 constexpr uint8_t WILD_COLOR_BASE_CHANCE = 5;
 constexpr uint8_t WILD_SPARKLE_BASE_CHANCE = 1;
 constexpr uint8_t WILD_RARE_BONUS_MAX = 15;
+constexpr uint8_t WILD_ANGRY_ESCAPE_BONUS = 5;
 
 struct WildTraits {
   bool color = false;
@@ -34,8 +35,9 @@ uint8_t wildEncounterMaxLevel(uint8_t playerLevel, bool hard);
 uint8_t wildEscapeChance(uint8_t playerLevel, uint8_t foeLevel);
 
 // A wild foe starts considering escape at 40% HP (10%), rises linearly to
-// 30% at 10% HP, and stays capped there below that threshold.
-uint8_t wildFoeEscapeChance(uint16_t hp, uint16_t maxHp);
+// 30% at 10% HP, and stays capped there below that threshold. Anger adds five
+// percentage points, including above the normal HP threshold.
+uint8_t wildFoeEscapeChance(uint16_t hp, uint16_t maxHp, bool angry = false);
 
 // Deterministic input keeps the biome weather table testable at every boundary.
 BattleField wildBattleField(uint8_t biome, uint8_t roll);

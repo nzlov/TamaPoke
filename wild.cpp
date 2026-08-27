@@ -36,14 +36,19 @@ uint8_t wildEscapeChance(uint8_t playerLevel, uint8_t foeLevel) {
   return chance < 10 ? 10 : chance;
 }
 
-uint8_t wildFoeEscapeChance(uint16_t hp, uint16_t maxHp) {
+uint8_t wildFoeEscapeChance(uint16_t hp, uint16_t maxHp, bool angry) {
   if (!maxHp || !hp) return 0;
   if (hp > maxHp) hp = maxHp;
   uint32_t scaledHp = (uint32_t)hp * 100U;
-  if (scaledHp > (uint32_t)maxHp * 40U) return 0;
-  if (scaledHp <= (uint32_t)maxHp * 10U) return 30;
-  uint32_t belowForty = (uint32_t)maxHp * 40U - scaledHp;
-  return (uint8_t)(10U + belowForty * 20U / ((uint32_t)maxHp * 30U));
+  uint8_t chance = 0;
+  if (scaledHp <= (uint32_t)maxHp * 10U) {
+    chance = 30;
+  } else if (scaledHp <= (uint32_t)maxHp * 40U) {
+    uint32_t belowForty = (uint32_t)maxHp * 40U - scaledHp;
+    chance = (uint8_t)(10U + belowForty * 20U / ((uint32_t)maxHp * 30U));
+  }
+  if (angry) chance = (uint8_t)(chance + WILD_ANGRY_ESCAPE_BONUS);
+  return chance;
 }
 
 static uint8_t rareBonus(uint8_t bonus) {

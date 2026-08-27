@@ -195,8 +195,11 @@ extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyPick, trainOpen, movePickOpen;
 extern bool bagOpen;
-extern bool btlWild;
-extern PartyMon capturedMon;
+extern bool battleOpen, btlWild;
+extern bool btlCaptureAnimating, btlCaptureSuccess, btlCaptureCuePlayed;
+extern uint32_t btlCaptureStartedAt;
+extern ItemKey btlCaptureItem;
+extern PartyMon capturedMon, btlWildMon;
 extern uint8_t cardPage;
 extern int16_t galleryDetail;
 extern bool moveInfoOpen;
@@ -586,6 +589,60 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
       }
       btlMenu = 3;
     }
+  }
+  else if (!strcmp(screen, "catchcenter") || !strcmp(screen, "catchthrow") ||
+           !strcmp(screen, "catchabsorb") ||
+           !strcmp(screen, "catchshake") || !strcmp(screen, "catchsuccess") ||
+           !strcmp(screen, "catchresult") || !strcmp(screen, "catchfail") ||
+           !strcmp(screen, "catchreturn") || !strcmp(screen, "catchresume") ||
+           !strcmp(screen, "catchangry")) {
+    pet.dbgHatchAs(1, false);
+    pet.ageMinutes = 41UL * MINUTES_PER_LEVEL;
+    pet.relearnFromLevel();
+    startBattle(25, 42);
+    if (!battleOpen) {
+      fprintf(stderr, "capture screenshots require installed Kanto data packs\n");
+      return 2;
+    }
+    btlWildMon = PartyMon();
+    btlWildMon.dex = 25;
+    btlWildMon.level = 42;
+    btlWildMon.ageMinutes = 41UL * MINUTES_PER_LEVEL;
+    btlWildMon.ivAtk = 14; btlWildMon.ivDef = 18;
+    btlWildMon.ivSpe = 20; btlWildMon.ivHp = 16;
+    btlWildMon.nature = NATURE_HARDY;
+    for (uint8_t i = 0; i < MOVE_SLOTS; i++) btlWildMon.moves[i] = btlFoe.moves[i];
+    btlWild = true;
+    for (uint16_t i = 0; i < itemCount(); i++) {
+      const ItemEntry *item = itemAt(i);
+      if (item && item->effect == ITEM_EFFECT_CATCH) {
+        btlCaptureItem = item->key;
+        break;
+      }
+    }
+    bool angryScene = !strcmp(screen, "catchangry");
+    btlCaptureAnimating = !angryScene;
+    btlCaptureSuccess = strcmp(screen, "catchfail") && strcmp(screen, "catchreturn") &&
+                        strcmp(screen, "catchresume") && !angryScene;
+    btlCaptureCuePlayed = true;
+    if (angryScene) {
+      btlFoe.angry = true;
+      btlMenu = 0;
+      btlMsgCount = 0;
+    }
+    uint32_t elapsed = 300UL;
+    if (!strcmp(screen, "catchthrow")) elapsed = 600UL + 325UL;
+    else if (!strcmp(screen, "catchabsorb")) elapsed = 600UL + 650UL + 100UL;
+    else if (!strcmp(screen, "catchshake")) elapsed = 600UL + 650UL + 350UL + 500UL;
+    else if (!strcmp(screen, "catchsuccess") || !strcmp(screen, "catchfail"))
+      elapsed = 600UL + 650UL + 350UL + 1350UL + 180UL;
+    else if (!strcmp(screen, "catchreturn"))
+      elapsed = 600UL + 650UL + 350UL + 1350UL + 700UL + 300UL;
+    else if (!strcmp(screen, "catchresult"))
+      elapsed = 600UL + 650UL + 350UL + 1350UL + 700UL + 50UL;
+    else if (!strcmp(screen, "catchresume"))
+      elapsed = 600UL + 650UL + 350UL + 1350UL + 700UL + 600UL + 50UL;
+    if (!angryScene) btlCaptureStartedAt = millis() - elapsed;
   }
   else if (!strcmp(screen, "gympick")) { gymOpen = true; gymPick = true; }
   else if (!strcmp(screen, "dexpick")) {

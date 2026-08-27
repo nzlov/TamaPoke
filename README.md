@@ -307,6 +307,12 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 - After a wild victory, a settlement page lists every item and training-stat gain.
   A successful capture adds the caught creature to that same page and stores it
   automatically. Only a full collection continues to the replace-or-release picker.
+- Capture items hide the battle UI while the wild creature moves to centre for
+  a non-blocking throw and three-shake sequence. Success finishes before the
+  settlement page. After breaking free, the creature enters a non-stacking Angry
+  state for the rest of the battle: its angry animation keeps playing, its five
+  non-HP battle stats rise by 5%, and its escape chance gains 5 percentage points.
+  HP is unchanged; it returns to its battle position before UI resumes.
 - Gym and linked battles select from exactly the six cultivation slots.
 
 ### Three ways a creature leaves

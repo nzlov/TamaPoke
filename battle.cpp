@@ -290,8 +290,16 @@ uint16_t stagedStat(uint16_t base, int8_t stage) {
   return v < 1 ? 1 : (v > 65535 ? 65535 : (uint16_t)v);
 }
 
-static uint16_t effStat(const Combatant &c, uint8_t idx) {
-  uint16_t v = stagedStat(c.base[idx], c.stage[idx]);
+static uint16_t battleBaseStat(const Combatant &c, uint8_t idx) {
+  if (idx >= SI_COUNT) return 1;
+  uint32_t value = c.base[idx];
+  if (c.angry) value = value * BATTLE_ANGRY_STAT_PERCENT / 100u;
+  return value < 1 ? 1 : value > UINT16_MAX ? UINT16_MAX : (uint16_t)value;
+}
+
+uint16_t battleEffectiveStat(const Combatant &c, uint8_t idx) {
+  if (idx >= SI_COUNT) return 1;
+  uint16_t v = stagedStat(battleBaseStat(c, idx), c.stage[idx]);
   // burn halves physical attack, paralysis halves speed -- the two ailments
   // that do something beyond chip damage
   if (idx == SI_ATK && c.ailment == AIL_BURN) v = v / 2 ? v / 2 : 1;
@@ -317,13 +325,17 @@ uint16_t battleDamage(const Combatant &atk, const Combatant &def,
   if (m.effect == EF_FIXED_LVL) return atk.level ? atk.level : 1;
   if (m.effect == EF_FIXED) return m.param > 0 ? (uint16_t)m.param : 1;
 
-  uint16_t A = (m.cat == MC_PHYS) ? effStat(atk, SI_ATK) : effStat(atk, SI_SPA);
-  uint16_t D = (m.cat == MC_PHYS) ? effStat(def, SI_DEF) : effStat(def, SI_SPD);
+  uint16_t A = (m.cat == MC_PHYS) ? battleEffectiveStat(atk, SI_ATK)
+                                  : battleEffectiveStat(atk, SI_SPA);
+  uint16_t D = (m.cat == MC_PHYS) ? battleEffectiveStat(def, SI_DEF)
+                                  : battleEffectiveStat(def, SI_SPD);
   // A critical hit ignores the defender's positive stages and the attacker's
   // negative ones, so a Barrier cannot make you immune to a lucky roll.
   if (crit) {
-    A = (m.cat == MC_PHYS) ? atk.base[SI_ATK] : atk.base[SI_SPA];
-    D = (m.cat == MC_PHYS) ? def.base[SI_DEF] : def.base[SI_SPD];
+    A = (m.cat == MC_PHYS) ? battleBaseStat(atk, SI_ATK)
+                           : battleBaseStat(atk, SI_SPA);
+    D = (m.cat == MC_PHYS) ? battleBaseStat(def, SI_DEF)
+                           : battleBaseStat(def, SI_SPD);
   }
   if (m.cat == MC_PHYS && field.weather == BWEATHER_SNOW &&
       combatantHasType(def, T_ICE))
@@ -376,7 +388,8 @@ bool battleMovesFirst(const Combatant &a, const BattleMove &ma,
   int pb = mb.valid() && (mb.entry.effect == EF_PRIORITY || mb.entry.effect == EF_PROTECT)
                ? mb.entry.param : 0;
   if (pa != pb) return pa > pb;
-  uint16_t sa = effStat(a, SI_SPE), sb = effStat(b, SI_SPE);
+  uint16_t sa = battleEffectiveStat(a, SI_SPE);
+  uint16_t sb = battleEffectiveStat(b, SI_SPE);
   if (sa != sb) return sa > sb;
   return random(2) == 0;               // a genuine speed tie is a coin flip
 }
@@ -438,7 +451,8 @@ void battleAct(Combatant &atk, Combatant &def, BattleField &field,
     atk.confuseTurns--;
     if (random(100) < 33) {               // hits itself instead
       uint16_t self = (2UL * atk.level / 5 + 2) * 40 *
-                          atk.base[SI_ATK] / (atk.base[SI_DEF] ? atk.base[SI_DEF] : 1) / 50 + 2;
+                          battleBaseStat(atk, SI_ATK) /
+                          battleBaseStat(atk, SI_DEF) / 50 + 2;
       hurt(atk, self);
       log.hurtSelf = true;
       log.damage = self;
