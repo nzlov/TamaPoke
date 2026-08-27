@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Genera entradas TPK2 para los paquetes regionales desde PMD SpriteCollab.
 
-Genera tools/sdcard/mons/pNNN.bin (y psNNN.bin shiny) en formato TPK2:
+Genera tools/sdcard/mons/pNNN.bin, psNNN.bin shiny y, cuando SpriteCollab
+ofrece una diferencia visual, pfNNN.bin / pfsNNN.bin para hembras:
 
   char[4] "TPK2"
   u8  nActs
@@ -107,9 +108,16 @@ def load_animdata(folder):
     return anims
 
 
-def pack(dexnum, shiny=False, form_path=None):
-    sub = f'/{form_path}' if form_path else ('/0000/0001' if shiny else '')
-    suffix = 'm' if form_path else ('s' if shiny else '')
+def pack(dexnum, shiny=False, female=False, form_path=None):
+    if form_path:
+        sub = f'/{form_path}'
+        suffix = 'm'
+    elif female:
+        sub = f'/0000/{"0001" if shiny else "0000"}/0002'
+        suffix = ('f' if female else '') + ('s' if shiny else '')
+    else:
+        sub = '/0000/0001' if shiny else ''
+        suffix = 's' if shiny else ''
     folder = os.path.join(CACHE, f'{dexnum:04d}{suffix}')
     base = f'{BASE}/{dexnum:04d}{sub}'
     if not fetch(f'{base}/AnimData.xml', os.path.join(folder, 'AnimData.xml')):
@@ -205,20 +213,28 @@ if __name__ == '__main__':
                   encoding='utf-8') as mega_file:
             mega_data = json.load(mega_file)
         paths = {int(row['species']): row.get('spritePath') for row in mega_data}
-        jobs = [(n, False, paths[n]) for n in nums if paths.get(n)]
+        jobs = [(n, False, False, paths[n]) for n in nums if paths.get(n)]
     else:
-        jobs = [(n, sh, None) for n in nums
+        jobs = [(n, sh, female, None) for n in nums
+                for female in [False, True]
                 for sh in ([False] if solo_normal else [False, True])]
 
     def run_job(job):
-        n, sh, form_path = job
+        n, sh, female, form_path = job
         try:
-            print(f"#{n:03d}{' shiny' if sh else ''}", flush=True)
-            pack(n, sh, form_path)
+            label = (' Mega' if form_path else '') + \
+                    (' female' if female else '') + (' shiny' if sh else '')
+            print(f"#{n:03d}{label}", flush=True)
+            pack(n, sh, female, form_path)
             return None
         except Exception as e:
-            print(f"#{n:03d}{' shiny' if sh else ''} FALLO: {e}", flush=True)
-            return n, sh
+            # Female art only exists for species with an authored visual
+            # difference. Its absence is a supported fallback to the base art.
+            if female:
+                print(f"#{n:03d}{label} sin variante", flush=True)
+                return None
+            print(f"#{n:03d}{label} FALLO: {e}", flush=True)
+            return n, sh, female
 
     with ThreadPoolExecutor(max_workers=options.workers) as executor:
         fallos = [failed for failed in executor.map(run_job, jobs) if failed]

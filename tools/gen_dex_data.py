@@ -154,7 +154,7 @@ def build(limit):
 
     evo, branches, nonbase = {}, {}, set()
     seen_chains = set()
-    rows, types, legend, capture = [], {}, set(), {}
+    rows, types, legend, capture, gender = [], {}, set(), {}, {}
     for n, sp in enumerate(species_rows, 1):
         pk = get(pokemon_urls[n - 1])
         cu = sp['evolution_chain']['url']
@@ -166,6 +166,7 @@ def build(limit):
         if sp.get('is_legendary') or sp.get('is_mythical'):
             legend.add(n)
         capture[n] = sp.get('capture_rate', 255)
+        gender[n] = sp.get('gender_rate', -1)
         rows.append((n, sp['name'], t[0]))
         sys.stderr.write('\r%d/%d' % (n, limit)); sys.stderr.flush()
     sys.stderr.write('\n')
@@ -186,7 +187,7 @@ def build(limit):
         for source, targets in branches.items()
         if source <= limit and len([target for target in targets if target <= limit]) > 1
     }
-    return dex, types, legend, capture, installed_branches
+    return dex, types, legend, capture, installed_branches, gender
 
 
 def check(limit=None):
@@ -198,11 +199,11 @@ def check(limit=None):
     differences live in KNOWN; everything above 151 was generated and must
     match exactly.
     """
-    from dex_data import DEX, TYPE_ACCENTS, LEGENDARY, EVOLUTION_BRANCHES
+    from dex_data import DEX, TYPE_ACCENTS, LEGENDARY, EVOLUTION_BRANCHES, GENDER_RATES
     if limit is None:
         limit = max(d[0] for d in DEX)
     from dex_types import TYPES
-    dex, types, legend, _, branches = build(limit)
+    dex, types, legend, _, branches, gender = build(limit)
     hand = {d[0]: d for d in DEX}
     bad = 0
     for e in dex:
@@ -234,6 +235,10 @@ def check(limit=None):
     if branches != committed_branches:
         print('  evolution branches differ: generated %r hand %r'
               % (branches, committed_branches))
+        bad += 1
+    committed_gender = {n: GENDER_RATES[n] for n in range(1, limit + 1)}
+    if gender != committed_gender:
+        print('  gender rates differ')
         bad += 1
     for a in set(ACCENT.values()):
         if a not in TYPE_ACCENTS:
@@ -274,7 +279,7 @@ def link(limit=None):
     from dex_data import DEX
     if limit is None:
         limit = max(d[0] for d in DEX)
-    gen, _, _, _, _ = build(limit)
+    gen, _, _, _, _, _ = build(limit)
     generated = {e[0]: e for e in gen}
     dd = os.path.join(HERE, 'dex_data.py')
     src = open(dd, encoding='utf-8').read()
@@ -310,7 +315,7 @@ def emit(limit):
     are not internally consistent (see STONE_LEVEL), and every one of them is
     already live in somebody's Pokedex -- so they are copied through untouched
     and only the new range is inserted before the closing bracket."""
-    dex, types, legend, capture, branches = build(limit)
+    dex, types, legend, capture, branches, gender = build(limit)
     evolves_to = {
         target
         for e in dex
@@ -378,6 +383,22 @@ def emit(limit):
 
     src = replace_set(src, 'RARE', newR)
     src = replace_set(src, 'LEGENDARY', newL)
+
+    gender_values = [-1] + [gender[number] for number in range(1, limit + 1)]
+    gender_rows = ''.join(
+        '    ' + ', '.join(str(value) for value in gender_values[start:start + 16]) + ',\n'
+        for start in range(0, len(gender_values), 16)
+    )
+    gender_block = ('# PokeAPI gender_rate: female eighths (0..8), -1 = genderless.\n'
+                    '# Index 0 is unused so the tuple can be addressed by Pokédex number.\n'
+                    'GENDER_RATES = (\n' + gender_rows + ')\n\n')
+    if re.search(r'GENDER_RATES = [({]', src):
+        src, replaced = re.subn(r'# PokeAPI gender_rate:.*?GENDER_RATES = [({]\n.*?\n[)}]\n\n',
+                                gender_block, src, count=1, flags=re.S)
+        if replaced != 1:
+            raise SystemExit('dex_data.py: cannot replace GENDER_RATES')
+    else:
+        src = src.replace('DEX = [\n', gender_block + 'DEX = [\n', 1)
 
     # Branches belong to the authoring data rather than firmware conditionals.
     # Rebuild the complete installed subset on every expansion.

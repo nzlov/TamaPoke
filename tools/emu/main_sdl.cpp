@@ -196,6 +196,8 @@ extern Pet pet;
 extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyPick, trainOpen, movePickOpen;
 extern bool bagOpen;
 extern bool battleOpen, btlWild;
+extern bool btlFoeDetailOpen;
+extern uint8_t btlFoeDetailPage;
 extern bool btlCaptureAnimating, btlCaptureSuccess, btlCaptureCuePlayed;
 extern uint32_t btlCaptureStartedAt;
 extern ItemKey btlCaptureItem;
@@ -286,7 +288,10 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   boxOpen = false;
   bagOpen = false;
   capturedMon = PartyMon();
-  if (!strcmp(screen, "main")) pet.ageMinutes = 0;
+  if (!strcmp(screen, "main")) {
+    pet.ageMinutes = 0;
+    expireShotCelebrations();
+  }
   else if (!strcmp(screen, "sparkle")) {
     pet.shiny = false;
     pet.sparkle = true;
@@ -589,6 +594,22 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
       }
       btlMenu = 3;
     }
+  }
+  else if (!strcmp(screen, "wilddetail")) {
+    pet.dbgHatchAs(1, false);
+    pet.ageMinutes = 41UL * MINUTES_PER_LEVEL;
+    pet.gender = GENDER_MALE;
+    pet.relearnFromLevel();
+    startBattle(1, 42);
+    btlWild = true;
+    btlFoe.gender = GENDER_FEMALE;
+    btlWildMon = PartyMon();
+    btlWildMon.dex = 1;
+    btlWildMon.level = 42;
+    btlWildMon.gender = GENDER_FEMALE;
+    btlWildMon.nature = NATURE_HARDY;
+    btlFoeDetailOpen = true;
+    btlFoeDetailPage = 0;
   }
   else if (!strcmp(screen, "catchcenter") || !strcmp(screen, "catchthrow") ||
            !strcmp(screen, "catchabsorb") ||

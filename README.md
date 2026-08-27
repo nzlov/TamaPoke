@@ -75,8 +75,9 @@ operations require confirmation; restart the device after changing the card.
 > **Upgrade note:** the first migration to runtime packages clears saves made by
 > older firmware. For later same-schema updates, leave **Erase device** unchecked
 > to preserve the current save; flashing does not delete packages on the microSD.
-> ABI 3 precomputes sprite display scales in every region pack, so redeploy all
-> region packs together with this firmware; older ABI 2 region packs are rejected.
+> ABI 4 stores precomputed sprite display scales and gender-specific sprite
+> variants in every region pack, so redeploy all region packs together with this
+> firmware; older region-pack ABIs are rejected.
 > Region packages are large (a 40 MB package normally takes 10–15 minutes over
 > USB serial). Restart the device after deployment.
 
@@ -402,6 +403,13 @@ uses the cap rather than the current value and rounds up, both live and offline.
 ATK training is also the special-attack training contribution; DEF training is
 also the special-defence contribution. There are no separate special training
 values.
+
+Each hatch also uses its species' canonical gender ratio. Male creatures receive
++10% final Attack and -10% final Special Attack; female creatures receive the
+reverse. Genderless species are neutral. The modifier is applied after nature,
+and the chosen gender persists in the party and box. The UI shows a compact gender
+icon, and region packs can provide female normal and shiny sprite variants; when
+a variant is absent, the base sprite is used.
 
 **TMs unlock at level 40**, all of them, and nothing before. A TM carries no level
 requirement in the data — true of the games, wrong here, because a young creature
@@ -749,7 +757,8 @@ LAN battle damage.
 
 Each creature has ATK/DEF/SPD/VIT = **base stat** + level + **IV** (ordinary
 rolls stop at 31; sparkle and gyms may exceed it; `IV × level/100`) + **training**, followed
-by its nature modifier (see [Battle stats & IVs](#battle-stats--ivs)):
+by its nature modifier and then its gender modifier (see
+[Battle stats & IVs](#battle-stats--ivs)):
 - SPEED ← the **reaction test** (~2 reactions = one score step)
 - DEFENSE ← the ball game (~2 rallies = one score step), plus 1 h of wellbeing = +1
 - STRENGTH ← the training bag (~4 hits = one score step)

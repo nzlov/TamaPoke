@@ -20,6 +20,7 @@ int main(){
   if (p.awaitingStarter()) p.chooseStarter(4);
   PartyMon m; m.dex=6; m.level=61;
   m.ageMinutes=60UL*MINUTES_PER_LEVEL; m.shiny=1; m.nature=NATURE_BRAVE;
+  m.gender=GENDER_FEMALE;
   m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=24; m.trAtk=m.trDef=m.trSpe=35;
   m.fullness=43; m.joy=54; m.energy=65; m.hygiene=76; m.bond=87;
   m.gymIvRewards[3]=GYM_IV_REWARD_HP;
@@ -34,6 +35,7 @@ int main(){
   ck(p.nature==NATURE_BRAVE,"and its nature");
   ck(!p.frozen && p.fullness==43 && p.joy==54 && p.energy==65 &&
      p.hygiene==76 && p.bond==87, "and restores its cultivation state unfrozen");
+  ck(p.gender==GENDER_FEMALE,"and its gender");
 
   // A cultivation slot remains alive and therefore ages.
   uint8_t lvl = p.level();
@@ -43,8 +45,9 @@ int main(){
 
   // and it survives a reload, still active rather than frozen
   Pet q; q.begin();
-  ck(!q.frozen && q.speciesId==6 && q.nature==NATURE_BRAVE,
-     "stays active with its nature across a reload");
+  ck(!q.frozen && q.speciesId==6 && q.nature==NATURE_BRAVE &&
+     q.gender==GENDER_FEMALE,
+     "stays active with its nature and gender across a reload");
 
   // and a brand new egg is a normal life again
   q.newEgg();

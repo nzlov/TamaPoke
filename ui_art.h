@@ -12,7 +12,7 @@
 #define UI_INK 0x2946  // #2a2a36
 #define UI_INK_NIGHT 0xDEFE  // #d8dcf0
 #define UI_TRACK 0xDE97  // #d8d2bd
-#define UI_MUTED 0x738D  // #74706b
+#define UI_MUTED 0x738D  // #74706b; secondary text on the light panel
 #define UI_BAR_OK 0x5DCD  // #58b868
 #define UI_BAR_WARN 0xED07  // #e8a23c
 #define UI_BAR_BAD 0xEA87  // #e8503a
@@ -236,6 +236,63 @@ static const char* const SPR_ICON_BATTLE[16] = {  // 16x16
   "..kkk......kkk..",
   ".kNNk......kNNk.",
   ".kkkk......kkkk.",
+  "................",
+  "................",
+};
+
+static const char* const SPR_ICON_GENDER_MALE[16] = {  // 16x16
+  "................",
+  "................",
+  "................",
+  "................",
+  ".........kkkkk..",
+  ".........kbkbk..",
+  "....kkkkk.k.kk..",
+  "...kwbkbbk..kk..",
+  "..kbbk.kbbk.kk..",
+  "..kbk...kBk.....",
+  "..kk.....kk.....",
+  "..kbk...kBk.....",
+  "..kbbk.kbBk.....",
+  "...kbBkBBk......",
+  "....kkkkk.......",
+  "................",
+};
+
+static const char* const SPR_ICON_GENDER_FEMALE[16] = {  // 16x16
+  "................",
+  "................",
+  "......kkkkk.....",
+  ".....kwpkppk....",
+  "....kppk.kppk...",
+  "....kpk...kPk...",
+  "....kk.....kk...",
+  "....kpk...kPk...",
+  "....kppk.kpPk...",
+  ".....kpPkPPk....",
+  "......kppkk.....",
+  ".......kk.......",
+  ".....kkppkk.....",
+  ".....kkppkk.....",
+  ".......kk.......",
+  "................",
+};
+
+static const char* const SPR_ICON_GENDER_NONE[16] = {  // 16x16
+  "................",
+  "................",
+  "................",
+  "........k...k...",
+  ".....kkkskkkk...",
+  "....ksskksssk...",
+  "....ksk..kksk...",
+  "....kk..kk.kk...",
+  "...ksk.kk..kSk..",
+  "....kskk...kk...",
+  "....ksk...kSk...",
+  "....ksskkkSSk...",
+  "...kkkkkSkkk....",
+  "........k.......",
   "................",
   "................",
 };

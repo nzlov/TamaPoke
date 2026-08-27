@@ -162,7 +162,7 @@ void Party::sanitize(PartyMon &m, bool boxed) {
   if (m.dex <= 0) m.state = 0;
   m.nick[sizeof(m.nick) - 1] = 0;
   uint8_t version = m.stateVersion;
-  if (version != 1 && version != 2 && version != 3) {
+  if (version != 1 && version != 2 && version != 3 && version != 4) {
     m.fullness = m.joy = m.energy = 80; m.hygiene = 100;
     m.ageMinutes = (uint32_t)(m.level ? m.level - 1 : 0) * MINUTES_PER_LEVEL;
     m.lastLearnLevel = (uint8_t)(m.level > MAX_LEVEL ? MAX_LEVEL : m.level);
@@ -178,7 +178,11 @@ void Party::sanitize(PartyMon &m, bool boxed) {
     m.sparkle = 0;
     m.raisedMinutes = m.ageMinutes;
   }
-  m.stateVersion = 3;
+  if (m.dex > 0 && (version < 4 || !genderValid(m.gender)))
+    m.gender = genderForLegacy(m.dex, dexEntry(m.dex).femaleRate,
+                               m.ivAtk, m.ivDef, m.ivSpe, m.ivHp);
+  if (m.dex <= 0) m.gender = GENDER_UNKNOWN;
+  m.stateVersion = 4;
   auto sanitizeTraining = [](uint8_t &training, uint8_t &floor, uint8_t iv) {
     uint8_t cap = Pet::trMaxFor(iv);
     if (floor > cap) floor = cap;
@@ -475,33 +479,34 @@ void Party::removeActiveAndEnsurePlayable(Pet &pet) {
 // Kept in step with it by hand; there is no shared home for it that both the
 // live pet and a frozen party member could use without dragging Pet in here.
 static uint16_t calcStat(uint8_t base, uint8_t iv, uint16_t lvl, uint8_t tr,
-                         NatureId nature, NatureStat stat) {
+                         NatureId nature, PetGender gender, NatureStat stat) {
   uint16_t untrained = (uint16_t)base + lvl + (uint32_t)iv * lvl / 100;
-  return natureStatValue(nature, stat, untrained, tr);
+  return genderStatValue(gender, stat,
+                         natureStatValue(nature, stat, untrained, tr));
 }
 
 uint16_t Party::atkOf(const PartyMon &m) const {
   return !m.battleReady() ? 0 : calcStat(dexEntry(m.dex).bAtk, m.ivAtk, m.level, m.trAtk,
-                                  m.nature, NATURE_STAT_ATK);
+                                  m.nature, m.gender, NATURE_STAT_ATK);
 }
 uint16_t Party::defOf(const PartyMon &m) const {
   return !m.battleReady() ? 0 : calcStat(dexEntry(m.dex).bDef, m.ivDef, m.level, m.trDef,
-                                  m.nature, NATURE_STAT_DEF);
+                                  m.nature, m.gender, NATURE_STAT_DEF);
 }
 uint16_t Party::speOf(const PartyMon &m) const {
   return !m.battleReady() ? 0 : calcStat(dexEntry(m.dex).bSpe, m.ivSpe, m.level, m.trSpe,
-                                  m.nature, NATURE_STAT_SPE);
+                                  m.nature, m.gender, NATURE_STAT_SPE);
 }
 uint16_t Party::vitOf(const PartyMon &m) const {
   return !m.battleReady() ? 0 : calcStat(dexEntry(m.dex).bHp, m.ivHp, m.level, 10,
-                                  m.nature, NATURE_STAT_NONE);
+                                  m.nature, m.gender, NATURE_STAT_NONE);
 }
 // Special reuses the physical IV and training, same rule as Pet::spaStat().
 uint16_t Party::spaOf(const PartyMon &m) const {
   return !m.battleReady() ? 0 : calcStat(dexEntry(m.dex).bSpA, m.ivAtk, m.level, m.trAtk,
-                                  m.nature, NATURE_STAT_SPA);
+                                  m.nature, m.gender, NATURE_STAT_SPA);
 }
 uint16_t Party::spdOf(const PartyMon &m) const {
   return !m.battleReady() ? 0 : calcStat(dexEntry(m.dex).bSpD, m.ivDef, m.level, m.trDef,
-                                  m.nature, NATURE_STAT_SPD);
+                                  m.nature, m.gender, NATURE_STAT_SPD);
 }

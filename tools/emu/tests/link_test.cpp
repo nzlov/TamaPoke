@@ -61,6 +61,7 @@ int main(){
   ck(!strcmp(B.theirs[1].name,"SHELL"), "names survive the wire");
   ck(B.theirs[0].shiny && B.theirs[0].sparkle,
      "color and sparkle survive independently on the wire");
+  ck(B.theirs[0].gender==A.mine[0].gender, "gender survives the wire");
   ck(A.isHost && !B.isHost, "the roles stay as they were offered");
 
   // a creature restored from the wire must fight identically
@@ -223,10 +224,12 @@ int main(){
   {
     LinkMon junk{};
     junk.dex=9999; junk.level=250; junk.maxHp=0; junk.moves[0]=250;
+    junk.gender=250;
     Combatant c; linkMonTo(c,junk);
     ck(c.dex>=1 && c.dex<=dexCount(), "a nonsense dex is clamped into the table");
     ck(c.level>=1 && c.level<=MAX_LEVEL, "so is a nonsense level");
     ck(c.moves[0]<moveCount(), "and a nonsense move index");
+    ck(c.gender==GENDER_NONE, "and a nonsense gender is made neutral");
     ck(c.maxHp>=1 && c.hp==c.maxHp, "a creature always has at least 1 HP");
 
     LinkMon neg{}; neg.dex=-5; neg.level=0; neg.maxHp=10;

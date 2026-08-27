@@ -44,6 +44,7 @@ void Pet::newEgg() {
   speciesId = -1;
   prevSpeciesId = -1;
   nature = NATURE_UNKNOWN;
+  gender = GENDER_UNKNOWN;
   for (int i = 0; i < regionCount(); i++) eggByRegion[i] = 0;
   eggTarget = pickEggSpecies();  // especie oculta segun rareza y pokedex
   eggByRegion[region % regionCount()] = eggTarget;
@@ -281,6 +282,10 @@ void Pet::importState(const PartyMon &m) {
   nature = natureValid(m.nature) ? m.nature
                                  : natureForLegacy(m.dex, m.ivAtk, m.ivDef,
                                                    m.ivSpe, m.ivHp);
+  gender = genderValid(m.gender)
+               ? m.gender
+               : genderForLegacy(m.dex, dexEntry(m.dex).femaleRate,
+                                 m.ivAtk, m.ivDef, m.ivSpe, m.ivHp);
   ivAtk = m.ivAtk; ivDef = m.ivDef; ivSpe = m.ivSpe; ivHp = m.ivHp;
   trAtk = m.trAtk; trDef = m.trDef; trSpe = m.trSpe;
   trMinAtk = m.trMinAtk; trMinDef = m.trMinDef; trMinSpe = m.trMinSpe;
@@ -333,11 +338,12 @@ void Pet::exportState(PartyMon &out) const {
   out.sparkle = sparkle ? 1 : 0;
   out.nature = nature;
   out.setDead(dead);
+  out.gender = gender;
   for (int i = 0; i < MOVE_SLOTS; i++) out.moves[i] = moves[i];
   memcpy(out.gymIvRewards, gymIvRewards, sizeof(gymIvRewards));
   strncpy(out.nick, nick, sizeof(out.nick) - 1);
   out.nick[sizeof(out.nick) - 1] = 0;
-  out.stateVersion = 3;
+  out.stateVersion = 4;
   out.fullness = fullness; out.joy = joy; out.energy = energy; out.hygiene = hygiene;
   out.poops = poops; out.weight = weight;
   out.berryKnown = berryKnown ? 1 : 0;
@@ -650,39 +656,40 @@ void Pet::rename(const char *name) {
 // el x nivel/100 canonico sobre la base, un bicho recien nacido mostraria
 // stats de un solo digito, que en una pantalla de mascota parece un error.
 static uint16_t calcStat(uint8_t base, uint8_t iv, uint8_t lvl, uint8_t tr,
-                         NatureId nature, NatureStat stat) {
+                         NatureId nature, PetGender gender, NatureStat stat) {
   uint16_t untrained = (uint16_t)base + lvl + (uint16_t)iv * lvl / 100;
-  return natureStatValue(nature, stat, untrained, tr);
+  return genderStatValue(gender, stat,
+                         natureStatValue(nature, stat, untrained, tr));
 }
 
 uint16_t Pet::atkStat() const {
   return isEgg() ? 0 : calcStat(dexEntry(speciesId).bAtk, ivAtk, level(), trAtk,
-                                nature, NATURE_STAT_ATK);
+                                nature, gender, NATURE_STAT_ATK);
 }
 uint16_t Pet::defStat() const {
   return isEgg() ? 0 : calcStat(dexEntry(speciesId).bDef, ivDef, level(), trDef,
-                                nature, NATURE_STAT_DEF);
+                                nature, gender, NATURE_STAT_DEF);
 }
 uint16_t Pet::speStat() const {
   return isEgg() ? 0 : calcStat(dexEntry(speciesId).bSpe, ivSpe, level(), trSpe,
-                                nature, NATURE_STAT_SPE);
+                                nature, gender, NATURE_STAT_SPE);
 }
 // la vitalidad no se entrena (no hay nada que la suba), asi que lleva un +10
 // fijo en lugar del entrenamiento, igual que el +Nivel+10 del HP en los juegos
 uint16_t Pet::vitStat() const {
   return isEgg() ? 0 : calcStat(dexEntry(speciesId).bHp, ivHp, level(), 10,
-                                nature, NATURE_STAT_NONE);
+                                nature, gender, NATURE_STAT_NONE);
 }
 // Special reuses the physical IV and training against the species' special base
 // stat, which is what keeps Alakazam (50 Atk / 135 SpA) a real attacker without
 // adding more persisted IV fields.
 uint16_t Pet::spaStat() const {
   return isEgg() ? 0 : calcStat(dexEntry(speciesId).bSpA, ivAtk, level(), trAtk,
-                                nature, NATURE_STAT_SPA);
+                                nature, gender, NATURE_STAT_SPA);
 }
 uint16_t Pet::spdStat() const {
   return isEgg() ? 0 : calcStat(dexEntry(speciesId).bSpD, ivDef, level(), trDef,
-                                nature, NATURE_STAT_SPD);
+                                nature, gender, NATURE_STAT_SPD);
 }
 
 bool Pet::canRaiseTrainingFloor(TrainingStat stat) const {
@@ -1017,6 +1024,7 @@ void Pet::hatch() {
   // vinculo a proposito: el careBonus que los empuja es el del bicho anterior.
   rollIVs();
   nature = (NatureId)random(NATURE_COUNT);
+  gender = genderFromRate(dexEntry(speciesId).femaleRate, (uint8_t)random(8));
   trAtk = trDef = trSpe = 0;
   trMinAtk = trMinDef = trMinSpe = 0;
   raisedMinutes = 0;
@@ -1393,6 +1401,7 @@ void Pet::save() {
   prefs.putUChar("ivsp", ivSpe);
   prefs.putUChar("ivhp", ivHp);
   prefs.putUChar("nat", (uint8_t)nature);
+  prefs.putUChar("gndr", (uint8_t)gender);
   prefs.putUChar("tatk", trAtk);
   prefs.putUChar("tdef", trDef);
   prefs.putUChar("tspe", trSpe);
@@ -1489,6 +1498,11 @@ void Pet::load() {
   nature = (NatureId)prefs.getUChar("nat", NATURE_UNKNOWN);
   if (!natureValid(nature) && speciesId >= 1)
     nature = natureForLegacy(speciesId, ivAtk, ivDef, ivSpe, ivHp);
+  gender = (PetGender)prefs.getUChar("gndr", GENDER_UNKNOWN);
+  if (speciesId < 1) gender = GENDER_UNKNOWN;
+  else if (!genderValid(gender))
+    gender = genderForLegacy(speciesId, dexEntry(speciesId).femaleRate,
+                             ivAtk, ivDef, ivSpe, ivHp);
   eggTarget = prefs.getShort("eggT2", 4);
   eggTaps = prefs.getUChar("crack", 0);
   careMistakes = prefs.getUChar("mist", 0);

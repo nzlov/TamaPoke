@@ -5,6 +5,7 @@
 #include "trainers.h"
 #include "party.h"
 #include "nature.h"
+#include "gender.h"
 
 // 1 tick = 1 minuto de juego. Baja este valor para probar mas rapido
 // (p. ej. 5000UL = las estadisticas caen 12x mas rapido).
@@ -121,6 +122,7 @@ public:
   uint8_t trAtk = 0, trDef = 0, trSpe = 0;
   uint8_t trMinAtk = 0, trMinDef = 0, trMinSpe = 0;
   NatureId nature = NATURE_UNKNOWN;
+  PetGender gender = GENDER_UNKNOWN;
   uint8_t gymIvRewards[GYM_IV_REWARD_SLOTS] = { 0 };
   bool berryKnown = false;  // ya descubrio su baya favorita
   bool shiny = false;       // rare color variant

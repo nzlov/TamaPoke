@@ -27,6 +27,7 @@ static void sameIndividual(Pet &p, PartyMon &m){
   m.dex=p.speciesId; m.level=p.level();
   m.ivAtk=p.ivAtk; m.ivDef=p.ivDef; m.ivSpe=p.ivSpe; m.ivHp=p.ivHp;
   m.trAtk=p.trAtk; m.trDef=p.trDef; m.trSpe=p.trSpe;
+  m.gender=p.gender;
 }
 
 int main(){

@@ -78,7 +78,7 @@ int main() {
          sequential ? "PASS" : "FAIL");
   printf("%s  pack validation reports the failing format stage\n",
          precise ? "PASS" : "FAIL");
-  printf("%s  ABI 2 region packs are rejected by the ABI 3 schema\n",
+  printf("%s  ABI 2 region packs are rejected by the ABI 4 schema\n",
          abi2Rejected ? "PASS" : "FAIL");
   printf("%s  startup discovers packs without rescanning payload CRC\n",
          discoverySkipsCrc ? "PASS" : "FAIL");

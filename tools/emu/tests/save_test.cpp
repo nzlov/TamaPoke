@@ -36,6 +36,7 @@ int main(){
   pet.trAtk=64; pet.trDef=31; pet.trSpe=90;
   pet.trMinAtk=40; pet.trMinDef=20; pet.trMinSpe=70;
   pet.nature=NATURE_MODEST;
+  pet.gender=GENDER_FEMALE;
   pet.gymIvRewards[0]=GYM_IV_REWARD_DEF;
   pet.gymIvRewards[71]=GYM_IV_REWARD_LEGACY_CLAIMED;
   pet.relearnFromLevel();
@@ -54,12 +55,14 @@ int main(){
     m.nature=(NatureId)(i%NATURE_COUNT);
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20+i; m.shiny=(i==2); m.sparkle=(i==3);
     m.raisedMinutes=300+i;
+    m.gender=(i&1)?GENDER_FEMALE:GENDER_MALE;
     m.gymIvRewards[i]=GYM_IV_REWARD_ATK;
     snprintf(m.nick,sizeof(m.nick),"P%d",i);
     m.moves[0]=1+i; m.moves[1]=9; party.replaceAt(i,m); }
   for (int i=0;i<BOX_SLOTS;i++){ PartyMon m; m.dex=1+i*3; m.level=10+i;
     m.ageMinutes=(uint32_t)(m.level-1)*MINUTES_PER_LEVEL;
     m.nature=(NatureId)((i+5)%NATURE_COUNT);
+    m.gender=(i&1)?GENDER_MALE:GENDER_FEMALE;
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=11;
     m.trMinSpe=30;
     m.gymIvRewards[i]=GYM_IV_REWARD_SPE; party.box[i]=m; }
@@ -135,6 +138,7 @@ int main(){
   ck(p2.trMinAtk==40 && p2.trMinDef==20 && p2.trMinSpe==70,
      "and its permanent training floors");
   ck(p2.nature==NATURE_MODEST,"and its nature");
+  ck(p2.gender==GENDER_FEMALE,"and its gender");
   ck(p2.gymIvRewards[0]==GYM_IV_REWARD_DEF &&
      p2.gymIvRewards[71]==GYM_IV_REWARD_LEGACY_CLAIMED, "and its gym IV reward bytes");
   ck(!strcmp(p2.trainerName,"DYLAN"), "the trainer name survives");
@@ -168,6 +172,7 @@ int main(){
     if (m.moves[0] != 1+i || m.moves[1] != 9) party_ok = false;
     if (m.gymIvRewards[i] != GYM_IV_REWARD_ATK) party_ok = false;
     if (m.nature != (NatureId)(i%NATURE_COUNT)) party_ok = false;
+    if (m.gender != ((i&1)?GENDER_FEMALE:GENDER_MALE)) party_ok = false;
     char want[8]; snprintf(want,sizeof(want),"P%d",i);
     if (strcmp(m.nick, want)) party_ok = false;
   }
@@ -185,6 +190,8 @@ int main(){
   ck(q2.box[7].nature==(NatureId)((7+5)%NATURE_COUNT),
      "with each banked creature's nature");
   ck(q2.box[7].dead(), "with each banked creature's death state");
+  ck(q2.box[7].gender==GENDER_MALE,
+     "with each banked creature's gender");
 
   // --- a restore must not leave anything of whatever was there before
   {

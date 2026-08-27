@@ -32,7 +32,7 @@
 // whole handshake without a radio, and a deliberately lossy transport exercises
 // all of the above. Only the radio itself is unverifiable here.
 
-#define LINK_PROTO 6        // bump on ANY wire change; a mismatch is refused
+#define LINK_PROTO 7        // bump on ANY wire change; a mismatch is refused
 #define LINK_MAX_PAYLOAD 200
 #define LINK_NAME_LEN 12
 
@@ -93,6 +93,7 @@ struct LinkMon {
   MoveId moves[MOVE_SLOTS];
   uint8_t shiny;
   uint8_t sparkle;
+  uint8_t gender;
   char name[LINK_NAME_LEN];
 };
 

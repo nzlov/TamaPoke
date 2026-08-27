@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include "moves.h"
 #include "nature.h"
+#include "gender.h"
 
 // The six cultivation slots. Every occupied slot keeps the complete durable
 // state needed to become the pet shown on the main screen.
@@ -62,8 +63,8 @@ struct PartyMon {
   NatureId nature = NATURE_UNKNOWN;
   // Full cultivation state. v0 identifies a migrated combat-only record; v1
   // predates permanent training floors, and v2 predates wild sparkle and
-  // player-raised time.
-  uint8_t stateVersion = 3;
+  // player-raised time; v3 predates persisted gender.
+  uint8_t stateVersion = 4;
   uint8_t fullness = 80, joy = 80, energy = 80, hygiene = 100;
   uint8_t poops = 0, weight = 0;
   uint8_t berryKnown = 0;
@@ -74,9 +75,11 @@ struct PartyMon {
   uint32_t ageMinutes = 0;
   int16_t eggTarget = 1;
   uint8_t eggShiny = 0, eggTaps = 0;
-  // legacyEvoPen keeps the byte occupied by the removed early-retirement debt
-  // so the raw v2 record remains byte-compatible.
-  uint8_t starterPick = 0, legacyEvoPen = 0, sparkle = 0;
+  // Gender reuses the byte formerly reserved for removed early-retirement debt,
+  // keeping every later field and the raw roster size byte-compatible.
+  uint8_t starterPick = 0;
+  PetGender gender = GENDER_UNKNOWN;
+  uint8_t sparkle = 0;
   uint8_t evoDeclinedLv = 0;
   uint32_t raisedMinutes = 0;
   uint8_t mistakeCooldown = 0, neglectTicks = 0, bondToday = 0;

@@ -27,8 +27,8 @@ int main() {
   ck(form && form->spriteSize, "moves-core provides optional Mega Charizard art");
 
   PmdMon normal, mega;
-  bool normalOk = normal.load(6, false, false);
-  bool megaOk = mega.load(6, false, true);
+  bool normalOk = normal.load(6, false, GENDER_NONE, false);
+  bool megaOk = mega.load(6, false, GENDER_NONE, true);
   ck(normalOk && megaOk, "base and Mega Charizard sprites both load");
   bool same = normalOk && megaOk && normal.palCount == mega.palCount &&
               !std::memcmp(normal.pal, mega.pal,
@@ -37,8 +37,8 @@ int main() {
   normal.unload(); mega.unload();
 
   PmdMon venusaurNormal, venusaurFallback;
-  bool fallbackOk = venusaurNormal.load(3, false, false) &&
-                    venusaurFallback.load(3, false, true);
+  bool fallbackOk = venusaurNormal.load(3, false, GENDER_NONE, false) &&
+                    venusaurFallback.load(3, false, GENDER_NONE, true);
   bool fallbackSame = fallbackOk &&
       venusaurNormal.palCount == venusaurFallback.palCount &&
       !std::memcmp(venusaurNormal.pal, venusaurFallback.pal,

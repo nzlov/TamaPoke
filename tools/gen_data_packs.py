@@ -28,10 +28,11 @@ KIND_MOVE = 3
 
 sys.path.insert(0, str(HERE))
 from pack_format import PACK_ABI, PACK_REVISION, pack  # noqa: E402
-from pmd_layout import pmd_display_scale, pmd_pair_display_scale  # noqa: E402
+from pmd_layout import pmd_display_scale  # noqa: E402
 from quiz_pack import build_quiz_pack  # noqa: E402
 from dex_data import (  # noqa: E402
     DEX, TYPE_ACCENTS, RARE, LEGENDARY, REGIONS, EVOLUTION_BRANCHES,
+    GENDER_RATES,
 )
 from dex_stats import BASE_STATS  # noqa: E402
 from dex_types import TYPES, TYPE_ORDER, CHART  # noqa: E402
@@ -376,9 +377,9 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path) -> None:
     battle_by_name = {row["name"].upper(): row for row in region_battles["regions"]}
     rarities = rarity_rows()
     type_ids = {name: index for index, name in enumerate(TYPE_ORDER)}
-    spec_record = struct.Struct("<HBBH10BI")
+    spec_record = struct.Struct("<HBBH10BIB")
     evolution_record = struct.Struct("<HH")
-    sprite_record = struct.Struct("<HIIIIB")
+    sprite_record = struct.Struct("<HIIIIIIIIB")
     trainer_record = struct.Struct("<BBBBII" + "HB" * 6)
     badge_record = struct.Struct("<BBBBII")
     for region_id, (region_name, lo, hi, starters) in enumerate(REGIONS):
@@ -413,7 +414,7 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path) -> None:
                 hp, atk, defense, speed, spa, spd,
                 BIOME_OVERRIDE.get(number, TYPE_BIOME[accent_type]),
                 type_ids[t1], type_ids[t2] if t2 else 255, region_id,
-                name_offset,
+                name_offset, 255 if GENDER_RATES[number] < 0 else GENDER_RATES[number],
             ))
             targets = EVOLUTION_BRANCHES.get(number, [evolves_to] if evolves_to else [])
             if len(targets) > 8:
@@ -466,13 +467,24 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path) -> None:
             normal = normal_path.read_bytes() if normal_path.exists() else b""
             shiny_path = sprite_dir / f"ps{number:03d}.bin"
             shiny = shiny_path.read_bytes() if normal and shiny_path.exists() else b""
+            female_path = sprite_dir / f"pf{number:03d}.bin"
+            female = female_path.read_bytes() if normal and female_path.exists() else b""
+            female_shiny_path = sprite_dir / f"pfs{number:03d}.bin"
+            female_shiny = (female_shiny_path.read_bytes()
+                            if female and female_shiny_path.exists() else b"")
             normal_at = len(sprites)
             sprites.extend(normal)
             shiny_at = len(sprites)
             sprites.extend(shiny)
+            female_at = len(sprites)
+            sprites.extend(female)
+            female_shiny_at = len(sprites)
+            sprites.extend(female_shiny)
             sprite_index.extend(sprite_record.pack(
                 number, normal_at, len(normal), shiny_at, len(shiny),
-                pmd_pair_display_scale(normal, shiny),
+                female_at, len(female), female_shiny_at, len(female_shiny),
+                min(pmd_display_scale(blob)
+                    for blob in (normal, shiny, female, female_shiny) if blob),
             ))
         thumbs = thumbs_path.read_bytes()
         locales = localized_strings(species_descriptions(rows), len(rows))

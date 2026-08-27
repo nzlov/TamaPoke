@@ -9,6 +9,8 @@ contact-sheet PNG para revision visual, y emite los arrays C y JS:
   python3 tools/sprites.py        # valida + renderiza tools/sheet.png
   python3 tools/sprites.py emit   # regenera ui_art.h y emitted_sprites.js
 """
+import os
+
 try:
     from PIL import Image, ImageDraw
 except ModuleNotFoundError:
@@ -469,6 +471,41 @@ def icon_candy():
     return g.rows()
 
 
+def icon_gender_male():
+    g = G(16)
+    g.disk(6, 10, 4.5, 4.5, 'b', 'B')
+    g.erase(6, 10, 2.0, 2.0)
+    g.rect(9, 4, 13, 5, 'b')
+    g.rect(12, 4, 13, 8, 'b')
+    g.px(9, 7, 'b'); g.px(10, 6, 'b'); g.px(11, 5, 'b')
+    g.outline()
+    g.px(4, 7, 'w')
+    return g.rows()
+
+
+def icon_gender_female():
+    g = G(16)
+    g.disk(8, 6, 4.5, 4.5, 'p', 'P')
+    g.erase(8, 6, 2.0, 2.0)
+    g.rect(7, 10, 8, 14, 'p')
+    g.rect(5, 12, 10, 13, 'p')
+    g.outline()
+    g.px(6, 3, 'w')
+    return g.rows()
+
+
+def icon_gender_none():
+    g = G(16)
+    g.disk(8, 8, 5.0, 5.0, 's', 'S')
+    g.erase(8, 8, 2.4, 2.4)
+    for i in range(3, 13):
+        g.px(i, 15 - i, 's')
+        if i < 12:
+            g.px(i + 1, 15 - i, 's')
+    g.outline()
+    return g.rows()
+
+
 def icon_clean():
     g = G(16)
     g.disk(7, 10, 4.6, 4.4, 'b', 'B')
@@ -532,6 +569,9 @@ SPRITES = {
     "ICON_CANDY": icon_candy(),
     "ICON_BAG": icon_bag(),
     "ICON_BATTLE": icon_battle(),
+    "ICON_GENDER_MALE": icon_gender_male(),
+    "ICON_GENDER_FEMALE": icon_gender_female(),
+    "ICON_GENDER_NONE": icon_gender_none(),
     "EGG": egg(),
     "POOP": poop(),
     "HEART": heart(),
@@ -540,6 +580,7 @@ SPRITES = {
 UI_SPRITE_NAMES = (
     "ICON_FOOD", "ICON_PLAY", "ICON_LIGHT", "ICON_CLEAN", "ICON_TRAIN",
     "ICON_BERRY_B", "ICON_BERRY_G", "ICON_CANDY", "ICON_BAG", "ICON_BATTLE",
+    "ICON_GENDER_MALE", "ICON_GENDER_FEMALE", "ICON_GENDER_NONE",
     "EGG", "POOP", "HEART",
 )
 
@@ -638,7 +679,8 @@ def emit_c(path="ui_art.h"):
     out.append("//   python3 tools/sprites.py emit\n\n")
     out.append(f"#define SPRITE_W {W}\n#define SPRITE_H {H}\n\n")
     for name, hexcol in UI_COLORS.items():
-        out.append(f"#define {name} 0x{rgb565(hexcol):04X}  // {hexcol}\n")
+        note = '; secondary text on the light panel' if name == 'UI_MUTED' else ''
+        out.append(f"#define {name} 0x{rgb565(hexcol):04X}  // {hexcol}{note}\n")
     out.append("// caracter de sprite -> RGB565\n")
     out.append("static inline uint16_t spriteColor(char ch) {\n  switch (ch) {\n")
     for ch, hexcol in PALETTE.items():
@@ -680,7 +722,9 @@ if __name__ == '__main__':
     if not validate():
         print("-- errores de validacion --")
         sys.exit(1)
-    render()
+    artifact_dir = os.environ.get('ANYCODE_ARTIFACT_DIR')
+    render(os.path.join(artifact_dir, 'ui-sprite-sheet.png')
+           if artifact_dir else 'tools/sheet.png')
     if 'emit' in sys.argv:
         emit_c()
         emit_js()

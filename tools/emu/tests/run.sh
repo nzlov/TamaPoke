@@ -115,6 +115,10 @@ for src in "$HERE"/*_test.cpp; do
     python3 "$HERE/make_quiz_fixture.py" "$OUT/quiz-packs/quiz-reader.tquiz"
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/quiz-packs\""
                  -DQUIZ_READER_FIXTURE="\"$OUT/quiz-packs/quiz-reader.tquiz\"")
+  elif [[ "$name" =~ ^(gender|box|nature|revive|save|link)_test$ ]]; then
+    mkdir -p "$OUT/gender-packs"
+    python3 "$HERE/make_gender_fixture.py" "$OUT/gender-packs"
+    test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/gender-packs\"")
   fi
   # every test starts from a clean NVS so one cannot leak state into the next
   rm -f "$OUT/tamapoke.nvs"

@@ -29,6 +29,8 @@ struct DexEntry {
   uint8_t bHp, bAtk, bDef, bSpe, bSpA, bSpD;
   uint8_t biome;
   uint8_t type1, type2;
+  // PokeAPI's canonical female eighths: 0..8, or 0xFF for genderless.
+  uint8_t femaleRate;
   SpeciesId evolutions[CONTENT_MAX_EVOLUTIONS];
   uint8_t evolutionCount;
 };

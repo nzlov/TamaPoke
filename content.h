@@ -6,7 +6,7 @@
 #include "items.h"
 #include "moves.h"
 
-constexpr uint16_t CONTENT_PACK_ABI = 3;
+constexpr uint16_t CONTENT_PACK_ABI = 4;
 constexpr uint8_t CONTENT_MAX_UI_LOCALES = 16;
 constexpr uint8_t CONTENT_MAX_QUIZ_OPTIONS = 4;
 constexpr uint16_t CONTENT_MAX_QUESTION_ID_BYTES = 40;
@@ -159,7 +159,7 @@ uint16_t packedTypeColor(uint8_t type);
 bool packedTypeColorIsLight(uint8_t type);
 
 // The caller owns the returned PSRAM/malloc buffer and frees it with free().
-bool contentLoadSprite(SpeciesId species, bool shiny, bool mega,
+bool contentLoadSprite(SpeciesId species, bool shiny, uint8_t gender, bool mega,
                        uint8_t **out, uint32_t *size, uint8_t *displayScale);
 bool contentLoadThumbs(uint8_t **out, uint32_t *size);
 

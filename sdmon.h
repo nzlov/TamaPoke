@@ -29,7 +29,8 @@ struct PmdMon {
   uint8_t displayScale = 0;  // precomputed from the pack's opaque Idle bounds
   PmdAct acts[PMD_NACTS];
 
-  bool load(int16_t dexNum, bool shiny = false, bool mega = false);
+  bool load(int16_t dexNum, bool shiny = false, uint8_t gender = 0,
+            bool mega = false);
   void unload();
   bool has(uint8_t a) const { return loaded && a < PMD_NACTS && acts[a].frames > 0; }
 };

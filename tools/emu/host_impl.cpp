@@ -13,11 +13,12 @@ bool sdReady = true;
 bool sdDirty = false;
 SdThumbs thumbs;
 
-bool PmdMon::load(int16_t dexNum, bool shiny, bool mega) {
+bool PmdMon::load(int16_t dexNum, bool shiny, uint8_t gender, bool mega) {
   if (!dexValid(dexNum)) return false;
   unload();
   uint32_t size = 0;
-  if (!contentLoadSprite((SpeciesId)dexNum, shiny, mega, &blob, &size, &displayScale) ||
+  if (!contentLoadSprite((SpeciesId)dexNum, shiny, gender, mega,
+                         &blob, &size, &displayScale) ||
       displayScale < 2 || displayScale > 6) {
     unload();
     return false;

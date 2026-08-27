@@ -1,5 +1,6 @@
 #include "content.h"
 #include "badges.h"
+#include "gender.h"
 #include "trainers.h"
 
 #include <Arduino.h>
@@ -55,6 +56,8 @@ struct SpriteRef {
   uint16_t localIndex = 0;
   uint32_t normalAt = 0, normalSize = 0;
   uint32_t shinyAt = 0, shinySize = 0;
+  uint32_t femaleAt = 0, femaleSize = 0;
+  uint32_t femaleShinyAt = 0, femaleShinySize = 0;
 };
 
 struct RegionPackRuntime {
@@ -150,7 +153,8 @@ static QuizPackRuntime gQuizPacks[MAX_QUIZ_PACKS];
 static uint8_t gQuizPackCount = 0;
 
 static const DexEntry MISSING_SPECIES = {
-  "?", 0, 0, 0x2946, 50, 50, 50, 50, 50, 50, 0, T_NORMAL, T_NONE, {}, 0,
+  "?", 0, 0, 0x2946, 50, 50, 50, 50, 50, 50, 0, T_NORMAL, T_NONE,
+  GENDER_RATE_NONE, {}, 0,
 };
 static const MoveEntry MISSING_MOVE = {
   "-", T_NORMAL, MC_STATUS, 0, 0, EF_NONE, 0, 0, 0, TG_SELF, AIL_NONE, 0,
@@ -971,7 +975,7 @@ static bool loadRegionPack(uint8_t packIndex) {
   uint8_t *regions = readSection(pack, "REGN", &regionSize, &regionRecords);
   const SectionRef *evolutionSection = findSection(pack, "EVOS");
   if (!specs || !names || !regions || specCount == 0 || specCount > CONTENT_MAX_SPECIES ||
-      specSize != specCount * 20u || !evolutionSection ||
+      specSize != specCount * 21u || !evolutionSection ||
       evolutionSection->size != evolutionSection->count * 4u) {
     free(specs); free(names); free(regions); return false;
   }
@@ -1017,7 +1021,7 @@ static bool loadRegionPack(uint8_t packIndex) {
   uint16_t firstSpecies = 0;
   uint8_t packRegion = 0xFF;
   for (uint32_t i = 0; i < specCount; i++) {
-    const uint8_t *row = specs + i * 20;
+    const uint8_t *row = specs + i * 21;
     SpeciesId id = rd16(row);
     uint32_t nameOffset = rd32(row + 16);
     if (!id || id > CONTENT_MAX_SPECIES || gDex[id].name ||
@@ -1032,11 +1036,13 @@ static bool loadRegionPack(uint8_t packIndex) {
     species.bHp = row[6]; species.bAtk = row[7]; species.bDef = row[8]; species.bSpe = row[9];
     species.bSpA = row[10]; species.bSpD = row[11]; species.biome = row[12];
     species.type1 = row[13]; species.type2 = row[14];
+    species.femaleRate = row[20];
     uint8_t region = row[15];
     if (region >= CONTENT_MAX_REGIONS || species.type1 >= TYPE_COUNT ||
         (species.type2 != T_NONE && species.type2 >= TYPE_COUNT) ||
         !species.bHp || !species.bAtk || !species.bDef || !species.bSpe ||
-        !species.bSpA || !species.bSpD) {
+        !species.bSpA || !species.bSpD ||
+        (species.femaleRate > 8 && species.femaleRate != GENDER_RATE_NONE)) {
       rollback(); free(touched); free(specs); free(names); return false;
     }
     gRegionMask |= (uint16_t)(1u << region);
@@ -1078,11 +1084,12 @@ static bool loadRegionPack(uint8_t packIndex) {
   const SectionRef *spriteBlob = findSection(pack, "SBLB");
   uint32_t spriteSize = 0, spriteCount = 0;
   uint8_t *spriteIndex = readSection(pack, "SPRI", &spriteSize, &spriteCount);
-  if (!spriteBlob || !spriteIndex || spriteCount != specCount || spriteSize != spriteCount * 19u) {
+  if (!spriteBlob || !spriteIndex || spriteCount != specCount ||
+      spriteSize != spriteCount * 35u) {
     rollback(); free(touched); free(spriteIndex); free(names); return false;
   }
   for (uint32_t i = 0; i < spriteCount; i++) {
-    const uint8_t *row = spriteIndex + i * 19;
+    const uint8_t *row = spriteIndex + i * 35;
     SpeciesId id = rd16(row);
     if (!dexValid(id)) {
       rollback(); free(touched); free(spriteIndex); free(names); return false;
@@ -1090,12 +1097,19 @@ static bool loadRegionPack(uint8_t packIndex) {
     SpriteRef &sprite = gSprites[id];
     sprite.normalAt = spriteBlob->offset + rd32(row + 2); sprite.normalSize = rd32(row + 6);
     sprite.shinyAt = spriteBlob->offset + rd32(row + 10); sprite.shinySize = rd32(row + 14);
-    sprite.displayScale = row[18];
+    sprite.femaleAt = spriteBlob->offset + rd32(row + 18); sprite.femaleSize = rd32(row + 22);
+    sprite.femaleShinyAt = spriteBlob->offset + rd32(row + 26);
+    sprite.femaleShinySize = rd32(row + 30);
+    sprite.displayScale = row[34];
     uint32_t normalOffset = rd32(row + 2), shinyOffset = rd32(row + 10);
+    uint32_t femaleOffset = rd32(row + 18), femaleShinyOffset = rd32(row + 26);
     if ((sprite.normalSize && (sprite.displayScale < 2 || sprite.displayScale > 6)) ||
         (!sprite.normalSize && sprite.displayScale) ||
         normalOffset > spriteBlob->size || sprite.normalSize > spriteBlob->size - normalOffset ||
-        shinyOffset > spriteBlob->size || sprite.shinySize > spriteBlob->size - shinyOffset) {
+        shinyOffset > spriteBlob->size || sprite.shinySize > spriteBlob->size - shinyOffset ||
+        femaleOffset > spriteBlob->size || sprite.femaleSize > spriteBlob->size - femaleOffset ||
+        femaleShinyOffset > spriteBlob->size ||
+        sprite.femaleShinySize > spriteBlob->size - femaleShinyOffset) {
       rollback(); free(touched); free(spriteIndex); free(names); return false;
     }
   }
@@ -1672,7 +1686,7 @@ bool spriteAvailable(SpeciesId species) {
   return dexValid(species) && gSprites[species].pack != 0xFF &&
          gSprites[species].normalSize != 0;
 }
-bool contentLoadSprite(SpeciesId species, bool shiny, bool mega,
+bool contentLoadSprite(SpeciesId species, bool shiny, uint8_t gender, bool mega,
                        uint8_t **out, uint32_t *size, uint8_t *displayScale) {
   if (!out || !size || !displayScale) return false;
   *out = nullptr; *size = 0; *displayScale = 0;
@@ -1690,8 +1704,14 @@ bool contentLoadSprite(SpeciesId species, bool shiny, bool mega,
     }
   }
   const SpriteRef &sprite = gSprites[species];
-  uint32_t offset = shiny && sprite.shinySize ? sprite.shinyAt : sprite.normalAt;
-  uint32_t length = shiny && sprite.shinySize ? sprite.shinySize : sprite.normalSize;
+  uint32_t offset = sprite.normalAt, length = sprite.normalSize;
+  if (gender == GENDER_FEMALE && shiny && sprite.femaleShinySize) {
+    offset = sprite.femaleShinyAt; length = sprite.femaleShinySize;
+  } else if (shiny && sprite.shinySize) {
+    offset = sprite.shinyAt; length = sprite.shinySize;
+  } else if (gender == GENDER_FEMALE && sprite.femaleSize) {
+    offset = sprite.femaleAt; length = sprite.femaleSize;
+  }
   if (!length) return false;
   uint8_t *data = (uint8_t *)contentAlloc(length);
   const PackRef &pack = gPacks[gRegionPacks[sprite.pack].packRef];

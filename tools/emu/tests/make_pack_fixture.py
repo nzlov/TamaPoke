@@ -13,7 +13,7 @@ common = struct.Struct("<4sHBBIIIIHH20s")
 section = struct.Struct("<4sIII")
 header_size = common.size + section.size
 raw = common.pack(
-    b"TPPK", 3, 2, 0, header_size + len(payload),
+    b"TPPK", 4, 2, 0, header_size + len(payload),
     binascii.crc32(payload) & 0xFFFFFFFF, 1, 1,
     header_size, 1, b"reader-test".ljust(20, b"\0"),
 )

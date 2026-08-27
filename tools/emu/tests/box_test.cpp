@@ -229,6 +229,35 @@ int main(){
        "reviving clears the persistent death state");
   }
 
+  // Roster state v3 used the same byte for retired evolution debt. Gender now
+  // reuses that byte, so the per-creature state version must drive migration.
+  {
+    Preferences seed; seed.begin("tamapoke", false); seed.clear();
+    PartyMon oldParty[PARTY_SLOTS];
+    PartyMon oldBoxPage[BOX_PAGE_SLOTS];
+    oldParty[3] = mk(25, 61);
+    oldParty[3].stateVersion = 3;
+    oldParty[3].gender = (PetGender)99;
+    oldBoxPage[0] = mk(81, 34);
+    oldBoxPage[0].stateVersion = 3;
+    oldBoxPage[0].gender = (PetGender)99;
+    seed.putBytes("team1", oldParty, sizeof(oldParty));
+    seed.putBytes("box11", oldBoxPage, sizeof(oldBoxPage));
+    seed.putUShort("rostv", 2);
+    seed.putUChar("active", 3);
+    seed.end();
+    Party migrated; migrated.begin();
+    PetGender first = migrated.slots[3].gender;
+    ck(genderValid(first),
+       "the pre-gender roster gains a valid stable gender");
+    ck(migrated.box[6].gender == GENDER_NONE,
+       "the pre-gender Box keeps genderless species neutral");
+    migrated.save(); migrated.boxSave();
+    Party again; again.begin();
+    ck(again.slots[3].gender == first && again.slots[3].stateVersion == 4,
+       "the migrated roster gender persists with its new state version");
+  }
+
   printf("%s\n", bad?"FAILURES":"all good");
   return bad?1:0;
 }

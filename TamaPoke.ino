@@ -527,6 +527,7 @@ PmdMon pmd;         // sprite PMD multi-accion (pantalla principal)
 PmdMon evoPmd;      // forma anterior, solo durante el parpadeo de evolucion
 int16_t monFor = -2;
 bool monShinyFor = false;
+PetGender monGenderFor = GENDER_UNKNOWN;
 
 // comportamiento del bicho en pantalla
 struct {
@@ -875,6 +876,7 @@ static bool rpickSwipe(int dir);              // true if it handled the gesture
 static int regionPickTap(int16_t x, int16_t y, uint8_t mode);
 static void drawEggRegion();          // defined with the egg screen helpers
 static int eggRegionTap(int16_t x, int16_t y);
+void drawGenderIcon(PetGender gender, int x, int y, int scale);
 static void drawBtlBack();
 static void btlLinkPoll();   // defined with the battle code, called from render()
 static void btlSwitchTo(uint8_t i);
@@ -1321,16 +1323,18 @@ void setup() {
 
 // carga/descarga el sprite de SD cuando cambia la especie
 void ensureMon() {
-  if (pet.speciesId == monFor && monShinyFor == pet.shiny && !sdDirty) return;
+  if (pet.speciesId == monFor && monShinyFor == pet.shiny &&
+      monGenderFor == pet.gender && !sdDirty) return;
   sdDirty = false;
   monFor = pet.speciesId;
   monShinyFor = pet.shiny;
+  monGenderFor = pet.gender;
   pmd.unload();
   beh.x = beh.targetX = 233;
   beh.mode = 0;
   beh.until = 0;
   if (pet.speciesId >= 1 && pet.speciesId <= dexCount()) {
-    pmd.load(pet.speciesId, pet.shiny);
+    pmd.load(pet.speciesId, pet.shiny, pet.gender);
   }
 }
 
@@ -2591,7 +2595,11 @@ void onTap(int16_t x, int16_t y) {
     bool b2 = (x >= CHOICE_BTN_X && x <= CHOICE_BTN_X + CHOICE_BTN_W &&
                y >= CHOICE_BTN2_Y && y <= CHOICE_BTN2_Y + CHOICE_BTN_H);
     if (choiceKind == 1) {                 // evolucion
-      if (b1) { int16_t old = pet.speciesId; pet.evolve(); evoPmd.load(old, pet.shiny); }
+      if (b1) {
+        int16_t old = pet.speciesId;
+        pet.evolve();
+        evoPmd.load(old, pet.shiny, pet.gender);
+      }
       else if (b2) pet.declineEvolve();
     } else if (choiceKind == 3) {          // contextual farewell / release
       if (b1) {
@@ -3059,6 +3067,9 @@ void render() {
     snprintf(name, sizeof(name), T(S_NAME_FMT), rareMarks(pet.shiny, pet.sparkle),
              base, pet.level());
     drawHeader(name, gNight ? UI_INK_NIGHT : d.accent, statusMsg());
+    gfx->setTextSize(3);
+    drawGenderIcon(pet.gender, uiCenterX(name) + gfx->textWidth(name) + 4,
+                   63, 1);
     drawStreakBadge();
     drawPet();
     drawBath();
@@ -3807,8 +3818,11 @@ void renderCardProfile() {
   gfx->setTextSize(3);
   int hts = (gfx->textWidth(head) <= 198) ? 3 : 2;
   gfx->setTextSize(hts);
-  gfx->setCursor(uiCenterX(head), hts == 3 ? 34 : 40);
+  int headX = uiCenterX(head, CX - 10);
+  gfx->setCursor(headX, hts == 3 ? 34 : 40);
   gfx->print(head);
+  drawGenderIcon(pet.gender, headX + gfx->textWidth(head) + 4,
+                 hts == 3 ? 29 : 35, 1);
   if (pet.nick[0]) {  // especie real bajo el apodo
     char species[64];
     snprintf(species, sizeof(species), "(%s)", speciesName(pet.speciesId));
@@ -4204,12 +4218,13 @@ static void drawBattleFieldHud() {
 // Render may call this every frame; the compact key makes the steady path free.
 static void btlSyncSprite(uint8_t who, const Combatant &c) {
   bool mega = c.activeMechanic == BMECH_MEGA;
-  int32_t key = (int32_t)c.dex * 4 + (c.shiny ? 1 : 0) + (mega ? 2 : 0);
+  int32_t key = ((int32_t)c.dex << 4) | (c.shiny ? 8 : 0) |
+                (mega ? 4 : 0) | ((uint8_t)c.gender & 3);
   if (btlPmdKey[who] == key && btlPmd[who].loaded) return;
   btlPmd[who].unload();
   btlPmdKey[who] = 0;
   if (c.dex < 1 || c.dex > dexCount()) return;
-  if (btlPmd[who].load(c.dex, c.shiny, mega)) btlPmdKey[who] = key;
+  if (btlPmd[who].load(c.dex, c.shiny, c.gender, mega)) btlPmdKey[who] = key;
 }
 
 static void btlFreeSprites() {
@@ -5249,8 +5264,11 @@ void renderWin() {
       if (thumb) drawThumb(thumb, CX - THUMB_CELL / 2, 105, 3, false);
       gfx->setTextColor(dexEntry(capturedMon.dex).accent);
       gfx->setTextSize(nameSize);
-      gfx->setCursor(uiCenterX(name), 166);
+      int nameX = uiCenterX(name, CX - 10);
+      gfx->setCursor(nameX, 166);
       gfx->print(name);
+      drawGenderIcon(capturedMon.gender,
+                     nameX + gfx->textWidth(name) + 4, 160, 1);
       gfx->setTextColor(UI_INK);
       gfx->setTextSize(1);
       gfx->setCursor(uiCenterX(level), 190);
@@ -5425,8 +5443,12 @@ static void renderBattleFoeDetail() {
     gfx->setTextSize(3);
     int titleSize = gfx->textWidth(head) <= 250 ? 3 : 2;
     gfx->setTextSize(titleSize);
-    gfx->setCursor(uiCenterX(head), titleSize == 3 ? 38 : 44);
+    int titleX = uiCenterX(head, CX - 10);
+    gfx->setCursor(titleX, titleSize == 3 ? 38 : 44);
     gfx->print(head);
+    drawGenderIcon(btlFoe.gender,
+                   titleX + gfx->textWidth(head) + 4,
+                   titleSize == 3 ? 33 : 39, 1);
 
     char type[24];
     if (entry.type2 == T_NONE) snprintf(type, sizeof(type), "%s", typeName(entry.type1));
@@ -7433,6 +7455,7 @@ static void drawCultivationSlot(uint8_t slot, int x, int y) {
   gfx->setTextSize(1);
   gfx->setCursor(x + PARTY_TEXT_X_OFF, y + 18);
   gfx->print(nm);
+  drawGenderIcon(m.gender, x + PARTY_CELL_W - 29, y + 6, 1);
   if (m.shiny || m.sparkle) {
     gfx->setTextColor(UI_BAR_WARN);
     gfx->setCursor(x + PARTY_TEXT_X_OFF + gfx->textWidth(nm) + 3, y + 18);
@@ -7531,6 +7554,7 @@ void renderBox() {
     gfx->setTextSize(1);
     gfx->setCursor(x + PARTY_TEXT_X_OFF, y + 16);
     gfx->print(displaySpeciesName(m.dex, m.nick));
+    drawGenderIcon(m.gender, x + PARTY_CELL_W - 29, y + 6, 1);
     char level[16];
     snprintf(level, sizeof(level), "Lv.%u %s", (unsigned)m.level,
              rareMarks(m.shiny, m.sparkle));
@@ -8059,7 +8083,7 @@ void galleryTap(int16_t x, int16_t y) {
   int16_t dex = GAL_LO + galleryPage * GAL_PER_PAGE + r * 4 + c;
   if (dex > GAL_HI || dex > dexCount()) return;
   galleryDetail = dex;
-  galleryPmd.load(dex, pet.isShinyRegistered(dex));
+  galleryPmd.load(dex, pet.isShinyRegistered(dex), GENDER_NONE);
 }
 
 void drawBattery() {
@@ -8554,4 +8578,12 @@ void drawMap(const char *const *map, int n, int x, int y, int s, bool silhouette
       gfx->fillRect(x + c * s, y + r * s, s, s, silhouette ? INK_K : spriteColor(ch));
     }
   }
+}
+
+void drawGenderIcon(PetGender gender, int x, int y, int scale) {
+  const char *const *icon = nullptr;
+  if (gender == GENDER_MALE) icon = SPR_ICON_GENDER_MALE;
+  else if (gender == GENDER_FEMALE) icon = SPR_ICON_GENDER_FEMALE;
+  else if (gender == GENDER_NONE) icon = SPR_ICON_GENDER_NONE;
+  if (icon) drawMap(icon, 16, x, y, scale, false);
 }

@@ -92,6 +92,7 @@ struct Combatant {
   uint16_t normalMaxHp = 0;
   bool shiny = false;        // which color sprite variant to stream
   bool sparkle = false;      // independent persistent particle effect
+  PetGender gender = GENDER_UNKNOWN;
   char name[12] = "";
 
   bool fainted() const { return hp == 0; }
