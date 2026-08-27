@@ -17,6 +17,7 @@ tools/demo_compare.js
 .DS_Store
 tools/pmd_cache/
 tools/pokeapi_cache/
+tools/item_icon_cache/
 
 # The loose per-species sprite files are generated source inputs, not deployable
 # artefacts. gen_data_packs.py reads them directly; only web/packs/*.tregion is

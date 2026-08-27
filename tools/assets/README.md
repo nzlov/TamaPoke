@@ -17,10 +17,12 @@ regional `.tregion` correspondiente.
 |---|---|---|---|
 | **TPK2** `pNNN.bin` / `psNNN.bin` | `pack_pmd.py` | [PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab) (CC BY-NC) | Animaciones multi-acción (idle, walk, sleep, eat, hurt, attack, gestos) — usadas en **todo**: pantalla principal y **Pokédex / galería** |
 | **TPTH** `thumbs.bin` | `make_thumbs.py` | (deriva de los TPK2) | Miniaturas 40×40 de la galería |
+| **TIC1** `*.ticon` | `fetch_item_icons.py` | [PokeAPI/sprites](https://github.com/PokeAPI/sprites/tree/master/sprites/items) | Iconos de objetos 24×24/30×30; caché local opcional incluida en `moves-core.tmove` |
 
 ```bash
 python3 tools/pack_pmd.py     # el catalogo actual + shiny -> tools/sdcard/mons/p[s]NNN.bin
 python3 tools/make_thumbs.py  # -> tools/sdcard/mons/thumbs.bin
+python3 tools/fetch_item_icons.py # -> tools/item_icon_cache/*.ticon
 python3 tools/gen_data_packs.py # lee las entradas directamente y genera web/packs/*.tregion
 python3 tools/send_sd.py      # envia paquetes validados a /packs por USB
 ```
@@ -54,6 +56,10 @@ romper nada.
 (ignorado por git, regenerable). Los `.bin` intermedios quedan en
 `tools/sdcard/mons/`; los artefactos desplegables son los paquetes de
 `web/packs/`.
+
+`fetch_item_icons.py` guarda los PNG y TIC1 derivados en `tools/item_icon_cache/`,
+también ignorado por Git. Si no existe esa caché, el paquete de movimientos se
+genera sin `IICO` y el firmware dibuja el icono de respaldo según el efecto.
 
 > Ver [CREDITS.md](../../CREDITS.md) sobre la procedencia y los términos de los
 > sprites. Son de terceros: no redistribuir con fines comerciales.

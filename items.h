@@ -7,6 +7,9 @@ using ItemKey = uint16_t;
 constexpr ItemKey ITEM_KEY_NONE = 0;
 constexpr uint16_t CONTENT_MAX_ITEMS = 64;
 constexpr uint8_t ITEM_STACK_LIMIT = 99;
+// Catch-item params are percentage multipliers, except this data-driven
+// sentinel which bypasses the probability roll for a valid wild target.
+constexpr int16_t ITEM_CATCH_GUARANTEED = -1;
 
 enum ItemCategory : uint8_t {
   ITEM_CATEGORY_BALL = 1,

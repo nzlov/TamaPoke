@@ -24,7 +24,7 @@ REQUIRED_SECTIONS = {
         b"CHRT", b"LOCL", b"ITEM", b"INAM", b"ILNM", b"ILOC", b"MEGA"},
     4: {b"QLOC", b"QIDX", b"QDAT"},
 }
-OPTIONAL_SECTIONS = {3: {b"MSPI", b"MSBL"}}
+OPTIONAL_SECTIONS = {3: {b"MSPI", b"MSBL", b"IICO"}}
 
 QLOC = struct.Struct("<16sII")
 QIDX = struct.Struct("<III")
@@ -166,8 +166,7 @@ def validate(path: Path, expected: dict) -> None:
         raise ValueError(f"{path.name}: overlapping sections")
     required = REQUIRED_SECTIONS[kind]
     extras = tags - required
-    if not required.issubset(tags) or \
-            (extras and extras != OPTIONAL_SECTIONS.get(kind, set())):
+    if not required.issubset(tags) or extras - OPTIONAL_SECTIONS.get(kind, set()):
         raise ValueError(f"{path.name}: unexpected section set")
     if kind == 1:
         validate_ui_font(sections[b"FONT"], section_counts[b"FONT"])
@@ -210,11 +209,14 @@ def validate(path: Path, expected: dict) -> None:
             training_item = effect == 6
             battle_boost = effect == 7
             battle_mechanic = effect == 8
+            catch_item = effect == 1
             if not key or not 1 <= category <= 8 or not 1 <= effect <= 8 or \
                     not 1 <= rarity <= 4 or daily > 99 or reserved:
                 raise ValueError("invalid item record")
             if training_item and (category != 6 or flags not in (1, 2, 16) or param <= 0):
                 raise ValueError("invalid training tonic")
+            if catch_item and (category != 1 or (param <= 0 and param != -1)):
+                raise ValueError("invalid capture item")
             if battle_boost and (category != 7 or flags not in (1, 2, 4, 8, 16) or
                                  not 1 <= param <= 6):
                 raise ValueError("invalid battle booster")
@@ -226,6 +228,37 @@ def validate(path: Path, expected: dict) -> None:
             raise ValueError("duplicate item key")
         validate_localized_strings(sections[b"ILNM"], item_count)
         validate_localized_strings(sections[b"ILOC"], item_count)
+        if b"IICO" in sections:
+            icon_section = sections[b"IICO"]
+            icon_record = struct.Struct("<II")
+            if section_counts[b"IICO"] != item_count or len(icon_section) < 4:
+                raise ValueError("invalid item icon section count")
+            icon_count, record_size = struct.unpack_from("<HH", icon_section)
+            table_end = 4 + icon_count * icon_record.size
+            if icon_count != item_count or record_size != icon_record.size or \
+                    table_end > len(icon_section):
+                raise ValueError("invalid item icon index")
+            previous_end = table_end
+            for number in range(icon_count):
+                icon_at, icon_size = icon_record.unpack_from(
+                    icon_section, 4 + number * icon_record.size)
+                if not icon_at and not icon_size:
+                    continue
+                if icon_at < previous_end or not icon_size or \
+                        icon_at + icon_size > len(icon_section):
+                    raise ValueError("item icon is outside IICO")
+                icon = icon_section[icon_at:icon_at + icon_size]
+                if len(icon) < 8 or icon[:4] != b"TIC1":
+                    raise ValueError("invalid TIC1 item icon")
+                width, height, palette_count, reserved = icon[4:8]
+                pixels_at = 8 + palette_count * 2
+                if not width or not height or width > 32 or height > 32 or \
+                        not palette_count or reserved or \
+                        pixels_at + width * height != len(icon) or \
+                        any(pixel != 0xFF and pixel >= palette_count
+                            for pixel in icon[pixels_at:]):
+                    raise ValueError("invalid TIC1 item icon data")
+                previous_end = icon_at + icon_size
         mega_record = struct.Struct("<HBBBBBBB")
         mega_count = section_counts[b"MEGA"]
         if not mega_count or len(sections[b"MEGA"]) != mega_count * mega_record.size:

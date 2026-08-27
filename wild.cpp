@@ -1,5 +1,6 @@
 #include "wild.h"
 #include "dex.h"
+#include "items.h"
 
 BattleField wildBattleField(uint8_t biome, uint8_t roll) {
   BattleField field;
@@ -81,8 +82,10 @@ void wildApplyTraits(const WildTraits &traits, uint8_t &ivAtk, uint8_t &ivDef,
 }
 
 uint8_t wildCaptureChance(uint8_t rarity, uint16_t hp, uint16_t maxHp,
-                          bool hasStatus, uint16_t ballMultiplier) {
-  if (!maxHp || !ballMultiplier) return 0;
+                          bool hasStatus, int16_t ballModifier) {
+  if (!maxHp || !hp) return 0;
+  if (ballModifier == ITEM_CATCH_GUARANTEED) return 100;
+  if (ballModifier <= 0) return 0;
   if (hp > maxHp) hp = maxHp;
   uint8_t base;
   switch (rarity) {
@@ -93,7 +96,8 @@ uint8_t wildCaptureChance(uint8_t rarity, uint16_t hp, uint16_t maxHp,
   }
   uint16_t hpFactor = (uint16_t)(100U + (uint32_t)(maxHp - hp) * 80U / maxHp);
   uint16_t statusFactor = hasStatus ? 130 : 100;
-  uint32_t chance = (uint32_t)base * hpFactor * statusFactor * ballMultiplier / 1000000U;
+  uint32_t chance = (uint32_t)base * hpFactor * statusFactor *
+                    (uint16_t)ballModifier / 1000000U;
   if (!chance) chance = 1;
   return chance > 95 ? 95 : (uint8_t)chance;
 }

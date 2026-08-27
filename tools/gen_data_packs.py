@@ -20,6 +20,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 WEB_PACKS = ROOT / "web" / "packs"
+ITEM_ICON_CACHE = HERE / "item_icon_cache"
 
 KIND_UI = 1
 KIND_REGION = 2
@@ -111,6 +112,37 @@ def localized_strings(locale_values: dict[str, list[str]], item_count: int) -> b
         out.extend(struct.pack("<16sIII", code, index_at, blob_at, blob_size))
     out.extend(blocks)
     return bytes(out)
+
+
+def packed_item_icons(items: list[dict]) -> bytes:
+    record = struct.Struct("<II")
+    header_size = 4 + len(items) * record.size
+    index = bytearray()
+    payload = bytearray()
+    packed_count = 0
+    for item in items:
+        slug = item.get("icon")
+        path = ITEM_ICON_CACHE / f"{slug}.ticon" if slug else None
+        if not path or not path.exists():
+            index.extend(record.pack(0, 0))
+            continue
+        icon = path.read_bytes()
+        if len(icon) < 8 or icon[:4] != b"TIC1":
+            raise ValueError(f"{path}: invalid TIC1 item icon")
+        width, height, palette_count, reserved = icon[4:8]
+        expected_size = 8 + palette_count * 2 + width * height
+        if not width or not height or width > 32 or height > 32 or not palette_count or \
+                reserved or len(icon) != expected_size:
+            raise ValueError(f"{path}: invalid TIC1 dimensions or size")
+        pixels = icon[8 + palette_count * 2:]
+        if any(pixel != 0xFF and pixel >= palette_count for pixel in pixels):
+            raise ValueError(f"{path}: invalid TIC1 palette index")
+        index.extend(record.pack(header_size + len(payload), len(icon)))
+        payload.extend(icon)
+        packed_count += 1
+    if not packed_count:
+        return b""
+    return struct.pack("<HH", len(items), record.size) + bytes(index) + bytes(payload)
 
 
 def alpha4_from_rows(rows: list[int]) -> bytes:
@@ -696,6 +728,7 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
         locale: [item["descriptions"][locale] for item in ITEM_DATA]
         for locale in ("en-US", "zh-CN")
     }, len(ITEM_DATA))
+    item_icons = packed_item_icons(ITEM_DATA)
 
     mega_record = struct.Struct("<HBBBBBBB")
     mega_blob = bytearray()
@@ -755,6 +788,8 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
             ("MSBL", bytes(mega_sprites),
              len(mega_sprite_index) // mega_sprite_record.size),
         ])
+    if item_icons:
+        sections.append(("IICO", item_icons, len(ITEM_DATA)))
     blob = pack(KIND_MOVE, "moves-core", mechanics_hash, sections)
     path = WEB_PACKS / "moves-core.tmove"
     path.write_bytes(blob)

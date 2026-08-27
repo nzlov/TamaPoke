@@ -4,6 +4,7 @@
 #include "battle.h"
 #include "content.h"
 #include "items.h"
+#include "inventory.h"
 #include "party.h"
 #include "pet.h"
 #include <cstdio>
@@ -33,17 +34,24 @@ extern const char *const SCREEN_NAME[];
 extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern Party party;
+extern Inventory inventory;
 extern Combatant btlYou, btlFoe;
 extern PartyMon btlWildMon, capturedMon, partyPending;
-extern bool battleOpen, btlWild, partyPick, boxOpen;
+extern bool battleOpen, btlWild, btlOver, partyPick, boxOpen;
 extern int8_t btlTrainer;
 extern bool btlLink;
 extern uint8_t btlSquadN, btlEnteredMask, btlWildMechanic;
+extern uint8_t btlMenu, btlItemPage;
+extern bool btlTapDebounceArmed;
 extern int8_t btlSquadSource[];
 extern uint32_t btlWinUntil;
+extern bool btlCaptureAnimating, btlCaptureSuccess;
+extern uint32_t btlCaptureStartedAt;
+extern ItemKey btlCaptureItem;
 extern uint16_t btlRewardTraining[3];
 extern ItemKey btlRewardItems[2];
 extern uint8_t btlRewardItemCount;
+void btlUpdateCapture(uint32_t now);
 
 static int bad = 0;
 
@@ -85,15 +93,68 @@ int main() {
   check(!btlWinUntil && !battleOpen, "dismissing settlement leaves the battle");
 
   uint8_t partyBefore = party.count();
+  const ItemEntry *masterBall = nullptr;
+  for (uint16_t i = 0; i < itemCount(); i++) {
+    const ItemEntry *item = itemAt(i);
+    if (item && item->effect == ITEM_EFFECT_CATCH &&
+        item->param == ITEM_CATCH_GUARANTEED) {
+      masterBall = item;
+      break;
+    }
+  }
+  check(masterBall, "the move pack provides a guaranteed-catch ball");
   btlWildMon = party.slots[0];
   int16_t captureDex = dexCount() ? 1 : -1;
   btlWildMon.dex = captureDex;
+  btlFoe.dex = captureDex;
+  btlFoe.maxHp = btlFoe.hp = 100;
+  btlFoe.ailment = AIL_NONE;
+  btlFoe.confuseTurns = 0;
   btlWild = true;
+  btlOver = false;
   battleOpen = true;
   btlTrainer = -1;
-  btlCompleteCapture();
+  for (uint16_t i = 0; i < itemCount(); i++) {
+    const ItemEntry *item = itemAt(i);
+    while (item && inventory.count(item->key)) inventory.consume(item->key);
+  }
+  uint8_t selectedBallImages = 0;
+  for (uint16_t i = 0; i < itemCount(); i++) {
+    const ItemEntry *item = itemAt(i);
+    if (!item || item->effect != ITEM_EFFECT_CATCH) continue;
+    inventory.add(item->key);
+    btlMenu = 3;
+    btlItemPage = 0;
+    btlTapDebounceArmed = false;
+    onTap(149, 296);
+    if (btlCaptureItem == item->key && btlCaptureAnimating) selectedBallImages++;
+    btlCaptureItem = ITEM_KEY_NONE;
+    btlCaptureAnimating = false;
+  }
+  check(selectedBallImages == 4,
+        "each capture item carries its own key into the throw animation");
+  uint8_t masterBefore = masterBall ? inventory.count(masterBall->key) : 0;
+  if (masterBall) inventory.add(masterBall->key);
+  uint8_t masterStocked = masterBall ? inventory.count(masterBall->key) : 0;
+  btlMenu = 3;
+  btlItemPage = 0;
+  btlTapDebounceArmed = false;
+  onTap(149, 296);
+  check(masterBall && btlCaptureItem == masterBall->key &&
+        btlCaptureAnimating && btlCaptureSuccess,
+        "the Master Ball remains selected throughout its guaranteed capture animation");
+  uint8_t masterDuringThrow = masterBall ? inventory.count(masterBall->key) : 0;
+  btlTapDebounceArmed = false;
+  onTap(149, 296);
+  check(masterBall && btlCaptureItem == masterBall->key && btlCaptureAnimating &&
+        inventory.count(masterBall->key) == masterDuringThrow,
+        "the capture animation blocks a duplicate ball action");
+  btlUpdateCapture(btlCaptureStartedAt + 3650UL);
   check(screenIs("win") && capturedMon.dex == captureDex,
-        "the caught creature is included in the reward settlement");
+        "the guaranteed-catch ball includes a full-HP creature in settlement");
+  check(masterBall && masterStocked == masterBefore + 1 &&
+        inventory.count(masterBall->key) == masterBefore,
+        "the guaranteed-catch ball is consumed exactly once");
   check(party.count() == partyBefore + 1 && !partyPick,
         "a caught creature is stored automatically when capacity is available");
   onTap(233, 390);

@@ -22,7 +22,7 @@
 namespace {
 
 constexpr uint8_t MAX_PACKS = 32;
-constexpr uint8_t MAX_SECTIONS = 18;
+constexpr uint8_t MAX_SECTIONS = 19;
 constexpr uint16_t COMMON_SIZE = 48;
 constexpr uint16_t SECTION_SIZE = 16;
 constexpr uint8_t MAX_PET_PACKS = CONTENT_MAX_REGIONS;
@@ -128,6 +128,8 @@ static uint8_t *gItemLocalizedNames = nullptr;
 static uint32_t gItemLocalizedNamesSize = 0;
 static uint8_t *gItemLocales = nullptr;
 static uint32_t gItemLocalesSize = 0;
+static uint8_t *gItemIcons = nullptr;
+static uint32_t gItemIconsSize = 0;
 static MegaFormEntry *gMegaForms = nullptr;
 static uint16_t gMegaFormCount = 0;
 static uint8_t gMegaSpritePack = 0xFF;
@@ -446,6 +448,33 @@ static bool validThumbs(const uint8_t *data, uint32_t size) {
   return true;
 }
 
+static bool validItemIcons(const uint8_t *data, uint32_t size, uint32_t expectedCount) {
+  constexpr uint32_t RECORD_SIZE = 8;
+  if (!data || size < 4 || rd16(data) != expectedCount ||
+      rd16(data + 2) != RECORD_SIZE) return false;
+  uint32_t tableEnd = 4u + expectedCount * RECORD_SIZE;
+  if (tableEnd > size) return false;
+  uint32_t previousEnd = tableEnd;
+  for (uint32_t i = 0; i < expectedCount; i++) {
+    const uint8_t *row = data + 4u + i * RECORD_SIZE;
+    uint32_t offset = rd32(row), length = rd32(row + 4);
+    if (!offset && !length) continue;
+    if (offset < previousEnd || !length || offset > size || length > size - offset ||
+        length < 8 || memcmp(data + offset, "TIC1", 4) != 0) return false;
+    const uint8_t *icon = data + offset;
+    uint8_t width = icon[4], height = icon[5], paletteCount = icon[6];
+    uint32_t expectedSize = 8u + (uint32_t)paletteCount * 2u +
+                            (uint32_t)width * height;
+    if (!width || !height || width > 32 || height > 32 || !paletteCount ||
+        icon[7] || expectedSize != length) return false;
+    const uint8_t *pixels = icon + 8u + (uint32_t)paletteCount * 2u;
+    for (uint32_t pixel = 0; pixel < (uint32_t)width * height; pixel++)
+      if (pixels[pixel] != 0xFF && pixels[pixel] >= paletteCount) return false;
+    previousEnd = offset + length;
+  }
+  return true;
+}
+
 static const char *localizedAt(const uint8_t *data, uint32_t size, const char *locale,
                                uint32_t item) {
   if (!data || size < 4 || !locale) return nullptr;
@@ -667,9 +696,12 @@ static bool loadMovePack(uint8_t packIndex) {
     bool trainingItem = row[3] == ITEM_EFFECT_TRAINING_FLOOR;
     bool battleBoost = row[3] == ITEM_EFFECT_BATTLE_STAGE;
     bool mechanicItem = row[3] == ITEM_EFFECT_BATTLE_MECHANIC;
+    bool catchItem = row[3] == ITEM_EFFECT_CATCH;
     if (!key || row[2] < ITEM_CATEGORY_BALL || row[2] > ITEM_CATEGORY_MECHANIC ||
         row[3] < ITEM_EFFECT_CATCH || row[3] > ITEM_EFFECT_BATTLE_MECHANIC ||
         !row[4] || row[4] > 4 || row[10] > ITEM_STACK_LIMIT ||
+        (catchItem && (row[2] != ITEM_CATEGORY_BALL ||
+                       (itemParam <= 0 && itemParam != ITEM_CATCH_GUARANTEED))) ||
         (trainingItem && (row[2] != ITEM_CATEGORY_TRAINING ||
                           (row[5] != ITEM_STAT_ATK && row[5] != ITEM_STAT_DEF &&
                            row[5] != ITEM_STAT_SPE) || itemParam <= 0)) ||
@@ -784,6 +816,19 @@ static bool loadMovePack(uint8_t packIndex) {
     free(index);
   }
 
+  uint32_t itemIconsSize = 0, itemIconCount = 0;
+  uint8_t *itemIcons = nullptr;
+  if (findSection(pack, "IICO")) {
+    itemIcons = readSection(pack, "IICO", &itemIconsSize, &itemIconCount);
+    if (!itemIcons || itemIconCount != itemRecords ||
+        !validItemIcons(itemIcons, itemIconsSize, itemRecords)) {
+      free(itemIcons); free(megaForms); free(itemNames); free(itemLocalizedNames);
+      free(itemLocales); free(items); free(locales); free(localizedNames);
+      free(localizedTypeNames); free(typeNames); free(offsets); free(entries);
+      free(names); free(table); return false;
+    }
+  }
+
   gMovesTable = table; gMoveCount = (uint16_t)moveRecords; gMoveNames = (char *)names;
   gLearnOffsets = offsets; gLearnOffsetCount = offsetCount;
   gLearnEntries = entries; gLearnEntryCount = learnCountValue;
@@ -793,6 +838,7 @@ static bool loadMovePack(uint8_t packIndex) {
   gItemLocalizedNames = itemLocalizedNames;
   gItemLocalizedNamesSize = itemLocalizedNamesSize;
   gItemLocales = itemLocales; gItemLocalesSize = itemLocalesSize;
+  gItemIcons = itemIcons; gItemIconsSize = itemIconsSize;
   gMegaForms = megaForms; gMegaFormCount = (uint16_t)megaRecords;
   gMegaSpritePack = packIndex;
   gTypeLocalizedNames = localizedTypeNames;
@@ -1371,6 +1417,21 @@ const ItemEntry *itemByKey(ItemKey key) {
   ensureContent();
   for (uint16_t i = 0; i < gItemCount; i++) if (gItems[i].key == key) return &gItems[i];
   return nullptr;
+}
+bool contentItemIcon(ItemKey key, ItemIconView &out) {
+  out = ItemIconView{};
+  const ItemEntry *item = itemByKey(key);
+  if (!item || !gItemIcons || gItemIconsSize < 4) return false;
+  uint32_t index = (uint32_t)(item - gItems);
+  const uint8_t *row = gItemIcons + 4u + index * 8u;
+  uint32_t offset = rd32(row), length = rd32(row + 4);
+  if (!offset || !length || offset > gItemIconsSize || length > gItemIconsSize - offset)
+    return false;
+  const uint8_t *icon = gItemIcons + offset;
+  out.width = icon[4]; out.height = icon[5]; out.paletteCount = icon[6];
+  out.palette565 = icon + 8;
+  out.pixels = out.palette565 + (uint32_t)out.paletteCount * 2u;
+  return true;
 }
 
 const MegaFormEntry *megaFormFor(SpeciesId species) {

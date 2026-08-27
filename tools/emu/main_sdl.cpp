@@ -615,7 +615,8 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     btlWild = true;
     for (uint16_t i = 0; i < itemCount(); i++) {
       const ItemEntry *item = itemAt(i);
-      if (item && item->effect == ITEM_EFFECT_CATCH) {
+      if (item && item->effect == ITEM_EFFECT_CATCH &&
+          item->param == ITEM_CATCH_GUARANTEED) {
         btlCaptureItem = item->key;
         break;
       }

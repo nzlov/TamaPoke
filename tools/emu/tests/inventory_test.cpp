@@ -62,6 +62,7 @@ int main() {
   const uint8_t minWeight[5] = { 0, 30, 10, 2, 1 };
   const uint8_t maxBandWeight[5] = { 0, 50, 20, 8, 1 };
   uint8_t trainingTonics = 0, battleBoosters = 0, mechanicItems = 0;
+  uint8_t guaranteedBalls = 0;
   uint8_t trainingStats = 0, battleStats = 0, mechanicKinds = 0;
   for (uint16_t i = 0; i < itemCount(); i++) {
     const ItemEntry *item = itemAt(i);
@@ -72,8 +73,14 @@ int main() {
     if (item->effect == ITEM_EFFECT_CATCH) {
       uint8_t expected = item->param == 100 ? 5 : 0;
       if (item->dailyMin != expected) dailyBalance = false;
-      uint16_t expectedWeight = item->param == 100 ? 50 : item->param == 150 ? 20 : 8;
+      uint16_t expectedWeight = item->param == 100 ? 50 : item->param == 150 ? 20
+                              : item->param == 200 ? 8
+                              : item->param == ITEM_CATCH_GUARANTEED ? 1 : 0;
       if (item->dropWeight != expectedWeight) plannedWeights = false;
+      if (item->param == ITEM_CATCH_GUARANTEED &&
+          item->category == ITEM_CATEGORY_BALL && item->rarity == 4 &&
+          item->dropWeight == 1 && !item->dailyMin)
+        guaranteedBalls++;
     } else if (item->effect == ITEM_EFFECT_HEAL_HP && item->param == 20) {
       if (item->dailyMin != 2) dailyBalance = false;
       if (item->dropWeight != 40) plannedWeights = false;
@@ -104,6 +111,8 @@ int main() {
      "only basic balls refill to five and basic medicine refills to two");
   ck(rarityBands, "drop weights stay inside non-overlapping rarity bands");
   ck(plannedWeights, "each basic item keeps its planned value within that rarity band");
+  ck(guaranteedBalls == 1,
+     "the pack exposes one four-star guaranteed-catch ball at drop weight one");
   ck(trainingTonics == 3 && trainingStats == (ITEM_STAT_ATK | ITEM_STAT_DEF | ITEM_STAT_SPE) &&
      battleBoosters == 5 &&
      battleStats == (ITEM_STAT_ATK | ITEM_STAT_DEF | ITEM_STAT_SPA |

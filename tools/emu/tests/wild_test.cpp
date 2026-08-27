@@ -3,6 +3,7 @@
 #include <cstdio>
 #include "wild.h"
 #include "dex.h"
+#include "items.h"
 
 uint32_t g_seed = 73;
 FakeSerial Serial;
@@ -114,6 +115,12 @@ int main() {
   ck(statusLow > commonLow, "status improves capture odds");
   ck(betterBall > statusLow, "the pack-provided ball multiplier matters");
   ck(legend < statusLow, "rarity lowers derived capture odds");
+  ck(wildCaptureChance(R_LEGENDARIO, 100, 100, false,
+                       ITEM_CATCH_GUARANTEED) == 100,
+     "a guaranteed-catch item bypasses rarity, HP, and status odds");
+  ck(wildCaptureChance(R_COMUN, 0, 100, false,
+                       ITEM_CATCH_GUARANTEED) == 0,
+     "a guaranteed-catch item still rejects a fainted target");
   ck(wildCaptureChance(R_COMUN, 0, 0, false, 100) == 0,
      "invalid HP cannot be captured");
   return bad ? 1 : 0;

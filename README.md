@@ -306,6 +306,12 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 - A wild capture uses a free cultivation slot first, then a free Box slot. If both
   are full, the player explicitly chooses a replacement or lets it go; nothing
   is overwritten silently.
+- Bag items have distinct icons everywhere they appear. Poké, Great and Ultra Balls
+  use 1×, 1.5× and 2× catch modifiers; the four-star Master Ball is a weight-1 wild
+  victory drop and catches any valid wild target without fail. Run
+  `python3 tools/fetch_item_icons.py` before generating packs to use PokeAPI's
+  original 24×24/30×30 item sprites; missing artwork keeps the built-in icon.
+  The capture throw uses the image of the ball actually consumed.
 - After a wild victory, a settlement page lists every item and training-stat gain.
   A successful capture adds the caught creature to that same page and stores it
   automatically. Only a full collection continues to the replace-or-release picker.

@@ -7,6 +7,7 @@
     "param": 100,
     "dropWeight": 50,
     "dailyMin": 5,
+    "icon": "poke-ball",
     "names": {"en-US": "POKE BALL", "zh-CN": "精灵球"},
     "descriptions": {"en-US": "A basic ball for catching wild Pokemon.", "zh-CN": "用于捕捉野生宝可梦的基础精灵球。"}
   },
@@ -18,6 +19,7 @@
     "param": 150,
     "dropWeight": 20,
     "dailyMin": 0,
+    "icon": "great-ball",
     "names": {"en-US": "GREAT BALL", "zh-CN": "超级球"},
     "descriptions": {"en-US": "A better ball with a 1.5x catch modifier.", "zh-CN": "捕获修正为1.5倍的高性能精灵球。"}
   },
@@ -29,8 +31,21 @@
     "param": 200,
     "dropWeight": 8,
     "dailyMin": 0,
+    "icon": "ultra-ball",
     "names": {"en-US": "ULTRA BALL", "zh-CN": "高级球"},
     "descriptions": {"en-US": "A high-grade ball with a 2x catch modifier.", "zh-CN": "捕获修正为2倍的高等级精灵球。"}
+  },
+  {
+    "key": 1004,
+    "category": 1,
+    "effect": 1,
+    "rarity": 4,
+    "param": -1,
+    "dropWeight": 1,
+    "dailyMin": 0,
+    "icon": "master-ball",
+    "names": {"en-US": "MASTER BALL", "zh-CN": "大师球"},
+    "descriptions": {"en-US": "The best ball. It catches any valid wild Pokemon without fail.", "zh-CN": "性能最好的球，必定捕获任何有效的野生宝可梦。"}
   },
   {
     "key": 1101,
@@ -40,6 +55,7 @@
     "param": 20,
     "dropWeight": 40,
     "dailyMin": 2,
+    "icon": "potion",
     "names": {"en-US": "POTION", "zh-CN": "伤药"},
     "descriptions": {"en-US": "Restores 20 HP during battle.", "zh-CN": "在战斗中回复20点HP。"}
   },
@@ -51,6 +67,7 @@
     "param": 60,
     "dropWeight": 16,
     "dailyMin": 0,
+    "icon": "super-potion",
     "names": {"en-US": "SUPER POTION", "zh-CN": "好伤药"},
     "descriptions": {"en-US": "Restores 60 HP during battle.", "zh-CN": "在战斗中回复60点HP。"}
   },
@@ -62,6 +79,7 @@
     "param": 127,
     "dropWeight": 14,
     "dailyMin": 0,
+    "icon": "full-heal",
     "names": {"en-US": "FULL HEAL", "zh-CN": "万灵药"},
     "descriptions": {"en-US": "Cures any battle status condition.", "zh-CN": "治愈战斗中的任意异常状态。"}
   },
@@ -73,6 +91,7 @@
     "param": 50,
     "dropWeight": 6,
     "dailyMin": 0,
+    "icon": "revive",
     "names": {"en-US": "REVIVE", "zh-CN": "活力碎片"},
     "descriptions": {"en-US": "Revives a fainted team member with half HP.", "zh-CN": "让倒下的队伍成员以一半HP复活。"}
   },
@@ -121,6 +140,7 @@
     "param": 1,
     "dropWeight": 10,
     "dailyMin": 0,
+    "icon": "x-attack",
     "names": {"en-US": "X ATTACK", "zh-CN": "攻击强化剂"},
     "descriptions": {"en-US": "Raises Attack by one stage for the current battle.", "zh-CN": "本场战斗中使攻击提高1级。"}
   },
@@ -133,6 +153,7 @@
     "param": 1,
     "dropWeight": 10,
     "dailyMin": 0,
+    "icon": "x-defense",
     "names": {"en-US": "X DEFENSE", "zh-CN": "防御强化剂"},
     "descriptions": {"en-US": "Raises Defense by one stage for the current battle.", "zh-CN": "本场战斗中使防御提高1级。"}
   },
@@ -145,6 +166,7 @@
     "param": 1,
     "dropWeight": 10,
     "dailyMin": 0,
+    "icon": "x-sp-atk",
     "names": {"en-US": "X SP. ATK", "zh-CN": "特攻强化剂"},
     "descriptions": {"en-US": "Raises Sp. Atk by one stage for the current battle.", "zh-CN": "本场战斗中使特攻提高1级。"}
   },
@@ -157,6 +179,7 @@
     "param": 1,
     "dropWeight": 10,
     "dailyMin": 0,
+    "icon": "x-sp-def",
     "names": {"en-US": "X SP. DEF", "zh-CN": "特防强化剂"},
     "descriptions": {"en-US": "Raises Sp. Def by one stage for the current battle.", "zh-CN": "本场战斗中使特防提高1级。"}
   },
@@ -169,6 +192,7 @@
     "param": 1,
     "dropWeight": 10,
     "dailyMin": 0,
+    "icon": "x-speed",
     "names": {"en-US": "X SPEED", "zh-CN": "速度强化剂"},
     "descriptions": {"en-US": "Raises Speed by one stage for the current battle.", "zh-CN": "本场战斗中使速度提高1级。"}
   },

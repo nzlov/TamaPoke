@@ -29,6 +29,7 @@ This project is not affiliated with or endorsed by any of those companies.
 | **Simplified-Chinese Pokédex text** | [The official Pokémon Website in China](https://dex.pokemon.cn/play/pokedex) | Official Chinese descriptions used when PokéAPI has no `zh-hans` entry |
 | **Simplified-Chinese species and move names** | [42arch/pokemon-dataset-zh](https://github.com/42arch/pokemon-dataset-zh) | Pack authoring data in `tools/name_locales.json`, emitted as localized-name sections in region and move packs — © 2024 42arch, **MIT**; the source dataset credits 52Poké Wiki |
 | **Gym badges** | [SteGriff/pokemon-badges](https://github.com/SteGriff/pokemon-badges) | Kanto through Unova pack data — Stephen Griffiths 2011, **CC BY 3.0**, traced from Bulbapedia |
+| **Optional item icons** | [PokeAPI/sprites](https://github.com/PokeAPI/sprites/tree/master/sprites/items) | 24×24/30×30 game item sprites fetched locally by `tools/fetch_item_icons.py` and packed into `moves-core.tmove` |
 | **Gym leader teams** (Johto, Hoenn) | [pret/pokecrystal](https://github.com/pret/pokecrystal), [pret/pokeemerald](https://github.com/pret/pokeemerald) | Verified against the games' own trainer tables by `tools/verify_rosters.py` — no art is taken, only the team data |
 
 The **SpriteCollab** sprites are the work of its community of artists under their
@@ -43,6 +44,12 @@ Huge thanks to that whole community for an enormous amount of work.
 > is to distribute **only the code and scripts**, and have each user download and
 > package the sprites from the original sources with `tools/pack_*.py` (or the web
 > installer).
+
+The optional PokeAPI item sprites follow the same local-generation rule. The
+PokeAPI/sprites licence file says that all image contents remain copyright The
+Pokémon Company; its CC0 notice does not clear those third-party image rights.
+The PNG and converted icon cache is therefore ignored by Git, and packs without
+it fall back to TamaPoke's procedural item icons.
 
 ## Software / hardware
 

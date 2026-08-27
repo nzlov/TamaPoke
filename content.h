@@ -67,6 +67,13 @@ struct MegaFormEntry {
   uint32_t spriteAt = 0, spriteSize = 0;
 };
 
+struct ItemIconView {
+  uint8_t width = 0, height = 0, paletteCount = 0;
+  // RGB565 palette entries are little-endian; 0xFF pixels are transparent.
+  const uint8_t *palette565 = nullptr;
+  const uint8_t *pixels = nullptr;
+};
+
 struct UiLocaleInfo {
   char locale[16];
   char shortLabel[8];
@@ -143,6 +150,7 @@ const char *itemName(ItemKey key);
 uint16_t itemCount();
 const ItemEntry *itemAt(uint16_t index);
 const ItemEntry *itemByKey(ItemKey key);
+bool contentItemIcon(ItemKey key, ItemIconView &out);
 const MegaFormEntry *megaFormFor(SpeciesId species);
 
 uint8_t typeEffectTenth(uint8_t attack, uint8_t defense);

@@ -341,6 +341,183 @@ static void uiDrawCenteredIn(const char *text, int16_t x, int16_t y,
   gfx->print(text);
 }
 
+// Concrete item identities and optional artwork remain pack-owned. Procedural
+// effect icons keep packs without artwork usable without firmware-side key maps.
+static void drawItemIcon(const ItemEntry &item, int16_t cx, int16_t cy,
+                         uint8_t scale = 1, bool muted = false) {
+  const int16_t s = scale ? scale : 1;
+  const uint16_t ink = muted ? 0x8410 : UI_INK;
+  const uint16_t white = muted ? 0xBDF7 : UI_WHITE;
+  const uint16_t red = muted ? 0x8410 : 0xF986;
+  const uint16_t blue = muted ? 0x8410 : 0x3D7F;
+  const uint16_t yellow = muted ? 0xA514 : 0xFFE0;
+  const uint16_t purple = muted ? 0x8410 : 0xA99F;
+  const uint16_t green = muted ? 0x8410 : UI_BAR_OK;
+  auto x = [cx, s](int16_t n) { return (int16_t)(cx + n * s); };
+  auto y = [cy, s](int16_t n) { return (int16_t)(cy + n * s); };
+
+  ItemIconView icon;
+  if (contentItemIcon(item.key, icon)) {
+    int16_t left = cx - (int16_t)icon.width * s / 2;
+    int16_t top = cy - (int16_t)icon.height * s / 2;
+    for (uint8_t row = 0; row < icon.height; row++) {
+      uint8_t col = 0;
+      while (col < icon.width) {
+        uint8_t paletteIndex = icon.pixels[(uint16_t)row * icon.width + col];
+        if (paletteIndex == 0xFF) { col++; continue; }
+        uint8_t end = col + 1;
+        while (end < icon.width &&
+               icon.pixels[(uint16_t)row * icon.width + end] == paletteIndex) end++;
+        const uint8_t *packed = icon.palette565 + (uint16_t)paletteIndex * 2u;
+        uint16_t color = muted ? 0x8410
+                               : (uint16_t)packed[0] | ((uint16_t)packed[1] << 8);
+        gfx->fillRect(left + col * s, top + row * s, (end - col) * s, s, color);
+        col = end;
+      }
+    }
+    return;
+  }
+
+  if (item.effect == ITEM_EFFECT_CATCH) {
+    uint16_t top = red;
+    if (item.param == ITEM_CATCH_GUARANTEED) top = purple;
+    else if (item.param >= 200) top = ink;
+    else if (item.param >= 150) top = blue;
+    const int16_t radius = 10 * s;
+    auto discHalfWidth = [radius](int16_t dy) {
+      int16_t half = 0;
+      while ((int32_t)(half + 1) * (half + 1) + (int32_t)dy * dy <=
+             (int32_t)radius * radius) half++;
+      return half;
+    };
+    gfx->fillCircle(cx, cy, radius, white);
+    for (int16_t dy = -radius; dy < 0; dy++) {
+      int16_t half = discHalfWidth(dy);
+      gfx->fillRect(cx - half, cy + dy, half * 2 + 1, 1, top);
+    }
+    if (item.param == ITEM_CATCH_GUARANTEED) {
+      gfx->fillCircle(x(-5), y(-4), 2 * s, white);
+      gfx->fillCircle(x(5), y(-4), 2 * s, white);
+      gfx->drawLine(x(-4), y(-7), x(-2), y(-2), white);
+      gfx->drawLine(x(-2), y(-2), cx, y(-6), white);
+      gfx->drawLine(cx, y(-6), x(2), y(-2), white);
+      gfx->drawLine(x(2), y(-2), x(4), y(-7), white);
+    } else if (item.param >= 200) {
+      gfx->fillTriangle(x(-7), y(-7), x(-2), y(-7), x(-5), y(-2), yellow);
+      gfx->fillTriangle(x(2), y(-7), x(7), y(-7), x(5), y(-2), yellow);
+    } else if (item.param >= 150) {
+      gfx->fillRect(x(-7), y(-6), 4 * s, 3 * s, red);
+      gfx->fillRect(x(4), y(-6), 4 * s, 3 * s, red);
+    }
+    for (int16_t dy = -2 * s; dy < 2 * s; dy++) {
+      int16_t half = discHalfWidth(dy);
+      gfx->fillRect(cx - half, cy + dy, half * 2 + 1, 1, ink);
+    }
+    gfx->fillCircle(cx, cy, 4 * s, ink);
+    gfx->fillCircle(cx, cy, 2 * s, white);
+    gfx->drawCircle(cx, cy, radius, ink);
+    return;
+  }
+
+  if (item.effect == ITEM_EFFECT_HEAL_HP) {
+    uint16_t fill = item.param > 20 ? yellow : blue;
+    gfx->fillRoundRect(x(-7), y(-7), 14 * s, 17 * s, 3 * s, white);
+    gfx->fillRect(x(-5), y(-10), 10 * s, 4 * s, fill);
+    gfx->drawRect(x(-5), y(-10), 10 * s, 4 * s, ink);
+    gfx->drawRoundRect(x(-7), y(-7), 14 * s, 17 * s, 3 * s, ink);
+    gfx->fillRect(x(-5), y(2), 10 * s, 6 * s, fill);
+    gfx->fillRect(x(-1), y(-4), 3 * s, 9 * s, red);
+    gfx->fillRect(x(-4), y(-1), 9 * s, 3 * s, red);
+    if (item.param > 20) gfx->drawLine(x(-5), y(5), x(5), y(5), red);
+    return;
+  }
+
+  if (item.effect == ITEM_EFFECT_CURE_STATUS) {
+    gfx->fillRoundRect(x(-7), y(-10), 14 * s, 20 * s, 6 * s, white);
+    gfx->fillRoundRect(x(-7), y(-10), 14 * s, 10 * s, 6 * s, purple);
+    gfx->drawRoundRect(x(-7), y(-10), 14 * s, 20 * s, 6 * s, ink);
+    gfx->fillRect(x(-1), y(-5), 3 * s, 10 * s, green);
+    gfx->fillRect(x(-5), y(-1), 11 * s, 3 * s, green);
+    return;
+  }
+
+  if (item.effect == ITEM_EFFECT_REVIVE) {
+    gfx->fillTriangle(cx, y(-11), x(-9), cy, cx, y(11), yellow);
+    gfx->fillTriangle(cx, y(-11), x(9), cy, cx, y(11), white);
+    gfx->drawLine(cx, y(-11), x(-9), cy, ink);
+    gfx->drawLine(x(-9), cy, cx, y(11), ink);
+    gfx->drawLine(cx, y(11), x(9), cy, ink);
+    gfx->drawLine(x(9), cy, cx, y(-11), ink);
+    gfx->drawLine(x(-9), cy, x(9), cy, ink);
+    return;
+  }
+
+  if (item.effect == ITEM_EFFECT_TRAINING_FLOOR) {
+    uint16_t fill = item.flags == ITEM_STAT_ATK ? red
+                    : item.flags == ITEM_STAT_DEF ? blue : yellow;
+    gfx->fillRoundRect(x(-7), y(-7), 14 * s, 17 * s, 3 * s, fill);
+    gfx->fillRect(x(-5), y(-10), 10 * s, 4 * s, white);
+    gfx->drawRect(x(-5), y(-10), 10 * s, 4 * s, ink);
+    gfx->drawRoundRect(x(-7), y(-7), 14 * s, 17 * s, 3 * s, ink);
+    if (item.flags == ITEM_STAT_ATK) {
+      gfx->fillCircle(cx, y(1), 4 * s, white);
+      gfx->fillRect(x(-7), y(-1), 14 * s, 3 * s, white);
+    } else if (item.flags == ITEM_STAT_DEF) {
+      gfx->fillTriangle(cx, y(-4), x(-5), y(-1), cx, y(7), white);
+      gfx->fillTriangle(cx, y(-4), x(5), y(-1), cx, y(7), white);
+    } else {
+      gfx->fillTriangle(x(2), y(-5), x(-4), y(2), x(1), y(2), white);
+      gfx->fillTriangle(x(-1), y(6), x(5), y(-1), cx, y(-1), white);
+    }
+    return;
+  }
+
+  if (item.effect == ITEM_EFFECT_BATTLE_STAGE) {
+    uint16_t fill = (item.flags == ITEM_STAT_ATK || item.flags == ITEM_STAT_SPA) ? red
+                    : (item.flags == ITEM_STAT_DEF || item.flags == ITEM_STAT_SPD) ? blue
+                    : yellow;
+    gfx->fillCircle(cx, cy, 10 * s, fill);
+    gfx->drawCircle(cx, cy, 10 * s, ink);
+    gfx->fillTriangle(cx, y(-7), x(-5), y(-1), x(5), y(-1), white);
+    gfx->fillRect(x(-2), y(-1), 5 * s, 8 * s, white);
+    if (item.flags == ITEM_STAT_SPA || item.flags == ITEM_STAT_SPD) {
+      gfx->fillCircle(x(-6), y(5), s, white);
+      gfx->fillCircle(x(6), y(5), s, white);
+    } else if (item.flags == ITEM_STAT_SPE) {
+      gfx->drawLine(x(-7), y(6), x(7), y(6), ink);
+    }
+    return;
+  }
+
+  if (item.effect == ITEM_EFFECT_BATTLE_MECHANIC) {
+    if (item.flags == ITEM_MECHANIC_Z_MOVE) {
+      gfx->fillTriangle(cx, y(-11), x(-9), cy, cx, y(11), yellow);
+      gfx->fillTriangle(cx, y(-11), x(9), cy, cx, y(11), purple);
+      gfx->drawLine(x(-4), y(-5), x(4), y(-5), ink);
+      gfx->drawLine(x(4), y(-5), x(-4), y(5), ink);
+      gfx->drawLine(x(-4), y(5), x(4), y(5), ink);
+    } else if (item.flags == ITEM_MECHANIC_DYNAMAX) {
+      gfx->fillCircle(cx, cy, 9 * s, red);
+      gfx->drawCircle(cx, cy, 10 * s, ink);
+      gfx->fillTriangle(cx, y(-8), x(-3), y(-1), x(3), y(-1), white);
+      gfx->fillTriangle(cx, y(8), x(-3), y(1), x(3), y(1), white);
+      gfx->fillCircle(cx, cy, 2 * s, white);
+    } else {
+      gfx->fillCircle(cx, cy, 10 * s, blue);
+      gfx->drawCircle(cx, cy, 10 * s, ink);
+      gfx->drawCircle(cx, cy, 6 * s, white);
+      gfx->drawLine(x(-7), y(5), x(7), y(-5), yellow);
+      gfx->fillCircle(x(-5), y(4), 2 * s, yellow);
+      gfx->fillCircle(x(5), y(-4), 2 * s, yellow);
+    }
+    return;
+  }
+
+  gfx->fillCircle(cx, cy, 9 * s, green);
+  gfx->drawCircle(cx, cy, 9 * s, ink);
+  gfx->fillCircle(cx, cy, 3 * s, white);
+}
+
 TouchDrvCST92xx touch;
 Pet pet;
 QuizRuntime quiz;
@@ -1757,9 +1934,10 @@ void renderBag() {
       renderBag();
       return;
     }
+    drawItemIcon(*item, CX, 106, 2);
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(3);
-    gfx->setCursor(uiCenterX(itemName(item->key)), 104);
+    gfx->setCursor(uiCenterX(itemName(item->key)), 144);
     gfx->print(itemName(item->key));
     char meta[32];
     char rarity[5] = "****";
@@ -1767,12 +1945,12 @@ void renderBag() {
     snprintf(meta, sizeof(meta), "x%u  %s", inventory.count(item->key), rarity);
     gfx->setTextColor(UI_BAR_WARN);
     gfx->setTextSize(2);
-    gfx->setCursor(uiCenterX(meta), 146);
+    gfx->setCursor(uiCenterX(meta), 180);
     gfx->print(meta);
     const char *description = itemDescription(item->key, uiActiveLocaleCode());
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(2);
-    drawWrappedText(description ? description : "?", 76, 196, 314, 5);
+    drawWrappedText(description ? description : "?", 76, 218, 314, 5);
     gfx->setTextColor(UI_MUTED);
     gfx->setTextSize(2);
     if (itemCanApplyToPet(*item, pet)) {
@@ -1806,9 +1984,10 @@ void renderBag() {
     int y = BAG_ROW_Y(row);
     gfx->fillRoundRect(70, y, 326, BAG_ROW_H, 10, UI_BG_DAY);
     gfx->drawRoundRect(70, y, 326, BAG_ROW_H, 10, UI_INK);
+    drawItemIcon(*item, 94, y + BAG_ROW_H / 2);
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(2);
-    gfx->setCursor(84, y + 13);
+    gfx->setCursor(114, y + 13);
     gfx->print(itemName(item->key));
     char count[8];
     snprintf(count, sizeof(count), "x%u", stack->count);
@@ -5102,12 +5281,14 @@ void renderWin() {
       row++;
     }
     for (uint8_t i = 0; i < btlRewardItemCount && row < 5; i++) {
+      const ItemEntry *item = itemByKey(btlRewardItems[i]);
       snprintf(line, sizeof(line), T(S_ITEM_FOUND_FMT), itemName(btlRewardItems[i]));
       int y = rewardRowY + row * rewardRowStep;
       gfx->fillRoundRect(83, y, 300, rewardRowH, 10, UI_WHITE);
+      if (item) drawItemIcon(*item, 99, y + rewardRowH / 2);
       gfx->setTextColor(UI_BAR_WARN);
       gfx->setTextSize(1);
-      uiDrawCenteredIn(line, 83, y, 300, rewardRowH);
+      uiDrawCenteredIn(line, 113, y, 260, rewardRowH);
       row++;
     }
     gfx->setTextColor(UI_MUTED);
@@ -5446,7 +5627,8 @@ static void renderBattleCapture(uint32_t now, uint8_t stage) {
   bool drawBall = stage == BTL_CAPTURE_THROW || stage == BTL_CAPTURE_ABSORB ||
                   stage == BTL_CAPTURE_SHAKE || stage == BTL_CAPTURE_SUCCESS ||
                   stage == BTL_CAPTURE_FAILURE;
-  if (drawBall) drawMap(SPR_ICON_PLAY, 16, bx - 24, by - 24, 3, false);
+  const ItemEntry *ball = itemByKey(btlCaptureItem);
+  if (drawBall && ball) drawItemIcon(*ball, bx, by, 2);
   if (stage == BTL_CAPTURE_SUCCESS) {
     gfx->drawLine(bx - 12, by + 2, bx - 3, by + 11, UI_BAR_OK);
     gfx->drawLine(bx - 3, by + 11, bx + 14, by - 7, UI_BAR_OK);
@@ -5532,12 +5714,13 @@ void renderBattle() {
       int x = BTL_CELL_X(i), y = BTL_CELL_Y(i);
       gfx->fillRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, usable ? UI_BG_DAY : UI_TRACK);
       gfx->drawRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, usable ? UI_INK : 0x8410);
+      drawItemIcon(*item, x + 22, y + BTL_CELL_H / 2, 1, !usable);
       gfx->setTextColor(usable ? UI_INK : 0x8410);
       gfx->setTextSize(1);
-      uiDrawCenteredIn(itemName(item->key), x + 6, y + 3, BTL_CELL_W - 12, 18);
+      uiDrawCenteredIn(itemName(item->key), x + 42, y + 3, BTL_CELL_W - 48, 18);
       char amount[8];
       snprintf(amount, sizeof(amount), "x%u", stack->count);
-      uiDrawCenteredIn(amount, x + 6, y + 23, BTL_CELL_W - 12, 16);
+      uiDrawCenteredIn(amount, x + 42, y + 23, BTL_CELL_W - 48, 16);
     }
     if (pages > 1)
       for (uint8_t page = 0; page < pages; page++) {
@@ -5589,7 +5772,8 @@ void renderBattle() {
       const char *label = armed ? itemName(armed->key) : "";
       gfx->setTextColor(UI_BAR_WARN);
       gfx->setTextSize(1);
-      uiDrawCenteredIn(label, BTL_GRID_X, 254, 328, 18);
+      if (armed) drawItemIcon(*armed, BTL_GRID_X + 20, 263);
+      uiDrawCenteredIn(label, BTL_GRID_X + 36, 254, 292, 18);
     }
     for (int i = 0; i < MOVE_SLOTS; i++) {
       int x = BTL_CELL_X(i), y = BTL_CELL_Y(i);
@@ -5849,7 +6033,7 @@ bool btlStartCapture(const ItemEntry &item, uint8_t roll, uint32_t now) {
   uint8_t chance = wildCaptureChance(dexEntry(btlFoe.dex).rarity, btlFoe.hp,
                                      btlFoe.maxHp,
                                      btlFoe.ailment != AIL_NONE || btlFoe.confuseTurns,
-                                     item.param > 0 ? (uint16_t)item.param : 100);
+                                     item.param);
   btlCaptureSuccess = roll < chance;
   btlCaptureAnimating = true;
   btlCaptureCuePlayed = false;

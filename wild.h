@@ -22,9 +22,10 @@ void wildApplyTraits(const WildTraits &traits, uint8_t &ivAtk, uint8_t &ivDef,
                      uint8_t &ivSpe, uint8_t &ivHp);
 
 // Capture probability is derived from pack-owned rarity plus live battle
-// state. ballMultiplier is a percentage supplied by the selected item.
+// state. ballModifier is a percentage supplied by the selected item, or the
+// generic guaranteed-catch sentinel defined in items.h.
 uint8_t wildCaptureChance(uint8_t rarity, uint16_t hp, uint16_t maxHp,
-                          bool hasStatus, uint16_t ballMultiplier);
+                          bool hasStatus, int16_t ballModifier);
 
 // Normal encounters can range from level 1 through five above the player;
 // hard encounters may use the full level range.
