@@ -1,6 +1,6 @@
-// First boot: pick a region, then pick a starter from it.
+// First boot: pick a language, a region, then a starter from it.
 //
-// The screen is two steps now, and the thing worth pinning is that it reads its
+// The thing worth pinning here is that the starter screen reads its
 // species from each region pack's starter array rather than a copy. Those same
 // arrays are the pool a region's FIRST EGG is drawn from (pet.cpp rollInRegion),
 // where Kanto's five deliberately include Pikachu and Eevee -- so the array must
@@ -9,6 +9,7 @@
 #include "Arduino.h"
 #include "Arduino_GFX_Library.h"
 #include "Preferences.h"
+#include "i18n.h"
 #include "pet.h"
 #include "party.h"
 #include <cstdio>
@@ -29,11 +30,14 @@ static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!
 // where renderRegionPick draws row i, and where renderStarterSelect draws row i
 static int regionRowY(int i){ return 108 + i*72 + 30; }
 static int starterRowY(int i){ return 110 + i*(70+8) + 35; }
+static int languageX(int i){ return 74 + (i%2)*168 + 75; }
+static int languageY(int i){ return 104 + (i/2)*70 + 27; }
 
 int main(){
   setup();
   render();
   ck(pet.awaitingStarter(), "a brand new save asks for a starter");
+  onTap(languageX(gLang), languageY(gLang));
 
   // --- the canonical trio, pinned. Reordering pack starters would change
   // the first screen anyone sees, and nothing else would notice.
@@ -73,7 +77,7 @@ int main(){
     ck(pika && eevee, "Pikachu and Eevee are still reachable as a first egg");
   }
 
-  // --- drive the real two-step flow through an installed region and its middle starter
+  // --- continue the real first-boot flow through a region and its middle starter
   uint8_t chosenRegion = regionAll() > 1 ? 1 : 0;
   onTap(233, regionRowY(chosenRegion));
   ck(pet.region == chosenRegion, "tapping a region on the first screen sets the egg region");

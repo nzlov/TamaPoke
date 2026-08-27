@@ -257,8 +257,8 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     refreshUiFont();
   }
   for (int i = 0; i < 4; i++) loop();          // let the sketch settle
-  bool firstBoot = !strcmp(screen, "starter") || !strcmp(screen, "starterj") ||
-                   !strcmp(screen, "region");
+  bool firstBoot = !strcmp(screen, "language") || !strcmp(screen, "starter") ||
+                   !strcmp(screen, "starterj") || !strcmp(screen, "region");
   if (pet.awaitingStarter() && !firstBoot) pet.chooseStarter(4);
   if (!strcmp(screen, "egg")) {
     // a few species registered, so the lottery is past the starter case and the
@@ -278,8 +278,13 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   // It started firing for every shot once dex_moves.py gained the cheap early
   // attacks, because a creature now genuinely has moves waiting.
   while (pet.hasLearnOffer()) pet.declineLearn();
-  // "region" is step one of the first boot and "starter" is step two, so the
-  // second one gets there the way a player does: by tapping a region.
+  // First-boot shots advance through the same language and region taps as the
+  // player. The language page itself is left untouched for its screenshot.
+  if (strcmp(screen, "language") &&
+      (!strcmp(screen, "region") || !strcmp(screen, "starter") ||
+       !strcmp(screen, "starterj"))) {
+    onTap(74 + (gLang % 2) * 168 + 75, 104 + (gLang / 2) * 70 + 27);
+  }
   if (!strcmp(screen, "starter")) onTap(233, 108 + 30);        // KANTO
   if (!strcmp(screen, "starterj")) onTap(233, 108 + 72 + 30);  // JOHTO
   for (int i = 0; i < 2; i++) loop();          // pick up the sprite for the new species

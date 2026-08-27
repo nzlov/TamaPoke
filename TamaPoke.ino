@@ -758,7 +758,7 @@ static void btlResetTapDebounce() {
 }
 
 enum : uint8_t {
-  SCR_QUIZ = 0, SCR_STARTER, SCR_REGION, SCR_GALLERY, SCR_DEXPICK, SCR_MOVEPICK, SCR_BOX,
+  SCR_QUIZ = 0, SCR_LANGUAGE, SCR_STARTER, SCR_REGION, SCR_GALLERY, SCR_DEXPICK, SCR_MOVEPICK, SCR_BOX,
   SCR_KEYBOARD, SCR_CARD, SCR_PLAYER, SCR_CLOCK, SCR_GYM, SCR_GYMPICK,
   SCR_LAN, SCR_PICK, SCR_BATTLE, SCR_WIN, SCR_LEARN, SCR_TRAIN, SCR_MENU,
   SCR_GAME, SCR_MAIN, SCR_BAG, SCR_COUNT
@@ -781,6 +781,7 @@ void settleCareInteraction(const CareAction &action, uint8_t percent, bool corre
                            bool showGameResult, uint32_t now);
 void startBathAnimation(uint32_t now);
 void renderQuiz();
+void renderFirstBootLanguage();
 void quizTap(int16_t x, int16_t y);
 void renderBag();
 void bagTap(int16_t x, int16_t y);
@@ -791,7 +792,7 @@ void startWildBattle(uint8_t region, bool hard);
 void drawSparkleParticles(int cx, int groundY, uint32_t now, uint8_t scale = 1);
 uint32_t pmdActTotalMs(const PmdAct &action);
 const char *const SCREEN_NAME[SCR_COUNT] = {
-  "quiz", "starter", "region", "gallery", "dexpick", "movepick", "box",
+  "quiz", "language", "starter", "region", "gallery", "dexpick", "movepick", "box",
   "keyboard", "card", "player", "clock", "gym", "gympick",
   "lan", "pick", "battle", "win", "learn", "train", "menu",
   "minigame", "main", "bag"
@@ -1170,10 +1171,15 @@ uint8_t starterCountShown(uint8_t region) {
   return n < STARTER_SHOWN ? n : STARTER_SHOWN;
 }
 
-// First boot runs region -> starter. This is NOT persisted: a reset between the
-// two lands back on the region, which is the harmless direction to fail in --
-// nothing has been chosen yet, and pet.setRegion() is idempotent.
+// First boot runs language -> region -> starter. Language is persisted as soon
+// as it is chosen. Region progress is intentionally not persisted: a reset
+// between the last two steps safely lands back on the region.
+static bool starterLanguageDone = false;
 static bool starterRegionDone = false;
+#define LANGUAGE_COL_X(i) (74 + ((i) % 2) * 168)
+#define LANGUAGE_ROW_Y(i) (104 + ((i) / 2) * 70)
+#define LANGUAGE_CELL_W 150
+#define LANGUAGE_CELL_H 54
 #define STARTER_ROW_Y 110
 #define STARTER_ROW_H 70
 #define STARTER_ROW_GAP 8
@@ -1208,9 +1214,10 @@ uint32_t tStart = 0;
 bool recoveryMode = false;
 
 void renderBootSplash() {
+  // The splash is shown before SD content is mounted and must not trigger the
+  // one-shot content scan.
   gfx->setPackFont(false);
   drawBootSplashFrame(*gfx);
-  gfx->setPackFont(contentHasUi());
 }
 
 void renderRecovery() {
@@ -1264,7 +1271,6 @@ void setup() {
   // QSPI a 80MHz (por defecto 40): el flush del framebuffer es el cuello de
   // botella del fps (~56ms a 40MHz). Si el panel mostrara basura, bajar a 40M.
   if (!gfx->begin(80000000)) Serial.println("gfx->begin() fallo");
-  gfx->setPackFont(contentHasUi());
   panel->setBrightness(180);
   renderBootSplash();
 
@@ -1299,7 +1305,7 @@ void setup() {
   party.attach(pet);
   inventory.begin();
   loadUserBrightness();
-  loadLang();
+  starterLanguageDone = loadLang();
   gfx->setPackFont(contentHasUi());
   thumbs.load();
 
@@ -2326,7 +2332,23 @@ bool navMenuTap(int16_t x, int16_t y) {
 void onTap(int16_t x, int16_t y) {
   if (quiz.active) { quizTap(x, y); return; }
   if (buryTarget != BURY_TARGET_NONE) { buryTap(x, y); return; }
-  if (pet.awaitingStarter()) {  // primera partida: region y luego inicial
+  if (pet.awaitingStarter()) {  // primera partida: idioma, region e inicial
+    if (!starterLanguageDone) {
+      for (uint8_t i = 0; i < langCount(); i++) {
+        int lx = LANGUAGE_COL_X(i);
+        int ly = LANGUAGE_ROW_Y(i);
+        if (x >= lx && x <= lx + LANGUAGE_CELL_W &&
+            y >= ly && y <= ly + LANGUAGE_CELL_H) {
+          if (setLang((Lang)i)) {
+            starterLanguageDone = true;
+            refreshUiFont();
+            sfxPlay(SFX_TAP);
+          }
+          break;
+        }
+      }
+      return;
+    }
     if (!starterRegionDone) {
       int r = regionPickTap(x, y, RPICK_FOR_START);
       if (r >= 0) {
@@ -2800,6 +2822,29 @@ void drawScene(uint8_t biome, uint32_t now, bool night) {
   }
 }
 
+// primera partida: elige el idioma antes de la region y el inicial
+void renderFirstBootLanguage() {
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  const char *title = T(S_LANG_LABEL);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(title), 64);
+  gfx->print(title);
+  for (uint8_t i = 0; i < langCount(); i++) {
+    int lx = LANGUAGE_COL_X(i);
+    int ly = LANGUAGE_ROW_Y(i);
+    gfx->fillRoundRect(lx, ly, LANGUAGE_CELL_W, LANGUAGE_CELL_H, 12, UI_WHITE);
+    gfx->drawRoundRect(lx, ly, LANGUAGE_CELL_W, LANGUAGE_CELL_H, 12, UI_TRACK);
+    const char *label = langDisplayName((Lang)i);
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(2);
+    gfx->setCursor(uiCenterIn(label, lx, LANGUAGE_CELL_W), ly + 18);
+    gfx->print(label);
+  }
+  gfx->flush();
+}
+
 // primera partida: elige inicial entre Bulbasaur / Charmander / Squirtle
 void renderStarterSelect() {
   gfx->fillScreen(RGB565_BLACK);
@@ -2844,7 +2889,10 @@ RTC_NOINIT_ATTR uint32_t gCrumbHeap;
 // Which screen is on the panel RIGHT NOW, in the same order render() tests.
 uint8_t uiCurrentScreen() {
   if (quiz.active) return SCR_QUIZ;
-  if (pet.awaitingStarter()) return starterRegionDone ? SCR_STARTER : SCR_REGION;
+  if (pet.awaitingStarter()) {
+    if (!starterLanguageDone) return SCR_LANGUAGE;
+    return starterRegionDone ? SCR_STARTER : SCR_REGION;
+  }
   if (moveInfoOpen) return SCR_MOVEPICK;
   if (galleryOpen) return galleryPick ? SCR_DEXPICK : SCR_GALLERY;
   if (movePickOpen) return SCR_MOVEPICK;
@@ -2913,8 +2961,9 @@ void render() {
     renderQuiz();
     return;
   }
-  if (pet.awaitingStarter()) {  // primera partida: region y luego inicial
-    if (!starterRegionDone) renderRegionPick(RPICK_FOR_START);
+  if (pet.awaitingStarter()) {  // primera partida: idioma, region e inicial
+    if (!starterLanguageDone) renderFirstBootLanguage();
+    else if (!starterRegionDone) renderRegionPick(RPICK_FOR_START);
     else renderStarterSelect();
     return;
   }

@@ -28,8 +28,17 @@ uint8_t langCount() { return uiLocaleCount(); }
 const char *langCode(Lang l) { return uiLocaleInfo(l).locale; }
 const char *langLabel(Lang l) { return uiLocaleInfo(l).shortLabel; }
 bool langIsCjk(Lang l) { return l < uiLocaleCount() && uiLocaleInfo(l).isCjk; }
+const char *langDisplayName(Lang l) {
+  const UiLocaleInfo &info = uiLocaleInfo(l);
+  if (!info.displayName[0]) return "English";
+  // GLUE: bitmap UI packs cannot draw the Chinese pack's native self-name.
+  // Remove this fallback when UI pack metadata gains a cross-font ASCII name.
+  if (info.isCjk && !langIsCjk(gLang) && !strncmp(info.locale, "zh-CN", 16))
+    return "Chinese";
+  return info.displayName;
+}
 
-void loadLang() {
+bool loadLang() {
   contentBegin();
   Preferences prefs;
   prefs.begin("tamapoke", true);
@@ -37,15 +46,31 @@ void loadLang() {
   prefs.getString("locale", saved, sizeof(saved));
   int8_t selected = saved[0] ? uiFindLocale(saved) : -1;
   prefs.end();
-  if (selected < 0) selected = uiActiveLocale();
+  if (selected >= 0 && uiActivateLocale((uint8_t)selected)) {
+    gLang = (Lang)selected;
+    return true;
+  }
+  selected = uiLocaleCount() ? 0 : -1;
+  if (selected >= 0 && uiActivateLocale((uint8_t)selected)) {
+    gLang = (Lang)selected;
+    return false;
+  }
+  selected = uiFindLocale("en-US");
+  if (selected >= 0 && uiActivateLocale((uint8_t)selected)) {
+    gLang = (Lang)selected;
+    return false;
+  }
+  selected = uiActiveLocale();
   if (selected >= 0 && uiActivateLocale((uint8_t)selected)) gLang = (Lang)selected;
+  return false;
 }
 
-void setLang(Lang l) {
-  if (l >= uiLocaleCount() || !uiActivateLocale(l)) return;
+bool setLang(Lang l) {
+  if (l >= uiLocaleCount() || !uiActivateLocale(l)) return false;
   gLang = l;
   Preferences prefs;
   prefs.begin("tamapoke", false);
   prefs.putString("locale", uiActiveLocaleCode());
   prefs.end();
+  return true;
 }

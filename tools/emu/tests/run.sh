@@ -74,7 +74,7 @@ read -r -a FT_LIBS <<< "$(pkg-config --libs freetype2)"
 FLAGS=(-std=c++17 -O1 -w -I"$EMU" -I"$ROOT" "${FT_CFLAGS[@]}" "$FW_DEFINE" -DCONTENT_DIR="\"$ROOT/web/packs\"")
 
 # these drive setup()/loop()/render(), so they need the sketch itself
-needs_sketch() { case "$1" in touch_test|flush_test|joy_test|anim_test|capture_animation_test|swipe_test|lan_test|console_test|hit_test|battle_debounce_test|battle_reward_ui_test|brightness_test|starter_test|recovery_test|navigation_test|wild_detail_test) return 0;; *) return 1;; esac; }
+needs_sketch() { case "$1" in touch_test|flush_test|joy_test|anim_test|capture_animation_test|swipe_test|lan_test|console_test|hit_test|battle_debounce_test|battle_reward_ui_test|boot_order_test|brightness_test|first_boot_language_test|starter_test|recovery_test|navigation_test|wild_detail_test) return 0;; *) return 1;; esac; }
 
 # and these are standalone: gbsynth.cpp has no Arduino dependency at all, which
 # is the point of it -- linking the game core in would only demand stubs for
@@ -101,6 +101,14 @@ for src in "$HERE"/*_test.cpp; do
   if [ "$name" = recovery_test ]; then
     mkdir -p "$OUT/empty-packs"
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/empty-packs\"")
+  elif [ "$name" = boot_order_test ]; then
+    mkdir -p "$OUT/boot-packs"
+    python3 "$HERE/make_gender_fixture.py" "$OUT/boot-source"
+    test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/boot-packs\""
+                -DBOOT_PACK_SOURCE="\"$OUT/boot-source\"")
+  elif [ "$name" = first_boot_language_test ]; then
+    python3 "$HERE/make_gender_fixture.py" "$OUT/first-boot-packs"
+    test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/first-boot-packs\"")
   elif [ "$name" = corrupt_test ]; then
     python3 "$HERE/make_corrupt_fixture.py" "$ROOT/web/packs" "$OUT/corrupt-packs"
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/corrupt-packs\"")

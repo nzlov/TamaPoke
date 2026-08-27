@@ -163,9 +163,10 @@ const char *medalLabel(int i); // etiqueta corta de medalla
 const char *medalDesc(int i);  // descripcion larga de medalla
 const char *natureName(NatureId nature);
 
-void loadLang();             // lee el idioma de NVS (llamar en setup)
-void setLang(Lang l);        // cambia y persiste el idioma
+bool loadLang();             // carga NVS; false si aun debe elegirse idioma
+bool setLang(Lang l);        // cambia y persiste el idioma
 uint8_t langCount();
 const char *langCode(Lang l);
 const char *langLabel(Lang l);
+const char *langDisplayName(Lang l);
 bool langIsCjk(Lang l);

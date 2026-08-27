@@ -71,7 +71,7 @@ states. Representative names include `main`, `evolvecta`, `farewellcta`,
 `battlecenter`, `wildfight`, `wilditems`, `capture`, `reward`,
 `wilddetail`,
 `sparkle`, `color`, `bothrare`, `egg`,
-`starter`, `dexdetail`, and `moveinfo`.
+`language`, `region`, `starter`, `dexdetail`, and `moveinfo`.
 `--lvl`, `--iv` and
 `--dex` set up the pet first.
 

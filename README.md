@@ -93,15 +93,16 @@ hardware draws.
 
 ### Starting out
 
-| Pick a region | ...then its starter | Johto's three |
+| After language: pick a region | ...then its starter | Johto's three |
 |---|---|---|
 | <img src="docs/screens/region.png" width="240"> | <img src="docs/screens/starter.png" width="240"> | <img src="docs/screens/starterj.png" width="240"> |
 
-A new game asks which region you are playing before it asks which creature you
-want. The choice sets both: you pick from that region's three starters, and it
-becomes where your eggs come from afterwards (changeable later on the egg's
-region pill). Existing saves never see this screen -- it only appears when the
-Pokedex is empty.
+A new game first asks for the interface language, then which region you are
+playing, and finally which creature you want. The region choice sets both: you
+pick from that region's three starters, and it becomes where your eggs come from
+afterwards (changeable later on the egg's region pill). Existing saves never see
+this flow. Language names come from the installed UI packs; the first installed
+pack drives the initial page, with English used when that choice cannot be loaded.
 
 ### Raising one
 
