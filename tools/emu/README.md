@@ -2,10 +2,10 @@
 
 Runs the **real firmware** on your computer, in a window you can click.
 
-![emulator](https://img.shields.io/badge/needs-SDL2%20%2B%20FreeType-1793D1)
+![emulator](https://img.shields.io/badge/needs-SDL2%20%2B%20FreeType%20%2B%20zlib-1793D1)
 
 ```bash
-brew install sdl2 freetype # macOS   (Debian: apt install libsdl2-dev libfreetype-dev)
+brew install sdl2 freetype zlib # macOS   (Debian: apt install libsdl2-dev libfreetype-dev zlib1g-dev)
 bash tools/emu/build.sh
 tools/emu/tamapoke-emu --scale 2 --fast 60
 ```
@@ -61,7 +61,7 @@ tools/emu/tamapoke-emu --shot battle --lang zh-CN --lvl 73 --iv 31 --dex 149 --o
 sips -s format png shot.ppm --out shot.png     # macOS; or use ImageMagick
 ```
 
-`--shot` accepts the normal pages plus their actionable overlays and result
+`--shot` accepts the boot splash, normal pages, and their actionable overlays and result
 states. Representative names include `main`, `evolvecta`, `farewellcta`,
 `runawaycta`, `sleep`, `feedmenu`,
 `choicerelease`, `choicefarewell`, `choiceevolve`, `bath`, `keyboard`, `battle`, `btlmoves`,
@@ -71,7 +71,7 @@ states. Representative names include `main`, `evolvecta`, `farewellcta`,
 `battlecenter`, `wildfight`, `wilditems`, `capture`, `reward`,
 `wilddetail`,
 `sparkle`, `color`, `bothrare` (all three legacy scene names now show the
-combined shiny effect), `egg`,
+combined shiny effect), `bootsplash`, `egg`,
 `language`, `region`, `starter`, `dexdetail`, and `moveinfo`.
 `--lvl`, `--iv` and
 `--dex` set up the pet first.

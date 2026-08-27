@@ -26,6 +26,7 @@
 #include "link.h"
 #include "linknow.h"
 #include "backs.h"
+#include "art_codec.h"
 #include "badges.h"
 #include "avatars.h"
 #include <stdarg.h>
@@ -1654,9 +1655,10 @@ void handleSerial() {
     // Prints the whole save as a block of IMPORT commands. Pasting that block
     // back is the restore -- there is no separate format to get wrong, and no
     // single 2000-character line for a terminal to mangle.
-    static uint8_t buf[SAVE_BLOB_MAX];
-    size_t n = saveExport(buf, sizeof(buf));
-    if (!n) { Serial.println("EXPORT FAIL"); return; }
+    uint8_t *buf = static_cast<uint8_t *>(ps_malloc(SAVE_BLOB_MAX));
+    if (!buf) { Serial.println("EXPORT FAIL"); return; }
+    size_t n = saveExport(buf, SAVE_BLOB_MAX);
+    if (!n) { free(buf); Serial.println("EXPORT FAIL"); return; }
     Serial.printf("# TamaPoke save, %u bytes. Paste this whole block back.\n",
                   (unsigned)n);
     for (size_t i = 0; i < n; i += 48) {
@@ -1665,17 +1667,29 @@ void handleSerial() {
       Serial.println();
     }
     Serial.println("IMPORT");        // the empty one commits
+    free(buf);
   } else if (line.startsWith("IMPORT")) {
     // IMPORT <hex>   append a chunk
     // IMPORT         commit what has been appended
-    static uint8_t in[SAVE_BLOB_MAX];
+    static uint8_t *in = nullptr;
     static size_t inN = 0;
+    auto clearImport = [&]() {
+      free(in);
+      in = nullptr;
+      inN = 0;
+    };
     String hex = line.substring(6);
     hex.trim();
     if (hex.length()) {
-      if (hex.length() & 1) { Serial.println("IMPORT ODD"); inN = 0; return; }
+      if (hex.length() & 1) { Serial.println("IMPORT ODD"); clearImport(); return; }
+      if (!in) {
+        in = static_cast<uint8_t *>(ps_malloc(SAVE_BLOB_MAX));
+        if (!in) { Serial.println("IMPORT NOMEM"); return; }
+      }
       for (size_t i = 0; i + 1 < (size_t)hex.length(); i += 2) {
-        if (inN >= sizeof(in)) { Serial.println("IMPORT FULL"); inN = 0; return; }
+        if (inN >= SAVE_BLOB_MAX) {
+          Serial.println("IMPORT FULL"); clearImport(); return;
+        }
         auto nyb = [](char c) -> int {
           if (c >= '0' && c <= '9') return c - '0';
           if (c >= 'A' && c <= 'F') return c - 'A' + 10;
@@ -1684,15 +1698,17 @@ void handleSerial() {
         };
         const char *hs = hex.c_str();
         int hi = nyb(hs[i]), lo = nyb(hs[i + 1]);
-        if (hi < 0 || lo < 0) { Serial.println("IMPORT BAD"); inN = 0; return; }
+        if (hi < 0 || lo < 0) {
+          Serial.println("IMPORT BAD"); clearImport(); return;
+        }
         in[inN++] = (uint8_t)((hi << 4) | lo);
       }
       return;                        // silent while collecting
     }
     if (!inN) { Serial.println("IMPORT EMPTY"); return; }
     bool ok = saveImport(in, inN);
+    clearImport();
     Serial.println(ok ? "IMPORT OK" : "IMPORT REJECTED");
-    inN = 0;
     if (ok) { Serial.println("DONE"); delay(100); ESP.restart(); }
   } else if (line == "WIPE") {
     pet.factoryReset();     // borra NVS y reinicia -> partida nueva (eleccion de inicial)
@@ -4132,14 +4148,48 @@ void renderMovePick() {
 
 // ---------- battle ----------
 
+static uint8_t *btlBackPixels = nullptr;
+static const uint8_t *btlBackSource = nullptr;
+static size_t btlBackCapacity = 0;
+
+static void btlFreeBack() {
+  free(btlBackPixels);
+  btlBackPixels = nullptr;
+  btlBackSource = nullptr;
+  btlBackCapacity = 0;
+}
+
+static const uint8_t *btlLoadBack(const BackScene &b) {
+  if (btlBackPixels && btlBackSource == b.compressed) return btlBackPixels;
+  size_t required = (size_t)b.w * b.h;
+  if (btlBackCapacity < required) {
+    btlFreeBack();
+    btlBackPixels = static_cast<uint8_t *>(ps_malloc(required));
+    if (!btlBackPixels) return nullptr;
+    btlBackCapacity = required;
+  }
+  if (!artInflate(b.compressed, b.compressedSize, btlBackPixels,
+                  required)) {
+    btlFreeBack();
+    return nullptr;
+  }
+  btlBackSource = b.compressed;
+  return btlBackPixels;
+}
+
 // Draws a battle backdrop at the requested scale. Emitted as runs of identical
 // indices rather than a write per pixel: this is flat pixel art with long
 // horizontal runs, and 240x112 at 2x would otherwise be 26,880 fillRect calls.
 // The round bezel crops the overhang physically, so nothing is clipped here.
 static void drawBack(const BackScene &b, int y0, int scale) {
+  const uint8_t *pixels = btlLoadBack(b);
+  if (!pixels) {
+    gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+    return;
+  }
   int x0 = CX - (b.w * scale) / 2;
   for (int r = 0; r < b.h; r++) {
-    const uint8_t *row = b.idx + (uint32_t)r * b.w;
+    const uint8_t *row = pixels + (uint32_t)r * b.w;
     int c = 0;
     while (c < b.w) {
       uint8_t v = row[c];
@@ -4281,6 +4331,7 @@ static void btlSyncSprite(uint8_t who, const Combatant &c) {
 
 static void btlFreeSprites() {
   for (int i = 0; i < 2; i++) { btlPmd[i].unload(); btlPmdKey[i] = 0; }
+  btlFreeBack();
 }
 
 static void btlSay(const char *fmt, ...) {

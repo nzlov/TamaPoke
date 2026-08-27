@@ -188,6 +188,7 @@ void startBathAnimation(uint32_t now);
 void openKeyboard();
 void openKeyboardFor(uint8_t target);
 void setup();
+void renderBootSplash();
 void loop();
 void render();
 void ensureMon();
@@ -250,6 +251,11 @@ static void expireShotCelebrations() {
 static int shotMode(const char *screen, const char *out, int lvl, int iv, int dex,
                     const char *locale) {
   setup();
+  if (!strcmp(screen, "bootsplash")) {
+    renderBootSplash();
+    writePPM(out);
+    return 0;
+  }
   if (locale) {
     int8_t selected = uiFindLocale(locale);
     if (selected < 0) { fprintf(stderr, "unknown installed locale: %s\n", locale); return 1; }

@@ -165,6 +165,10 @@ bool sdBegin() {
 // Usar con tools/send_sd.py
 // ---------------------------------------------------------------------------
 
+static_assert(FF_MAX_SS >= 2048, "SD serial transfer needs a 2 KiB work buffer");
+static constexpr size_t SD_SERIAL_CHUNK = 2048;
+static uint8_t sdWorkBuffer[FF_MAX_SS];
+
 static bool isPackPath(String path) {
   if (!path.startsWith("/")) path = "/" + path;
   if (!path.startsWith("/packs/") || path.substring(7).indexOf('/') >= 0 ||
@@ -217,8 +221,8 @@ static const char *formatFat32() {
   options.fmt = FM_FAT32;
   options.n_fat = 2;
   options.au_size = 4096;
-  static uint8_t work[FF_MAX_SS];
-  FRESULT formatResult = f_mkfs(drive, &options, work, sizeof(work));
+  FRESULT formatResult = f_mkfs(drive, &options,
+                                sdWorkBuffer, sizeof(sdWorkBuffer));
   FRESULT mountResult = f_mount(filesystem, drive, 1);
   sdReady = mountResult == FR_OK;
   if (formatResult != FR_OK) return "FORMAT_FAILED";
@@ -273,15 +277,14 @@ bool sdSerialCommand(const String &line) {
       sdSerialError("OPEN_FAILED"); return true;
     }
     Serial.println("OK");
-    static uint8_t buf[2048];
     uint32_t remaining = size;
     const char *failure = nullptr;
     Serial.setTimeout(5000);
     while (remaining > 0) {
-      size_t want = remaining > sizeof(buf) ? sizeof(buf) : remaining;
-      size_t n = Serial.readBytes(buf, want);
+      size_t want = remaining > SD_SERIAL_CHUNK ? SD_SERIAL_CHUNK : remaining;
+      size_t n = Serial.readBytes(sdWorkBuffer, want);
       if (n == 0) { failure = "READ_TIMEOUT"; break; }
-      if (f.write(buf, n) != n) { failure = "WRITE_FAILED"; break; }
+      if (f.write(sdWorkBuffer, n) != n) { failure = "WRITE_FAILED"; break; }
       remaining -= n;
       Serial.println("#");  // ack: listo para el siguiente bloque
     }
@@ -339,12 +342,11 @@ bool sdSerialCommand(const String &line) {
       sdSerialError("DOWNLOAD_CANCELLED");
       return true;
     }
-    static uint8_t buffer[2048];
     uint32_t remaining = size;
     while (remaining) {
-      size_t want = remaining > sizeof(buffer) ? sizeof(buffer) : remaining;
-      size_t count = file.read(buffer, want);
-      if (!count || Serial.write(buffer, count) != count) break;
+      size_t want = remaining > SD_SERIAL_CHUNK ? SD_SERIAL_CHUNK : remaining;
+      size_t count = file.read(sdWorkBuffer, want);
+      if (!count || Serial.write(sdWorkBuffer, count) != count) break;
       remaining -= count;
     }
     file.close();

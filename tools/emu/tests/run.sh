@@ -27,6 +27,7 @@ python3 "$ROOT/tools/check_firmware_version.py"
 
 command -v sdl2-config >/dev/null || { echo "SDL2 not found (brew install sdl2)" >&2; exit 1; }
 pkg-config --exists freetype2 || { echo "FreeType 2 not found (apt install libfreetype-dev)" >&2; exit 1; }
+pkg-config --exists zlib || { echo "zlib not found (apt install zlib1g-dev)" >&2; exit 1; }
 
 # sketch.cpp + proto.h come from the normal build; this also proves the emulator
 # still compiles before anything is tested against it
@@ -68,9 +69,9 @@ fi
 
 # Arrays, not a string: the pack directory has to reach the compiler still
 # quoted, and passing these through eval silently strips it.
-CORE=("$ROOT/gbsynth.cpp" "$ROOT/content.cpp" "$ROOT/font_engine.cpp" "$ROOT/nature.cpp" "$ROOT/pet.cpp" "$ROOT/quiz.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/inventory.cpp" "$ROOT/items.cpp" "$ROOT/wild.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp")
-read -r -a FT_CFLAGS <<< "$(pkg-config --cflags freetype2)"
-read -r -a FT_LIBS <<< "$(pkg-config --libs freetype2)"
+CORE=("$ROOT/gbsynth.cpp" "$ROOT/art_codec.cpp" "$ROOT/content.cpp" "$ROOT/font_engine.cpp" "$ROOT/nature.cpp" "$ROOT/pet.cpp" "$ROOT/quiz.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/inventory.cpp" "$ROOT/items.cpp" "$ROOT/wild.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp")
+read -r -a FT_CFLAGS <<< "$(pkg-config --cflags freetype2 zlib)"
+read -r -a FT_LIBS <<< "$(pkg-config --libs freetype2 zlib)"
 FLAGS=(-std=c++17 -O1 -w -I"$EMU" -I"$ROOT" "${FT_CFLAGS[@]}" "$FW_DEFINE" -DCONTENT_DIR="\"$ROOT/web/packs\"")
 
 # these drive setup()/loop()/render(), so they need the sketch itself

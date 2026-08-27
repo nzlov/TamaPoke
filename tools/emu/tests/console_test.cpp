@@ -129,12 +129,16 @@ int main(){
     gRestarted = false;
     std::string r3 = runConsole({"IMPORT 544B5053AB", "IMPORT 1", "IMPORT"});
     ck(r3.find("IMPORT ODD") != std::string::npos, "a half-copied line is caught");
+    ck(r3.find("IMPORT EMPTY") != std::string::npos,
+       "and releases the partial import buffer");
     ck(!gRestarted, "and does not reboot either");
   }
   {
     // non-hex rubbish
     std::string r4 = runConsole({"IMPORT zzzz", "IMPORT"});
     ck(r4.find("IMPORT BAD") != std::string::npos, "so is a line that is not hex");
+    ck(r4.find("IMPORT EMPTY") != std::string::npos,
+       "and invalid hex also releases the import buffer");
   }
   {
     std::string r5 = runConsole({"IMPORT"});

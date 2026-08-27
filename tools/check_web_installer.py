@@ -170,7 +170,8 @@ if 'isPackPath(path)' not in sdmon:
 download_handler = sdmon.split('line.startsWith("GET ")', 1)[1].split(
     '} else if (line == "LS")', 1)[0]
 for fragment in ('isPackPath(path)', 'Serial.printf("FILE %u\\n"',
-                 'ack != "OK"', 'Serial.write(buffer, count)', 'Serial.println("DONE")'):
+                 'ack != "OK"', 'Serial.write(sdWorkBuffer, count)',
+                 'Serial.println("DONE")'):
     if fragment not in download_handler:
         raise SystemExit(f"firmware pack download is missing {fragment!r}")
 format_fat32 = sdmon.split('static const char *formatFat32()', 1)[1].split(

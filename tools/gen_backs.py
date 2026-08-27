@@ -3,11 +3,11 @@
 
     python3 tools/gen_backs.py
 
-Twelve 240x112 scenes, one day and one night per biome, packed 8bpp indexed
-with a per-image RGB565 palette. 8bpp rather than 4bpp because the worst image
-uses 65 colours and quantising a background to 16 would band the gradients;
-315 KB in flash is affordable and it means a battle still looks like somewhere
-even on a board with no SD card, which the streamed creature sprites cannot.
+Twelve 240x112 scenes, one day and one night per biome, packed as DEFLATE-compressed
+8bpp indices with a per-image RGB565 palette. 8bpp rather than 4bpp because the
+worst image uses 65 colours and quantising a background to 16 would band the
+gradients. The current scene is inflated into PSRAM on demand, so a battle still
+looks like somewhere even on a board with no SD card.
 
 The rows are emitted as-is. The drawing side turns them into runs of identical
 indices at draw time -- this art is flat pixel art with long horizontal runs, so
@@ -90,7 +90,7 @@ def to_indexed(w, h, ch, rows):
 def main():
     out = ['// GENERADO por tools/gen_backs.py desde tools/backs/*.png - no editar',
            '#pragma once', '#include <stdint.h>', '',
-           '// Battle backgrounds, 8bpp indexed with a per-image RGB565 palette.',
+           '// Battle backgrounds, DEFLATE-compressed 8bpp indices with RGB565 palettes.',
            '// Indexed by biome (see dex.h) then 0 = day, 1 = night.', '']
     names = []
     total = 0
@@ -100,20 +100,26 @@ def main():
             w, h, ch, rows = read_png(path)
             pal, idx = to_indexed(w, h, ch, rows)
             nm = 'BACK_%d_%d' % (bi, ni)
-            names.append((nm, w, h, len(pal)))
-            total += len(idx) + len(pal) * 2
+            raw = bytes(idx)
+            compressed = zlib.compress(raw, 9)
+            if zlib.decompress(compressed) != raw:
+                raise SystemExit('%s: compression round-trip failed' % path)
+            names.append((nm, w, h, len(pal), len(compressed)))
+            total += len(compressed) + len(pal) * 2
             out.append('// %s  (%s)' % (base + suffix, note))
             out.append('static const uint16_t %s_PAL[%d] = {' % (nm, len(pal)))
             out.append('  ' + ', '.join('0x%04X' % c for c in pal))
             out.append('};')
-            out.append('static const uint8_t %s_IDX[%d] = {' % (nm, len(idx)))
-            for r in range(0, len(idx), 40):
-                out.append('  ' + ','.join(str(v) for v in idx[r:r + 40]) + ',')
+            out.append('static const uint8_t %s_DEFLATE[%d] = {' %
+                       (nm, len(compressed)))
+            for r in range(0, len(compressed), 40):
+                out.append('  ' + ','.join(str(v) for v in compressed[r:r + 40]) + ',')
             out.append('};')
             out.append('')
     out.append('struct BackScene {')
     out.append('  const uint16_t *pal;')
-    out.append('  const uint8_t *idx;')
+    out.append('  const uint8_t *compressed;')
+    out.append('  uint32_t compressedSize;')
     out.append('  uint16_t w, h, palCount;')
     out.append('};')
     out.append('#define BACK_BIOMES %d' % len(BIOMES))
@@ -121,12 +127,13 @@ def main():
     for bi in range(len(BIOMES)):
         row = []
         for ni in range(2):
-            nm, w, h, pc = names[bi * 2 + ni]
-            row.append('{ %s_PAL, %s_IDX, %d, %d, %d }' % (nm, nm, w, h, pc))
+            nm, w, h, pc, compressed_size = names[bi * 2 + ni]
+            row.append('{ %s_PAL, %s_DEFLATE, %d, %d, %d, %d }' %
+                       (nm, nm, compressed_size, w, h, pc))
         out.append('  { %s },' % ', '.join(row))
     out.append('};')
     open(OUT, 'w').write('\n'.join(out) + '\n')
-    print('backgrounds: %d, %.1f KB of data -> %s'
+    print('backgrounds: %d, %.1f KB of compressed data -> %s'
           % (len(names), total / 1024.0, os.path.normpath(OUT)))
 
 

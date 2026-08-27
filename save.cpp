@@ -134,14 +134,17 @@ size_t saveExport(uint8_t *out, size_t cap) {
   p.begin("tamapoke", true);
   size_t at = SAVE_HDR;
   uint16_t count = 0;
-  static uint8_t val[MAX_VAL];
+  uint8_t *val = static_cast<uint8_t *>(ps_malloc(MAX_VAL));
+  if (!val) { p.end(); return 0; }
   for (uint16_t i = 0; i < SAVE_FIELD_COUNT; i++) {
     const SaveField &f = SAVE_FIELDS[i];
     int n = readField(p, f, val);
     if (n < 0) continue;             // absent: nothing to back up
     size_t klen = strlen(f.key);
     if (klen > 15) continue;         // NVS keys cannot be longer anyway
-    if (at + 1 + klen + 1 + 2 + (size_t)n + 2 > cap) { p.end(); return 0; }
+    if (at + 1 + klen + 1 + 2 + (size_t)n + 2 > cap) {
+      free(val); p.end(); return 0;
+    }
     out[at++] = (uint8_t)klen;
     memcpy(out + at, f.key, klen); at += klen;
     out[at++] = f.kind;
@@ -150,6 +153,7 @@ size_t saveExport(uint8_t *out, size_t cap) {
     memcpy(out + at, val, (size_t)n); at += (size_t)n;
     count++;
   }
+  free(val);
   p.end();
   out[0] = SAVE_MAGIC0; out[1] = SAVE_MAGIC1;
   out[2] = SAVE_MAGIC2; out[3] = SAVE_MAGIC3;

@@ -81,10 +81,10 @@ struct QuizLocaleSpan {
 };
 
 struct QuizPackRuntime {
-  uint8_t packRef = 0xFF;
-  uint8_t localeCount = 0;
-  uint32_t questionCount = 0;
-  QuizLocaleSpan locales[MAX_QUIZ_LOCALES] = {};
+  uint8_t packRef;
+  uint8_t localeCount;
+  uint32_t questionCount;
+  QuizLocaleSpan locales[MAX_QUIZ_LOCALES];
 };
 
 static bool gAttempted = false;
