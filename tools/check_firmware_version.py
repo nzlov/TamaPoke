@@ -29,9 +29,13 @@ for fragment in (
     "needs.refs.outputs.stable_ref",
     "needs.refs.outputs.latest_ref",
     "needs.refs.outputs.stable_version",
+    'export TAMAPOKE_VERSION="$STABLE_VERSION"',
+    "unset TAMAPOKE_VERSION",
 ):
     if fragment not in workflow:
         fail(f"Pages channel version wiring is missing {fragment!r}")
+if "needs.refs.outputs.stable_version || ''" in workflow:
+    fail("Pages latest channel must unset TAMAPOKE_VERSION instead of exporting an empty value")
 
 if not VERSION_TOOL.is_file():
     fail("tools/firmware_version.py is missing")
@@ -61,6 +65,26 @@ if release != "release/v9.8.7":
     fail("an explicit release version must be preserved exactly")
 if define != '-DFW_VERSION="release/v9.8.7"':
     fail(f"C++ release-version define is malformed: {define!r}")
+
+build_web = (ROOT / "tools/build_web.sh").read_text(encoding="utf-8")
+for fragment in ('if [ -z "${TAMAPOKE_VERSION:-}" ]', "unset TAMAPOKE_VERSION",
+                 'TAMAPOKE_VERSION="$(python3 tools/firmware_version.py)"'):
+    if fragment not in build_web:
+        fail(f"Web build version fallback is missing {fragment!r}")
+version_setup = build_web.split('FW_DEFINE="', 1)[0]
+version_setup += '\nprintf "%s" "$TAMAPOKE_VERSION"\n'
+empty = subprocess.check_output(
+    ["bash", "-c", version_setup, "tools/build_web.sh"], cwd=ROOT,
+    env=clean_env | {"TAMAPOKE_VERSION": ""}, text=True,
+).strip()
+if not re.fullmatch(rf"{re.escape(head)}-\d{{8}}T\d{{6}}Z", empty):
+    fail(f"Web build does not recover from an empty version override: {empty!r}")
+preserved = subprocess.check_output(
+    ["bash", "-c", version_setup, "tools/build_web.sh"], cwd=ROOT,
+    env=release_env, text=True,
+).strip()
+if preserved != "release/v9.8.7":
+    fail(f"Web build does not preserve the release version: {preserved!r}")
 
 firmware = (ROOT / "TamaPoke.ino").read_text(encoding="utf-8")
 for fragment in ('#ifndef FW_VERSION', 'Serial.printf("TamaPoke fw %s\\n"',

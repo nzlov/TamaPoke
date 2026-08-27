@@ -98,8 +98,15 @@ jobs:
 
       - name: Build and validate installer assets
         env:
-          TAMAPOKE_VERSION: ${{ matrix.channel == 'stable' && needs.refs.outputs.stable_version || '' }}
-        run: bash tools/build_web.sh
+          SITE_CHANNEL: ${{ matrix.channel }}
+          STABLE_VERSION: ${{ needs.refs.outputs.stable_version }}
+        run: |
+          if [ "$SITE_CHANNEL" = stable ]; then
+            export TAMAPOKE_VERSION="$STABLE_VERSION"
+          else
+            unset TAMAPOKE_VERSION
+          fi
+          bash tools/build_web.sh
 
       - name: Prepare static site
         env:

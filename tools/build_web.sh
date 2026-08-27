@@ -7,7 +7,10 @@ ROOT="$PWD"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-TAMAPOKE_VERSION="${TAMAPOKE_VERSION:-$(python3 tools/firmware_version.py)}"
+if [ -z "${TAMAPOKE_VERSION:-}" ]; then
+  unset TAMAPOKE_VERSION
+  TAMAPOKE_VERSION="$(python3 tools/firmware_version.py)"
+fi
 export TAMAPOKE_VERSION
 FW_DEFINE="$(python3 tools/firmware_version.py --cpp-define)"
 python3 tools/check_firmware_version.py
