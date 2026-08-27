@@ -97,6 +97,20 @@ int main() {
   ck(roster.box[0].ageMinutes == boxBeforeOffline,
      "Box remains frozen during offline progress");
 
+  roster.slots[1].sleeping = 1;
+  roster.slots[1].trAtk = roster.slots[1].trDef = roster.slots[1].trSpe = 50;
+  uint8_t boxTraining = roster.box[0].trAtk;
+  for (int i = 0; i < 60; i++) {
+    g_ms += PET_TICK_MS;
+    active.update(g_ms);
+    roster.update(active, g_ms);
+  }
+  ck(roster.slots[1].trAtk == 47 && roster.slots[1].trDef == 47 &&
+     roster.slots[1].trSpe == 47,
+     "an inactive sleeping cultivation member applies half decay without gains");
+  ck(roster.box[0].trAtk == boxTraining,
+     "Box training stays frozen during cultivation maintenance");
+
   std::puts(bad ? "FAILURES" : "all good");
   return bad ? 1 : 0;
 }

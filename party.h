@@ -88,7 +88,9 @@ struct PartyMon {
   // These occupy alignment bytes from the v1 raw record, keeping its size and
   // every later field offset stable while making training floors per-creature.
   uint8_t trMinAtk = 0;
-  uint16_t goodTicks = 0;
+  // Existing 16-bit persistence slot: low byte is maintained minutes and high
+  // byte is low-state minutes. Their sum is always in the range 0..59.
+  uint16_t trainingTicks = 0;
   uint8_t lastLearnLevel = 0;
   uint8_t trMinDef = 0;
   MoveId learnQueue[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };

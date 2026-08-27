@@ -389,16 +389,17 @@ cap training.
 - IVs are shown on the Battle page of the stat card; 31 and above are highlighted.
 
 Training: **STRENGTH** ← the bag, **SPEED** ← the reaction test, **DEFENSE** ← the
-ball game (and still 1 h of wellbeing passively). **VIT** can't be trained. All three
-live in the training menu now; the ball moved off the home row when it became
-defence's trainer.
+ball game. **VIT** can't be trained. Care state only changes decay; it never grants
+training automatically. Sleeping is maintained time; while awake, FOOD, JOY, ENE
+and HYG must all be at least 40. Each fixed 60-minute cycle counts maintained and
+low-state minutes, settles once, and then resets both counts.
 
 Every hatch also rolls one of the 25 **natures**. The 20 non-neutral natures apply
 the canonical +10%/-10% modifier to their final combat stats; HP is unaffected.
 The five otherwise-neutral natures instead modify the training contribution and
-its hourly decay:
+its base decay:
 
-| Nature | Training contribution | Hourly loss for affected training |
+| Nature | Training contribution | Base loss for affected training |
 |---|---|---|
 | Hardy | ATK +10% | ATK: 3% of its cap |
 | Docile | DEF +10% | DEF: 3% of its cap |
@@ -406,8 +407,11 @@ its hourly decay:
 | Bashful | DEF +10%, ATK -10% | DEF: 3%; ATK: 7% (of each cap) |
 | Quirky | ATK +10%, DEF -10% | ATK: 3%; DEF: 7% (of each cap) |
 
-Unaffected training loses 5% of its IV-based cap per complete hour. Every loss
-uses the cap rather than the current value and rounds up, both live and offline.
+At each 60-minute settlement, a maintained majority makes every channel lose half
+its nature-based decay; a low-state majority applies double decay; a 30:30 tie
+applies base decay. Unaffected training therefore uses 2.5%, 10% or 5% of its
+IV-based cap respectively. Every loss uses the cap rather than the current value
+and rounds up, both live and offline.
 ATK training is also the special-attack training contribution; DEF training is
 also the special-defence contribution. There are no separate special training
 values.
@@ -779,9 +783,12 @@ rolls stop at 31, but stored values and gym rewards are not capped; `IV × level
 by its nature modifier and then its gender modifier (see
 [Battle stats & IVs](#battle-stats--ivs)):
 - SPEED ← the **reaction test** (~2 reactions = one score step)
-- DEFENSE ← the ball game (~2 rallies = one score step), plus 1 h of wellbeing = +1
+- DEFENSE ← the ball game (~2 rallies = one score step)
 - STRENGTH ← the training bag (~4 hits = one score step)
 - VIT (vitality, from the base HP stat) — not trainable
+
+Care state does not add ATK, DEF or SPEED; it only selects the state-based decay
+described above.
 
 ### Moves
 

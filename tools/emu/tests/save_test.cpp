@@ -57,6 +57,7 @@ int main(){
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20+i; m.shiny=(i==2); m.sparkle=(i==3);
     m.raisedMinutes=300+i;
     m.gender=(i&1)?GENDER_FEMALE:GENDER_MALE;
+    if(i==2) m.trainingTicks=(uint16_t)(29u<<8)|17u;
     m.gymIvRewards[i]=GYM_IV_REWARD_ATK;
     snprintf(m.nick,sizeof(m.nick),"P%d",i);
     m.moves[0]=1+i; m.moves[1]=9; party.replaceAt(i,m); }
@@ -66,6 +67,7 @@ int main(){
     m.gender=(i&1)?GENDER_MALE:GENDER_FEMALE;
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=11;
     m.trMinSpe=30;
+    if(i==7) m.trainingTicks=(uint16_t)(31u<<8)|23u;
     m.gymIvRewards[i]=GYM_IV_REWARD_SPE; party.box[i]=m; }
   party.boxSave();
   // renameTrainer() persists, and save() writes every field -- so this is also
@@ -184,12 +186,16 @@ int main(){
   ck(q2.slots[3].shiny && q2.slots[3].sparkle &&
      q2.slots[3].raisedMinutes==303,
      "and a banked sparkle-only creature migrates without losing cultivation time");
+  ck(q2.slots[2].trainingTicks==((uint16_t)(29u<<8)|17u),
+     "and both cultivation-state training counters survive");
   ck(q2.boxCount()==BOX_SLOTS, "the box comes back full");
   ck(q2.box[7].dex==1+7*3 && q2.box[7].level==17, "with the right creatures in it");
   ck(q2.box[7].gymIvRewards[7]==GYM_IV_REWARD_SPE,
      "with each banked creature's gym IV bytes");
   ck(q2.box[7].trMinSpe==30,
      "with each banked creature's permanent training floors");
+  ck(q2.box[7].trainingTicks==((uint16_t)(31u<<8)|23u),
+     "with each banked creature's training-state counters");
   ck(q2.box[7].nature==(NatureId)((7+5)%NATURE_COUNT),
      "with each banked creature's nature");
   ck(q2.box[7].dead(), "with each banked creature's death state");

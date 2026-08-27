@@ -31,7 +31,7 @@
 #define NIGHT_START 0
 #define NIGHT_END 6
 enum : uint8_t { SLEEP_NONE = 0, SLEEP_AUTO, SLEEP_PLAYER };
-#define DEF_TRAIN_TICKS 60                 // minutos de bienestar por +1 de DEF
+#define TRAINING_STATE_TICKS 60            // accumulated minutes per training change
 
 // ceremonias de fin de ciclo
 enum : uint8_t { CER_NONE = 0, CER_FAREWELL, CER_RUNAWAY, CER_RELEASE };
@@ -454,7 +454,10 @@ private:
   uint8_t evoDeclinedLv = 0;    // "mantener forma": no ofrecer evolucion hasta subir de nivel
   bool starterPick = false;     // primera partida: esperando que el jugador elija inicial
   uint8_t neglectTicks = 0;
-  uint16_t goodTicks = 0;  // racha bien cuidado: forja la DEF
+  // Low byte counts maintained minutes and high byte low-state minutes within
+  // the current 60-minute cycle. Reusing this 16-bit field preserves the raw
+  // PartyMon save ABI.
+  uint16_t trainingTicks = 0;
   uint32_t ceremonyUntil = 0;
   uint8_t bondToday = 0;       // tope diario de subida de vinculo
   uint32_t medalUntil = 0;     // celebracion de medalla en pantalla
@@ -465,8 +468,8 @@ private:
   void addBond(uint8_t amt);
   uint8_t rollIV(int bonus) const;  // una tirada 8-31 empujada por el cuidado
   void rollIVs();                   // hatch/debug IV generation
-  void advanceAgeMinute();          // age plus the hourly training decay
-  void defTick(bool resting);       // la calma forja la defensa (ver pet.cpp)
+  void advanceAgeMinute();
+  void trainingTick(bool resting);
   void checkMedals();
   void tick();
   void applyAutoSleep();

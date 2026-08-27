@@ -82,19 +82,6 @@ void Pet::advanceAgeMinute() {
   if (frozen) return;
   ageMinutes++;
   if (!isEgg()) raisedMinutes++;
-  if (!isEgg() && ageMinutes % 60 == 0) {
-    auto decay = [](uint8_t value, uint8_t cap, uint8_t percent, uint8_t floor) {
-      if (value <= floor) return value;
-      uint8_t loss = (uint8_t)(((uint16_t)cap * percent + 99) / 100);
-      return value - floor > loss ? (uint8_t)(value - loss) : floor;
-    };
-    trAtk = decay(trAtk, trMaxAtk(),
-                  natureTrainingDecayPercent(nature, NATURE_TRAIN_ATK), trMinAtk);
-    trDef = decay(trDef, trMaxDef(),
-                  natureTrainingDecayPercent(nature, NATURE_TRAIN_DEF), trMinDef);
-    trSpe = decay(trSpe, trMaxSpe(),
-                  natureTrainingDecayPercent(nature, NATURE_TRAIN_SPE), trMinSpe);
-  }
 }
 
 void Pet::setClock(uint32_t nowEpoch) {
@@ -133,12 +120,14 @@ void Pet::syncClockFrom(uint32_t nowEpoch, uint32_t seenEpoch, bool persist) {
         joy = dropTo(joy, 1, 35);
       }
       if (ageMinutes % 3 == 0) hygiene = dropTo(hygiene, 1, 45);
+      trainingTick(true);
       continue;
     }
     fullness = dropTo(fullness, 2, 15);
     energy = dropTo(energy, 1, 15);
     hygiene = dropTo(hygiene, 1, 15);
     joy = dropTo(joy, 1, 15);
+    trainingTick(false);
   }
   if (!isEgg()) {
     if (!sleeping) {  // durmiendo no ensucia
@@ -196,7 +185,7 @@ void Pet::tick() {
   // el sueño es descanso: la energia se recupera y las necesidades bajan MUCHO
   // mas lento que despierto y con suelo (amanece pidiendo algo de mimo, no a
   // cero, sin descuidos ni escapadas). despierto: comida -2/min, hig/joy -1/min.
-  // El peso aun se quema y el descanso cuenta para la DEF (ver defTick).
+  // El peso aun se quema y el descanso mantiene las tres vias de entrenamiento.
   if (sleeping) {
     energy = clamp100(energy + 6);
     if (weight > 0 && ageMinutes % 3 == 0) weight--;
@@ -205,7 +194,7 @@ void Pet::tick() {
       joy = dropTo(joy, 1, 35);
     }
     if (ageMinutes % 3 == 0) hygiene = dropTo(hygiene, 1, 45);
-    defTick(true);  // descansar tambien es bienestar: cuenta para la DEF
+    trainingTick(true);
     checkMedals();  // aun puede cruzar un nivel por edad mientras duerme
     if (++ticksSinceSave >= 5) pendingSave = true;
     return;
@@ -223,12 +212,11 @@ void Pet::tick() {
   if (weight > 50) energy = clamp100(energy - 1);
   if (weight > 0 && ageMinutes % 3 == 0) weight--;
 
-  defTick(false);  // la calma forja la defensa
-
   int dJoy = -1;
   if (fullness < 30) dJoy -= 2;
   if (hygiene < 30) dJoy -= 2;
   joy = clamp100(joy + dJoy);
+  trainingTick(false);
 
   // Descuido: dejar una estadistica por los suelos cuenta como error de
   // cuidado (con enfriamiento para no contar el mismo descuido cada minuto)
@@ -315,7 +303,11 @@ void Pet::importState(const PartyMon &m) {
   starterPick = m.starterPick != 0;
   evoDeclinedLv = m.evoDeclinedLv;
   neglectTicks = m.neglectTicks;
-  goodTicks = m.goodTicks;
+  uint8_t maintainedTicks = (uint8_t)m.trainingTicks;
+  uint8_t lowStateTicks = (uint8_t)(m.trainingTicks >> 8);
+  if ((uint16_t)maintainedTicks + lowStateTicks >= TRAINING_STATE_TICKS)
+    maintainedTicks = lowStateTicks = 0;
+  trainingTicks = maintainedTicks | (uint16_t)lowStateTicks << 8;
   memcpy(eggByRegion, m.eggByRegion, sizeof(eggByRegion));
   frozen = false;
   dead = m.dead();
@@ -357,7 +349,7 @@ void Pet::exportState(PartyMon &out) const {
   out.starterPick = starterPick ? 1 : 0;
   out.evoDeclinedLv = evoDeclinedLv;
   out.mistakeCooldown = mistakeCooldown; out.neglectTicks = neglectTicks;
-  out.bondToday = bondToday; out.goodTicks = goodTicks;
+  out.bondToday = bondToday; out.trainingTicks = trainingTicks;
   out.lastLearnLevel = lastLearnLevel;
   memcpy(out.learnQueue, learnQueue, sizeof(out.learnQueue));
   out.learnQCount = learnQCount;
@@ -409,22 +401,45 @@ void Pet::flushSave() {
   if (pendingSave) save();
 }
 
-// La calma forja la defensa: cada hora de bienestar (descansando, o despierto
-// con todo >= 40) da +1 de DEF, hasta el tope que permita el IV.
-//
-// Antes pedia 12 h SEGUIDAS y CUALQUIER desliz ponia el contador a cero, ademas
-// de no contar el sueno. Simulando una vida entera (3 dias) eso daba 1 punto al
-// jugador teoricamente perfecto (uno que actue cada minuto durante 72 h) y 0 a
-// todos los demas, incluido uno que atienda cada 15 min: la comida cae 2/min,
-// asi que quien no pase por el bicho cada media hora esta SIEMPRE por debajo de
-// 40 y el contador no arrancaba nunca. La DEF era, en la practica, inentrenable.
-// Ahora acumula en vez de resetear: un descuido cuesta los minutos malos, no
-// todo el progreso.
-void Pet::defTick(bool resting) {
-  if (!resting && lowestStat() < 40) return;
-  if (++goodTicks < DEF_TRAIN_TICKS) return;
-  goodTicks = 0;
-  if (trDef < trMaxDef()) trDef++;
+// Training settles exactly once per 60 total minutes. Sleeping, or staying
+// awake with every need at 40 or above, counts as maintained; the majority of
+// the hour selects half or double nature-specific decay, with base decay on a
+// 30:30 tie. Care state never grants training.
+void Pet::trainingTick(bool resting) {
+  if (frozen || isEgg()) return;
+  uint8_t maintainedTicks = (uint8_t)trainingTicks;
+  uint8_t lowStateTicks = (uint8_t)(trainingTicks >> 8);
+  uint8_t decayNumerator = 0;
+  uint8_t decayDenominator = 1;
+  if (resting || lowestStat() >= 40) maintainedTicks++;
+  else lowStateTicks++;
+  if ((uint16_t)maintainedTicks + lowStateTicks >= TRAINING_STATE_TICKS) {
+    decayNumerator = 1;
+    if (maintainedTicks > lowStateTicks) decayDenominator = 2;
+    else if (lowStateTicks > maintainedTicks) decayNumerator = 2;
+    maintainedTicks = 0;
+    lowStateTicks = 0;
+  }
+  if (decayNumerator) {
+    auto decay = [](uint8_t value, uint8_t cap, uint8_t percent, uint8_t floor,
+                    uint8_t numerator, uint8_t denominator) {
+      if (value <= floor) return value;
+      uint16_t divisor = (uint16_t)100 * denominator;
+      uint32_t scaled = (uint32_t)cap * percent * numerator;
+      uint8_t loss = (uint8_t)((scaled + divisor - 1) / divisor);
+      return value - floor > loss ? (uint8_t)(value - loss) : floor;
+    };
+    trAtk = decay(trAtk, trMaxAtk(),
+                  natureTrainingDecayPercent(nature, NATURE_TRAIN_ATK), trMinAtk,
+                  decayNumerator, decayDenominator);
+    trDef = decay(trDef, trMaxDef(),
+                  natureTrainingDecayPercent(nature, NATURE_TRAIN_DEF), trMinDef,
+                  decayNumerator, decayDenominator);
+    trSpe = decay(trSpe, trMaxSpe(),
+                  natureTrainingDecayPercent(nature, NATURE_TRAIN_SPE), trMinSpe,
+                  decayNumerator, decayDenominator);
+  }
+  trainingTicks = maintainedTicks | (uint16_t)lowStateTicks << 8;
 }
 
 static bool branchHasUnregistered(const Pet &pet, SpeciesId species, uint8_t depth) {
@@ -1036,7 +1051,7 @@ void Pet::hatch() {
   trAtk = trDef = trSpe = 0;
   trMinAtk = trMinDef = trMinSpe = 0;
   raisedMinutes = 0;
-  goodTicks = 0;
+  trainingTicks = 0;
   berryKnown = false;
   bond = 0;          // vinculo, medallas y nombre son del individuo
   bondToday = 0;
