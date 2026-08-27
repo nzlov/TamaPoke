@@ -809,10 +809,8 @@ uint8_t btlFoeDetailPage = 0;
 PartyMon btlWildMon;
 PartyMon capturedMon;
 
-const char *rareMarks(bool color, bool sparkle) {
-  if (color && sparkle) return "*%";
-  if (sparkle) return "*";
-  return color ? "%" : "";
+const char *rareMark(bool rare) {
+  return rare ? "*" : "";
 }
 bool btlNewBadge = false;
 uint32_t btlWinUntil = 0;   // the win screen is up
@@ -1628,8 +1626,8 @@ void handleSerial() {
     Serial.printf("shiny=%d\n", pet.shiny);
     Serial.println("DONE");
   } else if (line == "SPARKLE") {
-    pet.sparkle = !pet.sparkle;
-    Serial.printf("sparkle=%d\n", pet.sparkle);
+    pet.shiny = !pet.shiny;  // legacy console alias for the combined state
+    Serial.printf("shiny=%d\n", pet.shiny);
     Serial.println("DONE");
   } else if (line.startsWith("NICK ")) {
     pet.rename(line.substring(5).c_str());
@@ -1727,7 +1725,7 @@ void handleSerial() {
       if (m.empty()) Serial.print(" -");
       else if (m.isEgg()) Serial.print(" EGG");
       else Serial.printf(" %s%s(nv%u)", speciesName(m.dex),
-                         rareMarks(m.shiny, m.sparkle), m.level);
+                         rareMark(m.shiny || m.sparkle), m.level);
     }
     Serial.println();
     Serial.println("DONE");
@@ -1760,8 +1758,8 @@ void handleSerial() {
                   pet.trAtk, pet.trDef, pet.trSpe,
                   pet.trMinAtk, pet.trMinDef, pet.trMinSpe,
                   pet.trMaxAtk(), pet.trMaxDef(), pet.trMaxSpe());
-    Serial.printf("color=%d sparkle=%d wildBonus=%u streak=%u/%u bond=%u medals=0x%X(%u) nick=%s\n",
-                  pet.shiny, pet.sparkle, pet.wildRareBonus, pet.streak,
+    Serial.printf("shiny=%d wildBonus=%u streak=%u/%u bond=%u medals=0x%X(%u) nick=%s\n",
+                  pet.shiny, pet.wildRareBonus, pet.streak,
                   pet.bestStreak, pet.bond, pet.medals, pet.totalMedals, pet.nick);
     Serial.println("DONE");
   }
@@ -3115,7 +3113,7 @@ void render() {
     const DexEntry &d = dexEntry(pet.speciesId);
     char name[64];
     const char *base = displaySpeciesName(pet.speciesId, pet.nick);
-    snprintf(name, sizeof(name), T(S_NAME_FMT), rareMarks(pet.shiny, pet.sparkle),
+    snprintf(name, sizeof(name), T(S_NAME_FMT), rareMark(pet.shiny),
              base, pet.level());
     drawHeader(name, gNight ? UI_INK_NIGHT : d.accent, statusMsg());
     gfx->setTextSize(3);
@@ -3618,8 +3616,8 @@ void drawCardStat(int y, const char *label, uint16_t val, uint16_t maxBar,
   if (iv != IV_NONE) {
     char b[10];
     snprintf(b, sizeof(b), T(S_IV_FMT), iv);
-    // Keep the traditional perfect-IV threshold visible even though sparkle
-    // and gym rewards may now continue above it.
+    // Keep the traditional perfect-IV threshold visible even though imported
+    // or gym-rewarded IVs may continue above it.
     gfx->setTextColor(iv >= 31 ? UI_BAR_WARN : UI_TRACK);
     gfx->setCursor(344, y);
     gfx->print(b);
@@ -3861,7 +3859,7 @@ void renderCardProfile() {
   const DexEntry &d = dexEntry(pet.speciesId);
   const char *nm = displaySpeciesName(pet.speciesId, pet.nick);
   char head[64];
-  snprintf(head, sizeof(head), T(S_NAME_FMT), rareMarks(pet.shiny, pet.sparkle),
+  snprintf(head, sizeof(head), T(S_NAME_FMT), rareMark(pet.shiny),
            nm, pet.level());
   gfx->setTextColor(d.accent);
   // auto-encoge: a tamano 3 los nombres largos no caben en la franja estrecha de
@@ -4654,12 +4652,10 @@ void startWildBattle(uint8_t region, bool hard) {
     return value < 0 ? 0 : value > 31 ? 31 : (uint8_t)value;
   };
   foe.ivAtk = rollIv(); foe.ivDef = rollIv(); foe.ivSpe = rollIv(); foe.ivHp = rollIv();
-  WildTraits traits = wildTraitsForRolls((uint8_t)random(100),
-                                         (uint8_t)random(100),
-                                         pet.wildRareBonus);
-  foe.shiny = traits.color;
-  foe.sparkle = traits.sparkle;
-  wildApplyTraits(traits, foe.ivAtk, foe.ivDef, foe.ivSpe, foe.ivHp);
+  bool rare = wildRareForRoll((uint32_t)random((long)WILD_RARE_ROLL_SCALE),
+                              pet.wildRareBonus);
+  foe.shiny = rare;
+  wildApplyRare(rare, foe.ivAtk, foe.ivDef, foe.ivSpe, foe.ivHp);
   foe.ageMinutes = (uint32_t)(level - 1) * MINUTES_PER_LEVEL;
   foe.raisedMinutes = 0;
   foe.relearnFromLevel();
@@ -5209,13 +5205,13 @@ static void btlDrawSprite(int sx, int sy, const Combatant &c, uint8_t who,
     uint8_t maxScale = c.activeMechanic == BMECH_DYNAMAX ? 5 : 4;
     drawPmdActM(btlPmd[who], act, cx, ground, actTime, loop,
                 false, maxScale, scaleBonus);
-    if (c.sparkle) drawSparkleParticles(cx, ground, now);
+    if (c.shiny) drawSparkleParticles(cx, ground, now);
     return;
   }
   const uint8_t *th = thumbs.get(c.dex);
   if (!th) return;
   drawThumb(th, sx, sy, 3, flash);
-  if (c.sparkle) drawSparkleParticles(cx, ground, now);
+  if (c.shiny) drawSparkleParticles(cx, ground, now);
 }
 
 static void btlSide(int tx, int ty, int sx, int sy, const Combatant &c, uint8_t who) {
@@ -5356,7 +5352,7 @@ void renderWin() {
       const uint8_t *thumb = thumbs.get(capturedMon.dex);
       char name[48];
       snprintf(name, sizeof(name), "%s%s",
-               rareMarks(capturedMon.shiny, capturedMon.sparkle),
+               rareMark(capturedMon.shiny || capturedMon.sparkle),
                speciesName(capturedMon.dex));
       gfx->setTextSize(2);
       uint8_t nameSize = gfx->textWidth(name) > 260 ? 1 : 2;
@@ -5543,7 +5539,7 @@ static void renderBattleFoeDetail() {
   if (btlFoeDetailPage == 0) {
     char head[64];
     snprintf(head, sizeof(head), T(S_NAME_FMT),
-             rareMarks(btlFoe.shiny, btlFoe.sparkle),
+             rareMark(btlFoe.shiny),
              speciesName(btlFoe.dex), btlFoe.level);
     gfx->setTextColor(entry.accent);
     gfx->setTextSize(3);
@@ -6648,13 +6644,13 @@ void pickDefault(uint8_t cap) {
 static void drawPickCell(uint8_t n, int x, int y, uint8_t capLvl) {
   bool usable = pickUsable(n);
   bool on = usable && (squadMask & (1 << n)) != 0;
-  int16_t dex; uint16_t lvl; const char *nm; bool shiny, sparkle;
+  int16_t dex; uint16_t lvl; const char *nm; bool rare;
   if (n == party.activeIndex()) {
-    dex = pet.speciesId; lvl = pet.level(); shiny = pet.shiny; sparkle = pet.sparkle;
+    dex = pet.speciesId; lvl = pet.level(); rare = pet.shiny;
     nm = displaySpeciesName(dex, pet.nick);
   } else {
     const PartyMon &m = party.slots[n];
-    dex = m.dex; lvl = m.level; shiny = m.shiny; sparkle = m.sparkle;
+    dex = m.dex; lvl = m.level; rare = m.shiny || m.sparkle;
     nm = displaySpeciesName(dex, m.nick);
   }
   if (capLvl && lvl > capLvl) lvl = capLvl;   // show the level it will FIGHT at
@@ -6667,7 +6663,7 @@ static void drawPickCell(uint8_t n, int x, int y, uint8_t capLvl) {
   gfx->setCursor(x + 54, y + 14);
   gfx->print(nm);
   char l[16];
-  snprintf(l, sizeof(l), "Lv.%u %s", (unsigned)lvl, rareMarks(shiny, sparkle));
+  snprintf(l, sizeof(l), "Lv.%u %s", (unsigned)lvl, rareMark(rare));
   gfx->setCursor(x + 54, y + 30);
   gfx->print(usable ? l : T(S_DEAD));
   // its typing is the whole reason you are on this screen
@@ -7575,7 +7571,7 @@ static void drawCultivationSlot(uint8_t slot, int x, int y) {
   if (m.shiny || m.sparkle) {
     gfx->setTextColor(UI_BAR_WARN);
     gfx->setCursor(x + PARTY_TEXT_X_OFF + gfx->textWidth(nm) + 3, y + 18);
-    gfx->print(rareMarks(m.shiny, m.sparkle));
+    gfx->print(rareMark(true));
   }
   char lv[12];
   snprintf(lv, sizeof(lv), T(S_LVL_FMT), (unsigned)m.level);
@@ -7673,7 +7669,7 @@ void renderBox() {
     drawGenderIcon(m.gender, x + PARTY_CELL_W - 29, y + 6, 1);
     char level[16];
     snprintf(level, sizeof(level), "Lv.%u %s", (unsigned)m.level,
-             rareMarks(m.shiny, m.sparkle));
+             rareMark(m.shiny || m.sparkle));
     gfx->setCursor(x + PARTY_TEXT_X_OFF, y + 34);
     gfx->setTextColor(m.dead() ? UI_BAR_BAD : UI_INK);
     gfx->print(m.dead() ? T(S_DEAD) : level);
@@ -8612,7 +8608,7 @@ void drawPetPMD() {
 
   drawPmdAct(act, (int)beh.x, PET_GROUND, now - beh.t0, loop || act == PMD_IDLE, false, 5);
 
-  if (pet.sparkle) drawSparkleParticles((int)beh.x, PET_GROUND, now);
+  if (pet.shiny) drawSparkleParticles((int)beh.x, PET_GROUND, now);
 
   if (pet.showHeart()) drawMap(SPR_HEART, 32, (int)beh.x + 50, PET_GROUND - 190, 2, false);
 }

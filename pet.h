@@ -116,8 +116,8 @@ public:
   uint8_t hygiene = 100;  // limpieza
   uint8_t poops = 0;      // cacas en pantalla (max 3)
   uint8_t weight = 0;     // 0-100: las chuches engordan, el minijuego quema
-  // Wild sparkle and later gym rewards may push IV above the traditional 31.
   // IV contributes IV x level / 100 and also controls the training ceiling.
+  // Rare encounters floor IVs at 20 without imposing an upper cap.
   uint8_t ivAtk = 16, ivDef = 16, ivSpe = 16, ivHp = 16;
   uint8_t trAtk = 0, trDef = 0, trSpe = 0;
   uint8_t trMinAtk = 0, trMinDef = 0, trMinSpe = 0;
@@ -125,8 +125,7 @@ public:
   PetGender gender = GENDER_UNKNOWN;
   uint8_t gymIvRewards[GYM_IV_REWARD_SLOTS] = { 0 };
   bool berryKnown = false;  // ya descubrio su baya favorita
-  bool shiny = false;       // rare color variant
-  bool sparkle = false;     // independent rare trait; persistent particle FX
+  bool shiny = false;       // combined rare state: color variant + particle FX
   bool gigantamaxFactor = false;
   uint32_t ageMinutes = 0;
   uint32_t raisedMinutes = 0;  // time cultivated by this player; Box is frozen

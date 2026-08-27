@@ -80,7 +80,7 @@ int main() {
     ck(pet.wildRareBonus == 15, "a level-one-hundred farewell adds two but respects the cap");
     ck(roster.count() == 1 && pet.isEgg(),
        "the last creature leaving an empty team and Box creates one safety egg");
-    ck(!pet.shiny && !pet.sparkle, "the safety egg carries neither wild trait");
+    ck(!pet.shiny, "the safety egg does not carry the wild rare state");
   }
 
   {

@@ -24,40 +24,44 @@ static void ck(bool ok, const char *what) {
 }
 
 int main() {
-  ck(wildColorChance(0) == 5 && wildSparkleChance(0) == 1,
-     "wild color and sparkle keep their distinct base chances");
-  ck(wildColorChance(15) == 20 && wildSparkleChance(15) == 16,
-     "the shared bonus caps both chances at fifteen points");
-  ck(wildColorChance(99) == 20 && wildSparkleChance(99) == 16,
+  ck(wildRareThreshold(0) == 100,
+     "the wild rare base chance is exactly one in 4096");
+  ck(wildRareThreshold(1) == 4196 && wildRareThreshold(15) == 61540,
+     "each blessing adds exactly one percentage point");
+  ck(wildRareThreshold(99) == wildRareThreshold(15),
      "corrupt or future bonuses cannot exceed the cap");
   ck(wildGigantamaxFactorForRoll(6, 4) &&
      !wildGigantamaxFactorForRoll(6, 5) &&
      !wildGigantamaxFactorForRoll(7, 0),
      "only eligible wild species receive the five-percent Gigantamax factor");
 
-  WildTraits none = wildTraitsForRolls(5, 1, 0);
-  WildTraits color = wildTraitsForRolls(4, 1, 0);
-  WildTraits sparkle = wildTraitsForRolls(5, 0, 0);
-  WildTraits both = wildTraitsForRolls(4, 0, 0);
-  ck(!none.color && !none.sparkle, "both independent rolls can miss");
-  ck(color.color && !color.sparkle, "the color roll can win by itself");
-  ck(!sparkle.color && sparkle.sparkle, "the sparkle roll can win by itself");
-  ck(both.color && both.sparkle, "two independent wins can coexist");
+  ck(wildRareForRoll(99, 0) && !wildRareForRoll(100, 0),
+     "one roll owns the exact base-probability boundary");
+  ck(wildRareForRoll(4195, 1) && !wildRareForRoll(4196, 1),
+     "the same roll includes the blessing probability");
 
   uint8_t a = 13, d = 16, s = 19, h = 31;
-  wildApplyTraits(color, a, d, s, h);
+  wildApplyRare(true, a, d, s, h);
   ck(a == 20 && d == 20 && s == 20 && h == 31,
-     "color gives every IV a floor of twenty");
+     "a rare result floors every IV at twenty without adding ten");
+
+  a = 32; d = 40; s = 21; h = 20;
+  wildApplyRare(true, a, d, s, h);
+  ck(a == 32 && d == 40 && s == 21 && h == 20,
+     "the rare IV floor does not cap values above thirty-one");
 
   a = 13; d = 16; s = 19; h = 31;
-  wildApplyTraits(sparkle, a, d, s, h);
-  ck(a == 23 && d == 26 && s == 29 && h == 41,
-     "sparkle adds ten without a thirty-one cap");
+  wildApplyRare(false, a, d, s, h);
+  ck(a == 13 && d == 16 && s == 19 && h == 31,
+     "an ordinary result applies neither rare IV effect");
 
-  a = 13; d = 16; s = 19; h = 31;
-  wildApplyTraits(both, a, d, s, h);
-  ck(a == 30 && d == 30 && s == 30 && h == 41,
-     "color is applied before the independent sparkle bonus");
+  PartyMon legacy;
+  legacy.dex = 7;
+  legacy.sparkle = 1;
+  Pet migrated;
+  migrated.importState(legacy);
+  ck(migrated.shiny,
+     "a legacy sparkle-only creature migrates to the combined rare state");
 
   Preferences prefs;
   prefs.begin("tamapoke", false);

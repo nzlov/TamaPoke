@@ -70,7 +70,8 @@ states. Representative names include `main`, `evolvecta`, `farewellcta`,
 `bagdetail`, `train`, `ballgame`, `sack`, `speed`, `quiz`, `quizcorrect`,
 `battlecenter`, `wildfight`, `wilditems`, `capture`, `reward`,
 `wilddetail`,
-`sparkle`, `color`, `bothrare`, `egg`,
+`sparkle`, `color`, `bothrare` (all three legacy scene names now show the
+combined shiny effect), `egg`,
 `language`, `region`, `starter`, `dexdetail`, and `moveinfo`.
 `--lvl`, `--iv` and
 `--dex` set up the pet first.

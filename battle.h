@@ -92,8 +92,7 @@ struct Combatant {
   MegaFormKind megaForm = MEGA_FORM_NONE;
   uint8_t dynamaxTurns = 0;
   uint16_t normalMaxHp = 0;
-  bool shiny = false;        // which color sprite variant to stream
-  bool sparkle = false;      // independent persistent particle effect
+  bool shiny = false;        // combined alternate sprite and particle effect
   PetGender gender = GENDER_UNKNOWN;
   bool gigantamaxFactor = false;
   bool gigantamax = false;

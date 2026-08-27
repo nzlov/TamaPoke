@@ -54,7 +54,7 @@ struct PartyMon {
   uint16_t medals = 0;  // what it earned in life
   uint8_t ivAtk = 0, ivDef = 0, ivSpe = 0, ivHp = 0;
   uint8_t trAtk = 0, trDef = 0, trSpe = 0;
-  uint8_t shiny = 0;  // color variant
+  uint8_t shiny = 0;  // combined rare state
   char nick[12] = "";
   // Moves travel with the creature through team and Box exchanges. 0 is an
   // empty move slot (moveEntry(0) is the "-" filler).
@@ -80,6 +80,7 @@ struct PartyMon {
   // keeping every later field and the raw roster size byte-compatible.
   uint8_t starterPick = 0;
   PetGender gender = GENDER_UNKNOWN;
+  // Legacy mirror retained at its original offset for raw-save compatibility.
   uint8_t sparkle = 0;
   uint8_t evoDeclinedLv = 0;
   uint32_t raisedMinutes = 0;

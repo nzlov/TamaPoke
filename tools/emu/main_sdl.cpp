@@ -298,22 +298,22 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     expireShotCelebrations();
   }
   else if (!strcmp(screen, "sparkle")) {
-    pet.shiny = false;
-    pet.sparkle = true;
+    pet.shiny = true;
     pet.ageMinutes = 0;
     ensureMon();
+    expireShotCelebrations();
   }
   else if (!strcmp(screen, "color")) {
     pet.shiny = true;
-    pet.sparkle = false;
     pet.ageMinutes = 0;
     ensureMon();
+    expireShotCelebrations();
   }
   else if (!strcmp(screen, "bothrare")) {
     pet.shiny = true;
-    pet.sparkle = true;
     pet.ageMinutes = 0;
     ensureMon();
+    expireShotCelebrations();
   }
   else if (!strcmp(screen, "mainroster")) {
     pet.ageMinutes = 0;
@@ -459,7 +459,6 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     if (!strcmp(screen, "capture")) {
       Pet caught;
       caught.dbgHatchAs(25, true);
-      caught.sparkle = true;
       caught.ageMinutes = 41UL * MINUTES_PER_LEVEL;
       caught.ivAtk = 41;
       caught.ivDef = 34;

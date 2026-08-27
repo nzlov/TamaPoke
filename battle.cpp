@@ -24,7 +24,6 @@ void combatantFromPet(Combatant &c, const Pet &p) {
        p.spaStat(), p.spdStat(), p.speStat());
   for (int i = 0; i < MOVE_SLOTS; i++) c.moves[i] = p.moves[i];
   c.shiny = p.shiny;
-  c.sparkle = p.sparkle;
   c.gender = p.gender;
   c.gigantamaxFactor = p.gigantamaxFactor;
   const char *nm = p.nick[0] ? p.nick : dexEntry(p.speciesId).name;
@@ -35,8 +34,7 @@ void combatantFromParty(Combatant &c, const PartyMon &m) {
   fill(c, m.dex, (uint8_t)m.level, party.vitOf(m), party.atkOf(m), party.defOf(m),
        party.spaOf(m), party.spdOf(m), party.speOf(m));
   for (int i = 0; i < MOVE_SLOTS; i++) c.moves[i] = m.moves[i];
-  c.shiny = m.shiny != 0;
-  c.sparkle = m.sparkle != 0;
+  c.shiny = m.shiny != 0 || m.sparkle != 0;
   c.gender = m.gender;
   c.gigantamaxFactor = m.gigantamaxFactor();
   const char *nm = m.nick[0] ? m.nick : dexEntry(m.dex).name;

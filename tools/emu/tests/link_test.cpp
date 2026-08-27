@@ -61,7 +61,7 @@ int main(){
   ck(B.theirs[0].dex==6 && A.theirs[0].dex==65, "and the right creatures in it");
   ck(!strcmp(B.theirs[1].name,"SHELL"), "names survive the wire");
   ck(B.theirs[0].shiny && B.theirs[0].sparkle && B.theirs[0].gigantamaxFactor,
-     "color, sparkle, and Gigantamax factor survive independently on the wire");
+     "the mirrored rare state and Gigantamax factor survive on the wire");
   ck(B.theirs[0].gender==A.mine[0].gender, "gender survives the wire");
   ck(A.isHost && !B.isHost, "the roles stay as they were offered");
 
@@ -69,8 +69,14 @@ int main(){
   Combatant back; linkMonTo(back, B.theirs[0]);
   ck(back.dex==6 && back.level==50 && back.hp==back.maxHp,
      "a wire creature restores at full health");
-  ck(back.shiny && back.sparkle && back.gigantamaxFactor,
-     "the restored combatant keeps all individual traits");
+  ck(back.shiny && back.gigantamaxFactor,
+     "the restored combatant keeps its combined rare state");
+
+  LinkMon legacy = mon(7, 30, "LEGACY");
+  legacy.sparkle = 1;
+  Combatant migrated; linkMonTo(migrated, legacy);
+  ck(migrated.shiny,
+     "a legacy sparkle-only wire creature migrates to the combined rare state");
   ck(back.base[SI_ATK]==A.mine[0].base[SI_ATK], "with its stats intact");
   ck(back.type1==T_FIRE && back.type2==T_FLYING,
      "and restores the species types used by battle resolution");

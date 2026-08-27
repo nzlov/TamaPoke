@@ -52,7 +52,7 @@ void moveRowVerticals(int *rowBottom, int *nameTop, int *nameBottom,
 void choiceDialogVerticals(int *titleBottom, int *button1Top, int *button1Bottom,
                            int *button2Top, int *button2Bottom);
 void drawSparkleParticles(int cx, int groundY, uint32_t now, uint8_t scale);
-const char *rareMarks(bool color, bool sparkle);
+const char *rareMark(bool rare);
 const char *statusMsg();
 int uiSleepButton(int *cx, int *cy);
 void uiEggPillRect(int *x, int *y, int *w, int *h, bool hitArea);
@@ -101,16 +101,15 @@ int main(){
   while (pet.hasLearnOffer()) pet.declineLearn();
   quiz.config.choiceWeight = 0;
 
-  ck(!strcmp(rareMarks(false, true), "*"), "an asterisk marks sparkle");
-  ck(!strcmp(rareMarks(true, false), "%"), "a percent sign marks alternate color");
-  ck(!strcmp(rareMarks(true, true), "*%"), "both independent traits keep both marks");
-  pet.sparkle = true;
+  ck(!strcmp(rareMark(false), "") && !strcmp(rareMark(true), "*"),
+     "one marker represents the combined rare state");
+  pet.shiny = true;
   pet.raisedMinutes = 0;
   pet.fullness = pet.joy = pet.energy = pet.hygiene = 100;
   pet.weight = 0;
   ck(!strcmp(statusMsg(), T(S_HAPPY)),
-     "sparkle does not replace the main-screen mood text");
-  pet.sparkle = false;
+     "the rare effect does not replace the main-screen mood text");
+  pet.shiny = false;
 
   // Sweep the whole grid area and record which cell each pixel belongs to.
   const int X0 = 40, X1 = 430, Y0 = 258, Y1 = 410;
@@ -413,7 +412,7 @@ int main(){
     int lit = 0;
     for (int i = 0; i < 466 * 466; i++)
       if (gfx->buffer()[i] != RGB565_BLACK) lit++;
-    ck(lit > 0, "sparkle draws its persistent particle layer");
+    ck(lit > 0, "the rare effect draws its persistent particle layer");
   }
 
   printf("%s\n", bad?"FAILURES":"all good");

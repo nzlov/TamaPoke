@@ -2,25 +2,19 @@
 #include <stdint.h>
 #include "battle.h"
 
-constexpr uint8_t WILD_COLOR_BASE_CHANCE = 5;
-constexpr uint8_t WILD_SPARKLE_BASE_CHANCE = 1;
+// One roll uses a common denominator so 100 / 409600 is exactly 1 / 4096 and
+// every 4096 added by the blessing bonus is exactly one percentage point.
+constexpr uint32_t WILD_RARE_ROLL_SCALE = 409600;
+constexpr uint32_t WILD_RARE_BASE_THRESHOLD = 100;
+constexpr uint32_t WILD_RARE_BONUS_THRESHOLD = 4096;
 constexpr uint8_t WILD_GIGANTAMAX_FACTOR_CHANCE = 5;
 constexpr uint8_t WILD_RARE_BONUS_MAX = 15;
 constexpr uint8_t WILD_ANGRY_ESCAPE_BONUS = 5;
 
-struct WildTraits {
-  bool color = false;
-  bool sparkle = false;
-};
-
-uint8_t wildColorChance(uint8_t bonus);
-uint8_t wildSparkleChance(uint8_t bonus);
-// The two rolls are separate inputs on purpose: color and sparkle are
-// independent traits, not categories cut from one random number.
-WildTraits wildTraitsForRolls(uint8_t colorRoll, uint8_t sparkleRoll,
-                              uint8_t bonus);
-void wildApplyTraits(const WildTraits &traits, uint8_t &ivAtk, uint8_t &ivDef,
-                     uint8_t &ivSpe, uint8_t &ivHp);
+uint32_t wildRareThreshold(uint8_t bonus);
+bool wildRareForRoll(uint32_t roll, uint8_t bonus);
+void wildApplyRare(bool rare, uint8_t &ivAtk, uint8_t &ivDef,
+                   uint8_t &ivSpe, uint8_t &ivHp);
 bool wildGigantamaxFactorForRoll(SpeciesId species, uint8_t roll);
 
 // Capture probability is derived from pack-owned rarity plus live battle

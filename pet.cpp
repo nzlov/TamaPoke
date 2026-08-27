@@ -49,10 +49,9 @@ void Pet::newEgg() {
   eggTarget = pickEggSpecies();  // especie oculta segun rareza y pokedex
   eggByRegion[region % regionCount()] = eggTarget;
   starterPick = (registeredCount() == 0);  // primera partida: el jugador elige inicial
-  // Rare color and sparkle now belong to wild encounters. A safety egg is
+  // The combined rare state belongs to wild encounters. A safety egg is
   // deliberately neutral rather than another route into the wild economy.
   shiny = false;
-  sparkle = false;
   gigantamaxFactor = false;
   eggShiny = false;
   eggTaps = 0;
@@ -278,8 +277,7 @@ void Pet::importState(const PartyMon &m) {
   ceremony = CER_NONE;
   speciesId = m.dex;
   prevSpeciesId = -1;
-  shiny = m.shiny != 0;
-  sparkle = m.sparkle != 0;
+  shiny = m.shiny != 0 || m.sparkle != 0;
   gigantamaxFactor = m.gigantamaxFactor();
   nature = natureValid(m.nature) ? m.nature
                                  : natureForLegacy(m.dex, m.ivAtk, m.ivDef,
@@ -337,7 +335,7 @@ void Pet::exportState(PartyMon &out) const {
   out.trAtk = trAtk; out.trDef = trDef; out.trSpe = trSpe;
   out.trMinAtk = trMinAtk; out.trMinDef = trMinDef; out.trMinSpe = trMinSpe;
   out.shiny = shiny ? 1 : 0;
-  out.sparkle = sparkle ? 1 : 0;
+  out.sparkle = out.shiny;
   out.setGigantamaxFactor(gigantamaxFactor);
   out.nature = nature;
   out.setDead(dead);
@@ -1029,7 +1027,6 @@ void Pet::hatch() {
   speciesId = eggTarget;
   dead = false;
   shiny = eggShiny;
-  sparkle = false;
   gigantamaxFactor = false;
   // IV del individuo (cada crianza es unica). Se tiran ANTES de resetear el
   // vinculo a proposito: el careBonus que los empuja es el del bicho anterior.
@@ -1434,7 +1431,7 @@ void Pet::save() {
   prefs.putUShort("badh", badgesHard);
   prefs.putBool("bk", berryKnown);
   prefs.putBool("shy", shiny);
-  prefs.putBool("spkl", sparkle);
+  prefs.putBool("spkl", shiny);  // legacy mirror for older firmware
   prefs.putBool("gmax", gigantamaxFactor);
   prefs.putBool("eshy", eggShiny);
   prefs.putBool("stpk", starterPick);
@@ -1498,8 +1495,7 @@ void Pet::load() {
   if (trDef < trMinDef) trDef = trMinDef;
   if (trSpe < trMinSpe) trSpe = trMinSpe;
   berryKnown = prefs.getBool("bk", false);
-  shiny = prefs.getBool("shy", false);
-  sparkle = prefs.getBool("spkl", false);
+  shiny = prefs.getBool("shy", false) || prefs.getBool("spkl", false);
   gigantamaxFactor = prefs.getBool("gmax", false);
   eggShiny = prefs.getBool("eshy", false);
   starterPick = prefs.getBool("stpk", false);

@@ -178,6 +178,10 @@ void Party::sanitize(PartyMon &m, bool boxed) {
     m.sparkle = 0;
     m.raisedMinutes = m.ageMinutes;
   }
+  // Old saves allowed color and sparkle to exist independently. Preserve any
+  // rare creature, then mirror the combined state for backward compatibility.
+  m.shiny = (m.shiny || m.sparkle) ? 1 : 0;
+  m.sparkle = m.shiny;
   if (m.dex > 0 && (version < 4 || !genderValid(m.gender)))
     m.gender = genderForLegacy(m.dex, dexEntry(m.dex).femaleRate,
                                m.ivAtk, m.ivDef, m.ivSpe, m.ivHp);

@@ -28,7 +28,7 @@ int main(){
   Pet pet;
   pet.begin();
   pet.dbgHatchAs(6,true);
-  pet.sparkle = true;
+  pet.shiny = true;
   pet.gigantamaxFactor = true;
   pet.raisedMinutes = 1234;
   pet.wildRareBonus = 15;
@@ -128,8 +128,8 @@ int main(){
 
   Pet p2; Party q2;
   p2.begin(); q2.begin(); q2.attach(p2);
-  ck(p2.speciesId==6 && p2.shiny && p2.sparkle && p2.gigantamaxFactor,
-     "the creature is back with color, sparkle, and Gigantamax factor independently");
+  ck(p2.speciesId==6 && p2.shiny && p2.gigantamaxFactor,
+     "the creature is back with its combined rare and Gigantamax states");
   ck(p2.isDead(), "the active creature's death state is restored");
   ck(p2.raisedMinutes==1234 && p2.wildRareBonus==15,
      "cultivation time and the player-wide wild bonus survive");
@@ -178,10 +178,12 @@ int main(){
     if (strcmp(m.nick, want)) party_ok = false;
   }
   ck(party_ok, "with every level, moveset and nickname");
-  ck(q2.slots[2].shiny, "and a banked shiny is still shiny");
+  ck(q2.slots[2].shiny && q2.slots[2].sparkle,
+     "and a banked color-only creature is normalized to combined rare");
   ck(q2.slots[1].dead(), "and a party creature's death state is restored");
-  ck(q2.slots[3].sparkle && q2.slots[3].raisedMinutes==303,
-     "and banked sparkle and cultivation time survive");
+  ck(q2.slots[3].shiny && q2.slots[3].sparkle &&
+     q2.slots[3].raisedMinutes==303,
+     "and a banked sparkle-only creature migrates without losing cultivation time");
   ck(q2.boxCount()==BOX_SLOTS, "the box comes back full");
   ck(q2.box[7].dex==1+7*3 && q2.box[7].level==17, "with the right creatures in it");
   ck(q2.box[7].gymIvRewards[7]==GYM_IV_REWARD_SPE,

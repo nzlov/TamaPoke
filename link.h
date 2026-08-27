@@ -92,7 +92,7 @@ struct LinkMon {
   uint16_t base[SI_COUNT];
   MoveId moves[MOVE_SLOTS];
   uint8_t shiny;
-  uint8_t sparkle;
+  uint8_t sparkle;  // legacy mirror retained for packet compatibility
   uint8_t gender;
   uint8_t gigantamaxFactor;
   char name[LINK_NAME_LEN];

@@ -328,7 +328,7 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 ### Three ways a creature leaves
 - 💛 **Farewell** — after a final form has actually been cultivated by this
   player for **3 days**, the menu's Release row becomes Farewell. It adds
-  **1 percentage point** to both wild color and sparkle odds, or **2 points**
+  **1 percentage point** to the wild shiny odds, or **2 points**
   when the creature is level 100.
 - 💔 **Run-away** — if you let **all four stats sit at 0 for a full hour**. A single
   act of care cancels it. It subtracts **2 points** from the shared wild rare
@@ -344,7 +344,7 @@ empty roster receives a safety egg.
   at **3 / 7 / 30 / 100** days; skipping a day breaks it.
 - **Bond** (per pet, resets on hatch): grows with affection (**cap +20/day**), cools on
   neglect. Streak and bond still improve a safety egg's rarity and IVs, but do
-  not enter either wild color/sparkle roll.
+  do not enter the wild shiny roll.
 - **8 medals** (Lv10/25/50, favorite berry found, 7-day streak, max bond, final form,
   "fit" = weight 0 & no slip-ups), per-pet + a global counter.
 - **Pokédex:** raising a species registers it; completion covers every species
@@ -363,8 +363,8 @@ stat = base + level + (IV × level)/100 + training
 ```
 
 The `(IV × level)/100` term is the **real formula from Gen III onward**. 31 remains
-the traditional maximum for ordinary rolls, but is no longer a system cap:
-sparkle and gym rewards may continue above it. IVs also cap training.
+the traditional maximum for ordinary rolls, but is not a system cap. IVs also
+cap training.
 
 | | Effect |
 |---|---|
@@ -375,8 +375,8 @@ sparkle and gym rewards may continue above it. IVs also cap training.
 - Hatch rolls are **8–31**; streak and bond may still bias a safety egg upward.
 - Each ordinary wild IV is rolled independently at the current region/difficulty
   baseline **±3**.
-- Wild **color variants** floor every IV at 20. Independent wild **sparkle** then
-  adds **10 to every IV**, with no 31 cap.
+- Wild **shiny variants** floor every IV at 20 without imposing a 31 cap; an
+  already higher IV is preserved.
 - Each gym can reward a given creature once. It picks any of the four IVs
   uniformly and adds **+1**, even when that IV is already 31 or higher.
 - IVs are shown on the Battle page of the stat card; 31 and above are highlighted.
@@ -484,21 +484,15 @@ The active weather and terrain are shown as localized HUD pills and animated
 overlays. In LAN play the host sends absolute field state with every result, so a
 dropped packet cannot leave the guest on a different field.
 
-### Wild color and sparkle
+### Wild shiny encounters
 
-Wild encounters make two separate rolls, so color and sparkle may appear alone
-or together:
-
-| Trait | Base | At shared bonus +15 | Appearance and stats |
-|---|---:|---:|---|
-| Color | 5% | 20% | Alternate sprite; every IV at least 20 |
-| Sparkle | 1% | 16% | Persistent gold/white particles; every IV +10 without a 31 cap |
-
-Both rolls use the same farewell bonus but are evaluated independently, never
-as one combined rarity-category roll. Lists mark sparkle with `*`, color with
-`%`, and both with `*%`. The main screen keeps its normal mood text instead of
-announcing sparkle. The traits persist separately through cultivation,
-Box storage, saves, battle and LAN transfer.
+Each wild encounter makes one shiny roll. Its base chance is exactly **1/4096**;
+each farewell bonus point adds **1 percentage point**, up to a +15-point bonus
+(about **15.0244%** total). A shiny uses the alternate sprite and persistent
+gold/white particles, and floors every IV at 20 without clamping values above
+31. Lists use one `*` marker. The main screen keeps its normal mood text, and the
+single state persists through cultivation, Box storage, saves, battle and LAN
+transfer. Old saves merge either former color or sparkle flag into this state.
 
 ### Choosing your egg's region
 
@@ -774,7 +768,7 @@ LAN battle damage.
 ## Battle stats and training
 
 Each creature has ATK/DEF/SPD/VIT = **base stat** + level + **IV** (ordinary
-rolls stop at 31; sparkle and gyms may exceed it; `IV × level/100`) + **training**, followed
+rolls stop at 31, but stored values and gym rewards are not capped; `IV × level/100`) + **training**, followed
 by its nature modifier and then its gender modifier (see
 [Battle stats & IVs](#battle-stats--ivs)):
 - SPEED ← the **reaction test** (~2 reactions = one score step)
@@ -828,21 +822,20 @@ and burns off with training.
   a global counter. Medals page of the stat card.
 - **Name**: touch keyboard; the nickname rules the header and the card.
 
-High streak and bond improve a safety egg's rarity and IVs. Wild color and
-sparkle use only the shared farewell bonus.
+High streak and bond improve a safety egg's rarity and IVs. Wild shiny encounters
+use only the shared farewell bonus.
 
 ## Life cycle, wild rare traits, languages
 
 After a final form has been cultivated for **3 days**, it may Farewell; before
 that it may be Released from the menu. All four bars at zero for 1 h causes a
-Runaway. Farewell adds +1 point to both wild rare odds (+2 at level 100), Runaway
+Runaway. Farewell adds +1 point to the wild shiny odds (+2 at level 100), Runaway
 subtracts 2, and Release is neutral; the shared bonus is clamped to 0–15.
 
-Wild color starts at 5% and sparkle at 1%. They are rolled independently and may
-coexist. Color uses the alternate sprite and floors IVs at 20; sparkle has
-persistent particles and adds 10 to every IV without a cap. Endings remove the
-creature instead of banking it, and create a safety egg only if team and Box are
-both empty.
+Wild shiny odds start at exactly 1/4096. One roll controls both the alternate
+sprite and persistent particles; its IV floor is 20 and does not clamp values
+above 31. Endings remove the creature instead of banking it, and create a safety
+egg only if team and Box are both empty.
 
 **Languages:** the supplied pack set includes English (default), Spanish, French,
 German, Italian, Portuguese and Simplified Chinese. The firmware does not hardcode
@@ -881,7 +874,7 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
 `STATS` (full state) · `SPEC <dex>` (change species) · `LVL <n>` ·
 `IV <atk> <def> <spd> <vit>` (force individual values) · `HATCH` ·
 `EGG <dex> [color]` (hatch a chosen species for debugging) ·
-`SHINY` (toggle color) · `SPARKLE` (toggle sparkle) · `NICK <x>` ·
+`SHINY` / `SPARKLE` (toggle the combined shiny state) · `NICK <x>` ·
 `BYE` / `RUN` (farewell / runaway) · `ABANDON` (force the
 runaway-ready state) · `WIPE` (factory reset → new game) · `BEEP` (audio test) ·
 `REG` (Pokédex) · `EGGS` (simulate 20 eggs) · `GAL` (gallery) · `CAREDAY` ·

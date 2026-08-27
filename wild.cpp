@@ -56,12 +56,9 @@ static uint8_t rareBonus(uint8_t bonus) {
   return bonus > WILD_RARE_BONUS_MAX ? WILD_RARE_BONUS_MAX : bonus;
 }
 
-uint8_t wildColorChance(uint8_t bonus) {
-  return WILD_COLOR_BASE_CHANCE + rareBonus(bonus);
-}
-
-uint8_t wildSparkleChance(uint8_t bonus) {
-  return WILD_SPARKLE_BASE_CHANCE + rareBonus(bonus);
+uint32_t wildRareThreshold(uint8_t bonus) {
+  return WILD_RARE_BASE_THRESHOLD +
+         (uint32_t)rareBonus(bonus) * WILD_RARE_BONUS_THRESHOLD;
 }
 
 bool wildGigantamaxFactorForRoll(SpeciesId species, uint8_t roll) {
@@ -69,21 +66,15 @@ bool wildGigantamaxFactorForRoll(SpeciesId species, uint8_t roll) {
          roll < WILD_GIGANTAMAX_FACTOR_CHANCE;
 }
 
-WildTraits wildTraitsForRolls(uint8_t colorRoll, uint8_t sparkleRoll,
-                              uint8_t bonus) {
-  WildTraits out;
-  out.color = colorRoll < wildColorChance(bonus);
-  out.sparkle = sparkleRoll < wildSparkleChance(bonus);
-  return out;
+bool wildRareForRoll(uint32_t roll, uint8_t bonus) {
+  return roll < wildRareThreshold(bonus);
 }
 
-void wildApplyTraits(const WildTraits &traits, uint8_t &ivAtk, uint8_t &ivDef,
-                     uint8_t &ivSpe, uint8_t &ivHp) {
+void wildApplyRare(bool rare, uint8_t &ivAtk, uint8_t &ivDef,
+                   uint8_t &ivSpe, uint8_t &ivHp) {
+  if (!rare) return;
   uint8_t *ivs[] = { &ivAtk, &ivDef, &ivSpe, &ivHp };
-  for (uint8_t *iv : ivs) {
-    if (traits.color && *iv < 20) *iv = 20;
-    if (traits.sparkle) *iv = (uint8_t)(*iv + 10);
-  }
+  for (uint8_t *iv : ivs) if (*iv < 20) *iv = 20;
 }
 
 uint8_t wildCaptureChance(uint8_t rarity, uint16_t hp, uint16_t maxHp,
