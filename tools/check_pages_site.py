@@ -36,8 +36,9 @@ with tempfile.TemporaryDirectory() as temporary:
     for relative, content in fixtures.items():
         (source / relative).write_text(content, encoding="utf-8")
 
-    module.prepare_site(source, output, "abc1234", "2026-08-25")
-    expected = {
+    module.prepare_site(source, output, "abc1234", "2026-08-25", "stable")
+    module.prepare_site(source, output / "latest", "def5678", "2026-08-26", "latest")
+    channel_files = {
         "index.html",
         "serial-client.js",
         "question-bank-model.mjs",
@@ -46,6 +47,8 @@ with tempfile.TemporaryDirectory() as temporary:
         "firmware/app.bin",
         "packs/index.json",
     }
+    expected = channel_files | {"web/index.html"}
+    expected |= {f"latest/{relative}" for relative in channel_files}
     actual = {
         path.relative_to(output).as_posix()
         for path in output.rglob("*")
@@ -54,8 +57,20 @@ with tempfile.TemporaryDirectory() as temporary:
     if actual != expected:
         raise SystemExit(f"Pages staging mismatch: expected {expected}, got {actual}")
 
-workflow = WORKFLOW.read_text(encoding="utf-8")
-if "python3 tools/prepare_pages_site.py" not in workflow:
-    raise SystemExit("Pages workflow does not use the shared site preparer")
+    for relative, channel in (("build-info.json", "stable"),
+                              ("latest/build-info.json", "latest")):
+        if f'"channel":"{channel}"' not in (output / relative).read_text(encoding="utf-8"):
+            raise SystemExit(f"Pages staging has the wrong channel in {relative}")
+    if 'url=../' not in (output / "web/index.html").read_text(encoding="utf-8"):
+        raise SystemExit("Pages staging does not preserve the former /web/ stable URL")
 
-print("PASS Pages staging includes all static files, firmware and packs")
+workflow = WORKFLOW.read_text(encoding="utf-8")
+for fragment in ("release:", "push:", "branches: [main]", "matrix:",
+                 "channel: [stable, latest]", ".pages-tooling/tools/prepare_pages_site.py",
+                 "--source web",
+                 "--channel \"$SITE_CHANNEL\"", "site-${{ matrix.channel }}",
+                 "merge-multiple: true"):
+    if fragment not in workflow:
+        raise SystemExit(f"Pages dual-channel workflow is missing {fragment!r}")
+
+print("PASS Pages staging includes stable and latest static sites")

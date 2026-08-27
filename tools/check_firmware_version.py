@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify release triggering and firmware-version generation stay aligned."""
+"""Verify Pages channel triggering and firmware-version generation stay aligned."""
 
 import os
 import re
@@ -18,18 +18,20 @@ def fail(message: str) -> None:
 
 workflow = WORKFLOW.read_text(encoding="utf-8")
 trigger = workflow.split("permissions:", 1)[0]
-for fragment in ("release:", "types: [published]"):
+for fragment in ("release:", "types: [published]", "push:", "branches: [main]",
+                 "workflow_dispatch:"):
     if fragment not in trigger:
         fail(f"Pages trigger is missing {fragment!r}")
-for forbidden in ("push:", "workflow_dispatch:"):
-    if forbidden in trigger:
-        fail(f"Pages must not retain the {forbidden.rstrip(':')!r} trigger")
 for fragment in (
-    "ref: ${{ github.event.release.tag_name }}",
-    "TAMAPOKE_VERSION: ${{ github.event.release.tag_name }}",
+    "channel: [stable, latest]",
+    "stable_ref=${{ github.event.release.tag_name }}",
+    "gh api \"repos/$GITHUB_REPOSITORY/releases/latest\" --jq .tag_name",
+    "needs.refs.outputs.stable_ref",
+    "needs.refs.outputs.latest_ref",
+    "needs.refs.outputs.stable_version",
 ):
     if fragment not in workflow:
-        fail(f"Pages release version wiring is missing {fragment!r}")
+        fail(f"Pages channel version wiring is missing {fragment!r}")
 
 if not VERSION_TOOL.is_file():
     fail("tools/firmware_version.py is missing")

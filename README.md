@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-[![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://nzlov.github.io/TamaPoke/web/)
+[![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://nzlov.github.io/TamaPoke/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
 ![Firmware](https://img.shields.io/badge/firmware-v3.6-8A2BE2)
@@ -33,16 +33,23 @@ and complete them all (shinies included).
 > PMD SpriteCollab (CC BY-NC, Pokémon © Nintendo/Game Freak), and the 3D case is
 > CC BY-NC-SA. See **[License](#license)** and **Credits**.
 
-🔴 **3D-printed Pokéball case + print profiles → [on MakerWorld](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)** · flash it in your browser → **[web installer](https://nzlov.github.io/TamaPoke/web/)**
+🔴 **3D-printed Pokéball case + print profiles → [on MakerWorld](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)** · flash it in your browser → **[web installer](https://nzlov.github.io/TamaPoke/)**
 
 ## Latest release and package split
 
 The supplied regional packs cover Kanto, Johto, Hoenn and Sinnoh and their
 alternate-color forms, with a complete Simplified Chinese UI, names and
 descriptions. The recommended installation path is the **[web
-installer](https://nzlov.github.io/TamaPoke/web/)**: flash the firmware,
+installer](https://nzlov.github.io/TamaPoke/)**: flash the firmware,
 then deploy the selected languages and regions to the microSD. Arduino IDE is
 not required.
+
+The root installer is the latest published **stable release**. The separate
+**[latest build](https://nzlov.github.io/TamaPoke/latest/)** follows `main` and
+is intended for testing unreleased changes. Both pages show their channel,
+commit and build date; use the stable release unless you specifically need to
+test current development. Existing `/web/` links continue to redirect to the
+stable installer.
 
 The available species count is **determined by the region packs installed on
 the device**; the Pokédex, eggs, battles and region selectors expose only that
@@ -566,9 +573,9 @@ arduino-cli upload -p /dev/cu.usbmodemXXXX --fqbn "$FQBN" .
 bash tools/flash.sh --monitor
 ```
 
-Supported local build scripts stamp the firmware with the current short commit
-ID and UTC build time. A GitHub Pages release build instead uses the published
-GitHub Release tag verbatim.
+Supported local and Pages latest-build scripts stamp the firmware with the
+current short commit ID and UTC build time. The stable GitHub Pages build uses
+the published GitHub Release tag verbatim.
 
 ### Run it on your computer
 

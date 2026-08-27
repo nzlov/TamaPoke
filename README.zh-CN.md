@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-[![在浏览器中刷写](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://nzlov.github.io/TamaPoke/web/)
+[![在浏览器中刷写](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://nzlov.github.io/TamaPoke/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![开发板](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
 ![固件](https://img.shields.io/badge/firmware-v3.6-8A2BE2)
@@ -31,13 +31,18 @@ CO5300 QSPI 显示驱动和 CST9217 I2C 触控。你可以培育任意已安装�
 >（CC BY-NC，Pokémon © Nintendo/Game Freak）；3D 外壳采用 CC BY-NC-SA。
 > 详见[许可证](#许可证)与[致谢](#致谢)。
 
-🔴 **3D 打印精灵球外壳与打印配置 → [MakerWorld](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)** · 在浏览器中刷写 → **[网页安装器](https://nzlov.github.io/TamaPoke/web/)**
+🔴 **3D 打印精灵球外壳与打印配置 → [MakerWorld](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)** · 在浏览器中刷写 → **[网页安装器](https://nzlov.github.io/TamaPoke/)**
 
 ## 最新版本与分包说明
 
 随附地区包覆盖关都、城都、丰缘和神奥及其异色形态，并提供完整的简体中文界面、名称和
-说明。推荐使用**[网页安装器](https://nzlov.github.io/TamaPoke/web/)**：
+说明。推荐使用**[网页安装器](https://nzlov.github.io/TamaPoke/)**：
 先刷入固件，再将所选语言与地区部署到 microSD，无需 Arduino IDE。
+
+根路径安装器始终对应最新发布的**稳定版本**；独立的
+**[最新构建](https://nzlov.github.io/TamaPoke/latest/)** 会跟随 `main`，用于测试尚未发布的
+改动。两个页面都会显示所属通道、提交 ID 和构建日期；除非需要验证当前开发内容，否则
+应使用稳定版本。已有的 `/web/` 链接会继续跳转到稳定安装器。
 
 实际可用的宝可梦数量**由设备上已安装的地区包决定**；图鉴、蛋池、战斗和地区选择器
 只会显示当前可用内容。
@@ -450,8 +455,8 @@ arduino-cli upload -p /dev/cu.usbmodemXXXX --fqbn "$FQBN" .
 bash tools/flash.sh --monitor
 ```
 
-受支持的本地构建脚本会将最新提交的短 ID 和 UTC 构建时间写入固件版本。GitHub Pages
-发布构建则原样使用已发布 GitHub Release 的标签。
+受支持的本地构建脚本和 Pages 最新构建会将最新提交的短 ID 与 UTC 构建时间写入固件
+版本；Pages 稳定构建则原样使用已发布 GitHub Release 的标签。
 
 ### 在电脑上运行
 

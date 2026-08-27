@@ -41,6 +41,7 @@
   .build-info { position:fixed; top:.75rem; right:1rem; z-index:20; padding:.25rem .55rem;
                 border:1px solid var(--track); border-radius:7px; background:#fff;
                 color:#6b6b76; font: .75rem ui-monospace, monospace; box-shadow:0 2px 8px #0002; }
+  .build-info a { margin-left:.55rem; }
   #catalog-error { color:var(--bad); }
   #log { font-family: ui-monospace, monospace; font-size:.85rem; background:#1b1b25; color:#d8dcf0;
          border-radius:10px; padding:.75rem 1rem; margin-top:1rem; max-height:220px; overflow:auto; white-space:pre-wrap; display:none; }
@@ -397,9 +398,16 @@ async function loadBuildInfo() {
     const response = await fetch('build-info.json', { cache: 'no-cache' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const info = await response.json();
-    if (!/^[0-9a-f]{40}$/.test(info.commit) || !/^\d{4}-\d{2}-\d{2}$/.test(info.date))
+    if (!/^[0-9a-f]{40}$/.test(info.commit) || !/^\d{4}-\d{2}-\d{2}$/.test(info.date) ||
+        !['stable', 'latest'].includes(info.channel))
       throw new Error('invalid build metadata');
-    buildInfoEl.textContent = `commit ${info.commit.slice(0, 7)} · ${info.date}`;
+    const isLatest = info.channel === 'latest';
+    buildInfoEl.textContent = `${isLatest ? 'Latest build' : 'Stable release'} · ` +
+      `commit ${info.commit.slice(0, 7)} · ${info.date}`;
+    const channelLink = document.createElement('a');
+    channelLink.href = isLatest ? '../' : './latest/';
+    channelLink.textContent = isLatest ? 'Open stable release' : 'Open latest build';
+    buildInfoEl.append(channelLink);
   } catch (_) {
     buildInfoEl.textContent = 'Build info unavailable';
   }

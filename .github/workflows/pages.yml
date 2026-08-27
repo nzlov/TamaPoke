@@ -3,6 +3,9 @@ name: Deploy web installer to GitHub Pages
 on:
   release:
     types: [published]
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,13 +16,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  refs:
     runs-on: ubuntu-latest
+    outputs:
+      stable_ref: ${{ steps.refs.outputs.stable_ref }}
+      stable_version: ${{ steps.refs.outputs.stable_version }}
+      latest_ref: ${{ steps.refs.outputs.latest_ref }}
+    steps:
+      - name: Resolve stable release and latest source
+        id: refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = release ]; then
+            echo "stable_ref=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+            echo "stable_version=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            STABLE_TAG="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+            echo "stable_ref=$STABLE_TAG" >> "$GITHUB_OUTPUT"
+            echo "stable_version=$STABLE_TAG" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${{ github.event_name }}" = push ]; then
+            echo "latest_ref=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "latest_ref=${{ github.event.repository.default_branch }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: refs
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        channel: [stable, latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ matrix.channel == 'stable' && needs.refs.outputs.stable_ref || needs.refs.outputs.latest_ref }}
+
+      # GLUE: a stable release may predate the dual-channel staging interface.
+      # Use the workflow revision's preparer until every supported release has it.
+      - name: Checkout Pages staging tool
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .pages-tooling
+          sparse-checkout: tools/prepare_pages_site.py
+          sparse-checkout-cone-mode: false
 
       - name: Install Arduino CLI
         uses: arduino/setup-arduino-cli@v2
@@ -55,23 +98,30 @@ jobs:
 
       - name: Build and validate installer assets
         env:
-          TAMAPOKE_VERSION: ${{ github.event.release.tag_name }}
+          TAMAPOKE_VERSION: ${{ matrix.channel == 'stable' && needs.refs.outputs.stable_version || '' }}
         run: bash tools/build_web.sh
 
       - name: Prepare static site
         env:
-          BUILD_COMMIT: ${{ github.sha }}
+          SITE_CHANNEL: ${{ matrix.channel }}
         run: |
-          python3 tools/prepare_pages_site.py _site \
+          BUILD_COMMIT="$(git rev-parse HEAD)"
+          python3 .pages-tooling/tools/prepare_pages_site.py _staged \
+            --source web \
             --commit "$BUILD_COMMIT" \
-            --date "$(git show -s --format=%cs "$BUILD_COMMIT")"
+            --date "$(git show -s --format=%cs "$BUILD_COMMIT")" \
+            --channel "$SITE_CHANNEL"
+          if [ "$SITE_CHANNEL" = latest ]; then
+            mkdir _site
+            mv _staged _site/latest
+          else
+            mv _staged _site
+          fi
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v6
-
-      - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@v4
+      - name: Upload channel artifact
+        uses: actions/upload-artifact@v4
         with:
+          name: site-${{ matrix.channel }}
           path: _site
 
   deploy:
@@ -84,6 +134,21 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Download stable and latest sites
+        uses: actions/download-artifact@v5
+        with:
+          pattern: site-*
+          path: _site
+          merge-multiple: true
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5

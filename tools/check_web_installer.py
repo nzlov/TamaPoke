@@ -68,6 +68,7 @@ required_fragments = [
     "formatOverlay.hidden = true", "document.body.setAttribute('aria-busy', 'true')",
     "document.body.removeAttribute('aria-busy')",
     'id="build-info"', "build-info.json", "info.commit.slice(0, 7)", "info.date",
+    "'stable', 'latest'", "Stable release", "Latest build", "./latest/",
     "Refreshing installed packs…", "question-bank.html", "Question banks",
     "Could not refresh installed packs.", "CRC32_TABLE", "crc32Hex(data)",
     "failed the catalogue download checksum", "?v=${expectedCrc}",
@@ -101,12 +102,14 @@ for build in manifest.get("builds", []):
         if not asset.is_file() or hashlib.sha256(asset.read_bytes()).hexdigest() != marker:
             raise SystemExit(f"firmware cache marker does not match {path!r}")
 
-for fragment in ('BUILD_COMMIT: ${{ github.sha }}', '--format=%cs',
-                 'python3 tools/prepare_pages_site.py', '--commit "$BUILD_COMMIT"', '--date'):
+for fragment in ('BUILD_COMMIT="$(git rev-parse HEAD)"', '--format=%cs',
+                 '.pages-tooling/tools/prepare_pages_site.py', '--source web',
+                 '--commit "$BUILD_COMMIT"', '--date',
+                 '--channel "$SITE_CHANNEL"'):
     if fragment not in pages_workflow:
         raise SystemExit(f"Pages build metadata is missing {fragment!r}")
 for fragment in ('"firmware", "packs"', '"build-info.json"',
-                 '{"commit": commit, "date": date}'):
+                 '{"commit": commit, "date": date, "channel": channel}'):
     if fragment not in pages_preparer:
         raise SystemExit(f"Pages site preparer is missing {fragment!r}")
 

@@ -57,10 +57,11 @@ listing.
 
 The files under `firmware/` and `packs/` are generated outputs and are not
 tracked by Git. The GitHub Pages workflow rebuilds them from the pinned Arduino
-profile and PMD SpriteCollab revision before deployment. That workflow runs only
-when a GitHub Release is published and writes its tag into both the firmware and
-installer manifest. Local builds use the current short commit ID plus UTC build
-time instead.
+profile and PMD SpriteCollab revision before deployment. Each deployment stages
+the latest published release at the Pages root and the default branch under
+`/latest/`. Release builds write the tag into both the firmware and installer
+manifest; latest and local builds use the current short commit ID plus UTC build
+time instead. The former `/web/` address remains a redirect to the stable root.
 
 Regional packs are generated directly from the per-species TPK2/TPTH sources;
 there is no regional intermediate bundle.
@@ -102,9 +103,9 @@ paths and extensions are rejected by the firmware.
 
 ## GitHub Pages
 
-Serve the repository's `/web` directory from Pages. Pages supplies HTTPS and
-same-origin access to the pack files. Web Serial is unavailable in Firefox and
-Safari.
+The Pages workflow publishes the stable installer at `/` and the default-branch
+build at `/latest/`. Pages supplies HTTPS and same-origin access to each
+channel's pack files. Web Serial is unavailable in Firefox and Safari.
 
 All PMD sprites are from PMD SpriteCollab, CC BY-NC; see
 [`../CREDITS.md`](../CREDITS.md).
