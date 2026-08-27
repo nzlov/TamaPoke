@@ -267,8 +267,8 @@ void battleOnSwitchOut(Combatant &combatant) {
 }
 
 BattleMechanic wildBattleMechanic(uint8_t eventRoll, uint8_t choiceRoll,
-                                  bool megaEligible, bool zEligible) {
-  if (eventRoll >= 30) return BMECH_NONE;
+                                  bool hard, bool megaEligible, bool zEligible) {
+  if (eventRoll >= (hard ? 20 : 5)) return BMECH_NONE;
   BattleMechanic choices[3];
   uint8_t count = 0;
   if (zEligible) choices[count++] = BMECH_Z_MOVE;

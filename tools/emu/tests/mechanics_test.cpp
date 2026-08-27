@@ -144,13 +144,6 @@ int main() {
   battleAct(attacker, guard, field, normal, log);
   CHECK(log.missed && guard.hp == hpBefore);
 
-  CHECK(wildBattleMechanic(30, 0, true) == BMECH_NONE);
-  CHECK(wildBattleMechanic(29, 0, false) == BMECH_Z_MOVE);
-  CHECK(wildBattleMechanic(29, 1, false) == BMECH_DYNAMAX);
-  CHECK(wildBattleMechanic(29, 2, false) == BMECH_Z_MOVE);
-  CHECK(wildBattleMechanic(29, 2, true) == BMECH_MEGA);
-  CHECK(wildBattleMechanic(0, 0, false, false) == BMECH_DYNAMAX);
-
   if (failures) return 1;
   std::puts("PASS special battle mechanics");
   return 0;

@@ -408,6 +408,9 @@ quietly leaning on TMs to fill the gap.
 Changing difficulty or rematching cannot claim it twice for that creature, but
 a different creature has its own claim map.
 
+Wild opponents have a **5% chance on normal difficulty and 20% on hard** to use
+one available special mechanic: a Z-Move, Dynamax, or Mega Evolution.
+
 ### Battle weather and terrain
 
 Trainer and LAN battles start with a clear field. A wild battle instead rolls

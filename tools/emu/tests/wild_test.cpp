@@ -65,6 +65,20 @@ int main() {
   ck(wildEncounterMaxLevel(1, true) == 100 &&
      wildEncounterMaxLevel(100, true) == 100,
      "hard encounters allow every level");
+  ck(wildBattleMechanic(4, 0, false, false) == BMECH_Z_MOVE &&
+     wildBattleMechanic(4, 1, false, false) == BMECH_DYNAMAX &&
+     wildBattleMechanic(4, 2, false, true) == BMECH_MEGA,
+     "normal encounters allow every available mechanic below five percent");
+  ck(wildBattleMechanic(5, 0, false, true) == BMECH_NONE,
+     "normal encounter mechanics stop at five percent");
+  ck(wildBattleMechanic(19, 0, true, false) == BMECH_Z_MOVE &&
+     wildBattleMechanic(19, 1, true, false) == BMECH_DYNAMAX &&
+     wildBattleMechanic(19, 2, true, true) == BMECH_MEGA,
+     "hard encounters allow every available mechanic below twenty percent");
+  ck(wildBattleMechanic(20, 0, true, true) == BMECH_NONE,
+     "hard encounter mechanics stop at twenty percent");
+  ck(wildBattleMechanic(0, 0, false, false, false) == BMECH_DYNAMAX,
+     "wild encounters omit unavailable Z-Moves and Mega Evolution");
   ck(wildEscapeChance(50, 50) == 90 && wildEscapeChance(80, 50) == 90,
      "escape defaults to ninety percent when not under-levelled");
   ck(wildEscapeChance(50, 100) == 45,

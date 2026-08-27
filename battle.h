@@ -153,7 +153,8 @@ bool battleActivateMechanic(BattleSideMechanics &side, Combatant &combatant,
 void battleAfterAction(Combatant &combatant);
 void battleOnSwitchOut(Combatant &combatant);
 BattleMechanic wildBattleMechanic(uint8_t eventRoll, uint8_t choiceRoll,
-                                  bool megaEligible, bool zEligible = true);
+                                  bool hard, bool megaEligible,
+                                  bool zEligible = true);
 
 uint16_t stagedStat(uint16_t base, int8_t stage);
 uint16_t battleDamage(const Combatant &atk, const Combatant &def,

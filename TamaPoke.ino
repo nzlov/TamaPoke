@@ -4382,7 +4382,8 @@ void startWildBattle(uint8_t region, bool hard) {
   // 252 is divisible by both possible pool sizes (2 or 3), so modulo selection
   // stays exactly uniform after filtering out unusable mechanics.
   btlWildMechanic = wildBattleMechanic(
-      (uint8_t)random(100), (uint8_t)random(252), battleMegaEligible(btlFoe.dex),
+      (uint8_t)random(100), (uint8_t)random(252), hard,
+      battleMegaEligible(btlFoe.dex),
       battleMechanicAvailable(btlFoeMechanics, btlFoe, BMECH_Z_MOVE));
   btlRegion = region;
   btlTrainer = -1;
