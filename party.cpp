@@ -32,11 +32,25 @@ struct LegacyPartyMonV3 {
 static_assert(sizeof(LegacyPartyMonV3) == 164,
               "combat-only party layout must stay byte-exact");
 
-constexpr uint16_t ROSTER_VERSION = 2;
+constexpr uint16_t ROSTER_VERSION = 3;
+constexpr uint16_t ROSTER_VERSION_WITH_SEPARATE_CLOCK = 2;
 constexpr uint16_t ROSTER_VERSION_WITHOUT_DEATH = 1;
+constexpr uint32_t ROSTER_SNAPSHOT_MAGIC = 0x33534B54UL;  // "TKS3"
 static const char *const BOX_KEYS[BOX_SLOTS / BOX_PAGE_SLOTS] = {
   "box10", "box11", "box12", "box13"
 };
+
+struct RosterSnapshot {
+  uint32_t magic;
+  uint32_t seenEpoch;
+  uint8_t active;
+  uint8_t reserved[3];
+  PartyMon slots[PARTY_SLOTS];
+};
+static_assert(sizeof(RosterSnapshot) <= 4096,
+              "one atomic roster snapshot must fit one NVS blob");
+static_assert(sizeof(RosterSnapshot) == 12 + sizeof(PartyMon) * PARTY_SLOTS,
+              "roster snapshot header must stay byte-exact");
 
 // GLUE: maps the common prefix of both previous raw NVS records into today's
 // PartyMon. Remove only when saves made before natures are unsupported.
@@ -90,25 +104,32 @@ void Party::begin() {
   for (auto &s : box) s = PartyMon();
   prefs.begin("tamapoke", false);
   uint16_t rosterVersion = prefs.getUShort("rostv", 0);
-  if (rosterVersion == ROSTER_VERSION ||
-      rosterVersion == ROSTER_VERSION_WITHOUT_DEATH) {
+  // GLUE: v1/v2 stored team, active slot and RTC baseline in separate keys.
+  // Remove this branch when split roster saves are no longer supported.
+  bool snapshotLoaded = rosterVersion == ROSTER_VERSION && loadSnapshot();
+  savedSeenEpoch = snapshotLoaded ? savedSeenEpoch : prefs.getUInt("seen", 0);
+  if (snapshotLoaded) {
+    legacyMigration = false;
+  } else if (rosterVersion == ROSTER_VERSION_WITH_SEPARATE_CLOCK ||
+             rosterVersion == ROSTER_VERSION_WITHOUT_DEATH) {
     loadRoster();
+    active = prefs.getUChar("active", 0);
     legacyMigration = false;
   } else {
     loadLegacyMons(prefs, "party", slots);
     PartyMon oldBox[18];
     loadLegacyMons(prefs, "box", oldBox);
     for (uint8_t i = 0; i < 18; i++) box[i] = oldBox[i];
+    active = prefs.getUChar("active", 0);
     legacyMigration = true;
   }
   for (auto &s : slots) sanitize(s, false);
   for (auto &s : box) sanitize(s, true);
-  active = prefs.getUChar("active", 0);
   if (active >= PARTY_SLOTS || slots[active].empty()) active = 0;
   lastRosterTick = millis();
-  if (rosterVersion == ROSTER_VERSION_WITHOUT_DEATH) {
+  if (!legacyMigration && rosterVersion != ROSTER_VERSION) {
     saveTeam();
-    boxSave();
+    if (rosterVersion == ROSTER_VERSION_WITHOUT_DEATH) boxSave();
     prefs.putUShort("rostv", ROSTER_VERSION);
   }
 }
@@ -131,11 +152,27 @@ static void loadRosterMons(Preferences &prefs, const char *key,
 
 void Party::loadRoster() {
   loadRosterMons(prefs, "team1", slots);
+  loadBox();
+}
+
+void Party::loadBox() {
   for (uint8_t page = 0; page < BOX_SLOTS / BOX_PAGE_SLOTS; page++) {
     PartyMon (&pageMons)[BOX_PAGE_SLOTS] =
         *reinterpret_cast<PartyMon (*)[BOX_PAGE_SLOTS]>(box + page * BOX_PAGE_SLOTS);
     loadRosterMons(prefs, BOX_KEYS[page], pageMons);
   }
+}
+
+bool Party::loadSnapshot() {
+  if (prefs.getBytesLength("team2") != sizeof(RosterSnapshot)) return false;
+  RosterSnapshot snapshot;
+  if (prefs.getBytes("team2", &snapshot, sizeof(snapshot)) != sizeof(snapshot) ||
+      snapshot.magic != ROSTER_SNAPSHOT_MAGIC) return false;
+  memcpy(slots, snapshot.slots, sizeof(slots));
+  active = snapshot.active;
+  savedSeenEpoch = snapshot.seenEpoch;
+  loadBox();
+  return true;
 }
 
 void Party::sanitize(PartyMon &m, bool boxed) {
@@ -244,8 +281,14 @@ void Party::attach(Pet &pet) {
 }
 
 void Party::saveTeam() {
-  prefs.putBytes("team1", slots, sizeof(slots));
-  prefs.putUChar("active", active);
+  if (boundPet && boundPet->lastSeenEpoch)
+    savedSeenEpoch = boundPet->lastSeenEpoch;
+  RosterSnapshot snapshot = {};
+  snapshot.magic = ROSTER_SNAPSHOT_MAGIC;
+  snapshot.seenEpoch = savedSeenEpoch;
+  snapshot.active = active;
+  memcpy(snapshot.slots, slots, sizeof(slots));
+  prefs.putBytes("team2", &snapshot, sizeof(snapshot));
 }
 
 void Party::saveBoxPage(uint8_t page) {
@@ -305,7 +348,7 @@ void Party::update(Pet &pet, uint32_t nowMs) {
 }
 
 void Party::syncClock(Pet &pet, uint32_t nowEpoch) {
-  uint32_t seen = prefs.getUInt("seen", 0);
+  uint32_t seen = savedSeenEpoch;
   captureActive(pet, false);
   pet.syncClockFrom(nowEpoch, seen, false);
   for (uint8_t i = 0; i < PARTY_SLOTS; i++) {
@@ -326,6 +369,13 @@ void Party::syncClock(Pet &pet, uint32_t nowEpoch) {
 void Party::flushSave(Pet &pet) {
   captureActive(pet, false);
   saveTeam();
+  pendingSave = false;
+  ticksSinceSave = 0;
+}
+
+void Party::saveSnapshot(Pet &pet, uint32_t nowEpoch) {
+  if (nowEpoch) pet.lastSeenEpoch = nowEpoch;
+  pet.saveNow();
   pendingSave = false;
   ticksSinceSave = 0;
 }

@@ -75,7 +75,7 @@ read -r -a FT_LIBS <<< "$(pkg-config --libs freetype2 zlib)"
 FLAGS=(-std=c++17 -O1 -w -I"$EMU" -I"$ROOT" "${FT_CFLAGS[@]}" "$FW_DEFINE" -DCONTENT_DIR="\"$ROOT/web/packs\"")
 
 # these drive setup()/loop()/render(), so they need the sketch itself
-needs_sketch() { case "$1" in touch_test|flush_test|joy_test|anim_test|capture_animation_test|swipe_test|lan_test|console_test|hit_test|battle_debounce_test|battle_reward_ui_test|boot_order_test|brightness_test|first_boot_language_test|starter_test|recovery_test|navigation_test|wild_detail_test|missing_pack_roster_test) return 0;; *) return 1;; esac; }
+needs_sketch() { case "$1" in touch_test|flush_test|joy_test|anim_test|capture_animation_test|swipe_test|lan_test|console_test|hit_test|battle_debounce_test|battle_reward_ui_test|boot_order_test|brightness_test|first_boot_language_test|starter_test|recovery_test|navigation_test|wild_detail_test|missing_pack_roster_test|poweroff_test) return 0;; *) return 1;; esac; }
 
 # and these are standalone: gbsynth.cpp has no Arduino dependency at all, which
 # is the point of it -- linking the game core in would only demand stubs for
@@ -132,7 +132,7 @@ for src in "$HERE"/*_test.cpp; do
     mkdir -p "$OUT/missing-pack-packs"
     python3 "$HERE/make_gender_fixture.py" "$OUT/missing-pack-packs" 905
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/missing-pack-packs\"")
-  elif [[ "$name" =~ ^(gender|box|nature|revive|save|link|hit|wild_traits|lifecycle_exit|flush|cultivation_team|sleep|item_effect)_test$ ]]; then
+  elif [[ "$name" =~ ^(gender|box|nature|revive|save|link|hit|wild_traits|lifecycle_exit|flush|i18n|cultivation_team|sleep|item_effect|poweroff|roster_snapshot)_test$ ]]; then
     mkdir -p "$OUT/gender-packs"
     python3 "$HERE/make_gender_fixture.py" "$OUT/gender-packs"
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/gender-packs\"")

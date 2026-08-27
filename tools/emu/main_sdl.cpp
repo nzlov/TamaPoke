@@ -386,6 +386,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     choiceKind = 3; choiceUntil = millis() + 5000;
   }
   else if (!strcmp(screen, "choiceevolve")) { choiceKind = 1; choiceUntil = millis() + 5000; }
+  else if (!strcmp(screen, "choicepoweroff")) { choiceKind = 4; choiceUntil = millis() + 5000; }
   else if (!strcmp(screen, "choicefarewell")) {
     pet.dbgHatchAs(3, false);
     pet.raisedMinutes = FAREWELL_AGE_MIN;

@@ -136,6 +136,7 @@ public:
   uint8_t activeIndex() const { return active; }
   bool savePending() const { return pendingSave; }
   void flushSave(Pet &pet);
+  void saveSnapshot(Pet &pet, uint32_t nowEpoch);
   void captureActive(const Pet &pet, bool persist = true);
   uint8_t count() const;
   bool hasUnavailableSpecies() const;
@@ -178,10 +179,13 @@ private:
   uint8_t ticksSinceSave = 0;
   bool pendingSave = false;
   bool legacyMigration = false;
+  uint32_t savedSeenEpoch = 0;
 
   void saveTeam();
   void saveBoxPage(uint8_t page);
   void loadRoster();
+  void loadBox();
+  bool loadSnapshot();
   void sanitize(PartyMon &mon, bool boxed);
 };
 

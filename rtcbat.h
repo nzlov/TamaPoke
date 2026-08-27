@@ -17,3 +17,4 @@ bool usbPresent();
 // la pulsacion corta la captura el firmware (pantalla on/off)
 void pwrSetup();
 bool pwrShortPressed();  // sondear en el loop
+void pwrShutdown();      // apagado solicitado por la interfaz; VRTC permanece activo

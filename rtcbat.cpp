@@ -82,6 +82,8 @@ bool usbPresent() { refreshPower(); return cachedUsb; }
 void pwrSetup() {
   if (!pmuOk) return;
   pmu.setPowerKeyPressOffTime(XPOWERS_POWEROFF_4S);
+  pmu.enableLongPressShutdown();
+  pmu.setLongPressPowerOFF();
   pmu.disableIRQ(XPOWERS_AXP2101_ALL_IRQ);
   pmu.enableIRQ(XPOWERS_AXP2101_PKEY_SHORT_IRQ);
   pmu.clearIrqStatus();
@@ -93,4 +95,8 @@ bool pwrShortPressed() {
   bool hit = pmu.isPekeyShortPressIrq();
   if (hit) pmu.clearIrqStatus();
   return hit;
+}
+
+void pwrShutdown() {
+  if (pmuOk) pmu.shutdown();
 }

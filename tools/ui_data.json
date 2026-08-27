@@ -243,7 +243,9 @@
         "El campo bloqueo el movimiento!",
         "%s sufre por la arena",
         "RECOMPENSAS",
-        "%s ENT. +%u"
+        "%s ENT. +%u",
+        "APAGAR",
+        "Apagar dispositivo?"
       ],
       "medalNames": [
         "Nv.10",
@@ -522,7 +524,9 @@
         "The field blocked the move!",
         "%s is hurt by sand",
         "REWARDS",
-        "%s TRAINING +%u"
+        "%s TRAINING +%u",
+        "POWER OFF",
+        "Power off device?"
       ],
       "medalNames": [
         "Lv.10",
@@ -801,7 +805,9 @@
         "Le terrain bloque la capacite!",
         "%s souffre du sable",
         "RECOMPENSES",
-        "%s ENTR. +%u"
+        "%s ENTR. +%u",
+        "ETEINDRE",
+        "Eteindre l'appareil ?"
       ],
       "medalNames": [
         "Niv.10",
@@ -1080,7 +1086,9 @@
         "Das Feld blockiert die Attacke!",
         "%s leidet im Sand",
         "BELOHNUNGEN",
-        "%s TRAIN. +%u"
+        "%s TRAIN. +%u",
+        "AUSSCHALTEN",
+        "Gerat ausschalten?"
       ],
       "medalNames": [
         "Lv.10",
@@ -1359,7 +1367,9 @@
         "Il campo blocca la mossa!",
         "%s soffre per la sabbia",
         "RICOMPENSE",
-        "%s ALL. +%u"
+        "%s ALL. +%u",
+        "SPEGNI",
+        "Spegnere il dispositivo?"
       ],
       "medalNames": [
         "Lv.10",
@@ -1638,7 +1648,9 @@
         "O campo bloqueou o golpe!",
         "%s sofre com a areia",
         "RECOMPENSAS",
-        "%s TREINO +%u"
+        "%s TREINO +%u",
+        "DESLIGAR",
+        "Desligar dispositivo?"
       ],
       "medalNames": [
         "Niv.10",
@@ -1923,7 +1935,9 @@
         "场地使招式无法使用！",
         "%s受到沙暴伤害",
         "战利品",
-        "%s训练值 +%u"
+        "%s训练值 +%u",
+        "关机",
+        "确认关机？"
       ],
       "medalNames": [
         "10级",

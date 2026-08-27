@@ -110,6 +110,8 @@ bool batCharging() { return false; }
 bool usbPresent() { return true; }
 void pwrSetup() {}
 bool pwrShortPressed() { return false; }
+bool gPowerOffRequested = false;
+void pwrShutdown() { gPowerOffRequested = true; }
 
 // --- audio (silent) ---
 void audioBegin() {}

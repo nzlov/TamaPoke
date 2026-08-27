@@ -85,10 +85,8 @@ int main() {
      roster.box[0].dex == 4 && roster.box[0].joy == 19,
      "team and Box exchange complete cultivation records");
 
-  Preferences clock;
-  clock.begin("tamapoke", false);
-  clock.putUInt("seen", 1000);
-  clock.end();
+  active.lastSeenEpoch = 1000;
+  roster.captureActive(active);
   uint32_t teamBeforeOffline = roster.slots[1].ageMinutes;
   uint32_t boxBeforeOffline = roster.box[0].ageMinutes;
   roster.syncClock(active, 1600);

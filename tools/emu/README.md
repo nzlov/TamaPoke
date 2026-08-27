@@ -64,7 +64,7 @@ sips -s format png shot.ppm --out shot.png     # macOS; or use ImageMagick
 `--shot` accepts the boot splash, normal pages, and their actionable overlays and result
 states. Representative names include `main`, `evolvecta`, `farewellcta`,
 `runawaycta`, `sleep`, `feedmenu`,
-`choicerelease`, `choicefarewell`, `choiceevolve`, `bath`, `keyboard`, `battle`, `btlmoves`,
+`choicerelease`, `choicefarewell`, `choiceevolve`, `choicepoweroff`, `bath`, `keyboard`, `battle`, `btlmoves`,
 `btlmechanics`, `btlzmove`, `btlnormal`, `btldynamax`, `btlmega`,
 `btlrevive`, `profile`, `gallery`, `clock`, `menu`, `navmenu`, `mainroster`, `box`, `boxreplace`, `boxwithdraw`, `boxdeposit`, `bag`,
 `bagdetail`, `train`, `ballgame`, `sack`, `speed`, `quiz`, `quizcorrect`,

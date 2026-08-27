@@ -8,6 +8,7 @@
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
+PACKS="${TAMAPOKE_CONTENT_DIR:-$ROOT/web/packs}"
 cd "$HERE"
 
 TAMAPOKE_VERSION="${TAMAPOKE_VERSION:-$(python3 "$ROOT/tools/firmware_version.py")}"
@@ -38,7 +39,7 @@ python3 genproto.py "$ROOT/TamaPoke.ino"
 g++ -std=c++17 -O1 -w \
   -I. -I"$ROOT" \
   "$FW_DEFINE" \
-  -DCONTENT_DIR="\"$ROOT/web/packs\"" \
+  -DCONTENT_DIR="\"$PACKS\"" \
   $(sdl2-config --cflags) $(pkg-config --cflags freetype2 zlib) \
   -o tamapoke-emu \
   sketch.cpp wavout.cpp "$ROOT/gbsynth.cpp" "$ROOT/art_codec.cpp" "$ROOT/content.cpp" "$ROOT/font_engine.cpp" "$ROOT/nature.cpp" "$ROOT/pet.cpp" "$ROOT/quiz.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/inventory.cpp" "$ROOT/items.cpp" "$ROOT/wild.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp" \

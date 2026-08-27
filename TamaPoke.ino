@@ -590,7 +590,7 @@ bool menuOpen = false;
 #define MENU_H 316
 #define MENU_ROW_H 52
 #define MENU_ROW_GAP 6
-// 5 rows: STATS / POKEDEX / SETTINGS / RELEASE-or-FAREWELL / CLOSE. At MENU_Y
+// 5 rows: STATS / POKEDEX / SETTINGS / RELEASE-or-FAREWELL / POWER OFF. At MENU_Y
 // 75 the panel spans 75..391 and the round display gives a half-width of 171 there against
 // the 160 a row needs, so the corners stay on glass.
 #define MENU_ROWS 5
@@ -1203,7 +1203,7 @@ uint32_t lastRender = 0;
 uint32_t lastInteract = 0;
 uint8_t dimStage = 0;        // 0 despierto, 1 atenuado (90s), 2 casi apagado (5min)
 bool swallowGesture = false; // el toque que despierta no acciona nada
-uint8_t choiceKind = 0;     // decision dialog: 0 none, 1 evolution, 3 farewell/release
+uint8_t choiceKind = 0;     // decision dialog: 0 none, 1 evolution, 3 farewell/release, 4 power off
 uint32_t choiceUntil = 0;   // se cierra solo a este millis
 #define CHOICE_BTN_X 93
 #define CHOICE_BTN_W 280
@@ -2533,8 +2533,8 @@ void onTap(int16_t x, int16_t y) {
     return;
   }
   if (navMenuOpen) { navMenuTap(x, y); return; }
-  // The menu is modal and has three independent ways out: the CLOSE row, a tap
-  // anywhere on the dimmed area outside the panel, and any swipe (see onSwipe).
+  // The menu is modal. A tap outside the panel or any swipe closes it; its last
+  // row deliberately opens a confirmation instead of being a third close path.
   // Deliberately no timeout: a menu that vanishes while you read it is worse
   // than one that lingers.
   if (menuOpen) {
@@ -2554,7 +2554,8 @@ void onTap(int16_t x, int16_t y) {
         if (!pet.canExitNow()) { sfxPlay(SFX_DENY); return; }
         choiceKind = 3; choiceUntil = millis() + 12000;
       }
-      return;                                     // i == 4 is CLOSE: just shut
+      else if (i == 4) { choiceKind = 4; choiceUntil = millis() + 12000; }
+      return;
     }
     return;
   }
@@ -2651,6 +2652,12 @@ void onTap(int16_t x, int16_t y) {
       if (b1) {
         if (pet.canFarewellNow()) pet.startFarewell();
         else pet.release();
+      }
+    } else if (choiceKind == 4) {          // confirmed firmware power-off
+      if (b1) {
+        uint32_t e = rtcEpoch();
+        party.saveSnapshot(pet, e ? e : pet.lastSeenEpoch);
+        pwrShutdown();
       }
     }
     choiceKind = 0;
@@ -7466,7 +7473,7 @@ static void menuRowLabel(int i, char *out, size_t n) {
     case 2: snprintf(out, n, "%s", T(S_SETTINGS)); break;
     case 3: snprintf(out, n, "%s",
                      pet.canFarewellNow() ? T(S_FAR_GO) : T(S_RETIRE)); break;
-    default: snprintf(out, n, "%s", T(S_CLOSE)); break;
+    default: snprintf(out, n, "%s", T(S_POWER_OFF)); break;
   }
 }
 
@@ -8377,6 +8384,9 @@ void drawChoiceDialog() {
     snprintf(contextual, sizeof(contextual), T(S_RELEASE_FMT), speciesName(pet.speciesId));
     q = contextual; o1 = T(S_RETIRE); o2 = T(S_NO);
     c1 = UI_BAR_BAD; t1 = UI_WHITE; c2 = UI_BAR_OK; t2 = UI_WHITE;
+  } else if (choiceKind == 4) {
+    q = T(S_POWER_OFF_Q); o1 = T(S_POWER_OFF); o2 = T(S_NO);
+    c1 = UI_BAR_BAD; t1 = UI_WHITE; c2 = UI_TRACK; t2 = UI_INK;
   } else {                // despedida
     q = T(S_FAR_Q); o1 = T(S_FAR_GO); o2 = T(S_FAR_STAY);
     c1 = UI_BAR_WARN; t1 = UI_INK; c2 = UI_BAR_OK; t2 = UI_WHITE;

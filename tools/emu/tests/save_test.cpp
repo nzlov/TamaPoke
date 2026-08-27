@@ -120,12 +120,12 @@ int main(){
     ck(!saveImport(t.data(), t.size()), "and a truncated blob is refused");
     ck(!saveImport(buf, 3), "as is one too short to hold a header");
     // and none of that touched the live save
-    ck(nvs().count("team1") == 1, "a refused import leaves the save alone");
+    ck(nvs().count("team2") == 1, "a refused import leaves the save alone");
   }
 
   // --- the real thing: wipe everything, restore, and compare
   pet.factoryReset();
-  ck(nvs().empty() || nvs().count("team1")==0, "the wipe really emptied NVS");
+  ck(nvs().empty() || nvs().count("team2")==0, "the wipe really emptied NVS");
   ck(saveImport(buf, n), "the backup imports");
 
   Pet p2; Party q2;

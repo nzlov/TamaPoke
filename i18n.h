@@ -154,6 +154,8 @@ enum StrId : uint8_t {
   S_BTL_SAND_HURT,
   S_REWARDS,        // battle victory settlement title
   S_WIN_TRAINING_FMT, // "%s TRAINING +%u" -- decayable wild-battle reward
+  // menu power-off confirmation (append-only)
+  S_POWER_OFF, S_POWER_OFF_Q,
   STR_COUNT
 };
 

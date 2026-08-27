@@ -38,9 +38,10 @@ const SaveField SAVE_FIELDS[] = {
   { "cday", SK_U32 },
   { "medal", SK_U16 },  { "tmedal", SK_U16 }, { "mstone", SK_U16 },
   { "ghi", SK_U16 },    { "shi", SK_U16 },    { "qhi", SK_U16 },
-  // the six cultivation slots and four frozen Box pages. The two legacy blobs
-  // remain listed so a backup taken before setup finishes migration is complete.
+  // the six cultivation slots and four frozen Box pages. Split team1/active/seen
+  // and the older party/box blobs remain listed for pre-migration backups.
   { "rostv", SK_U16 }, { "active", SK_U8 }, { "team1", SK_BYTES },
+  { "team2", SK_BYTES },
   { "box10", SK_BYTES }, { "box11", SK_BYTES },
   { "box12", SK_BYTES }, { "box13", SK_BYTES },
   { "party", SK_BYTES }, { "box", SK_BYTES },

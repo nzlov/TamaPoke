@@ -673,8 +673,9 @@ If one bottoms out it counts as a *slip-up*.
 
 **Touch gestures:**
 - **Tap the name** at the top = the **menu** (stats / Pokédex / Settings /
-  Release or Farewell). Close it
-  with the CLOSE row, by tapping anywhere outside the panel, or with any swipe.
+  Release or Farewell, Power off). Power off opens a confirmation and saves the
+  current cultivation snapshot before asking the PMU to shut down. Close the
+  menu by tapping anywhere outside the panel or with any swipe.
 - Tap the occupied-slot indicators above the name to open the Box.
 - Tap the creature = pet it (+happiness, bond).
 - Horizontal swipe = switch between the occupied cultivation slots.
@@ -684,7 +685,8 @@ If one bottoms out it counts as a *slip-up*.
 - Swipe down = open the **bag / battle centre / badges** navigation page.
 
 **Physical PWR button:** short = screen on/off · long (4 s) = full power-off
-(the RTC stays alive, so time passes even while it's off).
+(the RTC stays alive, so time passes even while it's off). The PMU keeps this
+hardware long-press shutdown independent of the firmware.
 
 ## Decisions: you choose, and you watch
 
