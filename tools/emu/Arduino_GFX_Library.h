@@ -34,6 +34,7 @@ public:
   uint16_t textColor = 0xFFFF;
   uint8_t textSize = 1;
   volatile bool frameReady = false;
+  uint32_t fullBlackClears = 0;
 
   Arduino_Canvas(int16_t w, int16_t h, Arduino_CO5300 *p)
       : _w(w), _h(h), _panel(p), fb(w * h, 0) {}
@@ -50,7 +51,10 @@ public:
     fb[(size_t)y * _w + x] = c;
   }
 
-  void fillScreen(uint16_t c) { std::fill(fb.begin(), fb.end(), c); }
+  void fillScreen(uint16_t c) {
+    if (c == RGB565_BLACK) fullBlackClears++;
+    std::fill(fb.begin(), fb.end(), c);
+  }
 
   void fillRect(int x, int y, int w, int h, uint16_t c) {
     if (w < 0) { x += w; w = -w; }

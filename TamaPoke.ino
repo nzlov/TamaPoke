@@ -1303,6 +1303,14 @@ void setup() {
 
   pet.begin();
   party.begin();
+  if ((pet.speciesId > 0 && !dexValid(pet.speciesId)) ||
+      party.hasUnavailableSpecies()) {
+    Serial.println("saved roster requires a missing regional pack");
+    recoveryMode = true;
+    lastInteract = millis();
+    renderRecovery();
+    return;
+  }
   party.attach(pet);
   inventory.begin();
   loadUserBrightness();
@@ -5388,7 +5396,6 @@ static void btlEaseBars() {
 // The moment the ladder builds toward. It used to be one more line in the same
 // message box as "It's super effective!", with the badge awarded silently.
 void renderWin() {
-  gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
 
   gfx->setTextColor(UI_BAR_WARN);
@@ -5583,7 +5590,6 @@ static bool btlFoeDetailHit(int16_t x, int16_t y) {
 }
 
 static void renderBattleFoeDetail() {
-  gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
   const DexEntry &entry = dexEntry(btlFoe.dex);
 
@@ -5750,7 +5756,6 @@ static void renderBattleCapture(uint32_t now, uint8_t stage) {
     drawFoe = p < BTL_CAPTURE_ABSORB_MS / 2;
   }
 
-  gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
   drawBattleBack(65, 3);
   btlSyncSprite(1, btlFoe);
@@ -5826,7 +5831,8 @@ void renderBattle() {
     return;
   }
   btlEaseBars();
-  gfx->fillScreen(RGB565_BLACK);
+  // The previous frame can still be crossing the CO5300 DMA boundary here.
+  // Keep it valid while repainting instead of exposing a full black clear.
   drawBattleBack(30, 2);
   drawBattleFieldEffects(now);
   // the lower band stays flat so the move grid and the HP text keep their

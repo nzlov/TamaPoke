@@ -17,6 +17,7 @@ void FakeESP::restart(){exit(0);}
 int FakeSerial::available(){return 0;}
 String FakeSerial::readStringUntil(char){return String("");}
 void setup(); void render(); void renderBootSplash();
+void battleTap(int16_t x, int16_t y);
 uint8_t uiCurrentScreen();
 extern const char *const SCREEN_NAME[];
 extern Arduino_Canvas *gfx;
@@ -78,6 +79,15 @@ int main(){
   for (uint8_t p=0;p<4;p++){ clearAll(); cardOpen=true; cardPage=p;
     char n[16]; snprintf(n,sizeof(n),"card%u",p); check(n); }
   clearAll(); startBattle(9,50); check("battle");
+  gfx->fullBlackClears = 0;
+  battleTap(149, 308);  // FIGHT through the real battle tap dispatcher
+  render();
+  if (gfx->fullBlackClears) {
+    printf("FAIL  battle action clears the live framebuffer to black before redraw\n");
+    bad++;
+  } else {
+    printf("PASS  battle action redraw keeps a valid frame throughout\n");
+  }
   clearAll(); quiz.config.choiceWeight=0;
   quiz.begin("en-US"); check("quiz"); quiz.active=false;
 

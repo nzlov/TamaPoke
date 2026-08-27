@@ -136,6 +136,7 @@ public:
   void flushSave(Pet &pet);
   void captureActive(const Pet &pet, bool persist = true);
   uint8_t count() const;
+  bool hasUnavailableSpecies() const;
   bool isFull() const { return count() >= PARTY_SLOTS; }
   int firstFree() const;        // index of the first empty slot, -1 if full
   bool add(const PartyMon &m);  // into the first free slot; false if full
