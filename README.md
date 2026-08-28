@@ -325,9 +325,11 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
   A successful capture adds the caught creature to that same page and stores it
   automatically. Only a full collection continues to the replace-or-release picker.
 - Selecting a capture ball arms the board's QMI8658 motion sensor for three seconds.
-  Keep hold of the device and swing it forward to throw; tapping cancels, and a
-  timeout returns to the bag without consuming the ball. If the IMU is unavailable,
-  selecting the ball keeps the original touch-only throw as a fallback.
+  Keep hold of the device, flick it forward by roughly 60 degrees, and hold the
+  final pose briefly; returning immediately to the start is rejected as a shake.
+  Tapping cancels, and a timeout returns to the bag without consuming the ball.
+  If the IMU is unavailable, selecting the ball keeps the original touch-only
+  throw as a fallback.
 - Capture items hide the battle UI while the wild creature moves to centre for
   a non-blocking throw and three-shake sequence. Success finishes before the
   settlement page. After breaking free, the creature enters a non-stacking Angry

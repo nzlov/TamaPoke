@@ -252,7 +252,7 @@
         "Precision",
         "Evasion",
         "FORMA",
-        "MUEVE PARA LANZAR",
+        "LANZA Y MANTEN",
         "toca: cancelar"
       ],
       "medalNames": [
@@ -568,7 +568,7 @@
         "Accuracy",
         "Evasion",
         "FORM",
-        "SWING TO THROW",
+        "FLICK & HOLD",
         "tap: cancel"
       ],
       "medalNames": [
@@ -884,7 +884,7 @@
         "Precision",
         "Esquive",
         "FORME",
-        "GESTE POUR LANCER",
+        "LANCE ET MAINTIENS",
         "touche: annuler"
       ],
       "medalNames": [
@@ -1200,7 +1200,7 @@
         "Genauigkeit",
         "Fluchtwert",
         "FORM",
-        "SCHWINGEN ZUM WURF",
+        "SCHWINGEN & HALTEN",
         "tippen: abbrechen"
       ],
       "medalNames": [
@@ -1516,7 +1516,7 @@
         "Precisione",
         "Elusione",
         "FORMA",
-        "MUOVI PER LANCIARE",
+        "LANCIA E TIENI",
         "tocca: annulla"
       ],
       "medalNames": [
@@ -1832,7 +1832,7 @@
         "Precisao",
         "Evasao",
         "FORMA",
-        "MOVE PARA LANCAR",
+        "LANCE E SEGURE",
         "toca: cancelar"
       ],
       "medalNames": [
@@ -2154,7 +2154,7 @@
         "命中率",
         "闪避率",
         "形态",
-        "挥动设备抛球",
+        "向前甩动并保持",
         "点击取消"
       ],
       "medalNames": [

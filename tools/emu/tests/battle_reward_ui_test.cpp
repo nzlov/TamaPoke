@@ -142,12 +142,18 @@ int main() {
   btlFeedThrowSample({1300, 0.0f, 0.0f, 1.3f, 0.0f, 220.0f, 0.0f});
   btlFeedThrowSample({1350, 0.0f, 0.0f, 1.7f, 0.0f, 300.0f, 0.0f});
   btlFeedThrowSample({1400, 0.0f, 0.0f, 1.3f, 0.0f, 250.0f, 0.0f});
+  check(masterBall && btlThrowArmed && !btlCaptureAnimating &&
+        inventory.count(masterBall->key) == armedStock,
+        "flick motion alone does not consume the ball before the terminal hold");
+  for (uint32_t at = 1450; at <= 1750; at += 50) {
+    btlFeedThrowSample({at, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+  }
   check(masterBall && !btlThrowArmed && btlCaptureAnimating &&
         btlCaptureItem == masterBall->key &&
         inventory.count(masterBall->key) + 1 == armedStock,
-        "a valid gesture starts the existing capture path and consumes one ball");
+        "flick-and-hold starts the existing capture path and consumes one ball");
   uint8_t armedAfterThrow = masterBall ? inventory.count(masterBall->key) : 0;
-  btlFeedThrowSample({1450, 0.0f, 0.0f, 1.8f, 0.0f, 300.0f, 0.0f});
+  btlFeedThrowSample({1800, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f});
   check(masterBall && inventory.count(masterBall->key) == armedAfterThrow,
         "samples after the accepted gesture cannot consume another ball");
   btlCaptureAnimating = false;
