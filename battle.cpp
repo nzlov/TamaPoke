@@ -4,15 +4,26 @@
 
 // ---------- building a combatant ----------
 
+static uint16_t bondedBattleStat(uint16_t value, uint8_t bond) {
+  uint8_t boundedBond = bond > 100 ? 100 : bond;
+  uint32_t scaled = (uint32_t)value * (70u + boundedBond / 2u) / 100u;
+  return scaled > UINT16_MAX ? UINT16_MAX : (uint16_t)scaled;
+}
+
 static void fill(Combatant &c, int16_t dex, uint8_t lvl, uint16_t hp,
-                 uint16_t a, uint16_t d, uint16_t sa, uint16_t sd, uint16_t sp) {
+                 uint16_t a, uint16_t d, uint16_t sa, uint16_t sd, uint16_t sp,
+                 uint8_t bond) {
   c = Combatant();
   c.dex = dex;
   c.level = lvl;
-  c.maxHp = hp ? hp : 1;
+  c.maxHp = bondedBattleStat(hp, bond);
+  if (!c.maxHp) c.maxHp = 1;
   c.hp = c.maxHp;
-  c.base[SI_ATK] = a; c.base[SI_DEF] = d;
-  c.base[SI_SPA] = sa; c.base[SI_SPD] = sd; c.base[SI_SPE] = sp;
+  c.base[SI_ATK] = bondedBattleStat(a, bond);
+  c.base[SI_DEF] = bondedBattleStat(d, bond);
+  c.base[SI_SPA] = bondedBattleStat(sa, bond);
+  c.base[SI_SPD] = bondedBattleStat(sd, bond);
+  c.base[SI_SPE] = bondedBattleStat(sp, bond);
   if (dex >= 1 && dex <= dexCount()) {
     c.type1 = dexEntry(dex).type1;
     c.type2 = dexEntry(dex).type2;
@@ -24,7 +35,7 @@ static void fill(Combatant &c, int16_t dex, uint8_t lvl, uint16_t hp,
 
 void combatantFromPet(Combatant &c, const Pet &p) {
   fill(c, p.speciesId, p.level(), p.vitStat(), p.atkStat(), p.defStat(),
-       p.spaStat(), p.spdStat(), p.speStat());
+       p.spaStat(), p.spdStat(), p.speStat(), p.bond);
   for (int i = 0; i < MOVE_SLOTS; i++) c.moves[i] = p.moves[i];
   c.shiny = p.shiny;
   c.ability = speciesAbility(p.speciesId, p.abilitySlot);
@@ -37,7 +48,7 @@ void combatantFromPet(Combatant &c, const Pet &p) {
 
 void combatantFromParty(Combatant &c, const PartyMon &m) {
   fill(c, m.dex, (uint8_t)m.level, party.vitOf(m), party.atkOf(m), party.defOf(m),
-       party.spaOf(m), party.spdOf(m), party.speOf(m));
+       party.spaOf(m), party.spdOf(m), party.speOf(m), m.bond);
   for (int i = 0; i < MOVE_SLOTS; i++) c.moves[i] = m.moves[i];
   c.shiny = m.shiny != 0 || m.sparkle != 0;
   c.ability = speciesAbility(m.dex, m.abilitySlot());

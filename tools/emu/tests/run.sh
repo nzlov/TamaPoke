@@ -134,7 +134,7 @@ for src in "$HERE"/*_test.cpp; do
     mkdir -p "$OUT/missing-pack-packs"
     python3 "$HERE/make_gender_fixture.py" "$OUT/missing-pack-packs" 905
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/missing-pack-packs\"")
-  elif [[ "$name" =~ ^(battle_reward_ui|gender|box|nature|revive|save|link|hit|wild_traits|lifecycle_exit|flush|i18n|cultivation_team|sleep|item_effect|poweroff|roster_snapshot)_test$ ]]; then
+  elif [[ "$name" =~ ^(battle_reward_ui|bond_battle|gender|box|nature|revive|save|link|hit|wild_traits|lifecycle_exit|flush|i18n|cultivation_team|sleep|item_effect|poweroff|roster_snapshot)_test$ ]]; then
     mkdir -p "$OUT/gender-packs"
     python3 "$HERE/make_gender_fixture.py" "$OUT/gender-packs"
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/gender-packs\"")

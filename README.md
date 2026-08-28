@@ -356,8 +356,9 @@ empty roster receives a safety egg.
 - **Streak** (player-wide, survives across pets): first care each real day; milestones
   at **3 / 7 / 30 / 100** days; skipping a day breaks it.
 - **Bond** (per pet, resets on hatch): grows with affection (**cap +20/day**), cools on
-  neglect. Streak and bond still improve a safety egg's rarity and IVs, but do
-  do not enter the wild shiny roll.
+  neglect. In battle it scales all six player stats by `70% + Bond / 2`, from
+  70% at 0 through 100% at 60 to 120% at 100. Streak and bond still improve a
+  safety egg's rarity and IVs, but do not enter the wild shiny roll.
 - **8 medals** (Lv10/25/50, favorite berry found, 7-day streak, max bond, final form,
   "fit" = weight 0 & no slip-ups), per-pet + a global counter.
 - **Pokédex:** raising a species registers it; completion covers every species
@@ -865,6 +866,11 @@ The IV also sets **how far each stat can be trained at all** (77–100), so a
 well-rolled individual has a genuinely higher ceiling, not just a head start.
 See [Battle stats & IVs](#battle-stats--ivs) for the numbers.
 
+When a player creature enters battle, bond multiplies max HP, Attack, Defense,
+Special Attack, Special Defense and Speed by `70% + Bond / 2`. Bond 0 gives 70%,
+Bond 60 gives 100%, and Bond 100 gives 120%; the stat card continues to show the
+underlying values before this battle-only multiplier.
+
 Shown on the Battle page of the stat card. The (hidden) weight goes up with candy
 and burns off with training.
 
@@ -873,7 +879,8 @@ and burns off with training.
 - **Streak** (the player's, persists across creatures): the first care of each
   real day advances the streak; 3/7/30/100 milestones are celebrated; skipping a
   day breaks it. Flame badge on the main screen.
-- **Bond** (the creature's): rises slowly with care and petting, drops with slip-ups.
+- **Bond** (the creature's): rises slowly with care and petting, drops with slip-ups,
+  and scales all six player battle stats from 70% to 120% (100% at Bond 60).
 - **Medals** for the individual (level, berry, streak, bond, final form, fit) +
   a global counter. Medals page of the stat card.
 - **Name**: nicknames appear in the header and stat card.
