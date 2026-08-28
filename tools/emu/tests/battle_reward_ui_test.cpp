@@ -29,6 +29,8 @@ void onSwipeV(int dir);
 void boxTap(int16_t x, int16_t y);
 void btlFinish(bool won);
 void btlCompleteCapture();
+void startTrainerBattle(uint8_t idx, bool hard);
+bool btlAttemptRun(uint8_t roll);
 uint8_t uiCurrentScreen();
 
 extern const char *const SCREEN_NAME[];
@@ -38,7 +40,8 @@ extern Party party;
 extern Inventory inventory;
 extern Combatant btlYou, btlFoe;
 extern PartyMon btlWildMon, capturedMon, partyPending;
-extern bool battleOpen, btlWild, btlOver, partyPick, boxOpen;
+extern bool battleOpen, btlWild, btlOver, btlWon, partyPick, boxOpen;
+extern uint8_t gymRegion;
 extern int8_t btlTrainer;
 extern bool btlLink;
 extern uint8_t btlSquadN, btlEnteredMask, btlWildMechanic;
@@ -234,6 +237,23 @@ int main() {
   boxTap(233, 400);
   check(!boxOpen && !partyPick && partyPending.empty(),
         "the replacement page can release the newly caught creature");
+
+  for (uint8_t i = 0; i < PARTY_SLOTS; i++) party.releaseAt(i);
+  for (uint8_t i = 0; i < BOX_SLOTS; i++) party.boxReleaseAt(i);
+  pet.dbgHatchAs(1, false);
+  party.captureActive(pet, false);
+  gymRegion = 0;
+  startTrainerBattle(0, false);
+  check(battleOpen && btlSquadN == 1, "a one-member gym battle starts");
+  check(!btlAttemptRun(99) && btlOver && !btlWon && !pet.isDead(),
+        "a gym defeat ends the battle without killing the active pet");
+  btlYou.hp = btlYou.maxHp;
+  btlWild = true;
+  btlOver = false;
+  btlWon = false;
+  battleOpen = true;
+  check(!btlAttemptRun(99) && btlOver && !btlWon && pet.isDead(),
+        "the same defeat still kills the active pet in a wild encounter");
 
   std::puts(bad ? "FAILURES" : "capture is settled and stored through the reward flow");
   return bad ? 1 : 0;

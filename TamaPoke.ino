@@ -5306,7 +5306,7 @@ static void btlHandleFaints() {
   bool youDown = btlYou.fainted();
   bool foeDown = btlFoe.fainted();
   if (!youDown && !foeDown) return;
-  if (youDown) btlSetPersistentDead(btlSquadAt, true);
+  if (youDown && btlWild) btlSetPersistentDead(btlSquadAt, true);
 
   bool youHaveNext = youDown && btlPlayerHasReplacement();
   bool foeHasNext = foeDown && btlFoeHasReplacement();
