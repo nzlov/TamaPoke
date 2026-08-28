@@ -82,9 +82,9 @@ operations require confirmation; restart the device after changing the card.
 > **Upgrade note:** the first migration to runtime packages clears saves made by
 > older firmware. For later same-schema updates, leave **Erase device** unchecked
 > to preserve the current save; flashing does not delete packages on the microSD.
-> ABI 4 stores precomputed sprite display scales and gender-specific sprite
-> variants in every region pack, so redeploy all region packs together with this
-> firmware; older region-pack ABIs are rejected.
+> ABI 6 adds canonical species ability slots, localized ability data, and
+> required move-tag records. Redeploy the move pack and every region pack with
+> this firmware; older package ABIs are rejected.
 > Region packages are large (a 40 MB package normally takes 10–15 minutes over
 > USB serial). Restart the device after deployment.
 
@@ -456,6 +456,42 @@ one available special mechanic: a Z-Move, Dynamax, or Mega Evolution.
   Pokemon has one shared normal/shiny appearance; the branch appears only after
   Mega Evolution.
 
+### Abilities
+
+All 1,025 current species carry their canonical normal slot(s) and hidden slot
+in the regional packs. The ability belongs to the individual: eggs and trainer
+Pokemon receive one available normal slot uniformly, while a hard wild encounter
+has an exact **5%** chance to use its hidden slot when that species has one.
+Normal wild encounters never grant hidden abilities. Existing saves migrate to
+a deterministic normal slot, and the chosen slot survives evolution, cultivation,
+Box storage, backup/restore, capture, and LAN transfer. Mega Evolution replaces
+the active ability when the official form data publishes one.
+
+The Battle page of the stat card shows the localized ability name and description.
+The resolver currently applies **214** abilities through shared stat, damage,
+accuracy, priority, status, hit, knockout, switch-out, and end-of-round hooks.
+This includes weather- and terrain-dependent stats, ability-driven move types,
+stat-change reactions, indirect-damage protection, and single-battle aura and
+ruin effects in addition to immunities and absorptions. Move records now carry
+contact, sound, punch, bite, pulse, ballistic, powder, dance, slicing, wind, and
+reflectable tags rather than inferring them from names.
+
+Accuracy and evasion use the original -6..+6 stage table. Reflect, Light Screen,
+and Aurora Veil last five completed rounds; Spikes, Toxic Spikes, Stealth Rock,
+and Sticky Web persist on one side until Rapid Spin or Defog clears them. Entry
+hazards, entry abilities, trapping, manual switching, forced switching, pivot
+moves, Wimp Out, and Emergency Exit all use one switch lifecycle, including LAN
+state synchronization.
+
+Species-exclusive battle forms are real combat state for Castform, Cherrim,
+Darmanitan, Aegislash, Wishiwashi, Minior, Mimikyu, Cramorant, Eiscue, Morpeko,
+and Palafin. Their weather, HP, move, hit, end-of-round, and re-entry triggers
+change types or battle stats as appropriate. King's Shield and Aura Wheel are
+append-only catalogue entries so saved move IDs remain stable. The remaining
+**79** catalogue abilities require held items, doubles/allies, or other mechanics
+outside the current single-battle model and are kept visible without fabricated
+approximations.
+
 ### Battle weather and terrain
 
 Trainer and LAN battles start with a clear field. A wild battle instead rolls
@@ -488,8 +524,8 @@ Electric/Grass/Fairy/Psychic terrain.
   halves Earthquake against them; Psychic blocks positive-priority attacks
   against them.
 - Misty Terrain halves Dragon damage against grounded targets and prevents their
-  status conditions and confusion. With no ability system, only Flying-type
-  creatures count as airborne.
+  status conditions and confusion. Flying types and creatures with Levitate
+  count as airborne.
 
 The active weather and terrain are shown as localized HUD pills and animated
 overlays. In LAN play the host sends absolute field state with every result, so a

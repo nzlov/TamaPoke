@@ -123,6 +123,7 @@ public:
   uint8_t trMinAtk = 0, trMinDef = 0, trMinSpe = 0;
   NatureId nature = NATURE_UNKNOWN;
   PetGender gender = GENDER_UNKNOWN;
+  AbilitySlot abilitySlot = ABILITY_SLOT_UNKNOWN;
   uint8_t gymIvRewards[GYM_IV_REWARD_SLOTS] = { 0 };
   bool berryKnown = false;  // ya descubrio su baya favorita
   bool shiny = false;       // combined rare state: color variant + particle FX

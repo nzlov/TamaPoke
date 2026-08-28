@@ -555,6 +555,24 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     btlMsgCount = 1;
     snprintf(btlMsg[0], sizeof(btlMsg[0]), T(S_BTL_FIELD_BEGAN), T(S_FIELD_RAIN));
   }
+  else if (!strcmp(screen, "btlconditions")) {
+    pet.dbgHatchAs(6, false);
+    pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
+    pet.relearnFromLevel();
+    startBattle(778, 50);
+    btlFoe.ability = ABILITY_DISGUISE;
+    battleInitializeForm(btlFoe);
+    battleSetEnvironment(btlField, BWEATHER_SNOW);
+    btlField.sides[0].reflectTurns = 4;
+    btlField.sides[0].spikesLayers = 3;
+    btlField.sides[0].toxicSpikesLayers = 2;
+    btlField.sides[0].stealthRock = true;
+    btlField.sides[0].stickyWeb = true;
+    btlField.sides[1].lightScreenTurns = 3;
+    btlField.sides[1].auroraVeilTurns = 2;
+    btlField.sides[1].spikesLayers = 1;
+    btlMsgCount = 0;
+  }
   else if (!strcmp(screen, "btldynamax")) {
     pet.dbgHatchAs(6, false);
     pet.gigantamaxFactor = true;

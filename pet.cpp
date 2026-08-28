@@ -274,6 +274,10 @@ void Pet::importState(const PartyMon &m) {
                ? m.gender
                : genderForLegacy(m.dex, dexEntry(m.dex).femaleRate,
                                  m.ivAtk, m.ivDef, m.ivSpe, m.ivHp);
+  abilitySlot = abilitySlotValid(m.abilitySlot()) &&
+                        speciesAbility(m.dex, m.abilitySlot())
+                    ? m.abilitySlot()
+                    : abilitySlotForLegacy(m.dex, m.ivAtk, m.ivDef, m.ivSpe, m.ivHp);
   ivAtk = m.ivAtk; ivDef = m.ivDef; ivSpe = m.ivSpe; ivHp = m.ivHp;
   trAtk = m.trAtk; trDef = m.trDef; trSpe = m.trSpe;
   trMinAtk = m.trMinAtk; trMinDef = m.trMinDef; trMinSpe = m.trMinSpe;
@@ -329,6 +333,7 @@ void Pet::exportState(PartyMon &out) const {
   out.shiny = shiny ? 1 : 0;
   out.sparkle = out.shiny;
   out.setGigantamaxFactor(gigantamaxFactor);
+  out.setAbilitySlot(abilitySlot);
   out.nature = nature;
   out.setDead(dead);
   out.gender = gender;
@@ -336,7 +341,7 @@ void Pet::exportState(PartyMon &out) const {
   memcpy(out.gymIvRewards, gymIvRewards, sizeof(gymIvRewards));
   strncpy(out.nick, nick, sizeof(out.nick) - 1);
   out.nick[sizeof(out.nick) - 1] = 0;
-  out.stateVersion = 4;
+  out.stateVersion = 5;
   out.fullness = fullness; out.joy = joy; out.energy = energy; out.hygiene = hygiene;
   out.poops = poops; out.weight = weight;
   out.berryKnown = berryKnown ? 1 : 0;
@@ -1048,6 +1053,7 @@ void Pet::hatch() {
   rollIVs();
   nature = (NatureId)random(NATURE_COUNT);
   gender = genderFromRate(dexEntry(speciesId).femaleRate, (uint8_t)random(8));
+  abilitySlot = abilitySlotForLegacy(speciesId, ivAtk, ivDef, ivSpe, ivHp);
   trAtk = trDef = trSpe = 0;
   trMinAtk = trMinDef = trMinSpe = 0;
   raisedMinutes = 0;
@@ -1099,6 +1105,8 @@ void Pet::evolve() {
     }
   SpeciesId next = options[random(optionCount)];
   speciesId = next;
+  if (!speciesAbility(speciesId, abilitySlot))
+    abilitySlot = abilitySlotForLegacy(speciesId, ivAtk, ivDef, ivSpe, ivHp);
   registerSpecies(speciesId, shiny);
   checkLearnGates();   // the new form may gate a move at this very level
   sfxPlay(SFX_EVOLVE);
@@ -1425,6 +1433,7 @@ void Pet::save() {
   prefs.putUChar("ivhp", ivHp);
   prefs.putUChar("nat", (uint8_t)nature);
   prefs.putUChar("gndr", (uint8_t)gender);
+  prefs.putUChar("abil", (uint8_t)abilitySlot);
   prefs.putUChar("tatk", trAtk);
   prefs.putUChar("tdef", trDef);
   prefs.putUChar("tspe", trSpe);
@@ -1527,6 +1536,15 @@ void Pet::load() {
   else if (!genderValid(gender))
     gender = genderForLegacy(speciesId, dexEntry(speciesId).femaleRate,
                              ivAtk, ivDef, ivSpe, ivHp);
+  abilitySlot = (AbilitySlot)prefs.getUChar("abil", ABILITY_SLOT_UNKNOWN);
+  if (speciesId < 1) {
+    abilitySlot = ABILITY_SLOT_UNKNOWN;
+  } else if (!abilitySlotValid(abilitySlot) ||
+             (dexValid(speciesId) && !speciesAbility(speciesId, abilitySlot))) {
+    abilitySlot = dexValid(speciesId)
+        ? abilitySlotForLegacy(speciesId, ivAtk, ivDef, ivSpe, ivHp)
+        : ABILITY_SLOT_ONE;
+  }
   eggTarget = prefs.getShort("eggT2", 4);
   eggTaps = prefs.getUChar("crack", 0);
   careMistakes = prefs.getUChar("mist", 0);

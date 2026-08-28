@@ -158,6 +158,8 @@ enum StrId : uint8_t {
   S_POWER_OFF, S_POWER_OFF_Q,
   // nature details modal (append-only)
   S_NATURE_EFFECT, S_NATURE_STAT_EFFECT_FMT, S_NATURE_TRAIN_EFFECT_FMT,
+  S_STAT_ACC, S_STAT_EVA,
+  S_BTL_FORM,
   STR_COUNT
 };
 

@@ -31,6 +31,8 @@ struct DexEntry {
   uint8_t type1, type2;
   // PokeAPI's canonical female eighths: 0..8, or 0xFF for genderless.
   uint8_t femaleRate;
+  // Normal slot 1, normal slot 2 and hidden slot. Zero means unavailable.
+  uint16_t abilities[3];
   SpeciesId evolutions[CONTENT_MAX_EVOLUTIONS];
   uint8_t evolutionCount;
 };

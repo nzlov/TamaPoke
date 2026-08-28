@@ -197,11 +197,12 @@ void Party::sanitize(PartyMon &m, bool boxed) {
         reward != GYM_IV_REWARD_LEGACY_CLAIMED) reward = 0;
   if (m.dex > 0 && !natureValid(m.nature))
     m.nature = natureForLegacy(m.dex, m.ivAtk, m.ivDef, m.ivSpe, m.ivHp);
-  m.state &= (PARTY_MON_DEAD | PARTY_MON_GIGANTAMAX_FACTOR);
+  m.state &= (PARTY_MON_DEAD | PARTY_MON_GIGANTAMAX_FACTOR |
+              PARTY_MON_ABILITY_MASK);
   if (m.dex <= 0) m.state = 0;
   m.nick[sizeof(m.nick) - 1] = 0;
   uint8_t version = m.stateVersion;
-  if (version != 1 && version != 2 && version != 3 && version != 4) {
+  if (version != 1 && version != 2 && version != 3 && version != 4 && version != 5) {
     m.fullness = m.joy = m.energy = 80; m.hygiene = 100;
     m.ageMinutes = (uint32_t)(m.level ? m.level - 1 : 0) * MINUTES_PER_LEVEL;
     m.lastLearnLevel = (uint8_t)(m.level > MAX_LEVEL ? MAX_LEVEL : m.level);
@@ -228,7 +229,15 @@ void Party::sanitize(PartyMon &m, bool boxed) {
         : GENDER_UNKNOWN;
   }
   if (m.dex <= 0) m.gender = GENDER_UNKNOWN;
-  m.stateVersion = 4;
+  if (m.dex > 0 && (version < 5 || !abilitySlotValid(m.abilitySlot()) ||
+                    (dexValid(m.dex) && !speciesAbility(m.dex, m.abilitySlot())))) {
+    AbilitySlot slot = dexValid(m.dex)
+        ? abilitySlotForLegacy(m.dex, m.ivAtk, m.ivDef, m.ivSpe, m.ivHp)
+        : ABILITY_SLOT_ONE;
+    m.setAbilitySlot(slot);
+  }
+  if (m.dex <= 0) m.setAbilitySlot(ABILITY_SLOT_UNKNOWN);
+  m.stateVersion = 5;
   auto sanitizeTraining = [](uint8_t &training, uint8_t &floor, uint8_t iv) {
     uint8_t cap = Pet::trMaxFor(iv);
     if (floor > cap) floor = cap;

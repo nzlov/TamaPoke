@@ -9,6 +9,7 @@ import struct
 from pathlib import Path
 
 from pmd_layout import pmd_display_scale, pmd_pair_display_scale
+from pack_format import PACK_ABI
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -18,10 +19,11 @@ SECTION = struct.Struct("<4sIII")
 EXT_KIND = {".tui": 1, ".tregion": 2, ".tmove": 3, ".tquiz": 4}
 REQUIRED_SECTIONS = {
     1: {b"META", b"STRS", b"FONT", b"LAYT"},
-    2: {b"SPEC", b"EVOS", b"NAME", b"LNAM", b"REGN", b"RLNM", b"SPRI", b"SBLB", b"THMB",
+    2: {b"SPEC", b"ASLT", b"EVOS", b"NAME", b"LNAM", b"REGN", b"RLNM", b"SPRI", b"SBLB", b"THMB",
         b"LOCL", b"BTTL", b"TRNR", b"GSTR", b"BADG", b"BBLB"},
-    3: {b"MOVE", b"MFLG", b"NAME", b"LNAM", b"LOFS", b"LERN", b"TYPS", b"TSTR", b"TLNM",
-        b"CHRT", b"LOCL", b"ITEM", b"INAM", b"ILNM", b"ILOC", b"MEGA", b"GMAX"},
+    3: {b"MOVE", b"MFLG", b"MTAG", b"NAME", b"LNAM", b"LOFS", b"LERN", b"TYPS", b"TSTR", b"TLNM",
+        b"CHRT", b"LOCL", b"ITEM", b"INAM", b"ILNM", b"ILOC", b"ABIL", b"ANAM", b"ALNM",
+        b"ALOC", b"MEGA", b"GMAX"},
     4: {b"QLOC", b"QIDX", b"QDAT"},
 }
 OPTIONAL_SECTIONS = {2: {b"MFSP", b"MFBL"}, 3: {b"IICO"}}
@@ -172,6 +174,18 @@ def validate(path: Path, expected: dict) -> None:
         validate_ui_font(sections[b"FONT"], section_counts[b"FONT"])
     elif kind == 2:
         validate_localized_strings(sections[b"RLNM"], section_counts[b"RLNM"])
+        species_count = section_counts[b"SPEC"]
+        ability_slot_record = struct.Struct("<HHHH")
+        if not species_count or section_counts[b"ASLT"] != species_count or \
+                len(sections[b"ASLT"]) != species_count * ability_slot_record.size:
+            raise ValueError("invalid species ability slot table")
+        previous_species = 0
+        for offset in range(0, len(sections[b"ASLT"]), ability_slot_record.size):
+            species, slot_one, slot_two, hidden = ability_slot_record.unpack_from(
+                sections[b"ASLT"], offset)
+            if species <= previous_species or not slot_one:
+                raise ValueError("invalid species ability slot record")
+            previous_species = species
         sprite_record = struct.Struct("<HIIIIIIIIB")
         sprite_count = section_counts[b"SPRI"]
         if not sprite_count or len(sections[b"SPRI"]) != sprite_count * sprite_record.size:
@@ -207,8 +221,14 @@ def validate(path: Path, expected: dict) -> None:
         if len(sections[b"MOVE"]) != move_count * 17 or \
                 len(sections[b"MFLG"]) != move_count or \
                 section_counts[b"MFLG"] != move_count or \
-                any(flag & ~0x0F for flag in sections[b"MFLG"]):
+                any(flag & ~0x7F for flag in sections[b"MFLG"]):
             raise ValueError("invalid move field flags")
+        if len(sections[b"MTAG"]) != move_count * 2 or \
+                section_counts[b"MTAG"] != move_count:
+            raise ValueError("invalid move tags")
+        move_tags = struct.unpack(f"<{move_count}H", sections[b"MTAG"])
+        if any(tags & ~0x07FF for tags in move_tags):
+            raise ValueError("invalid move tags")
         item_record = struct.Struct("<HBBBBhHBBI")
         item_count = section_counts[b"ITEM"]
         if not item_count or len(sections[b"ITEM"]) != item_count * item_record.size:
@@ -242,6 +262,19 @@ def validate(path: Path, expected: dict) -> None:
             raise ValueError("duplicate item key")
         validate_localized_strings(sections[b"ILNM"], item_count)
         validate_localized_strings(sections[b"ILOC"], item_count)
+        ability_record = struct.Struct("<HI")
+        ability_count = section_counts[b"ABIL"]
+        if not ability_count or len(sections[b"ABIL"]) != ability_count * ability_record.size:
+            raise ValueError("invalid ability table size")
+        ability_keys = []
+        for offset in range(0, len(sections[b"ABIL"]), ability_record.size):
+            key, _name = ability_record.unpack_from(sections[b"ABIL"], offset)
+            ability_keys.append(key)
+        if any(not key for key in ability_keys) or any(
+                left >= right for left, right in zip(ability_keys, ability_keys[1:])):
+            raise ValueError("invalid ability keys")
+        validate_localized_strings(sections[b"ALNM"], ability_count)
+        validate_localized_strings(sections[b"ALOC"], ability_count)
         if b"IICO" in sections:
             icon_section = sections[b"IICO"]
             icon_record = struct.Struct("<II")
@@ -273,17 +306,19 @@ def validate(path: Path, expected: dict) -> None:
                             for pixel in icon[pixels_at:]):
                     raise ValueError("invalid TIC1 item icon data")
                 previous_end = icon_at + icon_size
-        mega_record = struct.Struct("<HBBBBBBBB")
+        mega_record = struct.Struct("<HBBBBBBBBH")
         mega_count = section_counts[b"MEGA"]
         if not mega_count or len(sections[b"MEGA"]) != mega_count * mega_record.size:
             raise ValueError("invalid mega form table size")
         previous_key = (0, -1)
         type_count = section_counts[b"TYPS"]
         for offset in range(0, len(sections[b"MEGA"]), mega_record.size):
-            species, form, type1, type2, *stats = mega_record.unpack_from(
-                sections[b"MEGA"], offset)
+            values = mega_record.unpack_from(sections[b"MEGA"], offset)
+            species, form, type1, type2 = values[:4]
+            stats, ability = values[4:9], values[9]
             if (species, form) <= previous_key or form > 3 or type1 >= type_count or \
-                    (type2 != 255 and type2 >= type_count) or any(not value for value in stats):
+                    (type2 != 255 and type2 >= type_count) or any(not value for value in stats) or \
+                    (ability and ability not in ability_keys):
                 raise ValueError("invalid mega form record")
             previous_key = (species, form)
         gmax_count = section_counts[b"GMAX"]
@@ -323,7 +358,7 @@ def validate(path: Path, expected: dict) -> None:
 
 def main() -> int:
     index = json.loads((PACKS / "index.json").read_text(encoding="utf-8"))
-    if index.get("schema") != 1 or index.get("packAbi") != 4:
+    if index.get("schema") != 1 or index.get("packAbi") != PACK_ABI:
         raise SystemExit("unsupported index schema")
     packages = index.get("packages", [])
     ids = {item["id"] for item in packages}

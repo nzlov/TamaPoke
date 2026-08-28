@@ -154,6 +154,33 @@ int main(){
     ck(regionInfo(regionAll()).hi == dexCount(), "and ALL reaches the end of the table");
   }
 
+  // --- every current species has a canonical normal ability, while optional
+  // slots either name a real catalogue entry or stay explicitly empty.
+  {
+    int missing = 0, invalid = 0, hidden = 0;
+    for (SpeciesId species = 1; species <= dexCount(); species++) {
+      AbilityKey first = speciesAbility(species, ABILITY_SLOT_ONE);
+      AbilityKey second = speciesAbility(species, ABILITY_SLOT_TWO);
+      AbilityKey secret = speciesAbility(species, ABILITY_SLOT_HIDDEN);
+      if (!first) missing++;
+      if (!abilityValid(first) || (second && !abilityValid(second)) ||
+          (secret && !abilityValid(secret))) invalid++;
+      if (secret) hidden++;
+    }
+    ck(abilityCount() > 0 && missing == 0,
+       "every species has a normal ability from the shared catalogue");
+    ck(invalid == 0, "every populated normal or hidden slot resolves");
+    ck(hidden > 0, "the catalogue includes hidden abilities");
+    ck(speciesAbility(1, ABILITY_SLOT_ONE) == ABILITY_OVERGROW &&
+       speciesAbility(1, ABILITY_SLOT_HIDDEN) == 34,
+       "Bulbasaur keeps its canonical normal and hidden abilities");
+    int8_t zh = uiFindLocale("zh-CN");
+    ck(zh >= 0 && uiActivateLocale((uint8_t)zh) &&
+       !strcmp(abilityName(ABILITY_OVERGROW), "茂盛") &&
+       abilityDescription(ABILITY_OVERGROW, "zh-CN") != nullptr,
+       "ability names and descriptions are available in Simplified Chinese");
+  }
+
   // --- the Pokedex bitmap is big enough for the table it indexes
   {
     Pet p; p.begin(); p.factoryReset();

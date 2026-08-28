@@ -7,13 +7,18 @@ import sys
 from pathlib import Path
 
 
+TOOLS = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(TOOLS))
+from pack_format import PACK_ABI  # noqa: E402
+
+
 # Large enough to cross several of the firmware reader's 4 KiB CRC chunks.
 payload = bytes(range(256)) * 80
 common = struct.Struct("<4sHBBIIIIHH20s")
 section = struct.Struct("<4sIII")
 header_size = common.size + section.size
 raw = common.pack(
-    b"TPPK", 4, 2, 0, header_size + len(payload),
+    b"TPPK", PACK_ABI, 2, 0, header_size + len(payload),
     binascii.crc32(payload) & 0xFFFFFFFF, 1, 1,
     header_size, 1, b"reader-test".ljust(20, b"\0"),
 )

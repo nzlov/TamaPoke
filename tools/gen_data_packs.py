@@ -41,11 +41,16 @@ from dex_moves import (  # noqa: E402
     MOVES, AIL_NONE, AIL_PARA, AIL_BURN, AIL_POISON, AIL_SLEEP, AIL_FREEZE,
     AIL_CONFUSE, EF_NONE, EF_STAGE, EF_RECOIL, EF_DRAIN, EF_FIXED_LVL,
     EF_FIXED, EF_PRIORITY, EF_NEVER_MISS, EF_MULTI, EF_HEAL, EF_RECHARGE,
-    EF_CHARGE, EF_SET_WEATHER, EF_SET_TERRAIN, BWEATHER_SUN, BWEATHER_RAIN,
+    EF_CHARGE, EF_PROTECT, EF_SET_WEATHER, EF_SET_TERRAIN, BWEATHER_SUN, BWEATHER_RAIN,
+    EF_SET_SCREEN, EF_SET_HAZARD, EF_CLEAR_FIELD, EF_FORCE_SWITCH, EF_PIVOT,
     BWEATHER_SAND, BWEATHER_SNOW, BTERRAIN_ELECTRIC, BTERRAIN_GRASSY,
     BTERRAIN_MISTY, BTERRAIN_PSYCHIC, FIELD_MOVE_FLAGS, MF_RAIN_ACCURATE,
-    MF_SNOW_ACCURATE, MF_SOLAR_CHARGE, MF_GRASSY_WEAKENED, MC_PHYS, MC_SPEC,
-    MC_STATUS, ST_ATK, ST_DEF, ST_SPA, ST_SPD, ST_SPE, TG_SELF,
+    BSCREEN_REFLECT, BSCREEN_LIGHT_SCREEN, BSCREEN_AURORA_VEIL,
+    BHAZARD_SPIKES, BHAZARD_TOXIC_SPIKES, BHAZARD_STEALTH_ROCK,
+    BHAZARD_STICKY_WEB, BCLEAR_OWN_HAZARDS, BCLEAR_ALL,
+    MF_SNOW_ACCURATE, MF_SOLAR_CHARGE, MF_GRASSY_WEAKENED,
+    MF_STANCE_SHIELD, MF_AURA_WHEEL, MF_GULP_MISSILE, MC_PHYS, MC_SPEC,
+    MC_STATUS, ST_ATK, ST_DEF, ST_SPA, ST_SPD, ST_SPE, ST_ACC, ST_EVA, TG_SELF,
 )
 from dex_presentation import BIOME_OVERRIDE, TYPE_BIOME, rgb565  # noqa: E402
 
@@ -60,6 +65,22 @@ SPECIES_DESCRIPTION_LOCALES = sorted(
 )
 MEGA_DATA = json.loads((HERE / "mega_data.json").read_text(encoding="utf-8"))
 GIGANTAMAX_DATA = json.loads((HERE / "gigantamax_data.json").read_text(encoding="utf-8"))
+ABILITY_DATA = json.loads((HERE / "ability_data.json").read_text(encoding="utf-8"))
+MOVE_TAG_DATA = json.loads((HERE / "move_tag_data.json").read_text(encoding="utf-8"))
+
+MOVE_TAG_BITS = {
+    "contact": 1 << 0,
+    "sound": 1 << 1,
+    "punch": 1 << 2,
+    "bite": 1 << 3,
+    "pulse": 1 << 4,
+    "ballistic": 1 << 5,
+    "powder": 1 << 6,
+    "dance": 1 << 7,
+    "slicing": 1 << 8,
+    "wind": 1 << 9,
+    "reflectable": 1 << 10,
+}
 
 TYPE_COLORS = [
     0xAD4F, 0xF406, 0x6C9E, 0xFE86, 0x7E4A, 0x9EDB,
@@ -381,6 +402,8 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
     rarities = rarity_rows()
     type_ids = {name: index for index, name in enumerate(TYPE_ORDER)}
     spec_record = struct.Struct("<HBBH10BIB")
+    ability_record = struct.Struct("<HHHH")
+    ability_by_species = {int(row["dex"]): row["slots"] for row in ABILITY_DATA["species"]}
     evolution_record = struct.Struct("<HH")
     sprite_record = struct.Struct("<HIIIIIIIIB")
     trainer_record = struct.Struct("<BBBBII" + "HB" * 6)
@@ -413,6 +436,7 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
             raise FileNotFoundError(f"{thumbs_path} is required to rebuild regional packs")
         names_blob, name_offsets = string_pool([row[2] for row in rows])
         specs = bytearray()
+        ability_slots = bytearray()
         evolutions = bytearray()
         for row, name_offset in zip(rows, name_offsets):
             number, _slug, _display, accent_type, evolves_to, evolve_level = row
@@ -426,6 +450,10 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
                 type_ids[t1], type_ids[t2] if t2 else 255, region_id,
                 name_offset, 255 if GENDER_RATES[number] < 0 else GENDER_RATES[number],
             ))
+            slots = ability_by_species.get(number)
+            if slots is None or len(slots) != 3 or not slots[0]:
+                raise ValueError(f"species {number}: incomplete ability slots")
+            ability_slots.extend(ability_record.pack(number, *(int(value) for value in slots)))
             targets = EVOLUTION_BRANCHES.get(number, [evolves_to] if evolves_to else [])
             if len(targets) > 8:
                 raise ValueError(f"species {number}: more than 8 evolution targets")
@@ -527,10 +555,11 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
             regional_names(region_name, battle), 1 + len(battle["trainers"]) * 2,
         )
         mechanics_hash = binascii.crc32(
-            specs + evolutions + region + battle_meta + trainers
+            specs + ability_slots + evolutions + region + battle_meta + trainers
         ) & 0xFFFFFFFF
         sections = [
             ("SPEC", bytes(specs), len(rows)),
+            ("ASLT", bytes(ability_slots), len(rows)),
             ("EVOS", bytes(evolutions), len(evolutions) // evolution_record.size),
             ("NAME", names_blob, len(rows)),
             ("LNAM", localized_names, len(rows)),
@@ -564,9 +593,11 @@ def unpack_move(row: tuple) -> tuple:
 
 STAT_LABELS = {
     "en-US": ((ST_ATK, "Attack"), (ST_DEF, "Defense"), (ST_SPA, "Sp. Atk"),
-              (ST_SPD, "Sp. Def"), (ST_SPE, "Speed")),
+              (ST_SPD, "Sp. Def"), (ST_SPE, "Speed"), (ST_ACC, "Accuracy"),
+              (ST_EVA, "Evasion")),
     "zh-CN": ((ST_ATK, "攻击"), (ST_DEF, "防御"), (ST_SPA, "特攻"),
-              (ST_SPD, "特防"), (ST_SPE, "速度")),
+              (ST_SPD, "特防"), (ST_SPE, "速度"), (ST_ACC, "命中率"),
+              (ST_EVA, "闪避率")),
 }
 
 AILMENT_LABELS = {
@@ -586,6 +617,9 @@ def move_effect_text(category: int, effect: int, param: int, mask: int,
                      stages: int, target: int, locale: str) -> str:
     if effect == EF_NONE or effect == EF_NEVER_MISS:
         return ""
+    if effect == EF_PROTECT:
+        return ("Protects the user for this turn."
+                if locale == "en-US" else "本回合保护使用者。")
     if effect == EF_STAGE:
         stats = stat_names(mask, locale)
         if locale == "en-US":
@@ -618,6 +652,39 @@ def move_effect_text(category: int, effect: int, param: int, mask: int,
         }
         return (f"Creates {names[locale][param]} for 5 turns."
                 if locale == "en-US" else f"形成{names[locale][param]}，持续5回合。")
+    if effect == EF_SET_SCREEN:
+        names = {
+            "en-US": {BSCREEN_REFLECT: "Reflect", BSCREEN_LIGHT_SCREEN: "Light Screen",
+                      BSCREEN_AURORA_VEIL: "Aurora Veil"},
+            "zh-CN": {BSCREEN_REFLECT: "反射壁", BSCREEN_LIGHT_SCREEN: "光墙",
+                      BSCREEN_AURORA_VEIL: "极光幕"},
+        }
+        requirement = (" Requires snow." if locale == "en-US" else " 仅在雪天下成功。") \
+            if param == BSCREEN_AURORA_VEIL else ""
+        return ((f"Creates {names[locale][param]} on the user's side for 5 turns."
+                 if locale == "en-US" else f"在己方形成{names[locale][param]}，持续5回合。") +
+                requirement)
+    if effect == EF_SET_HAZARD:
+        names = {
+            "en-US": {BHAZARD_SPIKES: "Spikes", BHAZARD_TOXIC_SPIKES: "Toxic Spikes",
+                      BHAZARD_STEALTH_ROCK: "Stealth Rock", BHAZARD_STICKY_WEB: "Sticky Web"},
+            "zh-CN": {BHAZARD_SPIKES: "撒刺", BHAZARD_TOXIC_SPIKES: "毒刺",
+                      BHAZARD_STEALTH_ROCK: "隐形岩", BHAZARD_STICKY_WEB: "黏黏网"},
+        }
+        return (f"Sets {names[locale][param]} on the opposing side."
+                if locale == "en-US" else f"在对方场地设置{names[locale][param]}。")
+    if effect == EF_CLEAR_FIELD:
+        if param == BCLEAR_OWN_HAZARDS:
+            return ("Clears hazards from the user's side and raises Speed by 1 stage."
+                    if locale == "en-US" else "清除己方场地陷阱，并使自身速度提高1级。")
+        return ("Clears hazards and screens from both sides and lowers the foe's Evasion by 1 stage."
+                if locale == "en-US" else "清除双方墙与场地陷阱，并使对手闪避率降低1级。")
+    if effect == EF_FORCE_SWITCH:
+        return ("Forces the target to switch out."
+                if locale == "en-US" else "强制目标换下。")
+    if effect == EF_PIVOT:
+        return ("The user switches out after dealing damage."
+                if locale == "en-US" else "造成伤害后使用者换下。")
     if locale == "en-US":
         return {
             EF_RECOIL: f"User takes 1/{param} of damage dealt as recoil.",
@@ -675,6 +742,15 @@ def move_descriptions(rows: list[tuple]) -> dict[str, list[str]]:
         if field_flag & MF_GRASSY_WEAKENED:
             en += " Power is halved against grounded targets on Grassy Terrain."
             zh += " 对青草场地上的地面目标威力减半。"
+        if field_flag & MF_STANCE_SHIELD:
+            en += " Returns Stance Change users to Shield Form."
+            zh += " 使战斗切换形态的使用者恢复盾牌形态。"
+        if field_flag & MF_AURA_WHEEL:
+            en += " Becomes Dark-type in Hangry Mode."
+            zh += " 在空腹花纹时变为恶属性。"
+        if field_flag & MF_GULP_MISSILE:
+            en += " Triggers Gulp Missile."
+            zh += " 会触发一口导弹。"
         if ailment:
             en += f" Has a {chance}% chance to cause {AILMENT_LABELS['en-US'][ailment]}."
             zh += f" 有{chance}%概率使对手陷入{AILMENT_LABELS['zh-CN'][ailment]}。"
@@ -716,6 +792,7 @@ def required_ui_codepoints() -> set[int]:
         move_descriptions(list(MOVES)),
         localized_type_names(),
         ITEM_DATA,
+        ABILITY_DATA,
     ]
     return set(range(32, 127)) | {
         ord(char)
@@ -733,6 +810,18 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
     move_record = struct.Struct("<HBBBBBbBbBBBI")
     move_blob = bytearray()
     field_flags = bytearray()
+    if MOVE_TAG_DATA.get("schema") != 1 or MOVE_TAG_DATA.get("tagBits") != MOVE_TAG_BITS:
+        raise ValueError("move_tag_data.json has an unsupported schema or tag-bit ABI")
+    move_tag_rows = MOVE_TAG_DATA.get("moves", [])
+    move_tags_by_slug = {row["slug"]: row["tags"] for row in move_tag_rows}
+    if len(move_tags_by_slug) != len(move_tag_rows):
+        raise ValueError("move tag slugs must be unique")
+    expected_slugs = {slug or name.lower() for name, slug, *_rest in MOVES}
+    if set(move_tags_by_slug) != expected_slugs:
+        missing = sorted(expected_slugs - set(move_tags_by_slug))
+        extra = sorted(set(move_tags_by_slug) - expected_slugs)
+        raise ValueError(f"move tag catalogue mismatch: missing={missing}, extra={extra}")
+    move_tags = bytearray(struct.pack("<H", 0))
     for move_id, (row, name_offset) in enumerate(zip(move_rows, name_offsets)):
         name, _slug, typ, category, power, accuracy, effect, param, mask, stages, target, ailment, chance = unpack_move(row)
         move_blob.extend(move_record.pack(
@@ -740,6 +829,12 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
             mask, stages, target, ailment, chance, name_offset,
         ))
         field_flags.append(FIELD_MOVE_FLAGS.get(_slug, 0))
+        if move_id:
+            tag_names = move_tags_by_slug[_slug or name.lower()]
+            if len(tag_names) != len(set(tag_names)) or any(tag not in MOVE_TAG_BITS for tag in tag_names):
+                raise ValueError(f"move {_slug or name.lower()}: invalid tags {tag_names}")
+            tag_mask = sum(MOVE_TAG_BITS[tag] for tag in tag_names)
+            move_tags.extend(struct.pack("<H", tag_mask))
 
     by_slug = {slug: index + 1 for index, (_name, slug, *_rest) in enumerate(MOVES) if slug}
     offsets = [0]
@@ -784,9 +879,35 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
     }, len(ITEM_DATA))
     item_icons = packed_item_icons(ITEM_DATA)
 
-    mega_record = struct.Struct("<HBBBBBBBB")
+    ability_rows = ABILITY_DATA.get("abilities", [])
+    if not ability_rows or len(ability_rows) > 512:
+        raise ValueError("ability catalogue is empty or too large")
+    ability_keys = [int(row["id"]) for row in ability_rows]
+    if ability_keys != sorted(set(ability_keys)) or any(not key or key > 0xFFFF for key in ability_keys):
+        raise ValueError("ability keys must be sorted unique non-zero uint16 values")
+    ability_names, ability_name_offsets = string_pool(
+        [row["names"]["en-US"] for row in ability_rows]
+    )
+    ability_blob = bytearray()
+    ability_record = struct.Struct("<HI")
+    for row, name_offset in zip(ability_rows, ability_name_offsets):
+        ability_blob.extend(ability_record.pack(int(row["id"]), name_offset))
+    ability_localized_names = localized_strings({
+        locale: [row["names"][locale] for row in ability_rows]
+        for locale in ("en-US", "zh-CN")
+    }, len(ability_rows))
+    ability_localized_descriptions = localized_strings({
+        locale: [row["descriptions"][locale] for row in ability_rows]
+        for locale in ("en-US", "zh-CN")
+    }, len(ability_rows))
+
+    mega_record = struct.Struct("<HBBBBBBBBH")
     mega_blob = bytearray()
     form_ids = {"standard": 0, "x": 1, "y": 2, "z": 3}
+    mega_abilities = {
+        (int(row["dex"]), form_ids[row["form"]]): int(row["ability"])
+        for row in ABILITY_DATA.get("mega", [])
+    }
     previous_key = (0, -1)
     for form in MEGA_DATA:
         species = int(form["species"])
@@ -799,10 +920,13 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
             raise ValueError(f"invalid mega types for species {species}")
         if len(stats) != 5 or any(not 0 < int(value) <= 255 for value in stats):
             raise ValueError(f"invalid mega stats for species {species}")
+        if (species, form_id) not in mega_abilities:
+            raise ValueError(f"Mega {species}/{form_id}: missing ability assignment")
         mega_blob.extend(mega_record.pack(
             species, form_id, type_ids[types[0]],
             type_ids[types[1]] if len(types) == 2 else 255,
             *(int(value) for value in stats),
+            mega_abilities[(species, form_id)],
         ))
         previous_key = (species, form_id)
 
@@ -816,12 +940,13 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
         previous_species = species
 
     mechanics_hash = binascii.crc32(
-        move_blob + field_flags + learn + offset_blob + chart + item_blob + mega_blob +
-        gigantamax_blob
+        move_blob + field_flags + move_tags + learn + offset_blob + chart + item_blob + mega_blob +
+        gigantamax_blob + ability_blob
     ) & 0xFFFFFFFF
     sections = [
         ("MOVE", bytes(move_blob), len(move_rows)),
         ("MFLG", bytes(field_flags), len(move_rows)),
+        ("MTAG", bytes(move_tags), len(move_rows)),
         ("NAME", names_blob, len(move_rows)),
         ("LNAM", localized_names, len(move_rows)),
         ("LOFS", offset_blob, len(offsets)),
@@ -835,6 +960,10 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
         ("INAM", item_names, len(ITEM_DATA)),
         ("ILNM", item_localized_names, len(ITEM_DATA)),
         ("ILOC", item_localized_descriptions, len(ITEM_DATA)),
+        ("ABIL", bytes(ability_blob), len(ability_rows)),
+        ("ANAM", ability_names, len(ability_rows)),
+        ("ALNM", ability_localized_names, len(ability_rows)),
+        ("ALOC", ability_localized_descriptions, len(ability_rows)),
         ("MEGA", bytes(mega_blob), len(MEGA_DATA)),
         ("GMAX", bytes(gigantamax_blob), len(GIGANTAMAX_DATA)),
     ]

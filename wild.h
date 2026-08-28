@@ -8,6 +8,7 @@ constexpr uint32_t WILD_RARE_ROLL_SCALE = 409600;
 constexpr uint32_t WILD_RARE_BASE_THRESHOLD = 100;
 constexpr uint32_t WILD_RARE_BONUS_THRESHOLD = 4096;
 constexpr uint8_t WILD_GIGANTAMAX_FACTOR_CHANCE = 5;
+constexpr uint8_t WILD_HIDDEN_ABILITY_CHANCE = 5;
 constexpr uint8_t WILD_RARE_BONUS_MAX = 15;
 constexpr uint8_t WILD_ANGRY_ESCAPE_BONUS = 5;
 
@@ -16,6 +17,8 @@ bool wildRareForRoll(uint32_t roll, uint8_t bonus);
 void wildApplyRare(bool rare, uint8_t &ivAtk, uint8_t &ivDef,
                    uint8_t &ivSpe, uint8_t &ivHp);
 bool wildGigantamaxFactorForRoll(SpeciesId species, uint8_t roll);
+AbilitySlot wildAbilitySlotForRoll(SpeciesId species, bool hard, uint8_t roll,
+                                   uint32_t normalRoll);
 
 // Capture probability is derived from pack-owned rarity plus live battle
 // state. ballModifier is a percentage supplied by the selected item, or the

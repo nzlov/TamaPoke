@@ -248,7 +248,10 @@
         "Apagar dispositivo?",
         "EFECTO",
         "%s %+d%%",
-        "%s ENTRENO %+d%% / MERMA %u%%"
+        "%s ENTRENO %+d%% / MERMA %u%%",
+        "Precision",
+        "Evasion",
+        "FORMA"
       ],
       "medalNames": [
         "Nv.10",
@@ -559,7 +562,10 @@
         "Power off device?",
         "EFFECT",
         "%s %+d%%",
-        "%s TRAIN %+d%% / DECAY %u%%"
+        "%s TRAIN %+d%% / DECAY %u%%",
+        "Accuracy",
+        "Evasion",
+        "FORM"
       ],
       "medalNames": [
         "Lv.10",
@@ -870,7 +876,10 @@
         "Eteindre l'appareil ?",
         "EFFET",
         "%s %+d%%",
-        "%s ENTRAIN. %+d%% / BAISSE %u%%"
+        "%s ENTRAIN. %+d%% / BAISSE %u%%",
+        "Precision",
+        "Esquive",
+        "FORME"
       ],
       "medalNames": [
         "Niv.10",
@@ -1181,7 +1190,10 @@
         "Gerat ausschalten?",
         "EFFEKT",
         "%s %+d%%",
-        "%s TRAIN. %+d%% / ABBAU %u%%"
+        "%s TRAIN. %+d%% / ABBAU %u%%",
+        "Genauigkeit",
+        "Fluchtwert",
+        "FORM"
       ],
       "medalNames": [
         "Lv.10",
@@ -1492,7 +1504,10 @@
         "Spegnere il dispositivo?",
         "EFFETTO",
         "%s %+d%%",
-        "%s ALLEN. %+d%% / CALO %u%%"
+        "%s ALLEN. %+d%% / CALO %u%%",
+        "Precisione",
+        "Elusione",
+        "FORMA"
       ],
       "medalNames": [
         "Lv.10",
@@ -1803,7 +1818,10 @@
         "Desligar dispositivo?",
         "EFEITO",
         "%s %+d%%",
-        "%s TREINO %+d%% / QUEDA %u%%"
+        "%s TREINO %+d%% / QUEDA %u%%",
+        "Precisao",
+        "Evasao",
+        "FORMA"
       ],
       "medalNames": [
         "Niv.10",
@@ -2120,7 +2138,10 @@
         "确认关机？",
         "效果",
         "%s %+d%%",
-        "%s训练 %+d%% / 衰减 %u%%"
+        "%s训练 %+d%% / 衰减 %u%%",
+        "命中率",
+        "闪避率",
+        "形态"
       ],
       "medalNames": [
         "10级",

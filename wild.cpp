@@ -66,6 +66,14 @@ bool wildGigantamaxFactorForRoll(SpeciesId species, uint8_t roll) {
          roll < WILD_GIGANTAMAX_FACTOR_CHANCE;
 }
 
+AbilitySlot wildAbilitySlotForRoll(SpeciesId species, bool hard, uint8_t roll,
+                                   uint32_t normalRoll) {
+  if (hard && roll < WILD_HIDDEN_ABILITY_CHANCE &&
+      speciesAbility(species, ABILITY_SLOT_HIDDEN))
+    return ABILITY_SLOT_HIDDEN;
+  return speciesNormalAbilitySlot(species, normalRoll);
+}
+
 bool wildRareForRoll(uint32_t roll, uint8_t bonus) {
   return roll < wildRareThreshold(bonus);
 }

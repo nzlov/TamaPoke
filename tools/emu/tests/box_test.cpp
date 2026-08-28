@@ -230,6 +230,34 @@ int main(){
        "reviving clears the persistent death state");
   }
 
+  // v4 records predate abilities. Migration must choose one stable normal slot,
+  // never grant a hidden ability, and preserve an explicitly caught hidden slot.
+  {
+    Preferences seed; seed.begin("tamapoke", false); seed.clear();
+    PartyMon oldParty[PARTY_SLOTS];
+    oldParty[0] = mk(1, 30);
+    oldParty[0].stateVersion = 4;
+    oldParty[0].setAbilitySlot(ABILITY_SLOT_UNKNOWN);
+    seed.putBytes("team1", oldParty, sizeof(oldParty));
+    seed.putUShort("rostv", 2);
+    seed.putUChar("active", 0);
+    seed.end();
+    Party migrated; migrated.begin();
+    AbilitySlot first = migrated.slots[0].abilitySlot();
+    ck((first == ABILITY_SLOT_ONE || first == ABILITY_SLOT_TWO) &&
+       speciesAbility(1, first) != ABILITY_NONE,
+       "a pre-ability roster receives a valid normal ability deterministically");
+    migrated.save();
+    Party again; again.begin();
+    ck(again.slots[0].abilitySlot() == first,
+       "the migrated normal ability remains stable after reload");
+    again.slots[0].setAbilitySlot(ABILITY_SLOT_HIDDEN);
+    again.save();
+    Party hidden; hidden.begin();
+    ck(hidden.slots[0].abilitySlot() == ABILITY_SLOT_HIDDEN,
+       "a caught hidden ability survives roster persistence");
+  }
+
   // Roster state v3 used the same byte for retired evolution debt. If that
   // creature's pack is absent, gender migration must be deferred rather than
   // guessed from the missing-species fallback.
@@ -256,7 +284,7 @@ int main(){
        "the pre-gender Box also avoids guessing from missing content");
     migrated.save(); migrated.boxSave();
     Party again; again.begin();
-    ck(again.slots[3].gender == first && again.slots[3].stateVersion == 4,
+    ck(again.slots[3].gender == first && again.slots[3].stateVersion == 5,
        "the deferred gender remains eligible for migration after reload");
   }
 

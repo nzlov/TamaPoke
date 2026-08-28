@@ -38,6 +38,7 @@ int main(){
   pet.trMinAtk=40; pet.trMinDef=20; pet.trMinSpe=70;
   pet.nature=NATURE_MODEST;
   pet.gender=GENDER_FEMALE;
+  pet.abilitySlot=ABILITY_SLOT_HIDDEN;
   pet.gymIvRewards[0]=GYM_IV_REWARD_DEF;
   pet.gymIvRewards[71]=GYM_IV_REWARD_LEGACY_CLAIMED;
   pet.relearnFromLevel();
@@ -69,6 +70,7 @@ int main(){
     m.trMinSpe=30;
     if(i==7) m.trainingTicks=(uint16_t)(31u<<8)|23u;
     m.gymIvRewards[i]=GYM_IV_REWARD_SPE; party.box[i]=m; }
+  party.box[0].setAbilitySlot(ABILITY_SLOT_HIDDEN);
   party.boxSave();
   // renameTrainer() persists, and save() writes every field -- so this is also
   // what commits everything set above. save() itself is private on purpose.
@@ -145,6 +147,8 @@ int main(){
   ck(p2.gymIvRewards[0]==GYM_IV_REWARD_DEF &&
      p2.gymIvRewards[71]==GYM_IV_REWARD_LEGACY_CLAIMED, "and its gym IV reward bytes");
   ck(!strcmp(p2.trainerName,"DYLAN"), "the trainer name survives");
+  ck(p2.abilitySlot==ABILITY_SLOT_HIDDEN,
+     "the live creature's hidden ability survives backup and restore");
   ck(!strcmp(p2.nick,"SCORCH"), "so does the nickname");
   ck(p2.avatar==6, "and the avatar, including one past the original four");
   ck(p2.badges==0x00BF && p2.badgesHard==0x000A, "both badge ladders");
@@ -168,7 +172,8 @@ int main(){
   const PartyMon &active = q2.slots[0];
   if (active.dex != 6 || active.ageMinutes != 72UL*MINUTES_PER_LEVEL ||
       strcmp(active.nick, "SCORCH") || active.fullness != pet.fullness ||
-      active.bond != 77 || active.nature != NATURE_MODEST) party_ok = false;
+      active.bond != 77 || active.nature != NATURE_MODEST ||
+      active.abilitySlot() != ABILITY_SLOT_HIDDEN) party_ok = false;
   for (int i=1;i<PARTY_SLOTS;i++){
     const PartyMon &m = q2.slots[i];
     if (m.dex != 20+i*7 || m.level != 40+i) party_ok = false;
@@ -201,6 +206,8 @@ int main(){
   ck(q2.box[7].dead(), "with each banked creature's death state");
   ck(q2.box[7].gender==GENDER_MALE,
      "with each banked creature's gender");
+  ck(q2.box[0].abilitySlot()==ABILITY_SLOT_HIDDEN,
+     "with each banked creature's ability slot");
 
   // --- a restore must not leave anything of whatever was there before
   {

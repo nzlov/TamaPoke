@@ -32,7 +32,7 @@
 // whole handshake without a radio, and a deliberately lossy transport exercises
 // all of the above. Only the radio itself is unverifiable here.
 
-#define LINK_PROTO 8        // bump on ANY wire change; a mismatch is refused
+#define LINK_PROTO 11       // bump on ANY wire change; a mismatch is refused
 #define LINK_MAX_PAYLOAD 200
 #define LINK_NAME_LEN 12
 
@@ -95,6 +95,7 @@ struct LinkMon {
   uint8_t sparkle;  // legacy mirror retained for packet compatibility
   uint8_t gender;
   uint8_t gigantamaxFactor;
+  AbilityKey ability;
   char name[LINK_NAME_LEN];
 };
 
@@ -115,17 +116,29 @@ struct LinkResult {
   uint8_t hostType1, hostType2, guestType1, guestType2;
   BattleMechanic hostActive, guestActive;
   MegaFormKind hostMegaForm, guestMegaForm;
+  BattleForm hostForm, guestForm;
+  uint8_t hostFormPrimed, guestFormPrimed;
   uint8_t hostGigantamax, guestGigantamax;
   BattleMechanic hostMoveMechanic, guestMoveMechanic;
   uint8_t hostDynamaxTurns, guestDynamaxTurns;
   uint8_t hostUsedMask, guestUsedMask;
   uint8_t baseWeather, weather, weatherTurns;
   uint8_t baseTerrain, terrain, terrainTurns;
+  int8_t hostStage[SI_COUNT], guestStage[SI_COUNT];
+  int8_t hostAccuracyStage, hostEvasionStage;
+  int8_t guestAccuracyStage, guestEvasionStage;
+  uint8_t sideReflectTurns[2], sideLightScreenTurns[2], sideAuroraVeilTurns[2];
+  uint8_t sideSpikesLayers[2], sideToxicSpikesLayers[2];
+  uint8_t sideHazardFlags[2];  // bit0 Stealth Rock, bit1 Sticky Web
   uint16_t hostBase[SI_COUNT], guestBase[SI_COUNT];
   BattleMechanic hostMemberMechanic[TRAINER_TEAM_MAX];
   BattleMechanic guestMemberMechanic[TRAINER_TEAM_MAX];
   MegaFormKind hostMemberMegaForm[TRAINER_TEAM_MAX];
   MegaFormKind guestMemberMegaForm[TRAINER_TEAM_MAX];
+  BattleForm hostMemberForm[TRAINER_TEAM_MAX];
+  BattleForm guestMemberForm[TRAINER_TEAM_MAX];
+  uint8_t hostMemberFormPrimed[TRAINER_TEAM_MAX];
+  uint8_t guestMemberFormPrimed[TRAINER_TEAM_MAX];
 };
 
 struct Link {

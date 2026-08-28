@@ -21,6 +21,7 @@ const SaveField SAVE_FIELDS[] = {
   { "ivhp", SK_U8 },    { "tatk", SK_U8 },    { "tdef", SK_U8 },
   { "tspe", SK_U8 },    { "tminat", SK_U8 },  { "tmindf", SK_U8 },
   { "tminsp", SK_U8 },  { "nat", SK_U8 },     { "gndr", SK_U8 },
+  { "abil", SK_U8 },
   { "giv", SK_BYTES },
   // moves
   { "mvs", SK_BYTES },  { "mvlv", SK_U8 },

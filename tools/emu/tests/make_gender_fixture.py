@@ -41,6 +41,13 @@ spec = b"".join([
     spec_record.pack(65, 0, 1, 0xFFFF, 55, 50, 45, 120, 135, 95,
                      0, 10, 255, 0, name_offsets[3], 2),
 ])
+ability_by_species = {
+    int(row["dex"]): row["slots"] for row in gen_data_packs.ABILITY_DATA["species"]
+}
+ability_slots = b"".join(
+    struct.pack("<HHHH", dex, *(int(value) for value in ability_by_species[dex]))
+    for dex in (1, 6, 9, 65)
+)
 region = struct.pack(
     "<B16sHHB16H",
     0, b"FIXTURE".ljust(16, b"\0"), 1, region_hi, 1,
@@ -99,6 +106,7 @@ thumbs = b"TPTH" + struct.pack("<HI", 1, 10) + thumb_blob
 
 blob = pack(2, "gender-fixture", 1, [
     ("SPEC", spec, 4),
+    ("ASLT", ability_slots, 4),
     ("EVOS", b"", 0),
     ("NAME", name, 1),
     ("REGN", region, 1),

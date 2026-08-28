@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <stddef.h>
+#include "abilities.h"
 #include "moves.h"
 #include "nature.h"
 #include "gender.h"
@@ -47,6 +48,8 @@ enum : uint8_t {
 enum PartyMonState : uint32_t {
   PARTY_MON_DEAD = 1u << 0,
   PARTY_MON_GIGANTAMAX_FACTOR = 1u << 1,
+  PARTY_MON_ABILITY_SHIFT = 2,
+  PARTY_MON_ABILITY_MASK = 3u << PARTY_MON_ABILITY_SHIFT,
 };
 struct PartyMon {
   int16_t dex = 0;      // 0 = empty, -1 = egg, positive = Pokedex number
@@ -64,8 +67,8 @@ struct PartyMon {
   NatureId nature = NATURE_UNKNOWN;
   // Full cultivation state. v0 identifies a migrated combat-only record; v1
   // predates permanent training floors, and v2 predates wild sparkle and
-  // player-raised time; v3 predates persisted gender.
-  uint8_t stateVersion = 4;
+  // player-raised time; v3 predates persisted gender, and v4 predates ability.
+  uint8_t stateVersion = 5;
   uint8_t fullness = 80, joy = 80, energy = 80, hygiene = 100;
   uint8_t poops = 0, weight = 0;
   uint8_t berryKnown = 0;
@@ -106,6 +109,9 @@ struct PartyMon {
   bool battleReady() const { return dex > 0; }
   bool dead() const { return (state & PARTY_MON_DEAD) != 0; }
   bool gigantamaxFactor() const { return (state & PARTY_MON_GIGANTAMAX_FACTOR) != 0; }
+  AbilitySlot abilitySlot() const {
+    return (AbilitySlot)((state & PARTY_MON_ABILITY_MASK) >> PARTY_MON_ABILITY_SHIFT);
+  }
   void setDead(bool value) {
     if (value) state |= PARTY_MON_DEAD;
     else state &= ~((uint32_t)PARTY_MON_DEAD);
@@ -113,6 +119,11 @@ struct PartyMon {
   void setGigantamaxFactor(bool value) {
     if (value) state |= PARTY_MON_GIGANTAMAX_FACTOR;
     else state &= ~((uint32_t)PARTY_MON_GIGANTAMAX_FACTOR);
+  }
+  void setAbilitySlot(AbilitySlot slot) {
+    state = (state & ~((uint32_t)PARTY_MON_ABILITY_MASK)) |
+            ((uint32_t)(abilitySlotValid(slot) ? slot : ABILITY_SLOT_UNKNOWN)
+             << PARTY_MON_ABILITY_SHIFT);
   }
 };
 static_assert(offsetof(PartyMon, state) == 252,

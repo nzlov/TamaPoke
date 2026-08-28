@@ -23,7 +23,7 @@
 namespace {
 
 constexpr uint8_t MAX_PACKS = 32;
-constexpr uint8_t MAX_SECTIONS = 19;
+constexpr uint8_t MAX_SECTIONS = 24;
 constexpr uint16_t COMMON_SIZE = 48;
 constexpr uint16_t SECTION_SIZE = 16;
 constexpr uint8_t MAX_PET_PACKS = CONTENT_MAX_REGIONS;
@@ -87,6 +87,11 @@ struct QuizPackRuntime {
   QuizLocaleSpan locales[MAX_QUIZ_LOCALES];
 };
 
+struct AbilityRuntime {
+  AbilityKey key = ABILITY_NONE;
+  const char *name = nullptr;
+};
+
 static bool gAttempted = false;
 static bool gRegionsReady = false, gMoves = false;
 static PackRef gPacks[MAX_PACKS];
@@ -116,6 +121,13 @@ static uint8_t gBadgeCounts[CONTENT_MAX_REGIONS] = {};
 static MoveEntry *gMovesTable = nullptr;
 static uint16_t gMoveCount = 0;
 static char *gMoveNames = nullptr;
+static AbilityRuntime *gAbilities = nullptr;
+static uint16_t gAbilityCount = 0;
+static char *gAbilityNames = nullptr;
+static uint8_t *gAbilityLocalizedNames = nullptr;
+static uint32_t gAbilityLocalizedNamesSize = 0;
+static uint8_t *gAbilityLocales = nullptr;
+static uint32_t gAbilityLocalesSize = 0;
 static uint32_t *gLearnOffsets = nullptr;
 static uint32_t gLearnOffsetCount = 0;
 static LearnEntry *gLearnEntries = nullptr;
@@ -155,11 +167,11 @@ static uint8_t gQuizPackCount = 0;
 
 static const DexEntry MISSING_SPECIES = {
   "?", 0, 0, 0x2946, 50, 50, 50, 50, 50, 50, 0, T_NORMAL, T_NONE,
-  GENDER_RATE_NONE, {}, 0,
+  GENDER_RATE_NONE, {}, {}, 0,
 };
 static const MoveEntry MISSING_MOVE = {
   "-", T_NORMAL, MC_STATUS, 0, 0, EF_NONE, 0, 0, 0, TG_SELF, AIL_NONE, 0,
-  MF_NONE,
+  MF_NONE, MT_NONE,
 };
 static const RegionInfo MISSING_REGION = { "?", 0, 0, nullptr, 0 };
 static const UiLocaleInfo MISSING_LOCALE = { "", "--", "Recovery", true, false };
@@ -572,7 +584,7 @@ static bool loadMovePack(uint8_t packIndex) {
     uint16_t id = rd16(row);
     uint32_t nameOffset = rd32(row + 13);
     if (id >= moveRecords || row[2] >= TYPE_COUNT || row[3] > MC_STATUS ||
-        row[6] > EF_SET_TERRAIN || row[10] > TG_FOE || row[11] > AIL_CONFUSE ||
+        row[6] > EF_PIVOT || row[10] > TG_FOE || row[11] > AIL_CONFUSE ||
         row[12] > 100 || !validString(names, nameSize, nameOffset)) {
       free(rawMoves); free(names); free(table); return false;
     }
@@ -583,28 +595,33 @@ static bool loadMovePack(uint8_t packIndex) {
     move.stages = rdI8(row + 9); move.target = row[10]; move.ailment = row[11];
     move.ailChance = row[12];
     move.fieldFlags = MF_NONE;
+    move.tags = MT_NONE;
   }
   for (uint32_t i = 0; i < moveRecords; i++) {
     if (!table[i].name) { free(rawMoves); free(names); free(table); return false; }
   }
   free(rawMoves);
 
-  const SectionRef *fieldFlagSection = findSection(pack, "MFLG");
-  if (fieldFlagSection) {
-    uint32_t flagSize = 0, flagCount = 0;
-    uint8_t *flags = readSection(pack, "MFLG", &flagSize, &flagCount);
-    if (!flags || flagSize != moveRecords || flagCount != moveRecords) {
-      free(flags); free(names); free(table); return false;
-    }
-    for (uint32_t i = 0; i < moveRecords; i++) {
-      if (flags[i] & ~(MF_RAIN_ACCURATE | MF_SNOW_ACCURATE |
-                       MF_SOLAR_CHARGE | MF_GRASSY_WEAKENED)) {
-        free(flags); free(names); free(table); return false;
-      }
-      table[i].fieldFlags = flags[i];
-    }
-    free(flags);
+  uint32_t flagSize = 0, flagCount = 0, tagSize = 0, tagCount = 0;
+  uint8_t *flags = readSection(pack, "MFLG", &flagSize, &flagCount);
+  uint8_t *tags = readSection(pack, "MTAG", &tagSize, &tagCount);
+  if (!flags || flagSize != moveRecords || flagCount != moveRecords ||
+      !tags || tagSize != moveRecords * 2u || tagCount != moveRecords) {
+    free(flags); free(tags); free(names); free(table); return false;
   }
+  for (uint32_t i = 0; i < moveRecords; i++) {
+    uint16_t moveTags = rd16(tags + i * 2u);
+    if (flags[i] & ~(MF_RAIN_ACCURATE | MF_SNOW_ACCURATE |
+                     MF_SOLAR_CHARGE | MF_GRASSY_WEAKENED |
+                     MF_STANCE_SHIELD | MF_AURA_WHEEL | MF_GULP_MISSILE) ||
+        moveTags & ~MT_ALL) {
+      free(flags); free(tags); free(names); free(table); return false;
+    }
+    table[i].fieldFlags = flags[i];
+    table[i].tags = moveTags;
+  }
+  free(flags);
+  free(tags);
 
   uint32_t offsetSize = 0, offsetCount = 0, learnSize = 0, learnCountValue = 0;
   uint8_t *offsetRaw = readSection(pack, "LOFS", &offsetSize, &offsetCount);
@@ -746,7 +763,7 @@ static bool loadMovePack(uint8_t packIndex) {
 
   uint32_t megaSize = 0, megaRecords = 0;
   uint8_t *rawMega = readSection(pack, "MEGA", &megaSize, &megaRecords);
-  if (!rawMega || !megaRecords || megaSize != megaRecords * 10u) {
+  if (!rawMega || !megaRecords || megaSize != megaRecords * 12u) {
     free(rawMega); free(itemNames); free(itemLocalizedNames); free(itemLocales); free(items);
     free(locales); free(localizedNames); free(localizedTypeNames);
     free(typeNames); free(offsets); free(entries); free(names); free(table);
@@ -763,13 +780,14 @@ static bool loadMovePack(uint8_t packIndex) {
   SpeciesId previousSpecies = SPECIES_NONE;
   MegaFormKind previousForm = MEGA_FORM_NONE;
   for (uint32_t i = 0; i < megaRecords; i++) {
-    const uint8_t *row = rawMega + i * 10u;
+    const uint8_t *row = rawMega + i * 12u;
     MegaFormEntry &form = megaForms[i];
     form.species = rd16(row);
     form.form = (MegaFormKind)row[2];
     form.type1 = row[3]; form.type2 = row[4];
     form.bAtk = row[5]; form.bDef = row[6]; form.bSpA = row[7];
     form.bSpD = row[8]; form.bSpe = row[9];
+    form.ability = rd16(row + 10);
     form.spriteScale = 0;
     form.spritePack = 0xFF;
     form.spriteAt = form.spriteSize = 0;
@@ -827,7 +845,59 @@ static bool loadMovePack(uint8_t packIndex) {
     }
   }
 
+  uint32_t abilitySize = 0, abilityRecords = 0, abilityNamesSize = 0;
+  uint32_t abilityLocalizedNameCount = 0, abilityLocaleCount = 0;
+  uint32_t abilityLocalizedNamesSize = 0, abilityLocalesSize = 0;
+  uint8_t *rawAbilities = readSection(pack, "ABIL", &abilitySize, &abilityRecords);
+  uint8_t *abilityNames = readSection(pack, "ANAM", &abilityNamesSize);
+  uint8_t *abilityLocalizedNames = readSection(
+      pack, "ALNM", &abilityLocalizedNamesSize, &abilityLocalizedNameCount);
+  uint8_t *abilityLocales = readSection(
+      pack, "ALOC", &abilityLocalesSize, &abilityLocaleCount);
+  AbilityRuntime *abilities = (AbilityRuntime *)contentAlloc(
+      sizeof(AbilityRuntime) * abilityRecords);
+  bool validAbilities = rawAbilities && abilityNames && abilityLocalizedNames &&
+      abilityLocales && abilities && abilityRecords &&
+      abilityRecords <= CONTENT_MAX_ABILITIES && abilitySize == abilityRecords * 6u &&
+      abilityLocalizedNameCount == abilityRecords && abilityLocaleCount == abilityRecords;
+  for (uint32_t i = 0; validAbilities && i < abilityRecords; i++) {
+    const uint8_t *row = rawAbilities + i * 6u;
+    AbilityKey key = rd16(row);
+    uint32_t nameOffset = rd32(row + 2);
+    if (!key || (i && key <= abilities[i - 1].key) ||
+        !validString(abilityNames, abilityNamesSize, nameOffset)) {
+      validAbilities = false;
+      break;
+    }
+    abilities[i].key = key;
+    abilities[i].name = (const char *)(abilityNames + nameOffset);
+  }
+  auto abilityKnown = [&](AbilityKey key) {
+    if (!key) return true;
+    uint32_t lo = 0, hi = abilityRecords;
+    while (lo < hi) {
+      uint32_t mid = lo + (hi - lo) / 2u;
+      if (abilities[mid].key < key) lo = mid + 1u; else hi = mid;
+    }
+    return lo < abilityRecords && abilities[lo].key == key;
+  };
+  for (uint32_t i = 0; validAbilities && i < megaRecords; i++)
+    if (!abilityKnown(megaForms[i].ability)) validAbilities = false;
+  free(rawAbilities);
+  if (!validAbilities) {
+    free(abilities); free(abilityNames); free(abilityLocalizedNames); free(abilityLocales);
+    free(itemIcons); free(gmaxSpecies); free(megaForms); free(itemNames);
+    free(itemLocalizedNames); free(itemLocales); free(items); free(locales);
+    free(localizedNames); free(localizedTypeNames); free(typeNames); free(offsets);
+    free(entries); free(names); free(table); return false;
+  }
+
   gMovesTable = table; gMoveCount = (uint16_t)moveRecords; gMoveNames = (char *)names;
+  gAbilities = abilities; gAbilityCount = (uint16_t)abilityRecords;
+  gAbilityNames = (char *)abilityNames;
+  gAbilityLocalizedNames = abilityLocalizedNames;
+  gAbilityLocalizedNamesSize = abilityLocalizedNamesSize;
+  gAbilityLocales = abilityLocales; gAbilityLocalesSize = abilityLocalesSize;
   gLearnOffsets = offsets; gLearnOffsetCount = offsetCount;
   gLearnEntries = entries; gLearnEntryCount = learnCountValue;
   gMoveLocales = locales; gMoveLocalesSize = localesSize;
@@ -1048,6 +1118,26 @@ static bool loadRegionPack(uint8_t packIndex) {
     gSprites[id].pack = runtimePack; gSprites[id].localIndex = (uint16_t)i;
   }
   free(specs);
+
+  uint32_t abilitySlotSize = 0, abilitySlotCount = 0;
+  uint8_t *abilitySlots = readSection(pack, "ASLT", &abilitySlotSize, &abilitySlotCount);
+  if (!abilitySlots || abilitySlotCount != specCount || abilitySlotSize != specCount * 8u) {
+    rollback(); free(touched); free(abilitySlots); free(names); return false;
+  }
+  for (uint32_t i = 0; i < abilitySlotCount; i++) {
+    const uint8_t *row = abilitySlots + i * 8u;
+    SpeciesId species = rd16(row);
+    AbilityKey slotOne = rd16(row + 2), slotTwo = rd16(row + 4);
+    AbilityKey hidden = rd16(row + 6);
+    if (species != touched[i] || !slotOne || !abilityValid(slotOne) ||
+        (slotTwo && !abilityValid(slotTwo)) || (hidden && !abilityValid(hidden))) {
+      rollback(); free(touched); free(abilitySlots); free(names); return false;
+    }
+    gDex[species].abilities[0] = slotOne;
+    gDex[species].abilities[1] = slotTwo;
+    gDex[species].abilities[2] = hidden;
+  }
+  free(abilitySlots);
 
   uint8_t *evolutions = nullptr;
   if (evolutionSection->count) {
@@ -1465,6 +1555,62 @@ bool regionPackAvailable(uint8_t index) {
 uint16_t moveCount() { ensureContent(); return gMoveCount; }
 bool moveValid(MoveId id) { ensureContent(); return id < gMoveCount && gMovesTable && gMovesTable[id].name; }
 const MoveEntry &moveEntry(MoveId id) { return moveValid(id) ? gMovesTable[id] : MISSING_MOVE; }
+bool abilitySlotValid(AbilitySlot slot) {
+  return slot >= ABILITY_SLOT_ONE && slot <= ABILITY_SLOT_HIDDEN;
+}
+uint16_t abilityCount() { ensureContent(); return gAbilityCount; }
+static int32_t abilityIndex(AbilityKey key) {
+  uint16_t lo = 0, hi = gAbilityCount;
+  while (lo < hi) {
+    uint16_t mid = (uint16_t)(lo + (hi - lo) / 2u);
+    if (gAbilities[mid].key < key) lo = (uint16_t)(mid + 1u); else hi = mid;
+  }
+  return lo < gAbilityCount && gAbilities[lo].key == key ? (int32_t)lo : -1;
+}
+bool abilityValid(AbilityKey key) {
+  ensureContent();
+  return key && gAbilities && abilityIndex(key) >= 0;
+}
+const char *abilityName(AbilityKey key) {
+  ensureContent();
+  int32_t index = gAbilities ? abilityIndex(key) : -1;
+  if (index < 0) return "?";
+  const char *localized = gUiActive < gUiCount
+      ? localizedAt(gAbilityLocalizedNames, gAbilityLocalizedNamesSize,
+                    uiActiveLocaleCode(), (uint32_t)index)
+      : nullptr;
+  return localized && *localized ? localized : gAbilities[index].name;
+}
+const char *abilityDescription(AbilityKey key, const char *locale) {
+  ensureContent();
+  int32_t index = gAbilities ? abilityIndex(key) : -1;
+  if (index < 0) return nullptr;
+  const char *localized = localizedAt(
+      gAbilityLocales, gAbilityLocalesSize, locale, (uint32_t)index);
+  return localized ? localized : localizedAt(
+      gAbilityLocales, gAbilityLocalesSize, "en-US", (uint32_t)index);
+}
+AbilityKey speciesAbility(SpeciesId species, AbilitySlot slot) {
+  if (!dexValid(species) || !abilitySlotValid(slot)) return ABILITY_NONE;
+  return gDex[species].abilities[(uint8_t)slot - 1u];
+}
+AbilitySlot speciesNormalAbilitySlot(SpeciesId species, uint32_t stableRoll) {
+  if (!speciesAbility(species, ABILITY_SLOT_ONE)) return ABILITY_SLOT_UNKNOWN;
+  return speciesAbility(species, ABILITY_SLOT_TWO) && (stableRoll & 1u)
+      ? ABILITY_SLOT_TWO : ABILITY_SLOT_ONE;
+}
+AbilitySlot abilitySlotForLegacy(SpeciesId species, uint8_t ivAtk, uint8_t ivDef,
+                                 uint8_t ivSpe, uint8_t ivHp) {
+  uint32_t hash = 2166136261u;
+  const uint8_t bytes[] = {
+    (uint8_t)species, (uint8_t)(species >> 8), ivAtk, ivDef, ivSpe, ivHp,
+  };
+  for (uint8_t value : bytes) {
+    hash ^= value;
+    hash *= 16777619u;
+  }
+  return speciesNormalAbilitySlot(species, hash);
+}
 uint16_t itemCount() { ensureContent(); return gItemCount; }
 const ItemEntry *itemAt(uint16_t index) {
   ensureContent(); return index < gItemCount ? &gItems[index] : nullptr;

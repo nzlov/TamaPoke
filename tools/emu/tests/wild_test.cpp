@@ -66,6 +66,14 @@ int main() {
   ck(wildEncounterMaxLevel(1, true) == 100 &&
      wildEncounterMaxLevel(100, true) == 100,
      "hard encounters allow every level");
+  AbilitySlot bulbasaurNormal = wildAbilitySlotForRoll(1, true, 5, 0);
+  ck(wildAbilitySlotForRoll(1, true, 4, 0) == ABILITY_SLOT_HIDDEN &&
+     bulbasaurNormal == ABILITY_SLOT_ONE,
+     "hard wild hidden abilities use the exact five-percent boundary");
+  ck(wildAbilitySlotForRoll(1, false, 0, 0) == ABILITY_SLOT_ONE,
+     "easy wild encounters never roll a hidden ability");
+  ck(wildAbilitySlotForRoll(151, true, 0, 0) != ABILITY_SLOT_HIDDEN,
+     "a species without a hidden slot safely keeps a normal ability");
   ck(wildBattleMechanic(4, 0, false, false) == BMECH_Z_MOVE &&
      wildBattleMechanic(4, 1, false, false) == BMECH_DYNAMAX &&
      wildBattleMechanic(4, 2, false, true) == BMECH_MEGA,

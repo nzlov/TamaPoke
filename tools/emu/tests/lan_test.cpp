@@ -11,6 +11,7 @@
 #include "pet.h"
 #include "party.h"
 #include "battle.h"
+#include "i18n.h"
 #include "link.h"
 #include "quiz.h"
 #include <chrono>
@@ -237,6 +238,9 @@ int main(){
   r.guestActive = BMECH_DYNAMAX;
   r.guestGigantamax = 1;
   r.guestDynamaxTurns = 2;
+  r.hostForm = BFORM_AEGISLASH_BLADE;
+  r.guestForm = BFORM_PALAFIN_HERO;
+  r.guestFormPrimed = 1;
   r.hostUsedMask = battleMechanicBit(BMECH_MEGA);
   r.guestUsedMask = battleMechanicBit(BMECH_DYNAMAX);
   r.baseWeather = BWEATHER_RAIN;
@@ -245,8 +249,19 @@ int main(){
   r.baseTerrain = BTERRAIN_ELECTRIC;
   r.terrain = BTERRAIN_GRASSY;
   r.terrainTurns = 2;
+  r.guestStage[SI_ATK] = 2;
+  r.hostStage[SI_DEF] = -1;
+  r.guestAccuracyStage = 1;
+  r.hostEvasionStage = 2;
+  r.sideReflectTurns[1] = 4;
+  r.sideSpikesLayers[0] = 3;
+  r.sideToxicSpikesLayers[1] = 2;
+  r.sideHazardFlags[0] = 3;
   r.hostMemberMechanic[0] = BMECH_MEGA;
   r.guestMemberMechanic[0] = BMECH_DYNAMAX;
+  r.hostMemberForm[0] = BFORM_AEGISLASH_BLADE;
+  r.guestMemberForm[0] = BFORM_PALAFIN_HERO;
+  r.guestMemberFormPrimed[0] = 1;
   for (uint8_t i=0;i<SI_COUNT;i++) { r.hostBase[i]=btlFoe.base[i]; r.guestBase[i]=btlYou.base[i]; }
   memcpy(lan.result,&r,sizeof(r)); lan.resultN=sizeof(r); lan.resultNew=true;
   render();
@@ -257,6 +272,9 @@ int main(){
      "and restores the guest's absolute Dynamax state");
   ck(btlYou.gigantamax && btlFoe.megaForm==MEGA_FORM_X,
      "and restores exact Gigantamax and Mega forms");
+  ck(btlYou.form==BFORM_PALAFIN_HERO && btlYou.formPrimed &&
+     btlFoe.form==BFORM_AEGISLASH_BLADE,
+     "and restores active and primed exclusive forms");
   ck(btlYourMechanics.used(BMECH_DYNAMAX) &&
      btlFoeMechanics.used(BMECH_MEGA) && btlYou.usedMechanic==BMECH_DYNAMAX,
      "and restores the per-team and per-creature mechanic limits");
@@ -264,10 +282,18 @@ int main(){
      btlField.weatherTurns==3 && btlField.baseTerrain==BTERRAIN_ELECTRIC &&
      btlField.terrain==BTERRAIN_GRASSY && btlField.terrainTurns==2,
      "and restores the host-authoritative field state");
+  ck(btlYou.stage[SI_ATK]==2 && btlFoe.stage[SI_DEF]==-1 &&
+     btlYou.accuracyStage==1 && btlFoe.evasionStage==2,
+     "and restores ordinary, accuracy and evasion stages");
+  ck(btlField.sides[0].reflectTurns==4 &&
+     btlField.sides[0].toxicSpikesLayers==2 &&
+     btlField.sides[1].spikesLayers==3 &&
+     btlField.sides[1].stealthRock && btlField.sides[1].stickyWeb,
+     "and maps host and guest side conditions to the local perspective");
   bool narratedField = false;
   for (uint8_t i=0;i<btlMsgCount;i++)
-    narratedField |= strstr(btlMsg[i], "HARSH SUN") ||
-                     strstr(btlMsg[i], "GRASSY TERRAIN");
+    narratedField |= strstr(btlMsg[i], T(S_FIELD_SUN)) ||
+                     strstr(btlMsg[i], T(S_FIELD_GRASSY));
   ck(narratedField, "and narrates a field transition in the guest's locale");
   ck(!lan.resultNew, "a result is consumed once");
   uint16_t hpNow = btlYou.hp;

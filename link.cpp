@@ -29,6 +29,7 @@ uint16_t linkBuildTag() {
     (uint16_t)moveCount(), (uint16_t)dexCount(), (uint16_t)MOVE_SLOTS,
     (uint16_t)TRAINER_TEAM_MAX, (uint16_t)sizeof(LinkMon),
     (uint16_t)sizeof(LinkResult), (uint16_t)SI_COUNT,
+    (uint16_t)BATTLE_STAGE_COUNT,
     (uint16_t)mechanics, (uint16_t)(mechanics >> 16),
   };
   for (uint16_t b : bits) { h ^= b; h *= 16777619u; }
@@ -48,6 +49,7 @@ void linkMonFrom(LinkMon &out, const Combatant &c) {
   out.sparkle = out.shiny;
   out.gender = (uint8_t)c.gender;
   out.gigantamaxFactor = c.gigantamaxFactor ? 1 : 0;
+  out.ability = c.ability;
   snprintf(out.name, sizeof(out.name), "%s", c.name);
 }
 
@@ -69,6 +71,13 @@ void linkMonTo(Combatant &out, const LinkMon &m) {
   out.gender = genderValid((PetGender)m.gender) ? (PetGender)m.gender
                                                  : GENDER_NONE;
   out.gigantamaxFactor = m.gigantamaxFactor != 0;
+  out.ability = speciesAbility(out.dex, ABILITY_SLOT_ONE);
+  const AbilitySlot slots[] = {
+    ABILITY_SLOT_ONE, ABILITY_SLOT_TWO, ABILITY_SLOT_HIDDEN,
+  };
+  for (AbilitySlot slot : slots)
+    if (m.ability && m.ability == speciesAbility(out.dex, slot)) out.ability = m.ability;
+  battleInitializeForm(out);
   // NOT snprintf("%s"): a name off the wire need not be terminated, and reading
   // it as a C string would run off the end of the struct.
   uint8_t n = sizeof(out.name) - 1;

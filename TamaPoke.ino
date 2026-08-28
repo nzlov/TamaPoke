@@ -788,6 +788,8 @@ void quizTap(int16_t x, int16_t y);
 void renderBag();
 void bagTap(int16_t x, int16_t y);
 static void btlDismissWin();
+static void btlApplyEntry(uint8_t side);
+static bool btlReplaceActive(uint8_t side, uint8_t next, bool announce);
 void btlCompleteCapture();
 void btlFinish(bool won);
 void startWildBattle(uint8_t region, bool hard);
@@ -884,10 +886,10 @@ static void btlSwitchTo(uint8_t i);
 static void btlResolve(MoveId yourMove, uint8_t yourPercent = 100,
                        BattleMechanic yourMechanic = BMECH_NONE);
 static void btlSetPersistentDead(uint8_t index, bool dead);
-// The peer's whole team, kept live. A trainer's replacements are built fresh
-// from TRAINERS[] because they only ever arrive once; a linked opponent can
-// switch OUT and back IN, so its creatures have to remember how battered they
-// are. Host side only -- the guest takes absolute health off the wire.
+static void btlMarkEntered(uint8_t index);
+// The opposing team stays live so trainer and linked creatures can switch out
+// and back in without losing HP or transient member state. Host side only for
+// linked battles; the guest takes absolute state off the wire.
 Combatant btlFoeSquad[TRAINER_TEAM_MAX];
 uint8_t btlFoeSquadN = 0;
 uint8_t btlMyAct = 0;        // host: our own action, latched until theirs lands
@@ -3986,6 +3988,20 @@ void renderCardStats() {
   drawCardStat(224, T(S_STAT_VIT), pet.vitStat(), 360, UI_BAR_OK, pet.ivHp);
   drawCardStat(264, T(S_STAT_WGT), pet.weight, 100, 0xB3C8, IV_NONE);
 
+  AbilityKey ability = speciesAbility(pet.speciesId, pet.abilitySlot);
+  if (ability) {
+    gfx->setTextColor(de.accent);
+    gfx->setTextSize(2);
+    gfx->setCursor(uiCenterX(abilityName(ability)), 306);
+    gfx->print(abilityName(ability));
+    const char *description = abilityDescription(ability, uiActiveLocaleCode());
+    if (description) {
+      gfx->setTextColor(UI_MUTED);
+      gfx->setTextSize(1);
+      drawWrappedText(description, 78, 330, 310, 3);
+    }
+  }
+
 }
 
 // Draws one move as a row: name, its type in the type's own colour, and either
@@ -4302,6 +4318,34 @@ static void drawBattleFieldEffects(uint32_t now) {
   }
 }
 
+static void drawBattleSideLayers(uint8_t sideIndex, int cx, int ground) {
+  const BattleSideConditions &side = btlField.sides[sideIndex];
+  if (side.reflectTurns)
+    gfx->drawCircle(cx, ground - 39, 47, 0x45BF);
+  if (side.lightScreenTurns)
+    gfx->drawCircle(cx, ground - 39, 51, 0xE71C);
+  if (side.auroraVeilTurns)
+    gfx->drawCircle(cx, ground - 39, 55, UI_WHITE);
+  for (uint8_t i = 0; i < side.spikesLayers; i++) {
+    int x = cx - 30 + i * 24;
+    gfx->drawLine(x - 6, ground, x, ground - 12, UI_INK);
+    gfx->drawLine(x, ground - 12, x + 6, ground, UI_INK);
+  }
+  if (side.toxicSpikesLayers) {
+    for (uint8_t i = 0; i < side.toxicSpikesLayers; i++)
+      gfx->fillCircle(cx + 20 + i * 10, ground - 3, 4, 0x981F);
+  }
+  if (side.stealthRock) {
+    gfx->drawLine(cx - 44, ground - 4, cx - 37, ground - 17, 0xA514);
+    gfx->drawLine(cx - 37, ground - 17, cx - 30, ground - 4, 0xA514);
+  }
+  if (side.stickyWeb) {
+    gfx->drawCircle(cx + 38, ground - 8, 11, UI_WHITE);
+    gfx->drawLine(cx + 27, ground - 8, cx + 49, ground - 8, UI_WHITE);
+    gfx->drawLine(cx + 38, ground - 19, cx + 38, ground + 3, UI_WHITE);
+  }
+}
+
 static void drawBattleFieldHud() {
   const char *labels[2];
   uint16_t colors[2];
@@ -4340,9 +4384,10 @@ static void drawBattleFieldHud() {
 // Render may call this every frame; the compact key makes the steady path free.
 static void btlSyncSprite(uint8_t who, const Combatant &c) {
   bool mega = c.activeMechanic == BMECH_MEGA;
-  uint8_t formKey = mega && c.megaForm != MEGA_FORM_NONE
+  uint8_t megaKey = mega && c.megaForm != MEGA_FORM_NONE
       ? (uint8_t)(c.megaForm + 1) : 0;
-  int32_t key = ((int32_t)c.dex << 8) | ((int32_t)formKey << 3) |
+  int32_t key = ((int32_t)c.dex << 16) | ((int32_t)megaKey << 12) |
+                ((int32_t)c.form << 5) |
                 (c.shiny ? 4 : 0) | ((uint8_t)c.gender & 3);
   if (btlPmdKey[who] == key && btlPmd[who].loaded) return;
   btlPmd[who].unload();
@@ -4409,12 +4454,15 @@ static void btlNarrate(const Combatant &actor, const Combatant &target, const Tu
   if (lg.damage && lg.effPct > 100) btlSay(T(S_BTL_SUPER));
   else if (lg.damage && lg.effPct < 100) btlSay(T(S_BTL_WEAK));
   if (lg.stageMask && lg.move) {
-    static const uint8_t BIT[SI_COUNT] = { ST_ATK, ST_DEF, ST_SPA, ST_SPD, ST_SPE };
-    static const StrId LABEL[SI_COUNT] = {
+    static const uint8_t BIT[BATTLE_STAGE_COUNT] = {
+      ST_ATK, ST_DEF, ST_SPA, ST_SPD, ST_SPE, ST_ACC, ST_EVA,
+    };
+    static const StrId LABEL[BATTLE_STAGE_COUNT] = {
       S_STAT_ATK, S_STAT_DEF, S_STAT_SPA, S_STAT_SPD, S_STAT_SPE,
+      S_STAT_ACC, S_STAT_EVA,
     };
     const Combatant &changed = moveEntry(lg.move).target == TG_SELF ? actor : target;
-    for (uint8_t stat = 0; stat < SI_COUNT; stat++)
+    for (uint8_t stat = 0; stat < BATTLE_STAGE_COUNT; stat++)
       if (lg.stageMask & BIT[stat])
         btlSay(T(S_BTL_STAGE_FMT), displayCombatantName(changed), T(LABEL[stat]), lg.stageDelta);
   }
@@ -4437,6 +4485,65 @@ static void btlNarrateFieldEnd(const FieldLog &log) {
     btlSay(T(S_BTL_FIELD_ENDED), btlTerrainName(log.terrainExpired));
   if (log.terrainRestored != BTERRAIN_NONE)
     btlSay(T(S_BTL_FIELD_BEGAN), btlTerrainName(log.terrainRestored));
+}
+
+static void btlApplyEntry(uint8_t side) {
+  if (side > 1) return;
+  Combatant &entrant = side ? btlFoe : btlYou;
+  Combatant &opponent = side ? btlYou : btlFoe;
+  EntryLog log;
+  battleOnEnter(entrant, opponent, btlField, side, log);
+  btlHpShown[side] = entrant.hp;
+  if (log.hazardDamage) btlHitUntil[side] = millis() + BTL_HIT_MS;
+  if (log.weatherSet != BWEATHER_NONE)
+    btlSay(T(S_BTL_FIELD_BEGAN), btlWeatherName(log.weatherSet));
+  if (log.terrainSet != BTERRAIN_NONE)
+    btlSay(T(S_BTL_FIELD_BEGAN), btlTerrainName(log.terrainSet));
+  if (log.inflicted) {
+    static const StrId AIL_STR[] = { S_AIL_PARA, S_AIL_PARA, S_AIL_BURN,
+      S_AIL_POISON, S_AIL_SLEEP, S_AIL_FREEZE, S_AIL_CONFUSE };
+    if (log.inflicted < 7)
+      btlSay(T(S_BTL_STATUS), displayCombatantName(entrant), T(AIL_STR[log.inflicted]));
+  }
+  if (entrant.fainted()) btlSay(T(S_BTL_FAINT), displayCombatantName(entrant));
+}
+
+static bool btlReplaceActive(uint8_t side, uint8_t next, bool announce) {
+  if (side > 1) return false;
+  Combatant *squad = side ? btlFoeSquad : btlSquad;
+  uint8_t count = side ? btlFoeSquadN : btlSquadN;
+  uint8_t &active = side ? btlFoeAt : btlSquadAt;
+  Combatant &current = side ? btlFoe : btlYou;
+  if (next >= count || next == active || squad[next].fainted()) return false;
+  battleOnSwitchOut(current);
+  squad[active] = current;
+  active = next;
+  current = squad[active];
+  if (!side) btlMarkEntered(active);
+  btlHpShown[side] = current.hp;
+  btlSyncSprite(side, current);
+  btlLungeUntil[side] = btlHitUntil[side] = btlFaintUntil[side] = 0;
+  btlEnterUntil[side] = millis() + BTL_ENTER_MS;
+  if (announce) {
+    if (!side) btlSay(T(S_BTL_GO), displayCombatantName(current));
+    else if (btlLink) btlSay(T(S_BTL_SENDS), lan.peerName, displayCombatantName(current));
+    else if (btlTrainer >= 0)
+      btlSay(T(S_BTL_SENDS), trainerName(btlRegion, btlTrainer),
+             displayCombatantName(current));
+  }
+  btlApplyEntry(side);
+  return true;
+}
+
+static bool btlReplaceFirstAvailable(uint8_t side) {
+  Combatant *squad = side ? btlFoeSquad : btlSquad;
+  uint8_t count = side ? btlFoeSquadN : btlSquadN;
+  uint8_t active = side ? btlFoeAt : btlSquadAt;
+  uint8_t choices[TRAINER_TEAM_MAX];
+  uint8_t choiceCount = 0;
+  for (uint8_t i = 0; i < count; i++)
+    if (i != active && !squad[i].fainted()) choices[choiceCount++] = i;
+  return choiceCount && btlReplaceActive(side, choices[random(choiceCount)], true);
 }
 
 static_assert((uint8_t)BMECH_Z_MOVE == ITEM_MECHANIC_Z_MOVE &&
@@ -4595,6 +4702,10 @@ void startLinkBattle() {
   audioMusic(MUS_BATTLE);
   btlResetTapDebounce();
   battleOpen = true;
+  if (btlLinkHost) {
+    btlApplyEntry(0);
+    btlApplyEntry(1);
+  }
 }
 
 void startTrainerBattle(uint8_t idx, bool hard) {
@@ -4617,8 +4728,11 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   btlHard = hard;
   btlFoeAt = 0;
   const RegionBattleInfo &battle = regionBattleInfo(btlRegion);
-  foeFromSpecies(btlFoe, tr.team[0].dex, tr.team[0].level,
-                 hard ? battle.hardIv : battle.easyIv);
+  btlFoeSquadN = 0;
+  for (uint8_t i = 0; i < tr.count && i < TRAINER_TEAM_MAX; i++)
+    foeFromSpecies(btlFoeSquad[btlFoeSquadN++], tr.team[i].dex, tr.team[i].level,
+                   hard ? battle.hardIv : battle.easyIv);
+  btlFoe = btlFoeSquad[0];
   btlResetMechanics();
   btlMsgCount = 0;
   btlOver = false;
@@ -4642,6 +4756,8 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   btlHitUntil[0] = btlHitUntil[1] = 0;
   btlResetTapDebounce();
   battleOpen = true;
+  btlApplyEntry(0);
+  btlApplyEntry(1);
 }
 
 void startBattle(int16_t dex, uint8_t lvl) {
@@ -4659,6 +4775,9 @@ void startBattle(int16_t dex, uint8_t lvl) {
   foe.ageMinutes = (uint32_t)(lvl ? lvl - 1 : 0) * MINUTES_PER_LEVEL;
   foe.relearnFromLevel();
   combatantFromPet(btlFoe, foe);
+  btlFoeAt = 0;
+  btlFoeSquadN = 1;
+  btlFoeSquad[0] = btlFoe;
   btlResetMechanics();
   btlWild = false;
   btlMsgCount = 0;
@@ -4683,6 +4802,8 @@ void startBattle(int16_t dex, uint8_t lvl) {
   btlHitUntil[0] = btlHitUntil[1] = 0;
   btlResetTapDebounce();
   battleOpen = true;
+  btlApplyEntry(0);
+  btlApplyEntry(1);
 }
 
 static SpeciesId wildSpecies(uint8_t region) {
@@ -4721,6 +4842,8 @@ void startWildBattle(uint8_t region, bool hard) {
   uint8_t ivBase = hard ? battle.hardIv : battle.easyIv;
   Pet foe;
   foe.dbgHatchAs(dex, false);
+  foe.abilitySlot = wildAbilitySlotForRoll(
+      dex, hard, (uint8_t)random(100), (uint32_t)random(2));
   auto rollIv = [ivBase]() -> uint8_t {
     int value = (int)ivBase + (int)random(7) - 3;
     return value < 0 ? 0 : value > 31 ? 31 : (uint8_t)value;
@@ -4737,6 +4860,9 @@ void startWildBattle(uint8_t region, bool hard) {
   btlWildMon.setGigantamaxFactor(
       wildGigantamaxFactorForRoll(dex, (uint8_t)random(100)));
   combatantFromParty(btlFoe, btlWildMon);
+  btlFoeAt = 0;
+  btlFoeSquadN = 1;
+  btlFoeSquad[0] = btlFoe;
   btlResetMechanics();
   btlField = wildBattleField(dexEntry(btlFoe.dex).biome, (uint8_t)random(100));
   // 252 is divisible by both possible pool sizes (2 or 3), so modulo selection
@@ -4784,6 +4910,8 @@ void startWildBattle(uint8_t region, bool hard) {
   btlHitUntil[0] = btlHitUntil[1] = 0;
   btlResetTapDebounce();
   battleOpen = true;
+  btlApplyEntry(0);
+  btlApplyEntry(1);
 }
 
 // The guest's whole turn: copy in what the host resolved and play the same
@@ -4840,6 +4968,17 @@ static void btlApplyResult() {
       ? (BattleTerrain)r.terrain : BTERRAIN_NONE;
   btlField.terrainTurns = r.terrainTurns <= BATTLE_FIELD_TURNS
       ? r.terrainTurns : BATTLE_FIELD_TURNS;
+  for (uint8_t localSide = 0; localSide < 2; localSide++) {
+    uint8_t wireSide = localSide ^ 1u;
+    BattleSideConditions &side = btlField.sides[localSide];
+    side.reflectTurns = min(r.sideReflectTurns[wireSide], BATTLE_FIELD_TURNS);
+    side.lightScreenTurns = min(r.sideLightScreenTurns[wireSide], BATTLE_FIELD_TURNS);
+    side.auroraVeilTurns = min(r.sideAuroraVeilTurns[wireSide], BATTLE_FIELD_TURNS);
+    side.spikesLayers = min(r.sideSpikesLayers[wireSide], (uint8_t)3);
+    side.toxicSpikesLayers = min(r.sideToxicSpikesLayers[wireSide], (uint8_t)2);
+    side.stealthRock = (r.sideHazardFlags[wireSide] & 1u) != 0;
+    side.stickyWeb = (r.sideHazardFlags[wireSide] & 2u) != 0;
+  }
   if (!btlField.weatherTurns) btlField.weather = btlField.baseWeather;
   if (!btlField.terrainTurns) btlField.terrain = btlField.baseTerrain;
   btlYou.type1 = r.guestType1; btlYou.type2 = r.guestType2;
@@ -4848,6 +4987,10 @@ static void btlApplyResult() {
   btlFoe.activeMechanic = r.hostActive;
   btlYou.megaForm = r.guestMegaForm;
   btlFoe.megaForm = r.hostMegaForm;
+  btlYou.form = r.guestForm <= BFORM_PALAFIN_HERO ? r.guestForm : BFORM_BASE;
+  btlFoe.form = r.hostForm <= BFORM_PALAFIN_HERO ? r.hostForm : BFORM_BASE;
+  btlYou.formPrimed = r.guestFormPrimed != 0;
+  btlFoe.formPrimed = r.hostFormPrimed != 0;
   btlYou.gigantamax = r.guestGigantamax != 0;
   btlFoe.gigantamax = r.hostGigantamax != 0;
   btlYou.dynamaxTurns = r.guestDynamaxTurns;
@@ -4859,18 +5002,34 @@ static void btlApplyResult() {
   for (uint8_t i = 0; i < SI_COUNT; i++) {
     btlYou.base[i] = r.guestBase[i] ? r.guestBase[i] : 1;
     btlFoe.base[i] = r.hostBase[i] ? r.hostBase[i] : 1;
+    btlYou.stage[i] = r.guestStage[i] < -6 ? -6 : r.guestStage[i] > 6 ? 6 : r.guestStage[i];
+    btlFoe.stage[i] = r.hostStage[i] < -6 ? -6 : r.hostStage[i] > 6 ? 6 : r.hostStage[i];
   }
+  btlYou.accuracyStage = r.guestAccuracyStage < -6 ? -6
+      : r.guestAccuracyStage > 6 ? 6 : r.guestAccuracyStage;
+  btlYou.evasionStage = r.guestEvasionStage < -6 ? -6
+      : r.guestEvasionStage > 6 ? 6 : r.guestEvasionStage;
+  btlFoe.accuracyStage = r.hostAccuracyStage < -6 ? -6
+      : r.hostAccuracyStage > 6 ? 6 : r.hostAccuracyStage;
+  btlFoe.evasionStage = r.hostEvasionStage < -6 ? -6
+      : r.hostEvasionStage > 6 ? 6 : r.hostEvasionStage;
   btlYourMechanics.usedMask = r.guestUsedMask;
   btlFoeMechanics.usedMask = r.hostUsedMask;
   for (uint8_t i = 0; i < btlSquadN && i < TRAINER_TEAM_MAX; i++) {
     Combatant &member = i == btlSquadAt ? btlYou : btlSquad[i];
     member.usedMechanic = r.guestMemberMechanic[i];
     if (i != btlSquadAt) member.megaForm = r.guestMemberMegaForm[i];
+    member.form = r.guestMemberForm[i] <= BFORM_PALAFIN_HERO
+        ? r.guestMemberForm[i] : BFORM_BASE;
+    member.formPrimed = r.guestMemberFormPrimed[i] != 0;
   }
   for (uint8_t i = 0; i < btlFoeSquadN && i < TRAINER_TEAM_MAX; i++) {
     Combatant &member = i == btlFoeAt ? btlFoe : btlFoeSquad[i];
     member.usedMechanic = r.hostMemberMechanic[i];
     if (i != btlFoeAt) member.megaForm = r.hostMemberMegaForm[i];
+    member.form = r.hostMemberForm[i] <= BFORM_PALAFIN_HERO
+        ? r.hostMemberForm[i] : BFORM_BASE;
+    member.formPrimed = r.hostMemberFormPrimed[i] != 0;
   }
   if (btlYou.fainted()) btlSetPersistentDead(btlSquadAt, true);
 
@@ -4975,6 +5134,9 @@ static void btlShipResult(const BattleMove &yourMove, const BattleMove &theirMov
   r.guestType1 = btlFoe.type1; r.guestType2 = btlFoe.type2;
   r.hostActive = btlYou.activeMechanic; r.guestActive = btlFoe.activeMechanic;
   r.hostMegaForm = btlYou.megaForm; r.guestMegaForm = btlFoe.megaForm;
+  r.hostForm = btlYou.form; r.guestForm = btlFoe.form;
+  r.hostFormPrimed = btlYou.formPrimed ? 1 : 0;
+  r.guestFormPrimed = btlFoe.formPrimed ? 1 : 0;
   r.hostGigantamax = btlYou.gigantamax ? 1 : 0;
   r.guestGigantamax = btlFoe.gigantamax ? 1 : 0;
   r.hostMoveMechanic = yourMove.mechanic; r.guestMoveMechanic = theirMove.mechanic;
@@ -4990,19 +5152,39 @@ static void btlShipResult(const BattleMove &yourMove, const BattleMove &theirMov
   r.baseTerrain = btlField.baseTerrain;
   r.terrain = btlField.terrain;
   r.terrainTurns = btlField.terrainTurns;
+  for (uint8_t sideIndex = 0; sideIndex < 2; sideIndex++) {
+    const BattleSideConditions &side = btlField.sides[sideIndex];
+    r.sideReflectTurns[sideIndex] = side.reflectTurns;
+    r.sideLightScreenTurns[sideIndex] = side.lightScreenTurns;
+    r.sideAuroraVeilTurns[sideIndex] = side.auroraVeilTurns;
+    r.sideSpikesLayers[sideIndex] = side.spikesLayers;
+    r.sideToxicSpikesLayers[sideIndex] = side.toxicSpikesLayers;
+    r.sideHazardFlags[sideIndex] = (side.stealthRock ? 1u : 0u) |
+                                   (side.stickyWeb ? 2u : 0u);
+  }
   for (uint8_t i = 0; i < SI_COUNT; i++) {
     r.hostBase[i] = btlYou.base[i];
     r.guestBase[i] = btlFoe.base[i];
+    r.hostStage[i] = btlYou.stage[i];
+    r.guestStage[i] = btlFoe.stage[i];
   }
+  r.hostAccuracyStage = btlYou.accuracyStage;
+  r.hostEvasionStage = btlYou.evasionStage;
+  r.guestAccuracyStage = btlFoe.accuracyStage;
+  r.guestEvasionStage = btlFoe.evasionStage;
   for (uint8_t i = 0; i < btlSquadN && i < TRAINER_TEAM_MAX; i++) {
     const Combatant &member = i == btlSquadAt ? btlYou : btlSquad[i];
     r.hostMemberMechanic[i] = member.usedMechanic;
     r.hostMemberMegaForm[i] = member.megaForm;
+    r.hostMemberForm[i] = member.form;
+    r.hostMemberFormPrimed[i] = member.formPrimed ? 1 : 0;
   }
   for (uint8_t i = 0; i < btlFoeSquadN && i < TRAINER_TEAM_MAX; i++) {
     const Combatant &member = i == btlFoeAt ? btlFoe : btlFoeSquad[i];
     r.guestMemberMechanic[i] = member.usedMechanic;
     r.guestMemberMegaForm[i] = member.megaForm;
+    r.guestMemberForm[i] = member.form;
+    r.guestMemberFormPrimed[i] = member.formPrimed ? 1 : 0;
   }
   if (btlYou.fainted() || btlFoe.fainted()) r.flags |= 0x04;
   lan.sendResult((const uint8_t *)&r, (uint8_t)sizeof(r));
@@ -5023,13 +5205,9 @@ static bool btlPlayerHasReplacement() {
 }
 
 static bool btlFoeHasReplacement() {
-  if (btlLink) {
-    for (uint8_t i = 0; i < btlFoeSquadN; i++)
-      if (i != btlFoeAt && !btlFoeSquad[i].fainted()) return true;
-    return false;
-  }
-  return btlTrainer >= 0 &&
-         btlFoeAt + 1 < trainerInfo(btlRegion, btlTrainer).count;
+  for (uint8_t i = 0; i < btlFoeSquadN; i++)
+    if (i != btlFoeAt && !btlFoeSquad[i].fainted()) return true;
+  return false;
 }
 
 static void btlGrantWildRewards() {
@@ -5143,16 +5321,7 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
     if (LINK_ACT_IS_SWITCH(act)) {
       uint8_t to = LINK_ACT_SLOT(act);
       if (to < btlFoeSquadN && to != btlFoeAt && !btlFoeSquad[to].fainted()) {
-        battleOnSwitchOut(btlFoe);
-        btlFoeSquad[btlFoeAt] = btlFoe;     // remember how battered it was
-        btlFoeAt = to;
-        btlFoe = btlFoeSquad[to];
-        btlHpShown[1] = btlFoe.hp;
-        btlSyncSprite(1, btlFoe);
-        btlLungeUntil[1] = btlHitUntil[1] = btlFaintUntil[1] = 0;
-        btlEnterUntil[1] = now + BTL_ENTER_MS;
-        btlSay(T(S_BTL_SENDS), lan.peerName, displayCombatantName(btlFoe));
-        foeSwitched = true;
+        foeSwitched = btlReplaceActive(1, to, true);
       }
       foeMove = 0;
     } else {
@@ -5193,21 +5362,35 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
   BattleMove yourBattleMove = battleMoveFor(btlYou, yourMove, yourMechanic);
   BattleMove foeBattleMove = battleMoveFor(btlFoe, foeMove, foeMechanic);
 
-  bool youFirst = battleMovesFirst(btlYou, yourBattleMove, btlFoe, foeBattleMove);
+  bool youFirst = battleMovesFirst(
+      btlYou, yourBattleMove, btlFoe, foeBattleMove, btlField);
   Combatant *a = youFirst ? &btlYou : &btlFoe;
   Combatant *b = youFirst ? &btlFoe : &btlYou;
   BattleMove ma = youFirst ? yourBattleMove : foeBattleMove;
   BattleMove mb = youFirst ? foeBattleMove : yourBattleMove;
+  uint8_t aSide = a == &btlYou ? 0 : 1;
+  uint8_t bSide = aSide ^ 1u;
 
   uint16_t hp0You = btlYou.hp, hp0Foe = btlFoe.hp;
-  battleAct(*a, *b, btlField, ma, lg, a == &btlYou ? yourPercent : foePercent);
+  battleAct(*a, *b, btlField, ma, lg, a == &btlYou ? yourPercent : foePercent,
+            aSide);
   btlNarrate(*a, *b, lg);
   if (lg.damage && !lg.hurtSelf) btlLungeUntil[a == &btlYou ? 0 : 1] = now + BTL_LUNGE_MS;
-  if (!b->fainted()) {
-    battleAct(*b, *a, btlField, mb, lg, b == &btlYou ? yourPercent : foePercent);
+  bool skipSecond = false;
+  if (lg.switchRequest == BSWITCH_TARGET && btlReplaceFirstAvailable(bSide))
+    skipSecond = true;
+  else if (lg.switchRequest == BSWITCH_USER)
+    btlReplaceFirstAvailable(aSide);
+  if (!skipSecond && !b->fainted()) {
+    battleAct(*b, *a, btlField, mb, lg, b == &btlYou ? yourPercent : foePercent,
+              bSide);
     btlNarrate(*b, *a, lg);
     if (lg.damage && !lg.hurtSelf)
       btlLungeUntil[b == &btlYou ? 0 : 1] = now + BTL_LUNGE_MS + BTL_LUNGE_MS;
+    if (lg.switchRequest == BSWITCH_TARGET)
+      btlReplaceFirstAvailable(aSide);
+    else if (lg.switchRequest == BSWITCH_USER)
+      btlReplaceFirstAvailable(bSide);
   }
   // whoever actually lost health flinches, whichever side dealt it
   if (btlYou.hp < hp0You) btlHitUntil[0] = now + BTL_HIT_MS;
@@ -5305,8 +5488,8 @@ static void btlSide(int tx, int ty, int sx, int sy, const Combatant &c, uint8_t 
 
   // The last row is divided between whichever metadata actually exists, so
   // HP, status and mechanic labels stay centred without colliding.
-  const char *meta[3];
-  uint16_t metaColor[3];
+  const char *meta[4];
+  uint16_t metaColor[4];
   uint8_t metaCount = 0;
   char hp[16], mechanic[12];
   if (who == 0) {                 // your own numbers, as the games do
@@ -5328,6 +5511,10 @@ static void btlSide(int tx, int ty, int sx, int sy, const Combatant &c, uint8_t 
       snprintf(mechanic, sizeof(mechanic), "MEGA");
     meta[metaCount] = mechanic;
     metaColor[metaCount++] = c.activeMechanic == BMECH_MEGA ? UI_BAR_WARN : UI_BAR_BAD;
+  }
+  if (c.form != BFORM_BASE) {
+    meta[metaCount] = T(S_BTL_FORM);
+    metaColor[metaCount++] = 0x45BF;
   }
   for (uint8_t i = 0; i < metaCount; i++) {
     int x0 = px + 6 + (pw - 12) * i / metaCount;
@@ -5860,6 +6047,8 @@ void renderBattle() {
   // name like BLASTOISE was losing its first characters off the edge
   btlSide(82, 82, 300, 40, btlFoe, 1);    // foe reads top-left, sprite top-right
   btlSide(250, 190, 76, 168, btlYou, 0);  // you read bottom-right, sprite bottom-left
+  drawBattleSideLayers(1, 324, 118);
+  drawBattleSideLayers(0, 100, 246);
   drawBattleFieldHud();
 
   // Waiting on the other device. Without this the screen is identical to the
@@ -6024,49 +6213,19 @@ void renderBattle() {
 
 // Brings on the flagged replacement and starts its entrance.
 static void btlDoSwap() {
-  uint32_t now = millis();
   int8_t finishedWho = btlSwapWho;
-  if (btlSwapWho == 1 && btlLink) {
-    battleOnSwitchOut(btlFoe);
-    btlFoeSquad[btlFoeAt] = btlFoe;
+  if (btlSwapWho == 1) {
     uint8_t nxt = 0;
     while (nxt < btlFoeSquadN &&
            (nxt == btlFoeAt || btlFoeSquad[nxt].fainted())) nxt++;
     if (nxt >= btlFoeSquadN) { btlSwapWho = -1; return; }
-    btlFoeAt = nxt;
-    btlFoe = btlFoeSquad[btlFoeAt];
-    btlHpShown[1] = btlFoe.hp;
-    btlSyncSprite(1, btlFoe);
-    btlLungeUntil[1] = btlHitUntil[1] = btlFaintUntil[1] = 0;
-    btlEnterUntil[1] = now + BTL_ENTER_MS;
-    btlSay(T(S_BTL_SENDS), lan.peerName, displayCombatantName(btlFoe));
-  } else if (btlSwapWho == 1) {
-    const Trainer &t = trainerInfo(btlRegion, btlTrainer);
-    btlFoeAt++;
-    const RegionBattleInfo &battle = regionBattleInfo(btlRegion);
-    foeFromSpecies(btlFoe, t.team[btlFoeAt].dex, t.team[btlFoeAt].level,
-                   btlHard ? battle.hardIv : battle.easyIv);
-    btlHpShown[1] = btlFoe.maxHp;
-    btlSyncSprite(1, btlFoe);
-    btlLungeUntil[1] = btlHitUntil[1] = btlFaintUntil[1] = 0;
-    btlEnterUntil[1] = now + BTL_ENTER_MS;
-    btlSay(T(S_BTL_SENDS), trainerName(btlRegion, btlTrainer),
-           displayCombatantName(btlFoe));
+    btlReplaceActive(1, nxt, true);
   } else if (btlSwapWho == 0) {
-    battleOnSwitchOut(btlYou);
-    btlSquad[btlSquadAt] = btlYou;     // remember how battered it was
     uint8_t nxt = 0;
     while (nxt < btlSquadN &&
            (nxt == btlSquadAt || btlSquad[nxt].fainted())) nxt++;
     if (nxt >= btlSquadN) { btlSwapWho = -1; return; }
-    btlSquadAt = nxt;
-    btlYou = btlSquad[btlSquadAt];
-    btlMarkEntered(btlSquadAt);
-    btlHpShown[0] = btlYou.hp;
-    btlSyncSprite(0, btlYou);
-    btlLungeUntil[0] = btlHitUntil[0] = btlFaintUntil[0] = 0;
-    btlEnterUntil[0] = now + BTL_ENTER_MS;
-    btlSay(T(S_BTL_GO), displayCombatantName(btlYou));
+    btlReplaceActive(0, nxt, true);
   }
   if (finishedWho == 0) btlSwapPending &= (uint8_t)~0x01;
   else if (finishedWho == 1) btlSwapPending &= (uint8_t)~0x02;
@@ -6078,17 +6237,9 @@ static void btlDoSwap() {
 // being a free look at the matchup every round.
 static void btlSwitchTo(uint8_t i) {
   if (i >= btlSquadN || i == btlSquadAt) return;
-  battleOnSwitchOut(btlYou);
-  btlSquad[btlSquadAt] = btlYou;
-  btlSquadAt = i;
-  btlYou = btlSquad[i];
-  btlMarkEntered(btlSquadAt);
-  btlHpShown[0] = btlYou.hp;
-  btlSyncSprite(0, btlYou);
-  btlLungeUntil[0] = btlHitUntil[0] = btlFaintUntil[0] = 0;
-  btlEnterUntil[0] = millis() + BTL_ENTER_MS;
+  if (!battleCanSwitch(btlYou, btlFoe)) { sfxPlay(SFX_DENY); return; }
+  if (!btlReplaceActive(0, i, true)) return;
   btlMenu = 0;
-  btlSay(T(S_BTL_GO), displayCombatantName(btlYou));
   btlResolve(0, 100);     // move 0 = no attack, so only the foe acts
 }
 
@@ -6167,7 +6318,8 @@ bool btlAttemptRun(uint8_t roll) {
   // In a linked fight RUN is the existing deliberate disconnect/forfeit, not a
   // simulated wild escape. Applying a local failed roll would desynchronise the
   // two authoritative battle copies.
-  if (btlLink || roll < wildEscapeChance(btlYou.level, btlFoe.level)) {
+  if (btlLink || (btlWild && battleGuaranteedEscape(btlYou)) ||
+      roll < wildEscapeChance(btlYou.level, btlFoe.level)) {
     sfxPlay(SFX_TAP);
     btlFreeSprites();
     audioMusic(MUS_NONE);

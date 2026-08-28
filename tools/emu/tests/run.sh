@@ -24,6 +24,7 @@ TAMAPOKE_VERSION="${TAMAPOKE_VERSION:-$(python3 "$ROOT/tools/firmware_version.py
 export TAMAPOKE_VERSION
 FW_DEFINE="$(python3 "$ROOT/tools/firmware_version.py" --cpp-define)"
 python3 "$ROOT/tools/check_firmware_version.py"
+python3 "$ROOT/tools/check_ability_test_coverage.py"
 
 command -v sdl2-config >/dev/null || { echo "SDL2 not found (brew install sdl2)" >&2; exit 1; }
 pkg-config --exists freetype2 || { echo "FreeType 2 not found (apt install libfreetype-dev)" >&2; exit 1; }

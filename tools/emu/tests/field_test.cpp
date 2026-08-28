@@ -48,6 +48,7 @@ static BattleMove move(uint8_t type, uint8_t category, uint8_t power,
   result.entry.param = param;
   result.entry.target = TG_FOE;
   result.entry.fieldFlags = fieldFlags;
+  result.entry.tags = MT_NONE;
   return result;
 }
 
@@ -67,6 +68,12 @@ int main() {
   MoveId sunnyDayId = findMove("SUNNY DAY");
   MoveId closeCombatId = findMove("CLOSE COMBAT");
   MoveId emberId = findMove("EMBER");
+  MoveId tackleId = findMove("TACKLE");
+  MoveId growlId = findMove("GROWL");
+  MoveId firePunchId = findMove("FIRE PUNCH");
+  MoveId darkPulseId = findMove("DARK PULSE");
+  MoveId shadowBallId = findMove("SHADOW BALL");
+  MoveId razorLeafId = findMove("RAZOR LEAF");
   ck(thunderId && (moveEntry(thunderId).fieldFlags & MF_RAIN_ACCURATE),
      "the move pack marks Thunder as rain-accurate");
   ck(blizzardId && (moveEntry(blizzardId).fieldFlags & MF_SNOW_ACCURATE),
@@ -75,6 +82,19 @@ int main() {
      "the move pack marks Solar Beam as weather-sensitive");
   ck(quakeId && (moveEntry(quakeId).fieldFlags & MF_GRASSY_WEAKENED),
      "the move pack marks Earthquake as weakened by Grassy Terrain");
+  ck(tackleId && (moveEntry(tackleId).tags & MT_CONTACT),
+     "the move pack marks contact moves");
+  ck(growlId && (moveEntry(growlId).tags & MT_SOUND) &&
+     (moveEntry(growlId).tags & MT_REFLECTABLE),
+     "the move pack can combine sound and reflectable tags");
+  ck(firePunchId && (moveEntry(firePunchId).tags & (MT_CONTACT | MT_PUNCH)) ==
+     (MT_CONTACT | MT_PUNCH), "the move pack marks punching contact moves");
+  ck(darkPulseId && (moveEntry(darkPulseId).tags & MT_PULSE),
+     "the move pack marks pulse moves");
+  ck(shadowBallId && (moveEntry(shadowBallId).tags & MT_BALLISTIC),
+     "the move pack marks ballistic moves");
+  ck(razorLeafId && (moveEntry(razorLeafId).tags & MT_SLICING),
+     "the move pack includes supplemental slicing tags");
   ck(sunnyDayId > closeCombatId && moveEntry(sunnyDayId).effect == EF_SET_WEATHER,
      "field setters are appended after the stable move ABI boundary");
   BattleField setterField;
@@ -95,8 +115,11 @@ int main() {
   ck(aiChooseMove(ai, waterFoe, aiField, true) == emberId,
      "smart AI avoids repeating an active weather setter");
   Combatant normal = mon(T_NORMAL), flying = mon(T_FLYING);
-  ck(battleGrounded(normal) && !battleGrounded(flying),
-     "Flying type is the only airborne state in the compact engine");
+  Combatant levitating = normal;
+  levitating.ability = ABILITY_LEVITATE;
+  ck(battleGrounded(normal) && !battleGrounded(flying) &&
+     !battleGrounded(levitating),
+     "Flying type and Levitate are airborne");
 
   BattleField field;
   battleSetEnvironment(field, BWEATHER_RAIN, BTERRAIN_ELECTRIC);

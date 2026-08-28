@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """The move list, hand-authored. Source of truth for the move data pack.
 
-101 moves, trimmed from the main-series catalogues for this battle model:
-80 attacking moves, 11 stat-stage moves, 2 heals and 8 field setters.
+122 moves, trimmed from the main-series catalogues for this battle model.
 
 Not a pure Gen 1 list, and it can't be. dex_types.py gives the 151 their
 CURRENT typings, so the dex contains Fairy (Clefable, Mr. Mime), Steel
@@ -58,18 +57,29 @@ EF_CHARGE = 11      # turn 1 charges; param 1 = invulnerable while charging
 EF_PROTECT = 12     # runtime Max Guard; not authored in the pack
 EF_SET_WEATHER = 13 # param = BattleWeather
 EF_SET_TERRAIN = 14 # param = BattleTerrain
+EF_SET_SCREEN = 15  # param = BattleScreen
+EF_SET_HAZARD = 16  # param = BattleHazard
+EF_CLEAR_FIELD = 17 # param = BattleFieldClear
+EF_FORCE_SWITCH = 18
+EF_PIVOT = 19
 
 BWEATHER_SUN, BWEATHER_RAIN, BWEATHER_SAND, BWEATHER_SNOW = 1, 2, 3, 4
 BTERRAIN_ELECTRIC, BTERRAIN_GRASSY, BTERRAIN_MISTY, BTERRAIN_PSYCHIC = 1, 2, 3, 4
+BSCREEN_REFLECT, BSCREEN_LIGHT_SCREEN, BSCREEN_AURORA_VEIL = 1, 2, 3
+BHAZARD_SPIKES, BHAZARD_TOXIC_SPIKES, BHAZARD_STEALTH_ROCK, BHAZARD_STICKY_WEB = 1, 2, 3, 4
+BCLEAR_OWN_HAZARDS, BCLEAR_ALL = 1, 2
 
 MF_RAIN_ACCURATE = 1
 MF_SNOW_ACCURATE = 2
 MF_SOLAR_CHARGE = 4
 MF_GRASSY_WEAKENED = 8
+MF_STANCE_SHIELD = 16
+MF_AURA_WHEEL = 32
+MF_GULP_MISSILE = 64
 
 # Stat bitmask for EF_STAGE. One delta applies to every bit set, which is how
 # DRAGON DANCE (ATK+SPE) and BULK UP (ATK+DEF) get to be one table row.
-ST_ATK, ST_DEF, ST_SPA, ST_SPD, ST_SPE = 1, 2, 4, 8, 16
+ST_ATK, ST_DEF, ST_SPA, ST_SPD, ST_SPE, ST_ACC, ST_EVA = 1, 2, 4, 8, 16, 32, 64
 
 TG_SELF, TG_FOE = 0, 1
 
@@ -240,10 +250,31 @@ MOVES = [
     ("GRASSY TERRAIN",   "grassy-terrain",   'grass',    MC_STATUS, 0, 0, EF_SET_TERRAIN, BTERRAIN_GRASSY,   0, 0, TG_SELF),
     ("MISTY TERRAIN",    "misty-terrain",    'fairy',    MC_STATUS, 0, 0, EF_SET_TERRAIN, BTERRAIN_MISTY,    0, 0, TG_SELF),
     ("PSYCHIC TERRAIN",  "psychic-terrain",  'psychic',  MC_STATUS, 0, 0, EF_SET_TERRAIN, BTERRAIN_PSYCHIC,  0, 0, TG_SELF),
-]
 
-# Accuracy drops (SAND ATTACK, SMOKESCREEN, FLASH) are deliberately left out:
-# accuracy stages are a whole second stage system for one marginal effect.
+    # Accuracy/evasion, screens, entry hazards and switching all share the
+    # append-only battle-state model introduced after the original catalogue.
+    ("SAND ATTACK",  "sand-attack",  'ground',   MC_STATUS, 0, 100, EF_STAGE,       0, ST_ACC, -1, TG_FOE),
+    ("SMOKESCREEN",  "smokescreen",  'normal',   MC_STATUS, 0, 100, EF_STAGE,       0, ST_ACC, -1, TG_FOE),
+    ("FLASH",        "flash",        'normal',   MC_STATUS, 0, 100, EF_STAGE,       0, ST_ACC, -1, TG_FOE),
+    ("DOUBLE TEAM",  "double-team",  'normal',   MC_STATUS, 0,   0, EF_STAGE,       0, ST_EVA,  1, TG_SELF),
+    ("REFLECT",      "reflect",      'psychic',  MC_STATUS, 0,   0, EF_SET_SCREEN,  BSCREEN_REFLECT,      0, 0, TG_SELF),
+    ("LIGHT SCREEN", "light-screen", 'psychic',  MC_STATUS, 0,   0, EF_SET_SCREEN,  BSCREEN_LIGHT_SCREEN, 0, 0, TG_SELF),
+    ("AURORA VEIL",  "aurora-veil",  'ice',      MC_STATUS, 0,   0, EF_SET_SCREEN,  BSCREEN_AURORA_VEIL, 0, 0, TG_SELF),
+    ("SPIKES",       "spikes",       'ground',   MC_STATUS, 0,   0, EF_SET_HAZARD,  BHAZARD_SPIKES,       0, 0, TG_FOE),
+    ("TOXIC SPIKES", "toxic-spikes", 'poison',   MC_STATUS, 0,   0, EF_SET_HAZARD,  BHAZARD_TOXIC_SPIKES, 0, 0, TG_FOE),
+    ("STEALTH ROCK", "stealth-rock", 'rock',     MC_STATUS, 0,   0, EF_SET_HAZARD,  BHAZARD_STEALTH_ROCK, 0, 0, TG_FOE),
+    ("STICKY WEB",   "sticky-web",   'bug',      MC_STATUS, 0,   0, EF_SET_HAZARD,  BHAZARD_STICKY_WEB,   0, 0, TG_FOE),
+    ("RAPID SPIN",   "rapid-spin",   'normal',   MC_PHYS,  50, 100, EF_CLEAR_FIELD, BCLEAR_OWN_HAZARDS, ST_SPE, 1, TG_SELF),
+    ("DEFOG",        "defog",        'flying',   MC_STATUS, 0,   0, EF_CLEAR_FIELD, BCLEAR_ALL, ST_EVA, -1, TG_FOE),
+    ("ROAR",         "roar",         'normal',   MC_STATUS, 0,   0, EF_FORCE_SWITCH, 0, 0, 0, TG_FOE),
+    ("WHIRLWIND",    "whirlwind",    'normal',   MC_STATUS, 0,   0, EF_FORCE_SWITCH, 0, 0, 0, TG_FOE),
+    ("DRAGON TAIL",  "dragon-tail",  'dragon',   MC_PHYS,  60,  90, EF_FORCE_SWITCH, 0, 0, 0, TG_FOE),
+    ("CIRCLE THROW", "circle-throw", 'fighting', MC_PHYS,  60,  90, EF_FORCE_SWITCH, 0, 0, 0, TG_FOE),
+    ("U-TURN",       "u-turn",       'bug',      MC_PHYS,  70, 100, EF_PIVOT,       0, 0, 0, TG_FOE),
+    ("VOLT SWITCH",  "volt-switch",  'electric', MC_SPEC,  70, 100, EF_PIVOT,       0, 0, 0, TG_FOE),
+    ("KING'S SHIELD", "kings-shield", 'steel',   MC_STATUS, 0,   0, EF_PROTECT,     0, 0, 0, TG_SELF),
+    ("AURA WHEEL",   "aura-wheel",   'electric', MC_PHYS, 110, 100, EF_STAGE,       0, ST_SPE, 1, TG_SELF),
+]
 
 SLUG_TO_NAME = {slug: name for name, slug, *_ in MOVES if slug}
 
@@ -254,4 +285,7 @@ FIELD_MOVE_FLAGS = {
     "blizzard": MF_SNOW_ACCURATE,
     "solar-beam": MF_SOLAR_CHARGE,
     "earthquake": MF_GRASSY_WEAKENED,
+    "kings-shield": MF_STANCE_SHIELD,
+    "aura-wheel": MF_AURA_WHEEL,
+    "surf": MF_GULP_MISSILE,
 }

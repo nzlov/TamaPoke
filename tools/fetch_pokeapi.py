@@ -17,6 +17,8 @@ run off ivAtk/trAtk against bSpA, special defence off ivDef/trDef against
 bSpD, so no new IVs and no save migration. See dex_moves.py.
 """
 import json
+import argparse
+import csv
 import os
 import ssl
 import sys
@@ -38,6 +40,7 @@ except ImportError:
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, 'pokeapi_cache')
 API = 'https://pokeapi.co/api/v2/pokemon/%d'
+POKEAPI_REVISION = 'c40a25c6544b97334a1ae8b1965a378fa3317c28'
 # Derived from dex_data.py rather than written here, so a hardcoded number
 # cannot fall behind the table again. The old header generator had its own 151
 # once and emitted a Kanto-sized LEARN_OFS against a dex that had grown, which
@@ -125,22 +128,90 @@ def fetch(num):
     return slim
 
 
+def load_bulk_learnsets(csv_dir, wanted):
+    """Read the same PokeAPI relation as fetch(), without 1025 HTTP calls."""
+    def read(name):
+        path = os.path.join(csv_dir, name + '.csv')
+        if not os.path.exists(path):
+            raise FileNotFoundError(path)
+        with open(path, encoding='utf-8-sig', newline='') as source:
+            return list(csv.DictReader(source))
+
+    move_slugs = {int(row['id']): row['identifier']
+                  for row in read('moves') if row['identifier'] in wanted}
+    version_groups = {row['identifier']: int(row['id'])
+                      for row in read('version_groups')}
+    default_species = {int(row['id']): int(row['species_id'])
+                       for row in read('pokemon') if row['is_default'] == '1'}
+    representative = {
+        num: version_groups[level_vg(num)] for num in range(1, DEX_COUNT + 1)
+    }
+    details = {}
+    for row in read('pokemon_moves'):
+        slug = move_slugs.get(int(row['move_id']))
+        species = default_species.get(int(row['pokemon_id']))
+        if slug is None or species is None or species > DEX_COUNT:
+            continue
+        method = int(row['pokemon_move_method_id'])
+        if method not in (1, 4):  # level-up, machine
+            continue
+        details.setdefault((species, slug), []).append(
+            (method, int(row['level']), int(row['version_group_id']))
+        )
+
+    learn = {}
+    missing = set(wanted)
+    for num in range(1, DEX_COUNT + 1):
+        rows = []
+        for slug in wanted:
+            entries = details.get((num, slug), ())
+            if not entries:
+                continue
+            missing.discard(slug)
+            lvlup = [level for method, level, vg in entries
+                     if method == 1 and vg == representative[num] and level > 0]
+            if not lvlup:
+                lvlup = [level for method, level, _vg in entries
+                         if method == 1 and level > 1]
+            has_lvl1 = any(method == 1 and level <= 1
+                           for method, level, _vg in entries)
+            is_tm = any(method == 4 for method, _level, _vg in entries)
+            level = (min(lvlup) if lvlup else 1 if has_lvl1 else
+                     0 if is_tm else None)
+            if level is not None:
+                rows.append((slug, level))
+        rows.sort(key=lambda row: (row[1], row[0]))
+        learn[num] = rows
+    return learn, missing
+
+
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--learnsets-only", action="store_true",
+                        help="leave dex_stats.py unchanged")
+    parser.add_argument("--csv-dir",
+                        help="read pinned PokeAPI CSVs instead of per-Pokemon API calls")
+    args = parser.parse_args()
+    if args.csv_dir and not args.learnsets_only:
+        parser.error('--csv-dir currently requires --learnsets-only')
     wanted = {slug for _name, slug, *_ in MOVES if slug}  # None = not learnable
     stats, learn = {}, {}
     missing = set(wanted)
 
-    for num in range(1, DEX_COUNT + 1):
-        d = fetch(num)
-        s = d['stats']
-        stats[num] = (s['hp'], s['attack'], s['defense'], s['speed'],
-                      s['special-attack'], s['special-defense'])
+    if args.csv_dir:
+        learn, missing = load_bulk_learnsets(args.csv_dir, wanted)
+    else:
+        for num in range(1, DEX_COUNT + 1):
+            d = fetch(num)
+            s = d['stats']
+            stats[num] = (s['hp'], s['attack'], s['defense'], s['speed'],
+                          s['special-attack'], s['special-defense'])
 
-        rows = []
-        for m in d['moves']:
-            if m['name'] not in wanted:
-                continue
-            missing.discard(m['name'])
+            rows = []
+            for m in d['moves']:
+                if m['name'] not in wanted:
+                    continue
+                missing.discard(m['name'])
             # A move's LEVEL GATE wins over its TM entry. The old rule took the
             # lowest of the two and scored a TM as 0, so anything ever sold as a
             # TM lost its gate -- Charizard's Flamethrower is TM38 in gen 1, so
@@ -151,40 +222,41 @@ def main():
             # some games, and the minimum flattened Charizard's whole set to 1.
             # Each generation uses one representative version group so its
             # level gates remain meaningful instead of being mixed together.
-            lvlup = [lvl for meth, lvl, vg in m['details']
-                     if meth == 'level-up' and vg == level_vg(num) and lvl > 0]
-            if not lvlup:   # not in that game (or only at level 1): any game
-                lvlup = [lvl for meth, lvl, _vg in m['details']
-                         if meth == 'level-up' and lvl > 1]
-            is_tm = any(meth == 'machine' for meth, _lvl, _vg in m['details'])
-            has_lvl1 = any(meth == 'level-up' and lvl <= 1
-                           for meth, lvl, _vg in m['details'])
-            if lvlup:
-                lv = min(lvlup)
-            elif has_lvl1:
-                lv = 1      # a starting move
-            elif is_tm:
-                lv = 0      # TM only: no gate, taught on demand
-            else:
-                lv = None
-            if lv is not None:
-                rows.append((m['name'], lv))
-        rows.sort(key=lambda r: (r[1], r[0]))
-        learn[num] = rows
-        if num % 25 == 0:
-            print('  ...%d/%d' % (num, DEX_COUNT))
+                lvlup = [lvl for meth, lvl, vg in m['details']
+                         if meth == 'level-up' and vg == level_vg(num) and lvl > 0]
+                if not lvlup:   # not in that game (or only at level 1): any game
+                    lvlup = [lvl for meth, lvl, _vg in m['details']
+                             if meth == 'level-up' and lvl > 1]
+                is_tm = any(meth == 'machine' for meth, _lvl, _vg in m['details'])
+                has_lvl1 = any(meth == 'level-up' and lvl <= 1
+                               for meth, lvl, _vg in m['details'])
+                if lvlup:
+                    lv = min(lvlup)
+                elif has_lvl1:
+                    lv = 1      # a starting move
+                elif is_tm:
+                    lv = 0      # TM only: no gate, taught on demand
+                else:
+                    lv = None
+                if lv is not None:
+                    rows.append((m['name'], lv))
+            rows.sort(key=lambda r: (r[1], r[0]))
+            learn[num] = rows
+            if num % 25 == 0:
+                print('  ...%d/%d' % (num, DEX_COUNT))
 
     hdr = '# GENERADO por tools/fetch_pokeapi.py desde PokeAPI - no editar\n'
 
-    with open(os.path.join(HERE, 'dex_stats.py'), 'w') as f:
-        f.write(hdr)
-        f.write('# num -> (hp, atk, def, vel, spa, spd). Los dos ultimos son\n'
-                '# nuevos: el reparto fisico/especial vive en la especie, no en\n'
-                '# el individuo (ver fetch_pokeapi.py y dex_moves.py).\n')
-        f.write('BASE_STATS = {\n')
-        for num in range(1, DEX_COUNT + 1):
-            f.write('    %d: %r,\n' % (num, stats[num]))
-        f.write('}\n')
+    if not args.learnsets_only:
+        with open(os.path.join(HERE, 'dex_stats.py'), 'w') as f:
+            f.write(hdr)
+            f.write('# num -> (hp, atk, def, vel, spa, spd). Los dos ultimos son\n'
+                    '# nuevos: el reparto fisico/especial vive en la especie, no en\n'
+                    '# el individuo (ver fetch_pokeapi.py y dex_moves.py).\n')
+            f.write('BASE_STATS = {\n')
+            for num in range(1, DEX_COUNT + 1):
+                f.write('    %d: %r,\n' % (num, stats[num]))
+            f.write('}\n')
 
     with open(os.path.join(HERE, 'dex_learnsets.py'), 'w') as f:
         f.write(hdr)
@@ -199,7 +271,10 @@ def main():
 
     total = sum(len(v) for v in learn.values())
     thin = [n for n in learn if len(learn[n]) < 4]
-    print('stats: %d especies x 6' % len(stats))
+    if not args.learnsets_only:
+        print('stats: %d especies x 6' % len(stats))
+    if args.csv_dir:
+        print('source: PokeAPI %s bulk CSV' % POKEAPI_REVISION)
     print('learnsets: %d filas, %.1f de media' % (total, total / DEX_COUNT))
     if missing:
         print('AVISO: %d movimientos que nadie aprende: %s'

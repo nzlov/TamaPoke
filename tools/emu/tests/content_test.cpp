@@ -101,6 +101,7 @@ int main() {
 
   bool chineseGlyphs = chinese >= 0 && uiActivateLocale((uint8_t)chinese);
   ck(chineseGlyphs && !strcmp(speciesName(25), "皮卡丘") &&
+     !strcmp(speciesName(778), "谜拟丘") &&
      thunderbolt && !strcmp(moveName(thunderbolt), "十万伏特") &&
      !strcmp(packedTypeName(T_NORMAL), "一般") &&
      !strcmp(regionName(0), "关都") && !strcmp(trainerName(0, 0), "小刚") &&

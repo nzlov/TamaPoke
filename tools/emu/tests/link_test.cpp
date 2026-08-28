@@ -63,14 +63,15 @@ int main(){
   ck(B.theirs[0].shiny && B.theirs[0].sparkle && B.theirs[0].gigantamaxFactor,
      "the mirrored rare state and Gigantamax factor survive on the wire");
   ck(B.theirs[0].gender==A.mine[0].gender, "gender survives the wire");
+  ck(B.theirs[0].ability==A.mine[0].ability, "ability survives the wire");
   ck(A.isHost && !B.isHost, "the roles stay as they were offered");
 
   // a creature restored from the wire must fight identically
   Combatant back; linkMonTo(back, B.theirs[0]);
   ck(back.dex==6 && back.level==50 && back.hp==back.maxHp,
      "a wire creature restores at full health");
-  ck(back.shiny && back.gigantamaxFactor,
-     "the restored combatant keeps its combined rare state");
+  ck(back.shiny && back.gigantamaxFactor && back.ability==A.mine[0].ability,
+     "the restored combatant keeps its rare state and ability");
 
   LinkMon legacy = mon(7, 30, "LEGACY");
   legacy.sparkle = 1;
@@ -237,11 +238,14 @@ int main(){
     LinkMon junk{};
     junk.dex=9999; junk.level=250; junk.maxHp=0; junk.moves[0]=250;
     junk.gender=250;
+    junk.ability=0xFFFF;
     Combatant c; linkMonTo(c,junk);
     ck(c.dex>=1 && c.dex<=dexCount(), "a nonsense dex is clamped into the table");
     ck(c.level>=1 && c.level<=MAX_LEVEL, "so is a nonsense level");
     ck(c.moves[0]<moveCount(), "and a nonsense move index");
     ck(c.gender==GENDER_NONE, "and a nonsense gender is made neutral");
+    ck(c.ability==speciesAbility(c.dex, ABILITY_SLOT_ONE),
+       "and a nonsense ability falls back to the species' first slot");
     ck(c.maxHp>=1 && c.hp==c.maxHp, "a creature always has at least 1 HP");
 
     LinkMon neg{}; neg.dex=-5; neg.level=0; neg.maxHp=10;
