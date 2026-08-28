@@ -389,10 +389,10 @@ cap training.
 - IVs are shown on the Battle page of the stat card; 31 and above are highlighted.
 
 Training: **STRENGTH** ← the bag, **SPEED** ← the reaction test, **DEFENSE** ← the
-ball game. **VIT** can't be trained. Care state only changes decay; it never grants
-training automatically. Sleeping is maintained time; while awake, FOOD, JOY, ENE
-and HYG must all be at least 40. Each fixed 60-minute cycle counts maintained and
-low-state minutes, settles once, and then resets both counts.
+ball game. Care state selects the training decay rate. Sleeping is maintained
+time; while awake, FOOD, JOY, ENE and HYG must all be at least 40. Each fixed
+60-minute cycle counts maintained and low-state minutes, settles once, and then
+resets both counts.
 
 Every hatch also rolls one of the 25 **natures**. The 20 non-neutral natures apply
 the canonical +10%/-10% modifier to their final combat stats; HP is unaffected.
@@ -409,9 +409,9 @@ its base decay:
 
 At each 60-minute settlement, a maintained majority makes every channel lose half
 its nature-based decay; a low-state majority applies double decay; a 30:30 tie
-applies base decay. Unaffected training therefore uses 2.5%, 10% or 5% of its
-IV-based cap respectively. Every loss uses the cap rather than the current value
-and rounds up, both live and offline.
+applies base decay. Training with the standard 5% base rate therefore uses 2.5%,
+10% or 5% of its IV-based cap respectively. Every loss uses the cap and rounds
+up, both live and offline.
 ATK training is also the special-attack training contribution; DEF training is
 also the special-defence contribution. There are no separate special training
 values.
@@ -680,14 +680,14 @@ If one bottoms out it counts as a *slip-up*.
 - Tap the creature = pet it (+happiness, bond).
 - Horizontal swipe = switch between the occupied cultivation slots.
 - Vertical swipe up = open the **stat card** (4 pages: Profile / Battle / Moves /
-  Progress; swipe between them; the Profile name is display-only, while tapping
-  its nature opens a localized temperament and stat-effect explanation; on
-  Battle the "Train strength" button opens the bag).
+  Progress; swipe between them; tapping the nature on Profile opens a localized
+  temperament and stat-effect explanation; on Battle the "Train strength" button
+  opens the bag).
 - Swipe down = open the **bag / battle centre / badges** navigation page.
 
 **Physical PWR button:** short = screen on/off · long (4 s) = full power-off
-(the RTC stays alive, so time passes even while it's off). The PMU keeps this
-hardware long-press shutdown independent of the firmware.
+(the RTC stays alive, so time passes even while it's off). The PMU handles the
+hardware long-press shutdown.
 
 ## Decisions: you choose, and you watch
 
@@ -790,9 +790,6 @@ by its nature modifier and then its gender modifier (see
 - STRENGTH ← the training bag (~4 hits = one score step)
 - VIT (vitality, from the base HP stat) — not trainable
 
-Care state does not add ATK, DEF or SPEED; it only selects the state-based decay
-described above.
-
 ### Moves
 
 Each creature knows up to **4 moves**, from a pool of 77. Two kinds:
@@ -837,8 +834,7 @@ and burns off with training.
 - **Bond** (the creature's): rises slowly with care and petting, drops with slip-ups.
 - **Medals** for the individual (level, berry, streak, bond, final form, fit) +
   a global counter. Medals page of the stat card.
-- **Name**: existing nicknames remain in the header and card; Profile no longer
-  exposes a rename action.
+- **Name**: nicknames appear in the header and stat card.
 
 High streak and bond improve a safety egg's rarity and IVs. Wild shiny encounters
 use only the shared farewell bonus.
