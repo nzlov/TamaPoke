@@ -324,6 +324,10 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 - After a wild victory, a settlement page lists every item and training-stat gain.
   A successful capture adds the caught creature to that same page and stores it
   automatically. Only a full collection continues to the replace-or-release picker.
+- Selecting a capture ball arms the board's QMI8658 motion sensor for three seconds.
+  Keep hold of the device and swing it forward to throw; tapping cancels, and a
+  timeout returns to the bag without consuming the ball. If the IMU is unavailable,
+  selecting the ball keeps the original touch-only throw as a fallback.
 - Capture items hide the battle UI while the wild creature moves to centre for
   a non-blocking throw and three-shake sequence. Success finishes before the
   settlement page. After breaking free, the creature enters a non-stacking Angry
@@ -590,7 +594,7 @@ is told so.
 |---|---|---|
 | GFX Library for Arduino (`Arduino_GFX`) 1.6.4+ | moononournation | CO5300 over QSPI + framebuffer in PSRAM |
 | FreeType 2.14.3 (minimal vendored build) | FreeType Project / Espressif component | hinted OpenType rendering from UI packs |
-| SensorLib | Lewis He | CST9217 touch + PCF85063 RTC |
+| SensorLib | Lewis He | CST9217 touch + PCF85063 RTC + QMI8658 IMU |
 | XPowersLib | Lewis He | AXP2101 PMU (battery, brightness, PWR button) |
 | ESP_I2S (bundled in the ESP32 core) | Espressif | I2S to the ES8311 codec |
 

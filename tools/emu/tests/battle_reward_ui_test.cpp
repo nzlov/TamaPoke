@@ -7,6 +7,7 @@
 #include "inventory.h"
 #include "party.h"
 #include "pet.h"
+#include "motion.h"
 #include <cstdio>
 #include <cstring>
 
@@ -48,10 +49,16 @@ extern uint32_t btlWinUntil;
 extern bool btlCaptureAnimating, btlCaptureSuccess;
 extern uint32_t btlCaptureStartedAt;
 extern ItemKey btlCaptureItem;
+extern ThrowGestureDetector btlThrowDetector;
+extern bool btlThrowArmed;
+extern uint32_t btlThrowStartedAt;
+extern ItemKey btlThrowItem;
 extern uint16_t btlRewardTraining[3];
 extern ItemKey btlRewardItems[2];
 extern uint8_t btlRewardItemCount;
 void btlUpdateCapture(uint32_t now);
+void btlUpdateThrow(uint32_t now);
+bool btlFeedThrowSample(const MotionSample &sample);
 
 static int bad = 0;
 
@@ -119,6 +126,45 @@ int main() {
     const ItemEntry *item = itemAt(i);
     while (item && inventory.count(item->key)) inventory.consume(item->key);
   }
+
+  if (masterBall) inventory.add(masterBall->key);
+  uint8_t armedStock = masterBall ? inventory.count(masterBall->key) : 0;
+  btlThrowArmed = true;
+  btlThrowStartedAt = 1000;
+  btlThrowItem = masterBall ? masterBall->key : ITEM_KEY_NONE;
+  btlThrowDetector.arm(1000);
+  btlFeedThrowSample({1100, 0.0f, 0.0f, 2.2f, 0.0f, 500.0f, 0.0f});
+  btlFeedThrowSample({1110, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
+  check(masterBall && btlThrowArmed && !btlCaptureAnimating &&
+        inventory.count(masterBall->key) == armedStock,
+        "arming and a tap spike do not consume the selected ball");
+  btlFeedThrowSample({1250, 0.0f, 0.0f, 1.1f, 0.0f, 100.0f, 0.0f});
+  btlFeedThrowSample({1300, 0.0f, 0.0f, 1.3f, 0.0f, 220.0f, 0.0f});
+  btlFeedThrowSample({1350, 0.0f, 0.0f, 1.7f, 0.0f, 300.0f, 0.0f});
+  btlFeedThrowSample({1400, 0.0f, 0.0f, 1.3f, 0.0f, 250.0f, 0.0f});
+  check(masterBall && !btlThrowArmed && btlCaptureAnimating &&
+        btlCaptureItem == masterBall->key &&
+        inventory.count(masterBall->key) + 1 == armedStock,
+        "a valid gesture starts the existing capture path and consumes one ball");
+  uint8_t armedAfterThrow = masterBall ? inventory.count(masterBall->key) : 0;
+  btlFeedThrowSample({1450, 0.0f, 0.0f, 1.8f, 0.0f, 300.0f, 0.0f});
+  check(masterBall && inventory.count(masterBall->key) == armedAfterThrow,
+        "samples after the accepted gesture cannot consume another ball");
+  btlCaptureAnimating = false;
+  btlCaptureItem = ITEM_KEY_NONE;
+
+  if (masterBall) inventory.add(masterBall->key);
+  uint8_t timeoutStock = masterBall ? inventory.count(masterBall->key) : 0;
+  btlThrowArmed = true;
+  btlThrowStartedAt = 2000;
+  btlThrowItem = masterBall ? masterBall->key : ITEM_KEY_NONE;
+  btlThrowDetector.arm(2000);
+  btlUpdateThrow(5000);
+  check(masterBall && !btlThrowArmed && btlMenu == 3 &&
+        inventory.count(masterBall->key) == timeoutStock,
+        "a timed-out throw returns to the bag without consuming the ball");
+  if (masterBall) inventory.consume(masterBall->key);
+
   uint8_t selectedBallImages = 0;
   for (uint16_t i = 0; i < itemCount(); i++) {
     const ItemEntry *item = itemAt(i);

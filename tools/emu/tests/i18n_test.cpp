@@ -149,6 +149,12 @@ int main() {
     printf("WRONG TRAINING REWARD  en-US: %s\n", T(S_WIN_TRAINING_FMT));
     bad++;
   }
+  if (strcmp(T(S_BTL_THROW_PROMPT), "SWING TO THROW") ||
+      strcmp(T(S_BTL_THROW_CANCEL), "tap: cancel")) {
+    printf("WRONG THROW PROMPT  en-US: %s / %s\n",
+           T(S_BTL_THROW_PROMPT), T(S_BTL_THROW_CANCEL));
+    bad++;
+  }
   int8_t chinese = uiFindLocale("zh-CN");
   if (chinese >= 0) {
     setLang((Lang)chinese);
@@ -167,6 +173,12 @@ int main() {
     }
     if (strcmp(T(S_WIN_TRAINING_FMT), "%s训练值 +%u")) {
       printf("WRONG TRAINING REWARD  zh-CN: %s\n", T(S_WIN_TRAINING_FMT));
+      bad++;
+    }
+    if (strcmp(T(S_BTL_THROW_PROMPT), "挥动设备抛球") ||
+        strcmp(T(S_BTL_THROW_CANCEL), "点击取消")) {
+      printf("WRONG THROW PROMPT  zh-CN: %s / %s\n",
+             T(S_BTL_THROW_PROMPT), T(S_BTL_THROW_CANCEL));
       bad++;
     }
   }

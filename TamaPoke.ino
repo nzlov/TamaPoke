@@ -4,7 +4,7 @@
 // Librerias (Library Manager o repo de Waveshare):
 //   - "GFX Library for Arduino" 1.6.4+ (moononournation), CO5300 + CJK
 //   - "U8g2" (olikraus), habilita la fuente UTF-8 incluida en Arduino_GFX
-//   - "SensorLib" (Lewis He), driver tactil CST9217
+//   - "SensorLib" (Lewis He), drivers CST9217 y QMI8658
 //
 // Placa: ESP32S3 Dev Module | Flash 16MB | PSRAM: OPI PSRAM | USB CDC On Boot: Enabled
 //
@@ -40,6 +40,7 @@
 #include "rtcbat.h"
 #include "i18n.h"
 #include "audio.h"
+#include "motion.h"
 #include <Preferences.h>
 
 #if defined(ESP32)
@@ -791,6 +792,7 @@ static void btlDismissWin();
 static void btlApplyEntry(uint8_t side);
 static bool btlReplaceActive(uint8_t side, uint8_t next, bool announce);
 void btlCompleteCapture();
+void btlUpdateThrow(uint32_t now);
 void btlFinish(bool won);
 void startWildBattle(uint8_t region, bool hard);
 void drawSparkleParticles(int cx, int groundY, uint32_t now, uint8_t scale = 1);
@@ -1017,12 +1019,25 @@ bool btlCaptureSuccess = false;
 bool btlCaptureCuePlayed = false;
 uint32_t btlCaptureStartedAt = 0;
 ItemKey btlCaptureItem = ITEM_KEY_NONE;
+ThrowGestureDetector btlThrowDetector;
+bool btlThrowArmed = false;
+uint32_t btlThrowStartedAt = 0;
+ItemKey btlThrowItem = ITEM_KEY_NONE;
+#define BTL_THROW_TIMEOUT_MS 3000UL
 #define BTL_CAPTURE_CENTER_MS 600UL
 #define BTL_CAPTURE_THROW_MS 650UL
 #define BTL_CAPTURE_ABSORB_MS 350UL
 #define BTL_CAPTURE_SHAKE_MS 1350UL
 #define BTL_CAPTURE_RESULT_MS 700UL
 #define BTL_CAPTURE_RETURN_MS 600UL
+
+void btlResetThrow() {
+  btlThrowArmed = false;
+  btlThrowStartedAt = 0;
+  btlThrowItem = ITEM_KEY_NONE;
+  motionStop();
+}
+
 // battle menu: root, moves, switch, direct warehouse view, revive target
 uint8_t btlMenu = 0;
 uint8_t btlItemPage = 0;
@@ -1261,7 +1276,8 @@ void setup() {
   Serial.printf("TamaPoke fw %s\n", FW_VERSION);
   bootReport();   // why the last run ended, and what it was doing
   Wire.begin(IIC_SDA, IIC_SCL);
-  // CST9217 (tactil), AXP2101 (PMU) y PCF85063 (RTC) comparten este bus I2C.
+  // CST9217 (tactil), QMI8658 (IMU), AXP2101 (PMU) y PCF85063 (RTC)
+  // comparten este bus I2C.
   // Red de seguridad para PMU/RTC (SensorLib NO respeta este timeout en el
   // tactil; el cuelgue del tactil dormido se resuelve gateando por INT, ver
   // handleTouch).
@@ -1303,6 +1319,13 @@ void setup() {
     renderRecovery();
     return;
   }
+
+  bool motionOk = motionBegin();
+#if defined(ARDUINO)
+  if (!motionOk) Serial.println("QMI8658 no detectado; captura tactil activa");
+#else
+  (void)motionOk;
+#endif
 
   pet.begin();
   party.begin();
@@ -1394,6 +1417,7 @@ void loop() {
   wasRunReady = runReady;
 
   handleTouch();
+  if (battleOpen) btlUpdateThrow(millis());
   updateQuiz(millis());
   handleSerial();
   ensureMon();
@@ -4695,6 +4719,7 @@ void startLinkBattle() {
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
   btlCaptureAnimating = false;
   btlCaptureItem = ITEM_KEY_NONE;
+  btlResetThrow();
   btlHpShown[0] = btlYou.maxHp;
   btlHpShown[1] = btlFoe.maxHp;
   btlSyncSprite(0, btlYou);
@@ -4747,6 +4772,7 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
   btlCaptureAnimating = false;
   btlCaptureItem = ITEM_KEY_NONE;
+  btlResetThrow();
   btlHpShown[0] = btlYou.maxHp;
   btlHpShown[1] = btlFoe.maxHp;
   btlSyncSprite(0, btlYou);
@@ -4793,6 +4819,7 @@ void startBattle(int16_t dex, uint8_t lvl) {
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
   btlCaptureAnimating = false;
   btlCaptureItem = ITEM_KEY_NONE;
+  btlResetThrow();
   btlHpShown[0] = btlYou.maxHp;
   btlHpShown[1] = btlFoe.maxHp;
   btlSyncSprite(0, btlYou);
@@ -4901,6 +4928,7 @@ void startWildBattle(uint8_t region, bool hard) {
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
   btlCaptureAnimating = false;
   btlCaptureItem = ITEM_KEY_NONE;
+  btlResetThrow();
   btlHpShown[0] = btlYou.maxHp;
   btlHpShown[1] = btlFoe.maxHp;
   btlSyncSprite(0, btlYou);
@@ -6064,6 +6092,25 @@ void renderBattle() {
     gfx->setTextSize(1);
     const char *w = T(S_LAN_WAITFOE);
     uiDrawCenteredIn(w, BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8);
+  } else if (btlThrowArmed) {
+    gfx->fillRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_WHITE);
+    gfx->drawRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_INK);
+    const ItemEntry *ball = itemByKey(btlThrowItem);
+    if (ball) drawItemIcon(*ball, BTL_GRID_X + 42, BTL_GRID_Y + 39, 2);
+    gfx->setTextSize(1);
+    gfx->setTextColor(UI_INK);
+    uiDrawCenteredIn(T(S_BTL_THROW_PROMPT), BTL_GRID_X + 80, BTL_GRID_Y + 15,
+                     232, 20);
+    gfx->setTextColor(UI_MUTED);
+    uiDrawCenteredIn(T(S_BTL_THROW_CANCEL), BTL_GRID_X + 80, BTL_GRID_Y + 42,
+                     232, 18);
+    uint32_t elapsed = millis() - btlThrowStartedAt;
+    uint16_t remaining = elapsed < BTL_THROW_TIMEOUT_MS
+        ? (uint16_t)((BTL_THROW_TIMEOUT_MS - elapsed) * 220UL / BTL_THROW_TIMEOUT_MS)
+        : 0;
+    gfx->fillRoundRect(BTL_GRID_X + 86, BTL_GRID_Y + 67, 220, 5, 2, UI_TRACK);
+    if (remaining)
+      gfx->fillRoundRect(BTL_GRID_X + 86, BTL_GRID_Y + 67, remaining, 5, 2, UI_BAR_OK);
   } else if (btlMsgCount) {            // narration takes over the menu area
     gfx->fillRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_WHITE);
     gfx->drawRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_INK);
@@ -6380,6 +6427,7 @@ void btlCompleteCapture() {
 }
 
 bool btlStartCapture(const ItemEntry &item, uint8_t roll, uint32_t now) {
+  btlResetThrow();
   if (!battleOpen || btlOver || btlCaptureAnimating || !btlWild ||
       item.effect != ITEM_EFFECT_CATCH || !inventory.consume(item.key)) {
     sfxPlay(SFX_DENY);
@@ -6401,7 +6449,43 @@ bool btlStartCapture(const ItemEntry &item, uint8_t roll, uint32_t now) {
 }
 
 static void btlThrowBall(const ItemEntry &item) {
-  btlStartCapture(item, (uint8_t)random(100), millis());
+  uint32_t now = millis();
+  if (!motionStart()) {
+    btlStartCapture(item, (uint8_t)random(100), now);
+    return;
+  }
+  btlThrowArmed = true;
+  btlThrowStartedAt = now;
+  btlThrowItem = item.key;
+  btlThrowDetector.arm(now);
+  btlMenu = 0;
+  sfxPlay(SFX_TAP);
+}
+
+static void btlCancelThrow(bool timedOut) {
+  btlResetThrow();
+  btlMenu = 3;
+  sfxPlay(timedOut ? SFX_DENY : SFX_TAP);
+}
+
+bool btlFeedThrowSample(const MotionSample &sample) {
+  if (!btlThrowArmed || !btlThrowDetector.update(sample)) return false;
+  const ItemEntry *item = itemByKey(btlThrowItem);
+  if (!item) {
+    btlCancelThrow(true);
+    return false;
+  }
+  return btlStartCapture(*item, (uint8_t)random(100), sample.at);
+}
+
+void btlUpdateThrow(uint32_t now) {
+  if (!btlThrowArmed) return;
+  if (now - btlThrowStartedAt >= BTL_THROW_TIMEOUT_MS) {
+    btlCancelThrow(true);
+    return;
+  }
+  MotionSample sample;
+  if (motionRead(sample, now)) btlFeedThrowSample(sample);
 }
 
 static void btlDismissWin() {
@@ -6421,6 +6505,7 @@ static void btlDismissWin() {
 
 static bool btlDispatchTap(int16_t x, int16_t y) {
   if (btlCaptureAnimating) return false;
+  if (btlThrowArmed) { btlCancelThrow(false); return true; }
   if (btlWinUntil) {          // dismiss the win screen and leave the fight
     btlDismissWin();
     return true;

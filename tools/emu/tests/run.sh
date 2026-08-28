@@ -23,6 +23,7 @@ FILTER="${1:-}"
 TAMAPOKE_VERSION="${TAMAPOKE_VERSION:-$(python3 "$ROOT/tools/firmware_version.py")}"
 export TAMAPOKE_VERSION
 FW_DEFINE="$(python3 "$ROOT/tools/firmware_version.py" --cpp-define)"
+TEST_CONTENT_DIR="${TAMAPOKE_CONTENT_DIR:-$ROOT/web/packs}"
 python3 "$ROOT/tools/check_firmware_version.py"
 python3 "$ROOT/tools/check_ability_test_coverage.py"
 
@@ -70,18 +71,17 @@ fi
 
 # Arrays, not a string: the pack directory has to reach the compiler still
 # quoted, and passing these through eval silently strips it.
-CORE=("$ROOT/gbsynth.cpp" "$ROOT/art_codec.cpp" "$ROOT/content.cpp" "$ROOT/font_engine.cpp" "$ROOT/nature.cpp" "$ROOT/pet.cpp" "$ROOT/quiz.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/inventory.cpp" "$ROOT/items.cpp" "$ROOT/wild.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp")
+CORE=("$ROOT/gbsynth.cpp" "$ROOT/art_codec.cpp" "$ROOT/content.cpp" "$ROOT/font_engine.cpp" "$ROOT/motion.cpp" "$ROOT/nature.cpp" "$ROOT/pet.cpp" "$ROOT/quiz.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/inventory.cpp" "$ROOT/items.cpp" "$ROOT/wild.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp")
 read -r -a FT_CFLAGS <<< "$(pkg-config --cflags freetype2 zlib)"
 read -r -a FT_LIBS <<< "$(pkg-config --libs freetype2 zlib)"
-FLAGS=(-std=c++17 -O1 -w -I"$EMU" -I"$ROOT" "${FT_CFLAGS[@]}" "$FW_DEFINE" -DCONTENT_DIR="\"$ROOT/web/packs\"")
+FLAGS=(-std=c++17 -O1 -w -I"$EMU" -I"$ROOT" "${FT_CFLAGS[@]}" "$FW_DEFINE" -DCONTENT_DIR="\"$TEST_CONTENT_DIR\"")
 
 # these drive setup()/loop()/render(), so they need the sketch itself
 needs_sketch() { case "$1" in touch_test|flush_test|joy_test|anim_test|capture_animation_test|swipe_test|lan_test|console_test|hit_test|battle_debounce_test|battle_reward_ui_test|boot_order_test|brightness_test|card_nature_ui_test|first_boot_language_test|starter_test|recovery_test|navigation_test|wild_detail_test|missing_pack_roster_test|poweroff_test) return 0;; *) return 1;; esac; }
 
-# and these are standalone: gbsynth.cpp has no Arduino dependency at all, which
-# is the point of it -- linking the game core in would only demand stubs for
-# symbols the test never calls.
-standalone() { case "$1" in synth_test|pmd_layout_test) return 0;; *) return 1;; esac; }
+# These are standalone cores with no host-hardware dependencies. Linking the
+# whole game would only demand stubs for symbols the test never calls.
+standalone() { case "$1" in synth_test|motion_test|pmd_layout_test) return 0;; *) return 1;; esac; }
 
 # sprite_test drives PmdMon from a regional pack, so it needs the host's SD
 # stubs but none of the sketch.
@@ -98,6 +98,7 @@ for src in "$HERE"/*_test.cpp; do
   if standalone "$name"; then
     srcs=()
     [ "$name" != synth_test ] || srcs=("$ROOT/gbsynth.cpp")
+    [ "$name" != motion_test ] || srcs=("$ROOT/motion.cpp")
   fi
   test_flags=("${FLAGS[@]}")
   if [ "$name" = recovery_test ]; then
@@ -112,7 +113,7 @@ for src in "$HERE"/*_test.cpp; do
     python3 "$HERE/make_gender_fixture.py" "$OUT/first-boot-packs"
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/first-boot-packs\"")
   elif [ "$name" = corrupt_test ]; then
-    python3 "$HERE/make_corrupt_fixture.py" "$ROOT/web/packs" "$OUT/corrupt-packs"
+    python3 "$HERE/make_corrupt_fixture.py" "$TEST_CONTENT_DIR" "$OUT/corrupt-packs"
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/corrupt-packs\"")
   elif [ "$name" = sprite_test ] && [ -n "${SPRITE_TEST_CONTENT_DIR:-}" ]; then
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$SPRITE_TEST_CONTENT_DIR\"")
@@ -133,7 +134,7 @@ for src in "$HERE"/*_test.cpp; do
     mkdir -p "$OUT/missing-pack-packs"
     python3 "$HERE/make_gender_fixture.py" "$OUT/missing-pack-packs" 905
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/missing-pack-packs\"")
-  elif [[ "$name" =~ ^(gender|box|nature|revive|save|link|hit|wild_traits|lifecycle_exit|flush|i18n|cultivation_team|sleep|item_effect|poweroff|roster_snapshot)_test$ ]]; then
+  elif [[ "$name" =~ ^(battle_reward_ui|gender|box|nature|revive|save|link|hit|wild_traits|lifecycle_exit|flush|i18n|cultivation_team|sleep|item_effect|poweroff|roster_snapshot)_test$ ]]; then
     mkdir -p "$OUT/gender-packs"
     python3 "$HERE/make_gender_fixture.py" "$OUT/gender-packs"
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/gender-packs\"")

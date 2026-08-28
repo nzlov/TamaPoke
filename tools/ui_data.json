@@ -251,7 +251,9 @@
         "%s ENTRENO %+d%% / MERMA %u%%",
         "Precision",
         "Evasion",
-        "FORMA"
+        "FORMA",
+        "MUEVE PARA LANZAR",
+        "toca: cancelar"
       ],
       "medalNames": [
         "Nv.10",
@@ -565,7 +567,9 @@
         "%s TRAIN %+d%% / DECAY %u%%",
         "Accuracy",
         "Evasion",
-        "FORM"
+        "FORM",
+        "SWING TO THROW",
+        "tap: cancel"
       ],
       "medalNames": [
         "Lv.10",
@@ -879,7 +883,9 @@
         "%s ENTRAIN. %+d%% / BAISSE %u%%",
         "Precision",
         "Esquive",
-        "FORME"
+        "FORME",
+        "GESTE POUR LANCER",
+        "touche: annuler"
       ],
       "medalNames": [
         "Niv.10",
@@ -1193,7 +1199,9 @@
         "%s TRAIN. %+d%% / ABBAU %u%%",
         "Genauigkeit",
         "Fluchtwert",
-        "FORM"
+        "FORM",
+        "SCHWINGEN ZUM WURF",
+        "tippen: abbrechen"
       ],
       "medalNames": [
         "Lv.10",
@@ -1507,7 +1515,9 @@
         "%s ALLEN. %+d%% / CALO %u%%",
         "Precisione",
         "Elusione",
-        "FORMA"
+        "FORMA",
+        "MUOVI PER LANCIARE",
+        "tocca: annulla"
       ],
       "medalNames": [
         "Lv.10",
@@ -1821,7 +1831,9 @@
         "%s TREINO %+d%% / QUEDA %u%%",
         "Precisao",
         "Evasao",
-        "FORMA"
+        "FORMA",
+        "MOVE PARA LANCAR",
+        "toca: cancelar"
       ],
       "medalNames": [
         "Niv.10",
@@ -2141,7 +2153,9 @@
         "%s训练 %+d%% / 衰减 %u%%",
         "命中率",
         "闪避率",
-        "形态"
+        "形态",
+        "挥动设备抛球",
+        "点击取消"
       ],
       "medalNames": [
         "10级",

@@ -203,6 +203,9 @@ extern uint8_t btlFoeDetailPage;
 extern bool btlCaptureAnimating, btlCaptureSuccess, btlCaptureCuePlayed;
 extern uint32_t btlCaptureStartedAt;
 extern ItemKey btlCaptureItem;
+extern bool btlThrowArmed;
+extern uint32_t btlThrowStartedAt;
+extern ItemKey btlThrowItem;
 extern PartyMon capturedMon, btlWildMon;
 extern uint8_t cardPage;
 extern int16_t galleryDetail;
@@ -648,6 +651,23 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     btlWildMon.nature = NATURE_HARDY;
     btlFoeDetailOpen = true;
     btlFoeDetailPage = 0;
+  }
+  else if (!strcmp(screen, "throwready")) {
+    pet.dbgHatchAs(1, false);
+    pet.ageMinutes = 41UL * MINUTES_PER_LEVEL;
+    pet.relearnFromLevel();
+    startBattle(1, 42);
+    btlWild = true;
+    for (uint16_t i = 0; i < itemCount(); i++) {
+      const ItemEntry *item = itemAt(i);
+      if (item && item->effect == ITEM_EFFECT_CATCH &&
+          item->param == ITEM_CATCH_GUARANTEED) {
+        btlThrowItem = item->key;
+        break;
+      }
+    }
+    btlThrowArmed = btlThrowItem != ITEM_KEY_NONE;
+    btlThrowStartedAt = millis() - 600UL;
   }
   else if (!strcmp(screen, "catchcenter") || !strcmp(screen, "catchthrow") ||
            !strcmp(screen, "catchabsorb") ||

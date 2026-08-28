@@ -260,6 +260,8 @@ Box、完整生命周期（初始蛋 → 进化 → 告别/放生/出走）、�
   捕捉投球动画会显示本次实际消耗的球。
 - 野外胜利后会进入结算页，列出获得的物品与训练属性；捕捉成功的新伙伴也显示在同一结算页并默认
   收容，只有培养槽和 Box 都满时才在结算后进入可替换或放生新伙伴的页面。
+- 选择捕捉球后会启用板载 QMI8658 动作传感器 3 秒；握紧设备向前挥动即可抛球，请勿松手。点击可
+  取消，超时会返回背包且不消耗球；IMU 不可用时自动保留原来的纯触摸投球作为降级路径。
 - 捕捉道具会先隐藏战斗 UI，让野生宝可梦移到中央，再播放非阻塞的投球和三次摇晃动画；成功结尾后进入统一结算页。挣脱后野生宝可梦进入本场不叠加的生气状态：持续播放生气动作，攻击、防御、特攻、特防、速度提高 5%，逃跑率增加 5 个百分点，HP 不变；退回原位后再恢复 UI。
 - 道馆、野外和局域网对战都直接从六个培养槽中选择成员。
 
@@ -461,7 +463,7 @@ Z 招式、极巨化或超级进化。
 |---|---|---|
 | GFX Library for Arduino (`Arduino_GFX`) 1.6.4+ | moononournation | QSPI 驱动 CO5300，PSRAM 帧缓冲 |
 | FreeType 2.14.3（裁剪后内置） | FreeType Project / Espressif component | 渲染 UI 包中的带 hint OpenType 字体 |
-| SensorLib | Lewis He | CST9217 触控与 PCF85063 RTC |
+| SensorLib | Lewis He | CST9217 触控、PCF85063 RTC 与 QMI8658 IMU |
 | XPowersLib | Lewis He | AXP2101 PMU（电池、亮度、PWR 键） |
 | ESP_I2S（ESP32 core 内置） | Espressif | 通过 I2S 驱动 ES8311 |
 

@@ -160,6 +160,8 @@ enum StrId : uint8_t {
   S_NATURE_EFFECT, S_NATURE_STAT_EFFECT_FMT, S_NATURE_TRAIN_EFFECT_FMT,
   S_STAT_ACC, S_STAT_EVA,
   S_BTL_FORM,
+  S_BTL_THROW_PROMPT, // prompt shown while the IMU is armed for a ball throw
+  S_BTL_THROW_CANCEL,
   STR_COUNT
 };
 
