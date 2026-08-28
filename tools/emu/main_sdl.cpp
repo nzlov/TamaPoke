@@ -152,10 +152,11 @@ extern BattleField btlField;
 extern int8_t btlTrainer;
 extern uint32_t btlWinUntil;
 extern uint16_t btlRewardTraining[3];
-extern ItemKey btlRewardItems[2];
+extern ItemKey btlRewardItems[4];
 extern uint8_t btlRewardItemCount;
 void startTrainerBattle(uint8_t idx, bool hard);
 void onTap(int16_t x, int16_t y);   // the first-boot shots tap their way in
+void onSwipeV(int dir);
 void refreshUiFont();
 extern bool gymOpen, playerOpen, navMenuOpen;
 extern bool galleryDirty;
@@ -473,7 +474,8 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     }
     bagOpen = true;
   }
-  else if (!strcmp(screen, "capture") || !strcmp(screen, "reward")) {
+  else if (!strcmp(screen, "capture") || !strcmp(screen, "reward") ||
+           !strcmp(screen, "rewardscroll")) {
     if (!strcmp(screen, "capture")) {
       Pet caught;
       caught.dbgHatchAs(25, true);
@@ -489,11 +491,16 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     btlRewardTraining[0] = 4;
     btlRewardTraining[1] = 3;
     btlRewardTraining[2] = 3;
-    for (uint16_t i = 0; i < itemCount(); i++) {
+    btlRewardItemCount = 0;
+    for (uint16_t i = 0; i < itemCount() && btlRewardItemCount < 3; i++) {
       const ItemEntry *item = itemAt(i);
-      if (!item) continue;
-      btlRewardItems[0] = item->key;
-      btlRewardItemCount = 1;
+      if (!item || !item->dropWeight) continue;
+      btlRewardItems[btlRewardItemCount++] = item->key;
+    }
+    for (uint16_t i = 0; i < itemCount() && btlRewardItemCount < 4; i++) {
+      const ItemEntry *item = itemAt(i);
+      if (!item || item->effect != ITEM_EFFECT_BATTLE_MECHANIC) continue;
+      btlRewardItems[btlRewardItemCount++] = item->key;
       break;
     }
     btlWinUntil = 60000;
@@ -863,6 +870,11 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.checkLearnGates();
   }
   render();
+  if (!strcmp(screen, "rewardscroll")) {
+    onSwipeV(-1);
+    onSwipeV(-1);
+    render();
+  }
   writePPM(out);
   return 0;
 }

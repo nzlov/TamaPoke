@@ -31,6 +31,11 @@ uint8_t wildEncounterMaxLevel(uint8_t playerLevel, bool hard) {
   return limit > 100 ? 100 : (uint8_t)limit;
 }
 
+uint8_t wildWeightedDropCount(bool hard, uint8_t bonusRoll) {
+  return (uint8_t)((hard ? 2 : 1) +
+                   (bonusRoll < WILD_BONUS_DROP_CHANCE ? 1 : 0));
+}
+
 uint8_t wildEscapeChance(uint8_t playerLevel, uint8_t foeLevel) {
   if (!foeLevel || playerLevel >= foeLevel) return 90;
   uint8_t chance = (uint8_t)((uint16_t)90 * playerLevel / foeLevel);

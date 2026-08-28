@@ -322,6 +322,13 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
   original 24×24/30×30 item sprites; missing artwork keeps the built-in icon.
   The capture throw uses the image of the ball actually consumed.
 - After a wild victory, a settlement page lists every item and training-stat gain.
+  A normal-difficulty victory or capture guarantees one weighted item reward;
+  hard difficulty guarantees two. Both then make one independent **30%** roll
+  for one bonus item. Each weighted draw excludes every earlier result, so all
+  ordinary rewards are different. Defeating an opponent assigned a special
+  mechanic still grants its corresponding item on top, for maxima of three
+  items on normal and four on hard. When rewards exceed five visible rows, the
+  middle list scrolls vertically while the title and Back action stay fixed.
   A successful capture adds the caught creature to that same page and stores it
   automatically. Only a full collection continues to the replace-or-release picker.
 - Selecting a capture ball arms the board's QMI8658 motion sensor for three seconds.

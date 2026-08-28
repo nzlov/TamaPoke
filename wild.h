@@ -9,6 +9,7 @@ constexpr uint32_t WILD_RARE_BASE_THRESHOLD = 100;
 constexpr uint32_t WILD_RARE_BONUS_THRESHOLD = 4096;
 constexpr uint8_t WILD_GIGANTAMAX_FACTOR_CHANCE = 5;
 constexpr uint8_t WILD_HIDDEN_ABILITY_CHANCE = 5;
+constexpr uint8_t WILD_BONUS_DROP_CHANCE = 30;
 constexpr uint8_t WILD_RARE_BONUS_MAX = 15;
 constexpr uint8_t WILD_ANGRY_ESCAPE_BONUS = 5;
 
@@ -29,6 +30,10 @@ uint8_t wildCaptureChance(uint8_t rarity, uint16_t hp, uint16_t maxHp,
 // Normal encounters can range from level 1 through five above the player;
 // hard encounters may use the full level range.
 uint8_t wildEncounterMaxLevel(uint8_t playerLevel, bool hard);
+
+// Normal grants one weighted item and hard grants two. Both difficulties make
+// one independent roll for a single bonus item.
+uint8_t wildWeightedDropCount(bool hard, uint8_t bonusRoll);
 
 // Escape starts at 90%. A lower-level creature scales that chance by its level
 // ratio against the opponent, with a 10% floor.

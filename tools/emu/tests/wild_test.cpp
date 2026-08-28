@@ -66,6 +66,12 @@ int main() {
   ck(wildEncounterMaxLevel(1, true) == 100 &&
      wildEncounterMaxLevel(100, true) == 100,
      "hard encounters allow every level");
+  ck(wildWeightedDropCount(false, 29) == 2 &&
+     wildWeightedDropCount(false, 30) == 1,
+     "normal wild rewards add exactly one item below the thirty-percent boundary");
+  ck(wildWeightedDropCount(true, 29) == 3 &&
+     wildWeightedDropCount(true, 30) == 2,
+     "hard wild rewards add exactly one item below the thirty-percent boundary");
   AbilitySlot bulbasaurNormal = wildAbilitySlotForRoll(1, true, 5, 0);
   ck(wildAbilitySlotForRoll(1, true, 4, 0) == ABILITY_SLOT_HIDDEN &&
      bulbasaurNormal == ABILITY_SLOT_ONE,

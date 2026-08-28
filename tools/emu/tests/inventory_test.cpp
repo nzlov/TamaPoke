@@ -148,15 +148,24 @@ int main() {
   ck(loaded.count(dailyKey) == INVENTORY_STACK_MAX,
      "opaque-key inventory survives a reload");
 
-  bool hasWeightedDrop = false;
+  ItemKey firstWeightedDrop = ITEM_KEY_NONE;
   for (uint16_t i = 0; i < itemCount(); i++) {
     const ItemEntry *item = itemAt(i);
     if (item->dropWeight && loaded.count(item->key) < INVENTORY_STACK_MAX) {
-      hasWeightedDrop = loaded.grantWeightedDrop(0);
+      firstWeightedDrop = loaded.grantWeightedDrop(0);
       break;
     }
   }
-  ck(hasWeightedDrop, "a weighted drop grants one non-full pack item");
+  ck(firstWeightedDrop, "a weighted drop grants one non-full pack item");
+  ItemKey excludedDrops[2] = { firstWeightedDrop, ITEM_KEY_NONE };
+  ItemKey secondWeightedDrop = loaded.grantWeightedDrop(0, excludedDrops, 1);
+  ck(secondWeightedDrop && secondWeightedDrop != firstWeightedDrop,
+     "an independent weighted drop can exclude the first reward");
+  excludedDrops[1] = secondWeightedDrop;
+  ItemKey thirdWeightedDrop = loaded.grantWeightedDrop(0, excludedDrops, 2);
+  ck(thirdWeightedDrop && thirdWeightedDrop != firstWeightedDrop &&
+     thirdWeightedDrop != secondWeightedDrop,
+     "a bonus weighted drop excludes both earlier rewards");
 
   bool mechanicRewards = true;
   for (uint8_t kind = ITEM_MECHANIC_Z_MOVE; kind <= ITEM_MECHANIC_MEGA; kind++) {

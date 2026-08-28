@@ -20,7 +20,8 @@ public:
   uint8_t stackCount() const;
   const InventoryStack *stackAt(uint8_t index) const;
   void ensureDailySupply(uint32_t day);
-  ItemKey grantWeightedDrop(uint32_t roll);
+  ItemKey grantWeightedDrop(uint32_t roll, const ItemKey *excluded = nullptr,
+                            uint8_t excludedCount = 0);
   ItemKey grantMechanicReward(ItemMechanicKind mechanic,
                               MegaFormKind megaForm = MEGA_FORM_NONE);
   void save();

@@ -91,18 +91,25 @@ void Inventory::ensureDailySupply(uint32_t day) {
   if (changed) save();
 }
 
-ItemKey Inventory::grantWeightedDrop(uint32_t roll) {
+ItemKey Inventory::grantWeightedDrop(uint32_t roll, const ItemKey *excluded,
+                                     uint8_t excludedCount) {
+  auto eligible = [this, excluded, excludedCount](const ItemEntry *item) {
+    if (!item || !item->dropWeight || count(item->key) >= INVENTORY_STACK_MAX)
+      return false;
+    for (uint8_t i = 0; excluded && i < excludedCount; i++)
+      if (item->key == excluded[i]) return false;
+    return true;
+  };
   uint32_t total = 0;
   for (uint16_t i = 0; i < itemCount(); i++) {
     const ItemEntry *item = itemAt(i);
-    if (item && item->dropWeight && count(item->key) < INVENTORY_STACK_MAX)
-      total += item->dropWeight;
+    if (eligible(item)) total += item->dropWeight;
   }
   if (!total) return ITEM_KEY_NONE;
   uint32_t pick = roll % total;
   for (uint16_t i = 0; i < itemCount(); i++) {
     const ItemEntry *item = itemAt(i);
-    if (!item || !item->dropWeight || count(item->key) >= INVENTORY_STACK_MAX) continue;
+    if (!eligible(item)) continue;
     if (pick < item->dropWeight) return add(item->key) ? item->key : ITEM_KEY_NONE;
     pick -= item->dropWeight;
   }

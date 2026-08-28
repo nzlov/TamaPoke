@@ -8,6 +8,7 @@
 #include "party.h"
 #include "pet.h"
 #include "motion.h"
+#include "ui_scroll.h"
 #include <cstdio>
 #include <cstring>
 
@@ -42,6 +43,7 @@ extern Combatant btlYou, btlFoe;
 extern PartyMon btlWildMon, capturedMon, partyPending;
 extern bool battleOpen, btlWild, btlOver, btlWon, partyPick, boxOpen;
 extern uint8_t gymRegion;
+extern bool btlHard;
 extern int8_t btlTrainer;
 extern bool btlLink;
 extern uint8_t btlSquadN, btlEnteredMask, btlWildMechanic;
@@ -57,8 +59,9 @@ extern bool btlThrowArmed;
 extern uint32_t btlThrowStartedAt;
 extern ItemKey btlThrowItem;
 extern uint16_t btlRewardTraining[3];
-extern ItemKey btlRewardItems[2];
+extern ItemKey btlRewardItems[4];
 extern uint8_t btlRewardItemCount;
+extern UiScrollView btlRewardScroll;
 void btlUpdateCapture(uint32_t now);
 void btlUpdateThrow(uint32_t now);
 bool btlFeedThrowSample(const MotionSample &sample);
@@ -75,6 +78,17 @@ static bool screenIs(const char *name) {
 }
 
 int main() {
+  UiScrollView reusableScroll;
+  reusableScroll.configure(100, 200, 450, 50);
+  check(reusableScroll.scroll(-1) && reusableScroll.offset() == 50 &&
+        reusableScroll.contentY(0) == 50 &&
+        !reusableScroll.fullyVisible(50, 40),
+        "the reusable scroll view advances, translates, and clips generic content");
+  reusableScroll.scroll(1);
+  check(reusableScroll.offset() == 0 && !reusableScroll.canScrollUp() &&
+        reusableScroll.canScrollDown(),
+        "the reusable scroll view clamps at the start of arbitrary content");
+
   setup();
   if (pet.awaitingStarter()) pet.chooseStarter(1);
   pet.speciesId = 1;
@@ -95,13 +109,53 @@ int main() {
         "defeating a wild creature opens the reward settlement page");
   check(btlRewardTraining[0] + btlRewardTraining[1] + btlRewardTraining[2] > 0,
         "the settlement snapshot records the awarded training attributes");
-  check(btlRewardItemCount > 0 && btlRewardItems[0] != ITEM_KEY_NONE,
-        "the settlement snapshot records the awarded item");
+  check((btlRewardItemCount == 1 || btlRewardItemCount == 2) &&
+        btlRewardItems[0] != ITEM_KEY_NONE &&
+        (btlRewardItemCount == 1 || btlRewardItems[0] != btlRewardItems[1]),
+        "a normal wild victory records one base reward and at most one distinct bonus");
   gfx->frameReady = false;
   render();
   check(gfx->frameReady, "the reward settlement page flushes to the panel");
   onTap(233, 390);
   check(!btlWinUntil && !battleOpen, "dismissing settlement leaves the battle");
+
+  btlHard = true;
+  btlWildMechanic = BMECH_Z_MOVE;
+  btlWild = true;
+  btlLink = false;
+  battleOpen = true;
+  btlFinish(true);
+  check((btlRewardItemCount == 3 || btlRewardItemCount == 4) &&
+        btlRewardItems[0] != ITEM_KEY_NONE &&
+        btlRewardItems[1] != ITEM_KEY_NONE &&
+        btlRewardItems[0] != btlRewardItems[1] &&
+        (btlRewardItemCount == 3 ||
+         (btlRewardItems[2] != btlRewardItems[0] &&
+          btlRewardItems[2] != btlRewardItems[1])),
+        "a hard wild victory records two base rewards, an optional distinct bonus, and its mechanic reward");
+  btlRewardTraining[0] = btlRewardTraining[1] = btlRewardTraining[2] = 1;
+  btlRewardItemCount = 0;
+  for (uint16_t i = 0; i < itemCount() && btlRewardItemCount < 4; i++) {
+    const ItemEntry *item = itemAt(i);
+    if (item) btlRewardItems[btlRewardItemCount++] = item->key;
+  }
+  gfx->frameReady = false;
+  render();
+  check(gfx->frameReady && btlRewardScroll.canScrollDown(),
+        "the maximum hard reward settlement exposes overflow through the scroll view");
+  onSwipeV(-1);
+  check(btlWinUntil && btlRewardScroll.offset() > 0,
+        "swiping up scrolls rewards without dismissing the settlement");
+  gfx->frameReady = false;
+  render();
+  check(gfx->frameReady, "the scrolled hard reward settlement flushes to the panel");
+  onSwipeV(1);
+  check(btlRewardScroll.offset() == 0,
+        "swiping down returns the reward view to its first rows");
+  onTap(233, 438);
+  check(!btlWinUntil && !battleOpen, "dismissing the hard settlement leaves the battle");
+  btlHard = false;
+  btlWildMechanic = BMECH_NONE;
 
   uint8_t partyBefore = party.count();
   const ItemEntry *masterBall = nullptr;

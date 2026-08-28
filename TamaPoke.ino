@@ -33,6 +33,7 @@
 #include "party.h"
 #include "inventory.h"
 #include "wild.h"
+#include "ui_scroll.h"
 #include "save.h"
 #include "pet.h"
 #include "quiz.h"
@@ -821,17 +822,20 @@ const char *rareMark(bool rare) {
 bool btlNewBadge = false;
 uint32_t btlWinUntil = 0;   // the win screen is up
 uint16_t btlRewardTraining[3] = { 0, 0, 0 };
-ItemKey btlRewardItems[2] = { ITEM_KEY_NONE, ITEM_KEY_NONE };
+static constexpr uint8_t BTL_REWARD_ITEM_MAX = 4;
+ItemKey btlRewardItems[BTL_REWARD_ITEM_MAX] = {};
 uint8_t btlRewardItemCount = 0;
+UiScrollView btlRewardScroll;
 
 static void btlResetRewardSummary() {
   btlRewardTraining[0] = btlRewardTraining[1] = btlRewardTraining[2] = 0;
-  btlRewardItems[0] = btlRewardItems[1] = ITEM_KEY_NONE;
+  for (ItemKey &item : btlRewardItems) item = ITEM_KEY_NONE;
   btlRewardItemCount = 0;
+  btlRewardScroll.reset();
 }
 
 static void btlRememberRewardItem(ItemKey item) {
-  if (item && btlRewardItemCount < 2)
+  if (item && btlRewardItemCount < BTL_REWARD_ITEM_MAX)
     btlRewardItems[btlRewardItemCount++] = item;
 }
 // A trainer fight is a run of 1v1s: both sides queue their squad and the next
@@ -1914,7 +1918,10 @@ void onSwipeV(int dir) {
     return;
   }
   if (moveInfoOpen) { moveInfoOpen = false; return; }
-  if (btlWinUntil) return;
+  if (btlWinUntil) {
+    if (btlTrainer < 0 && btlRewardScroll.scroll(dir)) sfxPlay(SFX_TAP);
+    return;
+  }
   if (pet.awaitingStarter()) return;  // bloqueado durante la eleccion de inicial
   if (uiCurrentScreen() == SCR_DEXPICK || uiCurrentScreen() == SCR_GYMPICK)
     return;                 // on the chooser, vertical does nothing: pick a row
@@ -5269,8 +5276,14 @@ static void btlGrantWildRewards() {
     btlRewardTraining[1] += party.slots[i].trDef - before[i][1];
     btlRewardTraining[2] += party.slots[i].trSpe - before[i][2];
   }
-  ItemKey drop = inventory.grantWeightedDrop((uint32_t)random(0x7FFFFFFF));
-  btlRememberRewardItem(drop);
+  uint8_t dropCount = wildWeightedDropCount(
+      btlHard, (uint8_t)random(100));
+  for (uint8_t i = 0; i < dropCount; i++) {
+    ItemKey drop = inventory.grantWeightedDrop(
+        (uint32_t)random(0x7FFFFFFF), btlRewardItems,
+        btlRewardItemCount);
+    btlRememberRewardItem(drop);
+  }
 }
 
 void btlFinish(bool won) {
@@ -5678,6 +5691,15 @@ void renderWin() {
     const int rewardRowY = caught ? 238 : 132;
     const int rewardRowH = caught ? 26 : 40;
     const int rewardRowStep = caught ? 29 : 48;
+    uint8_t rewardRows = btlRewardItemCount;
+    for (uint8_t i = 0; i < 3; i++)
+      if (btlRewardTraining[i]) rewardRows++;
+    const int visibleRows = 5;
+    const int viewportHeight = (visibleRows - 1) * rewardRowStep + rewardRowH;
+    const int contentHeight = rewardRows
+        ? (rewardRows - 1) * rewardRowStep + rewardRowH : 0;
+    btlRewardScroll.configure(rewardRowY, viewportHeight, contentHeight,
+                              rewardRowStep);
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(2);
     gfx->setCursor(uiCenterX(T(S_REWARDS)), rewardTitleY);
@@ -5690,23 +5712,32 @@ void renderWin() {
       if (!btlRewardTraining[i]) continue;
       snprintf(line, sizeof(line), T(S_WIN_TRAINING_FMT), T(STAT_NAMES[i]),
                (unsigned)btlRewardTraining[i]);
-      int y = rewardRowY + row * rewardRowStep;
+      int y = btlRewardScroll.contentY(row * rewardRowStep);
+      row++;
+      if (!btlRewardScroll.fullyVisible(y, rewardRowH)) continue;
       gfx->fillRoundRect(83, y, 300, rewardRowH, 10, UI_WHITE);
       gfx->setTextColor(UI_BAR_OK);
       gfx->setTextSize(2);
       uiDrawCenteredIn(line, 83, y, 300, rewardRowH);
-      row++;
     }
-    for (uint8_t i = 0; i < btlRewardItemCount && row < 5; i++) {
+    for (uint8_t i = 0; i < btlRewardItemCount; i++) {
       const ItemEntry *item = itemByKey(btlRewardItems[i]);
       snprintf(line, sizeof(line), T(S_ITEM_FOUND_FMT), itemName(btlRewardItems[i]));
-      int y = rewardRowY + row * rewardRowStep;
+      int y = btlRewardScroll.contentY(row * rewardRowStep);
+      row++;
+      if (!btlRewardScroll.fullyVisible(y, rewardRowH)) continue;
       gfx->fillRoundRect(83, y, 300, rewardRowH, 10, UI_WHITE);
       if (item) drawItemIcon(*item, 99, y + rewardRowH / 2);
       gfx->setTextColor(UI_BAR_WARN);
       gfx->setTextSize(1);
       uiDrawCenteredIn(line, 113, y, 260, rewardRowH);
-      row++;
+    }
+    if (btlRewardScroll.scrollable()) {
+      const int trackX = 397;
+      int thumbH = btlRewardScroll.thumbHeight(viewportHeight, 18);
+      int thumbY = btlRewardScroll.thumbTop(rewardRowY, viewportHeight, 18);
+      gfx->fillRoundRect(trackX, rewardRowY, 5, viewportHeight, 2, UI_MUTED);
+      gfx->fillRoundRect(trackX, thumbY, 5, thumbH, 2, UI_BAR_WARN);
     }
     gfx->setTextColor(UI_MUTED);
     gfx->setTextSize(2);
