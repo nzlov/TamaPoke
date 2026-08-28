@@ -719,8 +719,6 @@ uint8_t sackGain = 0;
 bool sackNewHi = false;
 
 // training submenu (the 5th icon): routes to the trainer for each stat.
-// DEF has no minigame -- it rises on its own from good wellbeing -- so its row
-// is informational and does not respond to a tap.
 bool trainOpen = false;
 
 // move picker, opened from the MOVES card page. Most learnsets are level 0, so
@@ -7947,10 +7945,6 @@ void renderTrain() {
       gfx->fillRoundRect(bx + 2, by + 2, fw, bh - 4, 3, pct >= 100 ? UI_BAR_OK : UI_BAR_WARN);
   }
 
-  gfx->setTextColor(UI_INK);
-  gfx->setTextSize(1);
-  gfx->setCursor(uiCenterX(T(S_TR_DEF_HINT)), TRAIN_Y + TRAIN_H - 22);
-  gfx->print(T(S_TR_DEF_HINT));
   gfx->flush();   // without this the panel never updates and the screen freezes
 }
 

@@ -69,7 +69,7 @@ enum StrId : uint8_t {
   S_TR_ATK,         // row: train strength (the punching bag)
   S_TR_SPE,         // row: train speed (the ball game)
   S_TR_DEF,         // row: defence -- passive, shown for information only
-  S_TR_DEF_HINT,    // why the defence row does nothing when tapped
+  S_TR_DEF_HINT,    // reserved legacy catalogue position; no longer rendered
   // moves card page + the move picker behind it
   S_MOVES,          // card page title
   S_MOVE_EMPTY,     // an unused move slot
