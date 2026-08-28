@@ -4240,27 +4240,37 @@ static const uint8_t *btlLoadBack(const BackScene &b) {
   return btlBackPixels;
 }
 
-// Draws a battle backdrop at the requested scale. Emitted as runs of identical
-// indices rather than a write per pixel: this is flat pixel art with long
-// horizontal runs, and 240x112 at 2x would otherwise be 26,880 fillRect calls.
-// The round bezel crops the overhang physically, so nothing is clipped here.
-static void drawBack(const BackScene &b, int y0, int scale) {
+// Draws a battle backdrop at the requested scale. A cover height expands it
+// proportionally when the destination is taller than the integer-scaled art.
+// Runs of identical indices keep this much cheaper than writing every pixel.
+static void drawBack(const BackScene &b, int y0, int scale, int coverHeight = 0) {
   const uint8_t *pixels = btlLoadBack(b);
   if (!pixels) {
     gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
     return;
   }
-  int x0 = CX - (b.w * scale) / 2;
+  int drawH = coverHeight ? coverHeight : b.h * scale;
+  int drawW = coverHeight
+      ? ((uint32_t)b.w * drawH + b.h - 1) / b.h
+      : b.w * scale;
+  int x0 = CX - drawW / 2;
+  uint32_t xStep = ((uint32_t)drawW << 16) / b.w;
+  uint32_t yStep = ((uint32_t)drawH << 16) / b.h;
   for (int r = 0; r < b.h; r++) {
     const uint8_t *row = pixels + (uint32_t)r * b.w;
+    int y1 = y0 + ((uint32_t)r * yStep >> 16);
+    int y2 = y0 + (r + 1 == b.h ? drawH
+                                 : ((uint32_t)(r + 1) * yStep >> 16));
     int c = 0;
     while (c < b.w) {
       uint8_t v = row[c];
       int run = 1;
       while (c + run < b.w && row[c + run] == v) run++;
       uint16_t col = b.pal[v];
-      gfx->fillRect(x0 + c * scale, y0 + r * scale,
-                    run * scale, scale, col);
+      int x1 = x0 + ((uint32_t)c * xStep >> 16);
+      int x2 = x0 + (c + run == b.w ? drawW
+                                    : ((uint32_t)(c + run) * xStep >> 16));
+      gfx->fillRect(x1, y1, x2 - x1, y2 - y1, col);
       c += run;
     }
   }
@@ -4268,13 +4278,13 @@ static void drawBack(const BackScene &b, int y0, int scale) {
 
 // Which scene: the FOE's biome, since a battle happens where it lives, and the
 // same day/night split the main screen already uses.
-static void drawBattleBack(int y0, int scale) {
+static void drawBattleBack(int y0, int scale, int coverHeight = 0) {
   int16_t dex = btlFoe.dex;
   if (dex < 1 || dex > dexCount()) { gfx->fillCircle(CX, CY, 231, UI_BG_DAY); return; }
   uint8_t bi = dexEntry(dex).biome;
   if (bi >= BACK_BIOMES) bi = 0;
   bool night = sceneHour() < 6 || sceneHour() >= 20;
-  drawBack(BACKS[bi][night ? 1 : 0], y0, scale);
+  drawBack(BACKS[bi][night ? 1 : 0], y0, scale, coverHeight);
 }
 
 static const char *btlWeatherName(BattleWeather weather) {
@@ -6063,7 +6073,7 @@ void renderBattle() {
   btlEaseBars();
   // The previous frame can still be crossing the CO5300 DMA boundary here.
   // Keep it valid while repainting instead of exposing a full black clear.
-  drawBattleBack(30, 2);
+  drawBattleBack(0, 2, 254);
   drawBattleFieldEffects(now);
   // the lower band stays flat so the move grid and the HP text keep their
   // contrast against it

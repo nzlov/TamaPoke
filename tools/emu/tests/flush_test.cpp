@@ -8,6 +8,7 @@
 #include "pet.h"
 #include "party.h"
 #include "quiz.h"
+#include "ui_art.h"
 #include <cstdio>
 #include <cstring>
 uint32_t g_seed=7; FakeSerial Serial; FakeESP ESP; FakeWire Wire;
@@ -80,7 +81,16 @@ int main(){
   for (uint8_t p=0;p<4;p++){ clearAll(); cardOpen=true; cardPage=p;
     char n[16]; snprintf(n,sizeof(n),"card%u",p); check(n); }
   clearAll(); cardOpen=true; natureInfoOpen=true; check("natureinfo");
-  clearAll(); startBattle(9,50); check("battle");
+  clearAll(); startBattle(9,50);
+  gfx->getFramebuffer()[10 * 466 + 233] = 0x1234;
+  check("battle");
+  uint16_t battleTop = gfx->buffer()[10 * 466 + 233];
+  if (battleTop == 0x1234 || battleTop == UI_BG_DAY) {
+    printf("FAIL  battle does not extend its backdrop across the visible top cap\n");
+    bad++;
+  } else {
+    printf("PASS  battle backdrop covers the visible top cap\n");
+  }
   gfx->fullBlackClears = 0;
   battleTap(149, 308);  // FIGHT through the real battle tap dispatcher
   render();
