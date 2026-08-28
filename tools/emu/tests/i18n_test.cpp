@@ -17,6 +17,7 @@ int FakeSerial::available() { return 0; }
 String FakeSerial::readStringUntil(char) { return String(""); }
 void sfxPlay(uint8_t) {}
 #include "i18n.h"
+#include "abilities.h"
 #include "font_engine.h"
 #include <cstdio>
 #include <cstring>
@@ -128,6 +129,46 @@ int main() {
                  code, nature, (unsigned)codepoint);
           bad++;
         }
+      }
+    }
+    if (!strcmp(langCode((Lang)l), "zh-CN")) {
+      uint16_t abilitiesChecked = 0;
+      for (uint32_t candidate = 1;
+           candidate <= UINT16_MAX && abilitiesChecked < abilityCount(); candidate++) {
+        AbilityKey ability = (AbilityKey)candidate;
+        if (!abilityValid(ability)) continue;
+        abilitiesChecked++;
+        const char *values[] = {
+          abilityName(ability), abilityDescription(ability, langCode((Lang)l))
+        };
+        for (const char *v : values) {
+          if (!v || !v[0] || !strcmp(v, "?")) {
+            printf("MISSING ABILITY TEXT  zh-CN key %u\n", (unsigned)ability);
+            bad++;
+            continue;
+          }
+          if (!validUtf8((const unsigned char *)v)) {
+            printf("BAD ABILITY UTF-8  zh-CN key %u\n", (unsigned)ability);
+            bad++;
+          }
+          const char *scan = v;
+          while (*scan) {
+            uint32_t codepoint = nextUtf8(scan);
+            bool glyphPresent = vectorFont
+                ? runtimeFontGlyph(codepoint, uiFontPixelSize(1)) != nullptr
+                : uiFontGlyph(codepoint) != nullptr;
+            if (!glyphPresent) {
+              printf("MISSING ABILITY GLYPH  zh-CN key %u: U+%04X\n",
+                     (unsigned)ability, (unsigned)codepoint);
+              bad++;
+            }
+          }
+        }
+      }
+      if (abilitiesChecked != abilityCount()) {
+        printf("ABILITY CATALOGUE SCAN FAILED  zh-CN: %u/%u\n",
+               abilitiesChecked, abilityCount());
+        bad++;
       }
     }
   }
