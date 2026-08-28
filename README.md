@@ -680,8 +680,9 @@ If one bottoms out it counts as a *slip-up*.
 - Tap the creature = pet it (+happiness, bond).
 - Horizontal swipe = switch between the occupied cultivation slots.
 - Vertical swipe up = open the **stat card** (4 pages: Profile / Battle / Moves /
-  Progress; swipe between them; tap the name on Profile to rename; on Battle the
-  "Train strength" button opens the bag).
+  Progress; swipe between them; the Profile name is display-only, while tapping
+  its nature opens a localized temperament and stat-effect explanation; on
+  Battle the "Train strength" button opens the bag).
 - Swipe down = open the **bag / battle centre / badges** navigation page.
 
 **Physical PWR button:** short = screen on/off · long (4 s) = full power-off
@@ -836,7 +837,8 @@ and burns off with training.
 - **Bond** (the creature's): rises slowly with care and petting, drops with slip-ups.
 - **Medals** for the individual (level, berry, streak, bond, final form, fit) +
   a global counter. Medals page of the stat card.
-- **Name**: touch keyboard; the nickname rules the header and the card.
+- **Name**: existing nicknames remain in the header and card; Profile no longer
+  exposes a rename action.
 
 High streak and bond improve a safety egg's rarity and IVs. Wild shiny encounters
 use only the shared farewell bonus.

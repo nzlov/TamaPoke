@@ -10,8 +10,17 @@ static bool trainingNature(NatureId nature) {
   return id / 5 == id % 5;
 }
 
-// +1 strengthens the channel, -1 weakens it, 0 leaves it alone.
-static int8_t trainingEffect(NatureId nature, NatureTraining training) {
+NatureStat natureRaisedStat(NatureId nature) {
+  return natureValid(nature) && !trainingNature(nature)
+      ? (NatureStat)((uint8_t)nature / 5) : NATURE_STAT_NONE;
+}
+
+NatureStat natureLoweredStat(NatureId nature) {
+  return natureValid(nature) && !trainingNature(nature)
+      ? (NatureStat)((uint8_t)nature % 5) : NATURE_STAT_NONE;
+}
+
+int8_t natureTrainingEffect(NatureId nature, NatureTraining training) {
   switch (nature) {
     case NATURE_HARDY:
       return training == NATURE_TRAIN_ATK ? 1 : 0;
@@ -42,7 +51,7 @@ uint16_t natureStatValue(NatureId nature, NatureStat stat,
     return untrained + training;
 
   if (trainingNature(nature)) {
-    int8_t effect = trainingEffect(nature, trainingFor(stat));
+    int8_t effect = natureTrainingEffect(nature, trainingFor(stat));
     uint16_t trained = effect > 0 ? (uint16_t)training * 110 / 100
                      : effect < 0 ? (uint16_t)training * 90 / 100
                                   : training;
@@ -57,7 +66,7 @@ uint16_t natureStatValue(NatureId nature, NatureStat stat,
 }
 
 uint8_t natureTrainingDecayPercent(NatureId nature, NatureTraining training) {
-  int8_t effect = trainingEffect(nature, training);
+  int8_t effect = natureTrainingEffect(nature, training);
   return effect > 0 ? 3 : effect < 0 ? 7 : 5;
 }
 

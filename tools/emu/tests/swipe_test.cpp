@@ -19,7 +19,8 @@ bool petNavTap(int16_t x, int16_t y);
 bool navMenuTap(int16_t x, int16_t y);
 void navMenuButtonPoint(uint8_t index, int *x, int *y);
 extern Pet pet;
-extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyPick;
+extern bool cardOpen, natureInfoOpen, galleryOpen, clockOpen, kbOpen, menuOpen,
+            partyPick;
 extern bool trainOpen, movePickOpen, battleOpen, gymOpen, playerOpen, boxOpen, pickOpen;
 extern bool bagOpen, navMenuOpen;
 extern uint8_t cardPage, gymPage, playerPage, movePickPage, boxPage, pickPage;
@@ -46,7 +47,7 @@ static uint8_t RPICK_PER_PAGE_T(){ uint8_t n=rpickRegions(rpickModeNow()), p=rpi
 static int bad=0;
 static void clearAll(){
   gymPick=galleryPick=false;
-  cardOpen=galleryOpen=clockOpen=kbOpen=menuOpen=partyPick=false;
+  cardOpen=natureInfoOpen=galleryOpen=clockOpen=kbOpen=menuOpen=partyPick=false;
   trainOpen=movePickOpen=battleOpen=gymOpen=playerOpen=boxOpen=pickOpen=false;
   bagOpen=navMenuOpen=false;
   boxSel=0;
@@ -75,6 +76,16 @@ int main(){
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20; party.box[i]=m; }
 
   clearAll(); cardOpen=true;                      check("card",     &cardOpen,     &cardPage);
+  clearAll(); cardOpen=true; cardPage=0; natureInfoOpen=true;
+  onSwipe(-1);
+  if (natureInfoOpen || !cardOpen || cardPage != 0) {
+    printf("FAIL  nature    horizontal swipe leaked through the modal\n"); bad++;
+  } else printf("PASS  nature    horizontal swipe dismisses only the modal\n");
+  natureInfoOpen=true;
+  onSwipeV(-1);
+  if (natureInfoOpen || !cardOpen || cardPage != 0) {
+    printf("FAIL  nature    vertical swipe leaked through the modal\n"); bad++;
+  } else printf("PASS  nature    vertical swipe dismisses only the modal\n");
   clearAll(); gymOpen=true; gymPick=false;        check("gyms",     &gymOpen,      &gymPage);
   clearAll(); playerOpen=true;                    check("player",   &playerOpen,   &playerPage);
   clearAll(); boxOpen=true;                       check("box",      &boxOpen,      &boxPage);

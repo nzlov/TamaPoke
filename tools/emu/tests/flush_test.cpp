@@ -23,14 +23,15 @@ extern const char *const SCREEN_NAME[];
 extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern QuizRuntime quiz;
-extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, navMenuOpen, boxOpen, partyPick;
+extern bool cardOpen, natureInfoOpen, galleryOpen, clockOpen, kbOpen, menuOpen,
+            navMenuOpen, boxOpen, partyPick;
 extern bool trainOpen, movePickOpen, battleOpen, gymOpen, playerOpen;
 extern uint8_t cardPage;
 void startBattle(int16_t dex, uint8_t lvl);
 
 static int bad = 0;
 static void clearAll(){
-  cardOpen=galleryOpen=clockOpen=kbOpen=menuOpen=navMenuOpen=boxOpen=partyPick=false;
+  cardOpen=natureInfoOpen=galleryOpen=clockOpen=kbOpen=menuOpen=navMenuOpen=boxOpen=partyPick=false;
   trainOpen=movePickOpen=battleOpen=gymOpen=playerOpen=false;
 }
 static void check(const char *name){
@@ -78,6 +79,7 @@ int main(){
   clearAll(); clockOpen=true;    check("clock");
   for (uint8_t p=0;p<4;p++){ clearAll(); cardOpen=true; cardPage=p;
     char n[16]; snprintf(n,sizeof(n),"card%u",p); check(n); }
+  clearAll(); cardOpen=true; natureInfoOpen=true; check("natureinfo");
   clearAll(); startBattle(9,50); check("battle");
   gfx->fullBlackClears = 0;
   battleTap(149, 308);  // FIGHT through the real battle tap dispatcher

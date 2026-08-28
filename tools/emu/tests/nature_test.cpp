@@ -35,6 +35,14 @@ int main(){
   for(uint8_t i=0;i<NATURE_COUNT;i++)
     ck(natureValid((NatureId)i),"every catalogue id is valid");
 
+  ck(natureRaisedStat(NATURE_ADAMANT)==NATURE_STAT_ATK &&
+     natureLoweredStat(NATURE_ADAMANT)==NATURE_STAT_SPA,
+     "the canonical effect exposes its raised and lowered stats");
+  ck(natureRaisedStat(NATURE_HARDY)==NATURE_STAT_NONE &&
+     natureTrainingEffect(NATURE_HARDY,NATURE_TRAIN_ATK)==1 &&
+     natureTrainingEffect(NATURE_HARDY,NATURE_TRAIN_DEF)==0,
+     "a diagonal nature exposes its training effect instead");
+
   // Non-neutral natures modify the whole final combat stat, canonically.
   ck(natureStatValue(NATURE_ADAMANT,NATURE_STAT_ATK,100,20)==132,
      "Adamant raises final attack by 10 percent");
@@ -101,10 +109,20 @@ int main(){
 
   int8_t en=uiFindLocale("en-US"), zh=uiFindLocale("zh-CN");
   ck(en>=0 && zh>=0,"nature display locales are installed");
-  if(en>=0){setLang((Lang)en); ck(!strcmp(natureName(NATURE_HARDY),"Hardy"),
-                                  "English nature name is localized");}
-  if(zh>=0){setLang((Lang)zh); ck(!strcmp(natureName(NATURE_HARDY),"勤奋"),
-                                  "Chinese nature name is localized");}
+  if(en>=0){
+    setLang((Lang)en);
+    ck(!strcmp(natureName(NATURE_HARDY),"Hardy"),
+       "English nature name is localized");
+    ck(!strcmp(natureDescription(NATURE_HARDY),"Steadfast and ready to work."),
+       "English nature description is localized");
+  }
+  if(zh>=0){
+    setLang((Lang)zh);
+    ck(!strcmp(natureName(NATURE_HARDY),"勤奋"),
+       "Chinese nature name is localized");
+    ck(!strcmp(natureDescription(NATURE_HARDY),"踏实勤奋，喜欢认真训练。"),
+       "Chinese nature description is localized");
+  }
 
   printf("%s\n",bad?"FAILURES":"all good");
   return bad?1:0;

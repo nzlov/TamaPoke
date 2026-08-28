@@ -7,6 +7,7 @@ Lang gLang = LANG_RECOVERY;
 static constexpr uint16_t MEDAL_NAME_BASE = STR_COUNT;
 static constexpr uint16_t MEDAL_LABEL_BASE = STR_COUNT + MED_COUNT;
 static constexpr uint16_t MEDAL_DESC_BASE = STR_COUNT + MED_COUNT * 2;
+static constexpr uint16_t NATURE_DESC_BASE = STR_COUNT + MED_COUNT * 3;
 
 const char *T(StrId id) { return uiString((uint16_t)id); }
 const char *medalName(int i) {
@@ -22,6 +23,10 @@ const char *natureName(NatureId nature) {
   static_assert(S_NATURE_QUIRKY - S_NATURE_HARDY + 1 == NATURE_COUNT,
                 "nature strings must match NatureId");
   return natureValid(nature) ? T((StrId)(S_NATURE_HARDY + (uint8_t)nature)) : "?";
+}
+const char *natureDescription(NatureId nature) {
+  return natureValid(nature)
+      ? uiString(NATURE_DESC_BASE + (uint8_t)nature) : "?";
 }
 
 uint8_t langCount() { return uiLocaleCount(); }

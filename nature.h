@@ -30,6 +30,14 @@ enum NatureTraining : uint8_t {
 
 bool natureValid(NatureId nature);
 
+// Non-training natures raise one final combat stat and lower another. The five
+// diagonal natures return NONE here because their effects belong to training.
+NatureStat natureRaisedStat(NatureId nature);
+NatureStat natureLoweredStat(NatureId nature);
+
+// +1 strengthens the channel, -1 weakens it, 0 leaves it unchanged.
+int8_t natureTrainingEffect(NatureId nature, NatureTraining training);
+
 // Applies either a canonical +/-10% final-stat modifier, or one of the five
 // training-nature rules to the training term alone.
 uint16_t natureStatValue(NatureId nature, NatureStat stat,

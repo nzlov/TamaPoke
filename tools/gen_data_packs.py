@@ -216,7 +216,8 @@ def build_ui_packs(manifest: list[dict]) -> None:
         code = locale["locale"]
         strings = (
             locale["strings"] + locale["medalNames"] +
-            locale["medalLabels"] + locale["medalDescriptions"]
+            locale["medalLabels"] + locale["medalDescriptions"] +
+            locale["natureDescriptions"]
         )
         meta = struct.pack(
             "<16s8s32sBBBB",

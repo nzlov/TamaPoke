@@ -568,6 +568,7 @@ int16_t galleryDetail = 0;  // dex en vista detalle, 0 = rejilla
 
 bool screenOff = false;       // pulsacion corta del boton PWR
 bool cardOpen = false;        // ficha del bicho (deslizar vertical)
+bool natureInfoOpen = false;
 bool kbOpen = false;
 enum : uint8_t { KB_PET = 0, KB_TRAINER };
 uint8_t kbTarget = KB_PET;          // teclado para renombrar al bicho
@@ -1938,6 +1939,7 @@ void onSwipeV(int dir) {
   if (kbOpen || pet.ceremony) return;
   if (clockOpen) { clockOpen = false; return; }
   if (cardOpen) {
+    if (natureInfoOpen) { natureInfoOpen = false; return; }
     if (dir < 0) cardOpen = false;  // arriba cierra la ficha
     return;
   }
@@ -2272,6 +2274,7 @@ void onSwipe(int dir) {
   if (spdOpen) { leaveSpeed(); return; }
   if (kbOpen || clockOpen) return;
   if (cardOpen) {  // dentro de la ficha: cambiar entre las 4 paginas
+    if (natureInfoOpen) { natureInfoOpen = false; return; }
     int p = (int)cardPage + (dir > 0 ? -1 : 1);  // izquierda avanza
     cardPage = p < 0 ? 0 : (p > CARD_PAGES - 1 ? CARD_PAGES - 1 : p);
     return;
@@ -2609,7 +2612,11 @@ void onTap(int16_t x, int16_t y) {
   }
   if (pet.ceremony) return;  // durante la despedida no hay botones
   if (cardOpen) {
-    if (cardPage == 0 && y < 84) openKeyboard();  // tocar el nombre = renombrar
+    if (natureInfoOpen) { natureInfoOpen = false; return; }
+    if (cardPage == 0 && x >= 90 && x <= 376 && y >= 306 && y <= 352) {
+      natureInfoOpen = true;
+      sfxPlay(SFX_TAP);
+    }
     else if (cardPage == 2) {
       for (int i = 0; i < MOVE_SLOTS; i++) {   // tap a slot to change it
         int ry = MOVE_ROW_Y(i);
@@ -3937,19 +3944,20 @@ void renderCardProfile() {
            (unsigned long)(pet.ageMinutes / 1440));
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(info), 296);
+  gfx->setCursor(uiCenterX(info), 284);
   gfx->print(info);
 
   char natureLine[48];
   snprintf(natureLine, sizeof(natureLine), T(S_NATURE_FMT), natureName(pet.nature));
-  gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(natureLine), 322);
-  gfx->print(natureLine);
-
-  gfx->setTextColor(UI_MUTED);
-  gfx->setCursor(uiCenterX(T(S_RENAME_HINT)), 350);
-  gfx->print(T(S_RENAME_HINT));
+  int natureW = gfx->textWidth(natureLine) + 28;
+  if (natureW < 150) natureW = 150;
+  if (natureW > 286) natureW = 286;
+  int natureX = CX - natureW / 2;
+  gfx->fillRoundRect(natureX, 310, natureW, 36, 9, UI_WHITE);
+  gfx->drawRoundRect(natureX, 310, natureW, 36, 9, UI_INK);
+  gfx->setTextColor(UI_INK);
+  uiDrawCenteredIn(natureLine, natureX, 310, natureW, 36);
 }
 
 // pagina 1: combate (4 barras + boton de entrenar)
@@ -7442,6 +7450,71 @@ void renderCardProgress() {
   gfx->print(ms);
 }
 
+static const char *natureStatLabel(NatureStat stat) {
+  switch (stat) {
+    case NATURE_STAT_ATK: return T(S_STAT_ATK);
+    case NATURE_STAT_DEF: return T(S_STAT_DEF);
+    case NATURE_STAT_SPE: return T(S_STAT_SPE);
+    case NATURE_STAT_SPA: return T(S_STAT_SPA);
+    case NATURE_STAT_SPD: return T(S_STAT_SPD);
+    default: return "?";
+  }
+}
+
+static NatureStat natureTrainingStat(NatureTraining training) {
+  return training == NATURE_TRAIN_ATK ? NATURE_STAT_ATK
+       : training == NATURE_TRAIN_DEF ? NATURE_STAT_DEF
+                                      : NATURE_STAT_SPE;
+}
+
+void renderNatureInfo() {
+  gfx->fillRoundRect(58, 70, 350, 330, 16, UI_WHITE);
+  gfx->drawRoundRect(58, 70, 350, 330, 16, UI_INK);
+
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(3);
+  uiDrawCenteredIn(natureName(pet.nature), 76, 88, 314, 34);
+
+  gfx->setTextSize(1);
+  drawWrappedText(natureDescription(pet.nature), 82, 138, 302, 5);
+
+  gfx->drawFastHLine(82, 232, 302, UI_TRACK);
+  gfx->setTextColor(UI_MUTED);
+  gfx->setTextSize(2);
+  uiDrawCenteredIn(T(S_NATURE_EFFECT), 82, 242, 302, 28);
+
+  char effect[72];
+  int effectY = 276;
+  NatureStat raised = natureRaisedStat(pet.nature);
+  NatureStat lowered = natureLoweredStat(pet.nature);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  if (raised != NATURE_STAT_NONE) {
+    snprintf(effect, sizeof(effect), T(S_NATURE_STAT_EFFECT_FMT),
+             natureStatLabel(raised), 10);
+    uiDrawCenteredIn(effect, 76, effectY, 314, 24);
+    snprintf(effect, sizeof(effect), T(S_NATURE_STAT_EFFECT_FMT),
+             natureStatLabel(lowered), -10);
+    uiDrawCenteredIn(effect, 76, effectY + 30, 314, 24);
+  } else {
+    gfx->setTextSize(1);
+    for (uint8_t channel = 0; channel < 3; channel++) {
+      NatureTraining training = (NatureTraining)channel;
+      int8_t amount = natureTrainingEffect(pet.nature, training);
+      if (!amount) continue;
+      snprintf(effect, sizeof(effect), T(S_NATURE_TRAIN_EFFECT_FMT),
+               natureStatLabel(natureTrainingStat(training)), amount * 10,
+               natureTrainingDecayPercent(pet.nature, training));
+      uiDrawCenteredIn(effect, 76, effectY, 314, 24);
+      effectY += 30;
+    }
+  }
+
+  gfx->setTextColor(UI_MUTED);
+  gfx->setTextSize(1);
+  uiDrawCenteredIn(T(S_BACK), 82, 358, 302, 24);
+}
+
 void renderCard() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
@@ -7450,16 +7523,20 @@ void renderCard() {
   else if (cardPage == 2) renderCardMoves();
   else renderCardProgress();
 
-  // indicador de paginas + ayuda
-  for (int i = 0; i < CARD_PAGES; i++) {
-    int dx = CX - (CARD_PAGES - 1) * 13 + i * 26;
-    if (i == cardPage) gfx->fillCircle(dx, 374, 5, UI_INK);
-    else gfx->drawCircle(dx, 374, 4, UI_INK);
+  if (natureInfoOpen) {
+    renderNatureInfo();
+  } else {
+    // indicador de paginas + ayuda
+    for (int i = 0; i < CARD_PAGES; i++) {
+      int dx = CX - (CARD_PAGES - 1) * 13 + i * 26;
+      if (i == cardPage) gfx->fillCircle(dx, 374, 5, UI_INK);
+      else gfx->drawCircle(dx, 374, 4, UI_INK);
+    }
+    gfx->setTextColor(UI_MUTED);
+    gfx->setTextSize(2);
+    gfx->setCursor(uiCenterX(T(S_BACK)), 398);
+    gfx->print(T(S_BACK));
   }
-  gfx->setTextColor(UI_MUTED);
-  gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(T(S_BACK)), 398);
-  gfx->print(T(S_BACK));
   gfx->flush();
 }
 

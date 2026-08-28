@@ -105,6 +105,31 @@ int main() {
         bad++;
       }
     }
+    for (uint8_t nature = 0; nature < NATURE_COUNT; nature++) {
+      const char *v = natureDescription((NatureId)nature);
+      const char *code = langCode((Lang)l);
+      if (!v || !v[0] || !strcmp(v, "?")) {
+        printf("MISSING NATURE DESCRIPTION  %s index %u\n", code, nature);
+        bad++;
+        continue;
+      }
+      if (!validUtf8((const unsigned char *)v)) {
+        printf("BAD NATURE UTF-8  %s index %u\n", code, nature);
+        bad++;
+      }
+      const char *scan = v;
+      while (*scan) {
+        uint32_t codepoint = nextUtf8(scan);
+        bool glyphPresent = vectorFont
+            ? runtimeFontGlyph(codepoint, uiFontPixelSize(1)) != nullptr
+            : uiFontGlyph(codepoint) != nullptr;
+        if (!glyphPresent) {
+          printf("MISSING NATURE GLYPH  %s index %u: U+%04X\n",
+                 code, nature, (unsigned)codepoint);
+          bad++;
+        }
+      }
+    }
   }
   setLang((Lang)english);
   if (strcmp(T(S_RETIRE), "RELEASE")) {

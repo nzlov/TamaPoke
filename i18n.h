@@ -156,6 +156,8 @@ enum StrId : uint8_t {
   S_WIN_TRAINING_FMT, // "%s TRAINING +%u" -- decayable wild-battle reward
   // menu power-off confirmation (append-only)
   S_POWER_OFF, S_POWER_OFF_Q,
+  // nature details modal (append-only)
+  S_NATURE_EFFECT, S_NATURE_STAT_EFFECT_FMT, S_NATURE_TRAIN_EFFECT_FMT,
   STR_COUNT
 };
 
@@ -164,6 +166,7 @@ const char *medalName(int i);  // banner de medalla (MED_COUNT)
 const char *medalLabel(int i); // etiqueta corta de medalla
 const char *medalDesc(int i);  // descripcion larga de medalla
 const char *natureName(NatureId nature);
+const char *natureDescription(NatureId nature);
 
 bool loadLang();             // carga NVS; false si aun debe elegirse idioma
 bool setLang(Lang l);        // cambia y persiste el idioma

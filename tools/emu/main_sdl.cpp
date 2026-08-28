@@ -194,7 +194,8 @@ void render();
 void ensureMon();
 extern Arduino_Canvas *gfx;
 extern Pet pet;
-extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyPick, trainOpen, movePickOpen;
+extern bool cardOpen, natureInfoOpen, galleryOpen, clockOpen, kbOpen, menuOpen,
+            partyPick, trainOpen, movePickOpen;
 extern bool bagOpen;
 extern bool battleOpen, btlWild;
 extern bool btlFoeDetailOpen;
@@ -294,7 +295,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   if (!strcmp(screen, "starter")) onTap(233, 108 + 30);        // KANTO
   if (!strcmp(screen, "starterj")) onTap(233, 108 + 72 + 30);  // JOHTO
   for (int i = 0; i < 2; i++) loop();          // pick up the sprite for the new species
-  cardOpen = galleryOpen = clockOpen = kbOpen = false;
+  cardOpen = natureInfoOpen = galleryOpen = clockOpen = kbOpen = false;
   menuOpen = navMenuOpen = partyPick = trainOpen = movePickOpen = false;
   boxOpen = false;
   bagOpen = false;
@@ -354,6 +355,13 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   }
   else if (!strcmp(screen, "battle"))      { cardOpen = true; cardPage = 1; }
   else if (!strcmp(screen, "profile")){ cardOpen = true; cardPage = 0; }
+  else if (!strcmp(screen, "natureinfo") || !strcmp(screen, "naturetraining")) {
+    pet.nature = !strcmp(screen, "naturetraining") ? NATURE_BASHFUL
+                                                    : NATURE_ADAMANT;
+    cardOpen = true;
+    cardPage = 0;
+    natureInfoOpen = true;
+  }
   else if (!strcmp(screen, "medals")) { cardOpen = true; cardPage = 3; }
   else if (!strcmp(screen, "progress")){cardOpen = true; cardPage = 4; }
   else if (!strcmp(screen, "gallery")) {
