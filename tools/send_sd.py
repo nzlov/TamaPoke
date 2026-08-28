@@ -32,6 +32,19 @@ def wait_line(ser, expect, timeout=10):
             return False
     return False
 
+def wait_ack(ser, timeout=10):
+    end = time.time() + timeout
+    while time.time() < end:
+        line = ser.readline().decode(errors='replace').strip()
+        if not line:
+            continue
+        if line == '#':
+            return True
+        print(f"  placa: {line}")
+        if line == 'ERR' or line.startswith('ERR '):
+            return False
+    return False
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port')
@@ -76,16 +89,7 @@ def main():
         with open(path, 'rb') as f:
             while chunk := f.read(2048):
                 ser.write(chunk)
-                # espera el ack '#' del bloque
-                ack = ''
-                while ack != '#' and ack != 'ERR' and not ack.startswith('ERR '):
-                    ack = ser.readline().decode(errors='replace').strip()
-                    if ack == '':
-                        ok = False
-                        break
-                if ack == 'ERR' or ack.startswith('ERR '):
-                    print(f"  placa: {ack}")
-                if not ok or ack == 'ERR' or ack.startswith('ERR '):
+                if not wait_ack(ser):
                     ok = False
                     break
         if ok and wait_line(ser, 'DONE', 30):
