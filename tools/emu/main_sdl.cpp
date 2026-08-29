@@ -8,6 +8,7 @@
 #include "pet.h"
 #include "party.h"
 #include "battle.h"
+#include "wild.h"
 #include "inventory.h"
 #include "content.h"
 #include "i18n.h"
@@ -656,13 +657,17 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
       caught.ivHp = 37;
       caught.relearnFromLevel();
       capturedMon = caught.toPartyMon();
+      if (!strcmp(screen, "taskcapture")) {
+        capturedMon.level = WILD_MAX_LEVEL;
+        capturedMon.ageMinutes = (uint32_t)(WILD_MAX_LEVEL - 1) * MINUTES_PER_LEVEL;
+      }
     }
     if (!strcmp(screen, "taskcapture")) {
       player.dailyTasks.entries[0].species = capturedMon.dex;
       player.dailyTasks.entries[0].completed = 0;
       btlTaskSubmitState = 1;
       btlCapturedTaskIndex = 0;
-      btlCapturedTaskHard = false;
+      btlCapturedTaskHard = true;
     }
     if (!strcmp(screen, "taskcapturereward")) {
       btlTaskSubmitState = 2;

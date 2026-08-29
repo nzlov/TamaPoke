@@ -411,6 +411,8 @@ int main() {
 
   PartyMon filler = party.slots[0];
   filler.dex = 1;
+  filler.level = 100;
+  filler.ageMinutes = 99UL * MINUTES_PER_LEVEL;
   for (uint8_t i = 0; i < PARTY_SLOTS; i++) party.slots[i] = filler;
   for (uint8_t i = 0; i < BOX_SLOTS; i++) party.box[i] = filler;
   partyPick = false;
@@ -420,13 +422,15 @@ int main() {
   player.dailyTasks.entries[0].completed = 0;
   btlWildMon = filler;
   btlWildMon.dex = captureDex;
-  btlWildMon.level = filler.level;
+  btlWildMon.level = 120;
+  btlWildMon.ageMinutes = 119UL * MINUTES_PER_LEVEL;
   btlWild = true;
   battleOpen = true;
   btlCompleteCapture();
-  check(screenIs("win") && btlTaskSubmitState == 1 && !btlCapturedTaskHard &&
+  check(screenIs("win") && btlTaskSubmitState == 1 && btlCapturedTaskHard &&
+        capturedMon.level == 120 &&
         !partyPick && partyPending.empty(),
-        "a normal task target stays outside a full collection for the submit warning");
+        "a level-120 task target keeps its level for the hard submit warning");
   gfx->frameReady = false;
   render();
   check(gfx->frameReady,
@@ -437,9 +441,9 @@ int main() {
   onTap(150, 328);
   check(btlTaskSubmitState == 2 && player.dailyTasks.entries[0].completed &&
         capturedMon.empty() && !partyPick &&
-        (btlCapturedTaskRewardCount == 1 || btlCapturedTaskRewardCount == 2) &&
+        (btlCapturedTaskRewardCount == 2 || btlCapturedTaskRewardCount == 3) &&
         btlCapturedTaskRewards[0].key != ITEM_KEY_NONE,
-        "confirming the warning submits directly and grants the normal task reward");
+        "confirming submits level 120 directly and grants the hard task reward");
   gfx->frameReady = false;
   render();
   check(gfx->frameReady, "the direct-submit task reward flushes to the panel");
@@ -450,13 +454,16 @@ int main() {
   player.dailyTasks.entries[0].completed = 0;
   btlWildMon = filler;
   btlWildMon.dex = captureDex;
+  btlWildMon.level = 120;
+  btlWildMon.ageMinutes = 119UL * MINUTES_PER_LEVEL;
   btlWild = true;
   battleOpen = true;
   btlCompleteCapture();
   onTap(300, 328);
   check(screenIs("win") && btlTaskSubmitState == 0 && partyPick &&
-        partyPending.dex == captureDex,
-        "declining direct submission falls back to the full-collection replacement path");
+        partyPending.dex == captureDex && partyPending.level == 100 &&
+        partyPending.ageMinutes == 99UL * MINUTES_PER_LEVEL,
+        "declining direct submission lowers the catch to level 100 before storage");
   onSwipeV(1);
   check(screenIs("win") && partyPick,
         "the modal settlement cannot discard a pending caught creature by swiping");

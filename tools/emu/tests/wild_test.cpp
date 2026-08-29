@@ -66,9 +66,13 @@ int main() {
   ck(wildEncounterMaxLevel(squad, 3, true) == 80,
      "hard encounters stop twenty levels above the party's highest level");
   squad[1].level = 95;
-  ck(wildEncounterMaxLevel(squad, 3, false) == 100 &&
-     wildEncounterMaxLevel(squad, 3, true) == 100,
-     "wild encounter levels stop at the game limit");
+  ck(wildEncounterMaxLevel(squad, 3, false) == 105 &&
+     wildEncounterMaxLevel(squad, 3, true) == 115,
+     "wild encounters can exceed the cultivation level cap");
+  squad[1].level = 100;
+  ck(wildEncounterMaxLevel(squad, 3, false) == 110 &&
+     wildEncounterMaxLevel(squad, 3, true) == 120,
+     "wild encounter levels stop at 120");
   ck(wildWeightedDropCount(false, 29) == 2 &&
      wildWeightedDropCount(false, 30) == 1,
      "normal wild rewards add exactly one item below the thirty-percent boundary");

@@ -372,7 +372,9 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 - Capturing an unfinished task target offers immediate submission from the battle
   settlement before it occupies a cultivation or Box slot. Declining uses the
   normal storage flow; a normal-tier submission explicitly warns that the hard
-  reward is better before confirmation.
+  reward is better before confirmation. A catch above level 100 keeps its original
+  level when submitted directly; accepting it instead lowers it to level 100
+  before storage.
 - Reward difficulty is inferred from the submitted creature. A creature at least
   **10 levels above the pre-submit average level of the living cultivation team**
   earns the hard reward; every other valid submission earns the normal reward.
@@ -382,7 +384,7 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
   the complete move catalogue. Task rewards do not grant battle training points.
 - Wild opponents range from level 1 through at most **10 levels above the
   party's highest level on normal difficulty**, or **20 levels above it on hard**.
-  Both limits stop at level 100.
+  Both limits stop at level 120.
 - Bag items have distinct icons everywhere they appear. Poké, Great and Ultra Balls
   use 1×, 1.5× and 2× catch modifiers; the four-star Master Ball is a weight-1 wild
   victory drop and catches any valid wild target without fail. Run

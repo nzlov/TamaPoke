@@ -5900,6 +5900,9 @@ void startWildBattle(uint8_t region, bool hard) {
   foe.raisedMinutes = 0;
   foe.relearnFromLevel();
   btlWildMon = foe.toPartyMon();
+  // Cultivation stays capped at 100, but wild opponents may temporarily
+  // exceed it for battle and immediate task submission.
+  btlWildMon.level = level;
   btlWildMon.setGigantamaxFactor(
       wildGigantamaxFactorForRoll(dex, (uint8_t)random(100)));
   combatantFromParty(btlFoe, btlWildMon);
@@ -8075,6 +8078,10 @@ static int8_t btlPendingTaskFor(SpeciesId species) {
 }
 
 static void btlStoreCapturedMon() {
+  if (capturedMon.level > MAX_LEVEL) {
+    capturedMon.level = MAX_LEVEL;
+    capturedMon.ageMinutes = (uint32_t)(MAX_LEVEL - 1) * MINUTES_PER_LEVEL;
+  }
   if (party.store(capturedMon) != PARTY_STORE_FULL) return;
   partyPending = capturedMon;
   partyPick = true;

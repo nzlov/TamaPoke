@@ -31,7 +31,7 @@ uint8_t wildEncounterMaxLevel(const Combatant party[], uint8_t partyCount,
   for (uint8_t i = 0; i < partyCount; i++)
     if (party[i].level > highest) highest = party[i].level;
   uint16_t limit = (uint16_t)highest + (hard ? 20 : 10);
-  return limit > 100 ? 100 : (uint8_t)limit;
+  return limit > WILD_MAX_LEVEL ? WILD_MAX_LEVEL : (uint8_t)limit;
 }
 
 uint8_t wildWeightedDropCount(bool hard, uint8_t bonusRoll) {

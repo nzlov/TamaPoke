@@ -12,6 +12,7 @@ constexpr uint8_t WILD_HIDDEN_ABILITY_CHANCE = 5;
 constexpr uint8_t WILD_BONUS_DROP_CHANCE = 30;
 constexpr uint8_t WILD_RARE_BONUS_MAX = 15;
 constexpr uint8_t WILD_ANGRY_ESCAPE_BONUS = 5;
+constexpr uint8_t WILD_MAX_LEVEL = 120;
 
 uint32_t wildRareThreshold(uint8_t bonus);
 bool wildRareForRoll(uint32_t roll, uint8_t bonus);
@@ -28,7 +29,7 @@ uint8_t wildCaptureChance(uint8_t rarity, uint16_t hp, uint16_t maxHp,
                           bool hasStatus, int16_t ballModifier);
 
 // Encounters range from level 1 through ten above the party's highest level
-// on normal difficulty, or twenty above it on hard, capped at level 100.
+// on normal difficulty, or twenty above it on hard, capped at level 120.
 uint8_t wildEncounterMaxLevel(const Combatant party[], uint8_t partyCount,
                               bool hard);
 
