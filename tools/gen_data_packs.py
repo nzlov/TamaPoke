@@ -67,6 +67,7 @@ MEGA_DATA = json.loads((HERE / "mega_data.json").read_text(encoding="utf-8"))
 GIGANTAMAX_DATA = json.loads((HERE / "gigantamax_data.json").read_text(encoding="utf-8"))
 ABILITY_DATA = json.loads((HERE / "ability_data.json").read_text(encoding="utf-8"))
 MOVE_TAG_DATA = json.loads((HERE / "move_tag_data.json").read_text(encoding="utf-8"))
+BREEDING_DATA = json.loads((HERE / "breeding_data.json").read_text(encoding="utf-8"))
 
 MOVE_TAG_BITS = {
     "contact": 1 << 0,
@@ -836,7 +837,10 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
             tag_mask = sum(MOVE_TAG_BITS[tag] for tag in tag_names)
             move_tags.extend(struct.pack("<H", tag_mask))
 
-    by_slug = {slug: index + 1 for index, (_name, slug, *_rest) in enumerate(MOVES) if slug}
+    by_slug = {
+        slug: index + 1
+        for index, (_name, slug, *_rest) in enumerate(MOVES) if slug
+    }
     offsets = [0]
     learn = bytearray()
     for species_id in range(0, len(DEX) + 1):
@@ -939,9 +943,33 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
         gigantamax_blob.extend(struct.pack("<H", species))
         previous_species = species
 
+    if BREEDING_DATA.get("schema") != 1:
+        raise ValueError("breeding_data.json has an unsupported schema")
+    breeding_rows = BREEDING_DATA.get("species", [])
+    if len(breeding_rows) != len(DEX):
+        raise ValueError("breeding catalogue does not cover the authored dex")
+    breeding_record = struct.Struct("<HHHHIH")
+    breeding_blob = bytearray()
+    egg_move_blob = bytearray()
+    for expected_species, row in enumerate(breeding_rows, 1):
+        species = int(row["dex"])
+        groups = int(row["groups"])
+        offspring = [int(value) for value in row["offspring"]]
+        egg_moves = sorted({by_slug[slug] for slug in row["eggMoves"]})
+        if species != expected_species or not groups or groups > 0x7FFF or \
+                not 1 <= len(offspring) <= 2 or \
+                any(not 0 < child <= len(DEX) for child in offspring):
+            raise ValueError(f"species {species}: invalid breeding record")
+        offset = len(egg_move_blob) // 2
+        for move in egg_moves:
+            egg_move_blob.extend(struct.pack("<H", move))
+        breeding_blob.extend(breeding_record.pack(
+            species, groups, offspring[0], offspring[-1], offset, len(egg_moves)
+        ))
+
     mechanics_hash = binascii.crc32(
         move_blob + field_flags + move_tags + learn + offset_blob + chart + item_blob + mega_blob +
-        gigantamax_blob + ability_blob
+        gigantamax_blob + ability_blob + breeding_blob + egg_move_blob
     ) & 0xFFFFFFFF
     sections = [
         ("MOVE", bytes(move_blob), len(move_rows)),
@@ -966,6 +994,8 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
         ("ALOC", ability_localized_descriptions, len(ability_rows)),
         ("MEGA", bytes(mega_blob), len(MEGA_DATA)),
         ("GMAX", bytes(gigantamax_blob), len(GIGANTAMAX_DATA)),
+        ("BRSP", bytes(breeding_blob), len(breeding_rows)),
+        ("BEMV", bytes(egg_move_blob), len(egg_move_blob) // 2),
     ]
     if item_icons:
         sections.append(("IICO", item_icons, len(ITEM_DATA)))
@@ -1009,6 +1039,7 @@ def build_quiz_packs(manifest: list[dict]) -> None:
 
 
 def main() -> int:
+    global WEB_PACKS
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sprite-dir", type=Path, default=HERE / "sdcard" / "mons",
                         help="directory containing pNNN.bin, psNNN.bin and thumbs.bin sources")
@@ -1016,7 +1047,11 @@ def main() -> int:
                         help="rebuild only moves-core.tmove without requiring regional art")
     parser.add_argument("--allow-empty-art", action="store_true",
                         help="build test packs without copyrighted sprite inputs")
+    parser.add_argument("--output-dir", type=Path,
+                        help="write generated packs outside web/packs")
     args = parser.parse_args()
+    if args.output_dir:
+        WEB_PACKS = args.output_dir.resolve()
     WEB_PACKS.mkdir(parents=True, exist_ok=True)
     if args.move_only:
         manifest: list[dict] = []

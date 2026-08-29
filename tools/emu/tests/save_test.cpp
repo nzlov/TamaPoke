@@ -156,7 +156,7 @@ int main(){
   ck(player.streak==12 && player.bestStreak==19 && player.totalMedals==41, "streak and medals");
   ck(player.gameHi==33 && player.strHi==21 && player.spdHi==9, "every minigame record");
   ck(p2.bond==77 && p2.careMistakes==2 && p2.weight==55, "bond, mistakes, weight");
-  // Roster v4 restores the player snapshot after the legacy scalar mirrors, so
+  // The current roster restores the player snapshot after the legacy scalar mirrors, so
   // a partial boot load cannot add or lose Pokedex bits.
   ck((player.dexReg[0] & 0x5A)==0x5A && player.dexReg[9]==0xC3 &&
      (player.dexShinyReg[3] & 0x11)==0x11, "the Pokedex, holes and all");

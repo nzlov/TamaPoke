@@ -31,6 +31,7 @@
 #include "avatars.h"
 #include <stdarg.h>
 #include "party.h"
+#include "breeding.h"
 #include "inventory.h"
 #include "wild.h"
 #include "ui_scroll.h"
@@ -639,14 +640,44 @@ bool menuRowDisabled(uint8_t row) {
 
 // Swipe-down navigation is deliberately separate from the name-band menu.
 // The latter remains the only route to Pokedex, settings and creature exit; this
-// full page is the requested fast route to the three player-wide destinations.
+// full page is the fast route to the four player-wide destinations.
 bool navMenuOpen = false;
-#define NAVMENU_BTN_X 85
-#define NAVMENU_BTN_W 296
-#define NAVMENU_BTN_H 72
-#define NAVMENU_BTN_GAP 18
-#define NAVMENU_BTN_Y(i) (100 + (i) * (NAVMENU_BTN_H + NAVMENU_BTN_GAP))
-#define NAVMENU_ROWS 3
+#define NAVMENU_BTN_W 160
+#define NAVMENU_BTN_H 116
+#define NAVMENU_BTN_X(i) (65 + ((i) % 2) * 176)
+#define NAVMENU_BTN_Y(i) (88 + ((i) / 2) * 132)
+#define NAVMENU_ROWS 4
+
+bool breedingOpen = false;
+enum BreedingView : uint8_t {
+  BREED_VIEW_MAIN,
+  BREED_VIEW_PICKER,
+  BREED_VIEW_ACTIONS,
+  BREED_VIEW_DETAIL,
+};
+uint8_t breedingView = BREED_VIEW_MAIN;
+uint8_t breedingParent = 0;
+uint8_t breedingPickPage = 0;  // cultivation roster, then four Box pages
+bool breedingPickSwapRequired = false;
+uint8_t breedingDetailPage = 0;
+uint8_t breedingDetailTarget = 0;  // parent slot 0/1, or 2 for offspring
+#define BREED_PICK_PAGES (1 + BOX_SLOTS / BOX_PER_PAGE)
+#define BREED_PARENT_X(side) (70 + (side) * 168)
+#define BREED_PARENT_Y 72
+#define BREED_PARENT_W 158
+#define BREED_PARENT_H 146
+#define BREED_CHILD_X 113
+#define BREED_CHILD_Y 238
+#define BREED_CHILD_W 240
+#define BREED_CHILD_H 102
+#define BREED_ACTION_X 93
+#define BREED_ACTION_W 280
+#define BREED_ACTION_H 48
+#define BREED_ACTION_Y(i) (164 + (i) * 62)
+#define BREED_START_X 93
+#define BREED_START_Y 350
+#define BREED_START_W 280
+#define BREED_START_H 54
 
 // Box is the only cultivation-management screen. Empty cells open the deposit
 // picker; occupied cells first open their actions, and WITHDRAW continues into
@@ -829,7 +860,7 @@ static void btlResetTapDebounce() {
 }
 
 enum : uint8_t {
-  SCR_QUIZ = 0, SCR_LANGUAGE, SCR_STARTER, SCR_REGION, SCR_GALLERY, SCR_DEXPICK, SCR_MOVEPICK, SCR_BOX,
+  SCR_QUIZ = 0, SCR_LANGUAGE, SCR_STARTER, SCR_REGION, SCR_GALLERY, SCR_DEXPICK, SCR_MOVEPICK, SCR_BOX, SCR_BREEDING,
   SCR_KEYBOARD, SCR_CARD, SCR_PLAYER, SCR_CLOCK, SCR_GYM, SCR_GYMPICK,
   SCR_LAN, SCR_PICK, SCR_BATTLE, SCR_WIN, SCR_TRAIN, SCR_MENU,
   SCR_GAME, SCR_MAIN, SCR_BAG, SCR_COUNT
@@ -856,6 +887,8 @@ void renderFirstBootLanguage();
 void quizTap(int16_t x, int16_t y);
 void renderBag();
 void bagTap(int16_t x, int16_t y);
+void renderBreeding();
+void breedingTap(int16_t x, int16_t y);
 static void btlDismissWin();
 static void btlApplyEntry(uint8_t side);
 static bool btlReplaceActive(uint8_t side, uint8_t next, bool announce);
@@ -866,7 +899,7 @@ void startWildBattle(uint8_t region, bool hard);
 void drawSparkleParticles(int cx, int groundY, uint32_t now, uint8_t scale = 1);
 uint32_t pmdActTotalMs(const PmdAct &action);
 const char *const SCREEN_NAME[SCR_COUNT] = {
-  "quiz", "language", "starter", "region", "gallery", "dexpick", "movepick", "box",
+  "quiz", "language", "starter", "region", "gallery", "dexpick", "movepick", "box", "breeding",
   "keyboard", "card", "player", "clock", "gym", "gympick",
   "lan", "pick", "battle", "win", "train", "menu",
   "minigame", "main", "bag"
@@ -2122,6 +2155,14 @@ void onSwipeV(int dir) {
                 ? BAG_VIEW_ACTIONS : BAG_VIEW_LIST;
     return;
   }
+  if (breedingOpen) {
+    if (breedingView != BREED_VIEW_MAIN) {
+      breedingPickSwapRequired = false;
+      breedingView = BREED_VIEW_MAIN;
+    }
+    else breedingOpen = false;
+    return;
+  }
   if (boxOpen) {
     if (partyPick) {
       partyPick = false;
@@ -2789,6 +2830,24 @@ void onSwipe(int dir) {
     }
     return;
   }
+  if (breedingOpen) {
+    if (breedingView == BREED_VIEW_PICKER) {
+      int page = (int)breedingPickPage + (dir > 0 ? -1 : 1);
+      if (page < 0) page = 0;
+      if (page >= BREED_PICK_PAGES) page = BREED_PICK_PAGES - 1;
+      breedingPickPage = (uint8_t)page;
+    } else if (breedingView == BREED_VIEW_DETAIL) {
+      int page = (int)breedingDetailPage + (dir > 0 ? -1 : 1);
+      if (page < 0) page = 0;
+      if (page >= BTL_FOE_DETAIL_PAGES) page = BTL_FOE_DETAIL_PAGES - 1;
+      breedingDetailPage = (uint8_t)page;
+    } else if (breedingView == BREED_VIEW_ACTIONS) {
+      breedingView = BREED_VIEW_MAIN;
+    } else {
+      breedingOpen = false;
+    }
+    return;
+  }
   if (boxOpen) {
     if (partyPick) return;          // a pending creature needs an explicit choice
     if (boxView == BOX_VIEW_DETAIL) {
@@ -2890,14 +2949,15 @@ void petNavPoints(int *slot0X, int *slotGap, int *y) {
 uint8_t petNavCount() { return party.count(); }
 
 void navMenuButtonPoint(uint8_t index, int *x, int *y) {
-  if (x) *x = NAVMENU_BTN_X + NAVMENU_BTN_W / 2;
+  if (x) *x = NAVMENU_BTN_X(index) + NAVMENU_BTN_W / 2;
   if (y) *y = NAVMENU_BTN_Y(index) + NAVMENU_BTN_H / 2;
 }
 
 bool navMenuTap(int16_t x, int16_t y) {
   for (uint8_t i = 0; i < NAVMENU_ROWS; i++) {
     int top = NAVMENU_BTN_Y(i);
-    if (x < NAVMENU_BTN_X || x > NAVMENU_BTN_X + NAVMENU_BTN_W ||
+    int left = NAVMENU_BTN_X(i);
+    if (x < left || x > left + NAVMENU_BTN_W ||
         y < top || y > top + NAVMENU_BTN_H) continue;
     navMenuOpen = false;
     sfxPlay(SFX_TAP);
@@ -2915,9 +2975,14 @@ bool navMenuTap(int16_t x, int16_t y) {
       gymPick = true;
       gymPage = 0;
       rpickPage = 0;
-    } else {
+    } else if (i == 2) {
       playerOpen = true;
       playerPage = 0;
+    } else {
+      breedingOpen = true;
+      breedingView = BREED_VIEW_MAIN;
+      breedingPickPage = 0;
+      breedingPickSwapRequired = false;
     }
     return true;
   }
@@ -2982,6 +3047,10 @@ void onTap(int16_t x, int16_t y) {
   }
   if (bagOpen) {
     bagTap(x, y);
+    return;
+  }
+  if (breedingOpen) {
+    breedingTap(x, y);
     return;
   }
   if (battleOpen) {
@@ -3501,6 +3570,7 @@ uint8_t uiCurrentScreen() {
   if (movePickOpen) return SCR_MOVEPICK;
   if (btlWinUntil && !btlTurnAnimating) return SCR_WIN;
   if (bagOpen) return SCR_BAG;
+  if (breedingOpen) return SCR_BREEDING;
   if (boxOpen) return SCR_BOX;
   if (kbOpen) return SCR_KEYBOARD;
   if (cardOpen) return SCR_CARD;
@@ -3520,7 +3590,9 @@ uint8_t uiCurrentScreen() {
 bool uiScreenContinuous(uint8_t screen) {
   return (screen == SCR_MAIN && !screenOff) || screen == SCR_QUIZ ||
          (screen == SCR_GALLERY && galleryDetail) || screen == SCR_BATTLE || screen == SCR_GAME ||
-         screen == SCR_LAN || (screen == SCR_CARD && cardPage == 0 && !natureInfoOpen);
+         screen == SCR_LAN ||
+         (screen == SCR_BREEDING && party.breeding.status == BREEDING_RUNNING) ||
+         (screen == SCR_CARD && cardPage == 0 && !natureInfoOpen);
 }
 
 static void crumbDrop() {
@@ -3594,6 +3666,10 @@ void render() {
   }
   if (bagOpen) {
     renderBag();
+    return;
+  }
+  if (breedingOpen) {
+    renderBreeding();
     return;
   }
   if (boxOpen) {
@@ -8891,38 +8967,372 @@ void renderNavMenu() {
   snprintf(battleLabel, sizeof(battleLabel), "%s", T(S_BATTLE_CENTER));
   snprintf(badges, sizeof(badges), T(S_BADGES_FMT),
            player.badgeCountIn(0, false));
-  const char *labels[NAVMENU_ROWS] = { bagLabel, battleLabel, badges };
+  const char *labels[NAVMENU_ROWS] = {
+    bagLabel, battleLabel, badges, T(S_BREED_CENTER)
+  };
   for (uint8_t i = 0; i < NAVMENU_ROWS; i++) {
     int y = NAVMENU_BTN_Y(i);
-    gfx->fillRoundRect(NAVMENU_BTN_X, y, NAVMENU_BTN_W, NAVMENU_BTN_H,
+    int x = NAVMENU_BTN_X(i);
+    const int iconShiftY = 16;
+    gfx->fillRoundRect(x, y, NAVMENU_BTN_W, NAVMENU_BTN_H,
                        14, UI_WHITE);
-    gfx->drawRoundRect(NAVMENU_BTN_X, y, NAVMENU_BTN_W, NAVMENU_BTN_H,
+    gfx->drawRoundRect(x, y, NAVMENU_BTN_W, NAVMENU_BTN_H,
                        14, UI_INK);
     if (i == 0) {
-      drawMap(SPR_ICON_BAG, 16, NAVMENU_BTN_X + 20, y + 20, 2, false);
+      drawMap(SPR_ICON_BAG, 16, x + 64, y + 10 + iconShiftY, 2, false);
     } else if (i == 1) {
-      drawMap(SPR_ICON_BATTLE, 16, NAVMENU_BTN_X + 20, y + 20, 2, false);
-    } else {
+      drawMap(SPR_ICON_BATTLE, 16, x + 64, y + 10 + iconShiftY, 2, false);
+    } else if (i == 2) {
       // A compact shield avoids depending on one region's earned badge art.
-      int cx = NAVMENU_BTN_X + 36, cy = y + 34;
+      int cx = x + NAVMENU_BTN_W / 2, cy = y + 30 + iconShiftY;
       gfx->fillTriangle(cx - 16, cy - 14, cx + 16, cy - 14,
                         cx, cy + 20, UI_BAR_WARN);
       gfx->drawLine(cx - 16, cy - 14, cx + 16, cy - 14, UI_INK);
       gfx->drawLine(cx + 16, cy - 14, cx, cy + 20, UI_INK);
       gfx->drawLine(cx, cy + 20, cx - 16, cy - 14, UI_INK);
       gfx->fillCircle(cx, cy - 4, 6, UI_WHITE);
+    } else {
+      drawMap(SPR_EGG, SPRITE_H, x + 48, y - 5 + iconShiftY, 2, false);
     }
     gfx->setTextColor(UI_INK);
-    gfx->setTextSize(2);
-    uiDrawCenteredIn(labels[i], NAVMENU_BTN_X + 64, y,
-                     NAVMENU_BTN_W - 76, NAVMENU_BTN_H);
+    gfx->setTextSize(1);
+    uiDrawCenteredIn(labels[i], x + 8, y + 70,
+                     NAVMENU_BTN_W - 16, 38);
   }
 
   gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(T(S_BACK)), 392);
+  gfx->setCursor(uiCenterX(T(S_BACK)), 376);
   gfx->print(T(S_BACK));
   gfx->flush();
+}
+
+static uint8_t breedingParentAtSide(uint8_t side) {
+  const PartyMon &first = party.breeding.parents[0];
+  const PartyMon &second = party.breeding.parents[1];
+  if (first.gender == GENDER_MALE && second.gender != GENDER_MALE)
+    return side ? 1 : 0;
+  if (second.gender == GENDER_MALE && first.gender != GENDER_MALE)
+    return side ? 0 : 1;
+  if (first.gender == GENDER_FEMALE && second.gender != GENDER_FEMALE)
+    return side ? 0 : 1;
+  if (second.gender == GENDER_FEMALE && first.gender != GENDER_FEMALE)
+    return side ? 1 : 0;
+  return side;
+}
+
+static void drawBreedingPortrait(const PartyMon &mon, int x, int y, int w, int h,
+                                  bool disabled) {
+  gfx->fillRoundRect(x, y, w, h, 14, mon.empty() ? UI_TRACK : UI_WHITE);
+  gfx->drawRoundRect(x, y, w, h, 14, UI_INK);
+  if (mon.empty()) {
+    gfx->setTextColor(UI_MUTED);
+    gfx->setTextSize(1);
+    uiDrawCenteredIn(T(S_BREED_PICK), x + 8, y + 8, w - 16, h - 16);
+    return;
+  }
+  uint8_t scale = h >= BREED_PARENT_H ? 3 : 2;
+  int thumbSize = 16 * scale;
+  const uint8_t *thumb = thumbs.get(mon.dex);
+  if (thumb) drawThumb(thumb, x + (w - thumbSize) / 2,
+                       y + (h >= BREED_PARENT_H ? 12 : 4), scale, disabled);
+  const char *name = displaySpeciesName(mon.dex, mon.nick);
+  gfx->setTextColor(disabled ? UI_MUTED : dexEntry(mon.dex).accent);
+  gfx->setTextSize(2);
+  if (gfx->textWidth(name) > w - 30) gfx->setTextSize(1);
+  int nameX = x + (w - gfx->textWidth(name)) / 2;
+  int nameY = y + h - 35;
+  gfx->setCursor(nameX, nameY);
+  gfx->print(name);
+  drawGenderIcon(mon.gender, nameX + gfx->textWidth(name) + 4, nameY - 2, 1);
+  if (mon.shiny || mon.sparkle) {
+    gfx->setTextColor(UI_BAR_WARN);
+    gfx->setCursor(nameX - 12, nameY);
+    gfx->print(rareMark(true));
+  }
+}
+
+static void drawBreedingCard(const PartyMon &mon, int x, int y, int w, int h,
+                             const char *label, bool disabled) {
+  gfx->fillRoundRect(x, y, w, h, 12, mon.empty() ? UI_TRACK : UI_WHITE);
+  gfx->drawRoundRect(x, y, w, h, 12, UI_INK);
+  gfx->setTextColor(disabled ? UI_MUTED : UI_INK);
+  gfx->setTextSize(1);
+  gfx->setCursor(x + 16, y + 10);
+  gfx->print(label);
+  if (mon.empty()) {
+    uiDrawCenteredIn(T(S_PARTY_EMPTY), x, y + 22, w, h - 22);
+    return;
+  }
+  const uint8_t *thumb = thumbs.get(mon.dex);
+  if (thumb) drawThumb(thumb, x + w - 74, y - 4, 2, disabled);
+  const char *name = displaySpeciesName(mon.dex, mon.nick);
+  gfx->setTextColor(disabled ? UI_MUTED : dexEntry(mon.dex).accent);
+  gfx->setTextSize(2);
+  gfx->setCursor(x + 16, y + 30);
+  gfx->print(name);
+  drawGenderIcon(mon.gender, x + 20 + gfx->textWidth(name), y + 28, 1);
+  if (mon.shiny || mon.sparkle) {
+    gfx->setTextColor(UI_BAR_WARN);
+    gfx->print(rareMark(true));
+  }
+}
+
+static const PartyMon &breedingPickerMon(uint8_t cell) {
+  if (breedingPickPage == 0) return party.slots[cell];
+  return party.box[(breedingPickPage - 1) * BOX_PER_PAGE + cell];
+}
+
+static void renderBreedingPicker() {
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  const char *title = breedingPickSwapRequired ? T(S_BREED_REPLACE)
+                                                : T(S_BREED_PICK);
+  gfx->setCursor(uiCenterX(title), 36);
+  gfx->print(title);
+  char pageLabel[32];
+  if (!breedingPickPage)
+    snprintf(pageLabel, sizeof(pageLabel), T(S_PARTY_FMT), party.count(), PARTY_SLOTS);
+  else
+    snprintf(pageLabel, sizeof(pageLabel), T(S_BOX_FMT),
+             breedingPickPage, BOX_SLOTS / BOX_PER_PAGE);
+  gfx->setTextSize(1);
+  gfx->setCursor(uiCenterX(pageLabel), 62);
+  gfx->print(pageLabel);
+  for (uint8_t cell = 0; cell < BOX_PER_PAGE; cell++) {
+    const PartyMon &mon = breedingPickerMon(cell);
+    int x = PARTY_GRID_X + (cell % 2) * (PARTY_CELL_W + 10);
+    int y = PARTY_GRID_Y + (cell / 2) * (PARTY_CELL_H + 8);
+    bool disabled = !breedingEligible(mon);
+    drawBreedingCard(mon, x, y, PARTY_CELL_W, PARTY_CELL_H, "", disabled);
+  }
+  for (uint8_t page = 0; page < BREED_PICK_PAGES; page++) {
+    int x = CX - (BREED_PICK_PAGES - 1) * 12 + page * 24;
+    if (page == breedingPickPage) gfx->fillCircle(x, 366, 5, UI_INK);
+    else gfx->drawCircle(x, 366, 4, UI_INK);
+  }
+  gfx->setTextColor(UI_MUTED);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(T(S_BACK)), 400);
+  gfx->print(T(S_BACK));
+}
+
+static void renderBreedingActions() {
+  gfx->fillRoundRect(73, 140, 320, 174, 16, UI_WHITE);
+  gfx->drawRoundRect(73, 140, 320, 174, 16, UI_INK);
+  const char *labels[2] = { T(S_ITEM_VIEW), T(S_BREED_REMOVE) };
+  for (uint8_t row = 0; row < 2; row++) {
+    bool locked = row == 1 && party.breeding.status == BREEDING_RUNNING;
+    uint16_t fill = locked ? UI_TRACK : row == 1 ? UI_BAR_WARN : UI_BG_DAY;
+    gfx->fillRoundRect(BREED_ACTION_X, BREED_ACTION_Y(row), BREED_ACTION_W,
+                       BREED_ACTION_H, 12, fill);
+    gfx->drawRoundRect(BREED_ACTION_X, BREED_ACTION_Y(row), BREED_ACTION_W,
+                       BREED_ACTION_H, 12, UI_INK);
+    gfx->setTextColor(locked ? UI_MUTED : UI_INK);
+    gfx->setTextSize(2);
+    uiDrawCenteredIn(labels[row], BREED_ACTION_X, BREED_ACTION_Y(row),
+                     BREED_ACTION_W, BREED_ACTION_H);
+  }
+}
+
+void renderBreeding() {
+  if (breedingView == BREED_VIEW_DETAIL) {
+    const PartyMon &detail = breedingDetailTarget < 2
+        ? party.breeding.parents[breedingDetailTarget]
+        : party.breeding.offspring;
+    if (!detail.empty()) {
+      renderStoredMonDetail(detail, nullptr, breedingDetailPage, nullptr);
+      return;
+    }
+    breedingView = BREED_VIEW_MAIN;
+  }
+  beginRoundFrame(UI_BG_DAY);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(T(S_BREED_CENTER)), 34);
+  gfx->print(T(S_BREED_CENTER));
+  if (breedingView == BREED_VIEW_PICKER) {
+    renderBreedingPicker();
+    gfx->flush();
+    return;
+  }
+
+  for (uint8_t side = 0; side < 2; side++) {
+    uint8_t parent = breedingParentAtSide(side);
+    drawBreedingPortrait(party.breeding.parents[parent], BREED_PARENT_X(side),
+                         BREED_PARENT_Y, BREED_PARENT_W, BREED_PARENT_H,
+                         party.breeding.status == BREEDING_RUNNING);
+  }
+
+  gfx->setTextSize(1);
+  if (party.breeding.status == BREEDING_RUNNING) {
+    gfx->fillRoundRect(BREED_CHILD_X, BREED_CHILD_Y, BREED_CHILD_W,
+                       BREED_CHILD_H, 14, UI_TRACK);
+    gfx->drawRoundRect(BREED_CHILD_X, BREED_CHILD_Y, BREED_CHILD_W,
+                       BREED_CHILD_H, 14, UI_INK);
+    drawMap(SPR_EGG, SPRITE_H, CX - 32, BREED_CHILD_Y + 2, 2, false);
+    uint32_t now = rtcEpoch();
+    if (!now) now = pet.lastSeenEpoch;
+    uint32_t seconds = party.breeding.readyEpoch > now
+        ? party.breeding.readyEpoch - now : 0;
+    uint32_t minutes = (seconds + 59) / 60;
+    char wait[32];
+    snprintf(wait, sizeof(wait), T(S_BREED_WAIT_FMT),
+             (unsigned)(minutes / 60), (unsigned)(minutes % 60));
+    gfx->setTextColor(UI_BAR_WARN);
+    gfx->setCursor(uiCenterX(wait), BREED_CHILD_Y + 68);
+    gfx->print(wait);
+    gfx->setTextColor(UI_MUTED);
+    gfx->setCursor(uiCenterX(T(S_BREED_LOCKED)), BREED_CHILD_Y + 84);
+    gfx->print(T(S_BREED_LOCKED));
+  } else if (party.breeding.status == BREEDING_READY) {
+    drawBreedingPortrait(party.breeding.offspring, BREED_CHILD_X, BREED_CHILD_Y,
+                         BREED_CHILD_W, BREED_CHILD_H, false);
+    gfx->fillRoundRect(BREED_START_X, BREED_START_Y, BREED_START_W,
+                       BREED_START_H, 12, UI_BAR_OK);
+    gfx->drawRoundRect(BREED_START_X, BREED_START_Y, BREED_START_W,
+                       BREED_START_H, 12, UI_INK);
+    gfx->setTextColor(UI_WHITE);
+    gfx->setTextSize(2);
+    uiDrawCenteredIn(T(S_BREED_TAKE), BREED_START_X, BREED_START_Y,
+                     BREED_START_W, BREED_START_H);
+  } else {
+    bool filled = !party.breeding.parents[0].empty() &&
+                  !party.breeding.parents[1].empty();
+    bool compatible = filled && breedingCompatible(
+        party.breeding.parents[0], party.breeding.parents[1]);
+    const char *message = !filled ? T(S_BREED_CHOOSE_TWO)
+                                  : compatible ? T(S_BREED_START)
+                                               : T(S_BREED_INCOMPATIBLE);
+    gfx->fillRoundRect(BREED_CHILD_X, BREED_CHILD_Y, BREED_CHILD_W,
+                       BREED_CHILD_H, 14, UI_TRACK);
+    gfx->drawRoundRect(BREED_CHILD_X, BREED_CHILD_Y, BREED_CHILD_W,
+                       BREED_CHILD_H, 14, UI_INK);
+    drawMap(SPR_EGG, SPRITE_H, CX - 32, BREED_CHILD_Y + 2, 2, false);
+    gfx->setTextColor(compatible ? UI_BAR_OK : UI_BAR_WARN);
+    gfx->setCursor(uiCenterX(message), BREED_CHILD_Y + 76);
+    gfx->print(message);
+    if (compatible) {
+      gfx->fillRoundRect(BREED_START_X, BREED_START_Y, BREED_START_W,
+                         BREED_START_H, 12, UI_BAR_OK);
+      gfx->drawRoundRect(BREED_START_X, BREED_START_Y, BREED_START_W,
+                         BREED_START_H, 12, UI_INK);
+      gfx->setTextColor(UI_WHITE);
+      gfx->setTextSize(2);
+      uiDrawCenteredIn(T(S_BREED_START), BREED_START_X, BREED_START_Y,
+                       BREED_START_W, BREED_START_H);
+    }
+  }
+  if (breedingView == BREED_VIEW_ACTIONS) renderBreedingActions();
+  gfx->flush();
+}
+
+void breedingTap(int16_t x, int16_t y) {
+  if (breedingView == BREED_VIEW_DETAIL) {
+    if (breedingDetailTarget < 2 &&
+        party.breeding.status != BREEDING_RUNNING) {
+      breedingParent = breedingDetailTarget;
+      breedingView = BREED_VIEW_ACTIONS;
+    } else {
+      breedingView = BREED_VIEW_MAIN;
+    }
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  if (breedingView == BREED_VIEW_PICKER) {
+    for (uint8_t cell = 0; cell < BOX_PER_PAGE; cell++) {
+      int left = PARTY_GRID_X + (cell % 2) * (PARTY_CELL_W + 10);
+      int top = PARTY_GRID_Y + (cell / 2) * (PARTY_CELL_H + 8);
+      if (x < left || x > left + PARTY_CELL_W ||
+          y < top || y > top + PARTY_CELL_H) continue;
+      const PartyMon &mon = breedingPickerMon(cell);
+      if (!breedingEligible(mon)) { sfxPlay(SFX_DENY); return; }
+      bool changed = !breedingPickPage
+          ? party.breedingSwapParty(breedingParent, cell, pet)
+          : party.breedingSwapBox(
+                breedingParent,
+                (uint8_t)((breedingPickPage - 1) * BOX_PER_PAGE + cell), pet);
+      if (!changed) { sfxPlay(SFX_DENY); return; }
+      breedingPickSwapRequired = false;
+      breedingView = BREED_VIEW_MAIN;
+      sfxPlay(SFX_TAP);
+      return;
+    }
+    breedingPickSwapRequired = false;
+    breedingView = BREED_VIEW_MAIN;
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  if (breedingView == BREED_VIEW_ACTIONS) {
+    for (uint8_t row = 0; row < 2; row++) {
+      int top = BREED_ACTION_Y(row);
+      if (x < BREED_ACTION_X || x > BREED_ACTION_X + BREED_ACTION_W ||
+          y < top || y > top + BREED_ACTION_H) continue;
+      if (row == 0) {
+        breedingDetailTarget = breedingParent;
+        breedingDetailPage = 0;
+        breedingView = BREED_VIEW_DETAIL;
+      } else {
+        if (party.breeding.status == BREEDING_RUNNING) {
+          sfxPlay(SFX_DENY);
+          return;
+        }
+        if (party.breedingRemoveParent(breedingParent, pet) == PARTY_STORE_FULL) {
+          breedingPickPage = 0;
+          breedingPickSwapRequired = true;
+          breedingView = BREED_VIEW_PICKER;
+        } else {
+          breedingView = BREED_VIEW_MAIN;
+        }
+      }
+      sfxPlay(SFX_TAP);
+      return;
+    }
+    breedingView = BREED_VIEW_MAIN;
+    return;
+  }
+  for (uint8_t side = 0; side < 2; side++) {
+    int left = BREED_PARENT_X(side);
+    if (x < left || x > left + BREED_PARENT_W ||
+        y < BREED_PARENT_Y || y > BREED_PARENT_Y + BREED_PARENT_H) continue;
+    uint8_t parent = breedingParentAtSide(side);
+    breedingParent = parent;
+    if (party.breeding.parents[parent].empty()) {
+      breedingPickPage = 0;
+      breedingPickSwapRequired = false;
+      breedingView = BREED_VIEW_PICKER;
+    } else {
+      breedingView = BREED_VIEW_ACTIONS;
+    }
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  if (party.breeding.status == BREEDING_READY &&
+      x >= BREED_CHILD_X && x <= BREED_CHILD_X + BREED_CHILD_W &&
+      y >= BREED_CHILD_Y && y <= BREED_CHILD_Y + BREED_CHILD_H) {
+    breedingDetailTarget = 2;
+    breedingDetailPage = 0;
+    breedingView = BREED_VIEW_DETAIL;
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  if (x >= BREED_START_X && x <= BREED_START_X + BREED_START_W &&
+      y >= BREED_START_Y && y <= BREED_START_Y + BREED_START_H) {
+    if (party.breeding.status == BREEDING_READY) {
+      if (party.breedingTakeOffspring(pet) == PARTY_STORE_FULL) {
+        sfxPlay(SFX_DENY);
+        return;
+      }
+      sfxPlay(SFX_HATCH);
+      return;
+    }
+    uint32_t now = rtcEpoch();
+    if (!now) now = pet.lastSeenEpoch;
+    if (party.breedingStart(now)) sfxPlay(SFX_MEDAL);
+    else sfxPlay(SFX_DENY);
+    return;
+  }
+  breedingOpen = false;
 }
 
 // ---------- training submenu (5th icon) ----------

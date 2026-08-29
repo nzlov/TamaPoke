@@ -27,6 +27,12 @@ enum PartyStoreResult : uint8_t {
   PARTY_STORE_FULL,
 };
 
+enum BreedingJobStatus : uint8_t {
+  BREEDING_IDLE = 0,
+  BREEDING_RUNNING,
+  BREEDING_READY,
+};
+
 // One byte per real gym, stored with the creature. 0 means unclaimed; the
 // other values say which IV that win raised, so the same array is both the
 // claim record and the reward history shown by the gym screen.
@@ -141,10 +147,19 @@ static_assert(sizeof(PartyMon) == 256,
 static_assert(sizeof(PartyMon) * PARTY_SLOTS <= 4096,
               "one roster page must stay within the backup/NVS blob bound");
 
+struct BreedingCenterState {
+  PartyMon parents[2];
+  PartyMon offspring;
+  uint32_t readyEpoch = 0;
+  uint8_t status = BREEDING_IDLE;
+  uint8_t reserved[3] = { 0, 0, 0 };
+};
+
 class Party {
 public:
   PartyMon slots[PARTY_SLOTS];
   PartyMon box[BOX_SLOTS];
+  BreedingCenterState breeding;
 
   void begin();                 // load roster or stage a legacy migration
   void attach(Pet &pet);        // bind the main-screen runtime and finish migration
@@ -183,6 +198,15 @@ public:
   // Swaps a party slot with a box slot. Either may be empty, so this doubles as
   // deposit and withdraw rather than needing three separate operations.
   void swapPartyBox(uint8_t partyIdx, uint8_t boxIdx);
+
+  // Parents are physically moved into two durable nursery slots. Their state
+  // is frozen there, and every mutation is refused while the job is running.
+  bool breedingSwapParty(uint8_t parent, uint8_t partyIdx, Pet &pet);
+  bool breedingSwapBox(uint8_t parent, uint8_t boxIdx, Pet &pet);
+  PartyStoreResult breedingRemoveParent(uint8_t parent, Pet &pet);
+  bool breedingStart(uint32_t nowEpoch);
+  bool breedingUpdate(uint32_t nowEpoch, uint8_t wildRareBonus);
+  PartyStoreResult breedingTakeOffspring(Pet &pet);
 
   // combat stats of a party member, same formula as the live pet's
   uint16_t atkOf(const PartyMon &m) const;

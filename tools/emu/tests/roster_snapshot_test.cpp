@@ -75,7 +75,7 @@ int main() {
   migratedRoster.attach(migratedPet);
   migratedRoster.syncClock(migratedPet, 2000);
   bool migrated = migratedPet.fullness == 70 && nvs().count("team2") == 1 &&
-                  seed.getUShort("rostv", 0) == 4;
+                  seed.getUShort("rostv", 0) == 5;
   std::printf("%s  separate team1/seen save migrates to team2\n",
               migrated ? "PASS" : "FAIL");
   ok = ok && migrated;
@@ -106,10 +106,41 @@ int main() {
   v3Roster.attach(v3Pet);
   bool v3Migrated = v3Player.badges == 0x0005 &&
                     v3Pet.gymIvRewardAt(0, 0) == GYM_IV_REWARD_DEF &&
-                    seed.getUShort("rostv", 0) == 4 &&
+                    seed.getUShort("rostv", 0) == 5 &&
                     seed.getBytesLength("team2") > sizeof(oldSnapshot);
-  std::printf("%s  v3 roster and legacy player keys migrate to v4 snapshot\n",
+  std::printf("%s  v3 roster and legacy player keys migrate to v5 snapshot\n",
               v3Migrated ? "PASS" : "FAIL");
   ok = ok && v3Migrated;
+
+  nvs().clear();
+  struct RosterSnapshotV4 {
+    uint32_t magic;
+    uint32_t seenEpoch;
+    uint8_t active;
+    uint8_t lead;
+    uint8_t reserved[2];
+    PlayerSnapshot player;
+    PartyMon slots[PARTY_SLOTS];
+  } v4Snapshot = {};
+  v4Snapshot.magic = 0x34534B54UL;
+  v4Snapshot.seenEpoch = 4000;
+  v4Snapshot.slots[0] = old[0];
+  seed.putBool("init", true);
+  seed.putUShort("savev", SAVE_STATE_VERSION);
+  seed.putBytes("team2", &v4Snapshot, sizeof(v4Snapshot));
+  seed.putUShort("rostv", 4);
+
+  Pet v4Pet;
+  v4Pet.begin();
+  Party v4Roster;
+  v4Roster.begin();
+  v4Roster.attach(v4Pet);
+  bool v4Migrated = v4Pet.speciesId == 1 &&
+                    v4Roster.breeding.status == BREEDING_IDLE &&
+                    v4Roster.breeding.parents[0].empty() &&
+                    seed.getUShort("rostv", 0) == 5;
+  std::printf("%s  v4 roster migrates with an empty breeding center\n",
+              v4Migrated ? "PASS" : "FAIL");
+  ok = ok && v4Migrated;
   return ok ? 0 : 1;
 }

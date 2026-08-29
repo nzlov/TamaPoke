@@ -161,7 +161,9 @@ void onSwipeV(int dir);
 void bagTap(int16_t x, int16_t y);
 void boxTap(int16_t x, int16_t y);
 void refreshUiFont();
-extern bool gymOpen, playerOpen, navMenuOpen;
+uint32_t rtcEpoch();
+extern bool breedingOpen, gymOpen, playerOpen, navMenuOpen;
+extern uint8_t breedingView;
 extern uint8_t galleryRegion;
 extern uint8_t gymRegion;
 extern bool gymPick, galleryPick;
@@ -312,7 +314,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   for (int i = 0; i < 2; i++) loop();          // pick up the sprite for the new species
   cardOpen = natureInfoOpen = galleryOpen = clockOpen = kbOpen = false;
   menuOpen = navMenuOpen = partyPick = trainOpen = movePickOpen = false;
-  boxOpen = false;
+  boxOpen = breedingOpen = false;
   bagOpen = false;
   capturedMon = PartyMon();
   if (!strcmp(screen, "main")) {
@@ -397,6 +399,39 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   else if (!strcmp(screen, "clock"))   clockOpen = true;
   else if (!strcmp(screen, "menu"))    menuOpen = true;
   else if (!strcmp(screen, "navmenu")) navMenuOpen = true;
+  else if (!strcmp(screen, "breeding") || !strcmp(screen, "breeding-running") ||
+           !strcmp(screen, "breeding-ready") || !strcmp(screen, "breeding-menu")) {
+    PartyMon mother;
+    mother.dex = 1; mother.level = 24; mother.gender = GENDER_FEMALE;
+    mother.nature = NATURE_HARDY; mother.stateVersion = 6;
+    mother.ivAtk = 17; mother.ivDef = 22; mother.ivSpe = 14; mother.ivHp = 25;
+    mother.shiny = mother.sparkle = 1;
+    mother.setAbilitySlot(ABILITY_SLOT_ONE);
+    PartyMon father;
+    father.dex = 1; father.level = 31; father.gender = GENDER_MALE;
+    father.nature = NATURE_HARDY; father.stateVersion = 6;
+    father.ivAtk = 26; father.ivDef = 18; father.ivSpe = 28; father.ivHp = 20;
+    father.shiny = father.sparkle = 1;
+    father.setAbilitySlot(ABILITY_SLOT_ONE);
+    party.breeding.parents[0] = mother;
+    party.breeding.parents[1] = father;
+    party.breeding.status = BREEDING_IDLE;
+    if (!strcmp(screen, "breeding-running")) {
+      party.breeding.status = BREEDING_RUNNING;
+      party.breeding.readyEpoch = rtcEpoch() + 5400;
+    } else if (!strcmp(screen, "breeding-ready")) {
+      PartyMon child;
+      child.dex = 1; child.level = 1; child.gender = GENDER_FEMALE;
+      child.nature = NATURE_HARDY; child.stateVersion = 6;
+      child.ivAtk = 26; child.ivDef = 22; child.ivSpe = 28; child.ivHp = 19;
+      child.shiny = child.sparkle = 1;
+      child.setAbilitySlot(ABILITY_SLOT_ONE);
+      party.breeding.offspring = child;
+      party.breeding.status = BREEDING_READY;
+    }
+    breedingView = !strcmp(screen, "breeding-menu") ? 2 : 0;
+    breedingOpen = true;
+  }
   else if (!strcmp(screen, "train"))   trainOpen = true;
   // GLUE: screenshot fixtures set the same UI state that touch handlers would;
   // remove these assignments if the emulator gains scripted touch journeys.

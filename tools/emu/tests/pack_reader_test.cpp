@@ -34,7 +34,7 @@ int main() {
   bool sequential = seekCount == 5;
   ContentPackInfo info{};
   bool contentVersion = contentReadPackInfo(PACK_READER_FIXTURE, info) &&
-      info.contentVersion == 0x502E4C39u;
+      info.contentVersion == 0x4DBB5FEEu;
   FILE *source = fopen(PACK_READER_FIXTURE, "rb");
   __real_fseek(source, 0, SEEK_END);
   long size = ftell(source);
@@ -83,7 +83,7 @@ int main() {
          sequential ? "PASS" : "FAIL");
   printf("%s  pack validation reports the failing format stage\n",
          precise ? "PASS" : "FAIL");
-  printf("%s  ABI 2 region packs are rejected by the ABI 6 schema\n",
+  printf("%s  ABI 2 region packs are rejected by the ABI 7 schema\n",
          abi2Rejected ? "PASS" : "FAIL");
   printf("%s  startup discovers packs without rescanning payload CRC\n",
          discoverySkipsCrc ? "PASS" : "FAIL");

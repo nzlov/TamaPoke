@@ -266,7 +266,17 @@
         "%s no puede aprender %s.",
         "%s ya conoce %s.",
         "OK",
-        "RONDA %u"
+        "RONDA %u",
+        "CRIADERO",
+        "ELIGE DOS PROGENITORES",
+        "NO COMPATIBLES",
+        "EMPEZAR",
+        "FALTAN %u:%02u",
+        "PROGENITORES BLOQUEADOS",
+        "RECOGER CRIA",
+        "RETIRAR",
+        "SUSTITUIR",
+        "ELIGE PROGENITOR"
       ],
       "medalNames": [
         "Nv.10",
@@ -595,7 +605,17 @@
         "%s cannot learn %s.",
         "%s already knows %s.",
         "OK",
-        "TURN %u"
+        "TURN %u",
+        "BREEDING CENTER",
+        "CHOOSE TWO PARENTS",
+        "NOT COMPATIBLE",
+        "START",
+        "%u:%02u LEFT",
+        "PARENTS LOCKED",
+        "TAKE OFFSPRING",
+        "REMOVE",
+        "REPLACE",
+        "CHOOSE A PARENT"
       ],
       "medalNames": [
         "Lv.10",
@@ -924,7 +944,17 @@
         "%s ne peut pas apprendre %s.",
         "%s connait deja %s.",
         "OK",
-        "TOUR %u"
+        "TOUR %u",
+        "PENSION",
+        "CHOISIS DEUX PARENTS",
+        "INCOMPATIBLES",
+        "COMMENCER",
+        "RESTE %u:%02u",
+        "PARENTS VERROUILLES",
+        "RECUPERER LE PETIT",
+        "RETIRER",
+        "REMPLACER",
+        "CHOISIS UN PARENT"
       ],
       "medalNames": [
         "Niv.10",
@@ -1253,7 +1283,17 @@
         "%s kann %s nicht lernen.",
         "%s kennt %s bereits.",
         "OK",
-        "RUNDE %u"
+        "RUNDE %u",
+        "ZUCHTZENTRUM",
+        "ZWEI ELTERN WAHLEN",
+        "NICHT KOMPATIBEL",
+        "START",
+        "NOCH %u:%02u",
+        "ELTERN GESPERRT",
+        "NACHWUCHS ABHOLEN",
+        "ENTFERNEN",
+        "ERSETZEN",
+        "ELTERNTEIL WAHLEN"
       ],
       "medalNames": [
         "Lv.10",
@@ -1582,7 +1622,17 @@
         "%s non puo imparare %s.",
         "%s conosce gia %s.",
         "OK",
-        "TURNO %u"
+        "TURNO %u",
+        "CENTRO UOVA",
+        "SCEGLI DUE GENITORI",
+        "NON COMPATIBILI",
+        "INIZIA",
+        "MANCANO %u:%02u",
+        "GENITORI BLOCCATI",
+        "RITIRA CUCCIOLO",
+        "RITIRA",
+        "SOSTITUISCI",
+        "SCEGLI UN GENITORE"
       ],
       "medalNames": [
         "Lv.10",
@@ -1911,7 +1961,17 @@
         "%s nao pode aprender %s.",
         "%s ja conhece %s.",
         "OK",
-        "TURNO %u"
+        "TURNO %u",
+        "CENTRO DE CRIACAO",
+        "ESCOLHE DOIS PAIS",
+        "INCOMPATIVEIS",
+        "COMECAR",
+        "FALTAM %u:%02u",
+        "PAIS BLOQUEADOS",
+        "RECOLHER CRIA",
+        "RETIRAR",
+        "SUBSTITUIR",
+        "ESCOLHE UM PROGENITOR"
       ],
       "medalNames": [
         "Niv.10",
@@ -2246,7 +2306,17 @@
         "%s无法学习%s。",
         "%s已经学会%s。",
         "确定",
-        "第%u回合"
+        "第%u回合",
+        "培育中心",
+        "请选择两位父母",
+        "父母不兼容",
+        "开始生育",
+        "剩余 %u:%02u",
+        "生育中无法更换父母",
+        "取出新伙伴",
+        "取出",
+        "替换",
+        "选择父母"
       ],
       "medalNames": [
         "10级",

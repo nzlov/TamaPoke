@@ -1,5 +1,5 @@
 // A gym victory changes two domains: the player's badge ladder and the active
-// creature's one-time IV reward. Roster snapshot v4 is their shared commit.
+// creature's one-time IV reward. The current roster snapshot is their shared commit.
 #include "Arduino.h"
 #include "Preferences.h"
 #include "party.h"

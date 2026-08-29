@@ -91,6 +91,13 @@ struct AbilityRuntime {
   const char *name = nullptr;
 };
 
+struct BreedingRuntime {
+  uint16_t groups = 0;
+  SpeciesId offspring[2] = { SPECIES_NONE, SPECIES_NONE };
+  uint32_t eggMoveOffset = 0;
+  uint16_t eggMoveCount = 0;
+};
+
 static bool gAttempted = false;
 static bool gRegionsReady = false, gMoves = false;
 static PackRef *gPacks = nullptr;
@@ -128,6 +135,9 @@ static uint8_t *gAbilityLocalizedNames = nullptr;
 static uint32_t gAbilityLocalizedNamesSize = 0;
 static uint8_t *gAbilityLocales = nullptr;
 static uint32_t gAbilityLocalesSize = 0;
+static BreedingRuntime *gBreeding = nullptr;
+static uint16_t gBreedingCount = 0;
+static MoveId *gEggMoves = nullptr;
 static uint32_t *gLearnOffsets = nullptr;
 static uint32_t gLearnOffsetCount = 0;
 static LearnEntry *gLearnEntries = nullptr;
@@ -925,12 +935,66 @@ static bool loadMovePack(uint8_t packIndex) {
     free(entries); free(names); free(table); return false;
   }
 
+  uint32_t breedingSize = 0, breedingRecords = 0;
+  uint32_t eggMoveSize = 0, eggMoveRecords = 0;
+  uint8_t *rawBreeding = readSection(
+      pack, "BRSP", &breedingSize, &breedingRecords);
+  uint8_t *rawEggMoves = readSection(
+      pack, "BEMV", &eggMoveSize, &eggMoveRecords);
+  BreedingRuntime *breeding = (BreedingRuntime *)contentAlloc(
+      sizeof(BreedingRuntime) * (breedingRecords + 1u));
+  MoveId *eggMoves = (MoveId *)contentAlloc(sizeof(MoveId) * eggMoveRecords);
+  bool validBreeding = rawBreeding && rawEggMoves && breeding &&
+      breedingRecords && breedingRecords <= CONTENT_MAX_SPECIES &&
+      breedingSize == breedingRecords * 14u &&
+      eggMoveSize == eggMoveRecords * 2u &&
+      (!eggMoveRecords || eggMoves);
+  for (uint32_t i = 0; validBreeding && i < breedingRecords; i++) {
+    const uint8_t *row = rawBreeding + i * 14u;
+    SpeciesId species = rd16(row);
+    BreedingRuntime &entry = breeding[species];
+    entry.groups = rd16(row + 2);
+    entry.offspring[0] = rd16(row + 4);
+    entry.offspring[1] = rd16(row + 6);
+    entry.eggMoveOffset = rd32(row + 8);
+    entry.eggMoveCount = rd16(row + 12);
+    if (species != i + 1u || !entry.groups || entry.groups & 0x8000u ||
+        !entry.offspring[0] || entry.offspring[0] > breedingRecords ||
+        !entry.offspring[1] || entry.offspring[1] > breedingRecords ||
+        entry.eggMoveOffset > eggMoveRecords ||
+        entry.eggMoveCount > eggMoveRecords - entry.eggMoveOffset) {
+      validBreeding = false;
+      break;
+    }
+    MoveId previous = MOVE_NONE;
+    for (uint16_t j = 0; j < entry.eggMoveCount; j++) {
+      MoveId move = rd16(rawEggMoves + (entry.eggMoveOffset + j) * 2u);
+      eggMoves[entry.eggMoveOffset + j] = move;
+      if (!move || move >= moveRecords || move <= previous) {
+        validBreeding = false;
+        break;
+      }
+      previous = move;
+    }
+  }
+  free(rawBreeding); free(rawEggMoves);
+  if (!validBreeding) {
+    free(breeding); free(eggMoves); free(abilities); free(abilityNames);
+    free(abilityLocalizedNames); free(abilityLocales); free(itemIcons);
+    free(gmaxSpecies); free(megaForms); free(itemNames); free(itemLocalizedNames);
+    free(itemLocales); free(items); free(locales); free(localizedNames);
+    free(localizedTypeNames); free(typeNames); free(offsets); free(entries);
+    free(names); free(table); return false;
+  }
+
   gMovesTable = table; gMoveCount = (uint16_t)moveRecords; gMoveNames = (char *)names;
   gAbilities = abilities; gAbilityCount = (uint16_t)abilityRecords;
   gAbilityNames = (char *)abilityNames;
   gAbilityLocalizedNames = abilityLocalizedNames;
   gAbilityLocalizedNamesSize = abilityLocalizedNamesSize;
   gAbilityLocales = abilityLocales; gAbilityLocalesSize = abilityLocalesSize;
+  gBreeding = breeding; gBreedingCount = (uint16_t)breedingRecords;
+  gEggMoves = eggMoves;
   gLearnOffsets = offsets; gLearnOffsetCount = offsetCount;
   gLearnEntries = entries; gLearnEntryCount = learnCountValue;
   gMoveLocales = locales; gMoveLocalesSize = localesSize;
@@ -1476,11 +1540,15 @@ bool contentReadPackInfo(const char *path, ContentPackInfo &out) {
 
 bool contentReady() {
   return contentHasUi() && contentHasPets() && contentHasMoves() &&
+         contentHasBreeding() &&
          (uint32_t)gDexCount + 2u <= gLearnOffsetCount;
 }
 bool contentHasUi() { ensureContent(); return gUiActive < gUiCount; }
 bool contentHasPets() { ensureContent(); return gRegionsReady; }
 bool contentHasMoves() { ensureContent(); return gMoves; }
+bool contentHasBreeding() {
+  ensureContent(); return gBreeding && gBreedingCount && gEggMoves;
+}
 uint32_t contentMechanicsHash() { ensureContent(); return gMechanicsHash; }
 
 uint32_t contentChoiceQuestionCount(const char *locale) {
@@ -1584,6 +1652,34 @@ bool evolutionAvailable(SpeciesId id) {
   for (uint8_t i = 0; i < evolutionCount(id); i++)
     if (dexValid(evolutionTarget(id, i))) return true;
   return false;
+}
+
+uint16_t speciesEggGroups(SpeciesId species) {
+  ensureContent();
+  return species && species <= gBreedingCount && gBreeding
+      ? gBreeding[species].groups : 0;
+}
+uint8_t speciesOffspringCount(SpeciesId species) {
+  ensureContent();
+  if (!species || species > gBreedingCount || !gBreeding) return 0;
+  return gBreeding[species].offspring[0] == gBreeding[species].offspring[1] ? 1 : 2;
+}
+SpeciesId speciesOffspring(SpeciesId species, uint8_t index) {
+  uint8_t count = speciesOffspringCount(species);
+  return index < count ? gBreeding[species].offspring[index] : SPECIES_NONE;
+}
+bool speciesHasEggMove(SpeciesId species, MoveId move) {
+  ensureContent();
+  if (!move || !species || species > gBreedingCount || !gBreeding || !gEggMoves)
+    return false;
+  const BreedingRuntime &entry = gBreeding[species];
+  uint32_t lo = entry.eggMoveOffset;
+  uint32_t hi = lo + entry.eggMoveCount;
+  while (lo < hi) {
+    uint32_t mid = lo + (hi - lo) / 2u;
+    if (gEggMoves[mid] < move) lo = mid + 1u; else hi = mid;
+  }
+  return lo < entry.eggMoveOffset + entry.eggMoveCount && gEggMoves[lo] == move;
 }
 
 uint8_t regionCount() { ensureContent(); return gRealRegionCount ? gRealRegionCount + 1 : 0; }

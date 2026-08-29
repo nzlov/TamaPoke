@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import binascii
 import json
 import struct
@@ -23,7 +24,7 @@ REQUIRED_SECTIONS = {
         b"LOCL", b"BTTL", b"TRNR", b"GSTR", b"BADG", b"BBLB"},
     3: {b"MOVE", b"MFLG", b"MTAG", b"NAME", b"LNAM", b"LOFS", b"LERN", b"TYPS", b"TSTR", b"TLNM",
         b"CHRT", b"LOCL", b"ITEM", b"INAM", b"ILNM", b"ILOC", b"ABIL", b"ANAM", b"ALNM",
-        b"ALOC", b"MEGA", b"GMAX"},
+        b"ALOC", b"MEGA", b"GMAX", b"BRSP", b"BEMV"},
     4: {b"QLOC", b"QIDX", b"QDAT"},
 }
 OPTIONAL_SECTIONS = {2: {b"MFSP", b"MFBL"}, 3: {b"IICO"}}
@@ -333,6 +334,23 @@ def validate(path: Path, expected: dict) -> None:
         if any(not value for value in species) or any(
                 left >= right for left, right in zip(species, species[1:])):
             raise ValueError("invalid Gigantamax species table")
+        breeding_record = struct.Struct("<HHHHIH")
+        breeding_count = section_counts[b"BRSP"]
+        egg_move_count = section_counts[b"BEMV"]
+        if not breeding_count or len(sections[b"BRSP"]) != breeding_count * breeding_record.size or \
+                len(sections[b"BEMV"]) != egg_move_count * 2:
+            raise ValueError("invalid breeding table size")
+        egg_moves = struct.unpack(f"<{egg_move_count}H", sections[b"BEMV"])
+        for index in range(breeding_count):
+            species, groups, child_a, child_b, first, count = breeding_record.unpack_from(
+                sections[b"BRSP"], index * breeding_record.size)
+            moves = egg_moves[first:first + count]
+            if species != index + 1 or not groups or groups & 0x8000 or \
+                    not 0 < child_a <= breeding_count or not 0 < child_b <= breeding_count or \
+                    first > egg_move_count or count > egg_move_count - first or \
+                    any(not 0 < move < move_count for move in moves) or \
+                    any(left >= right for left, right in zip(moves, moves[1:])):
+                raise ValueError("invalid species breeding record")
     if kind == 2 and ((b"MFSP" in sections) != (b"MFBL" in sections)):
         raise ValueError("incomplete regional Mega sprite sections")
     if kind == 2 and b"MFSP" in sections:
@@ -362,7 +380,11 @@ def validate(path: Path, expected: dict) -> None:
 
 
 def main() -> int:
-    index = json.loads((PACKS / "index.json").read_text(encoding="utf-8"))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--packs", type=Path, default=PACKS)
+    args = parser.parse_args()
+    packs = args.packs.resolve()
+    index = json.loads((packs / "index.json").read_text(encoding="utf-8"))
     if index.get("schema") != 1 or index.get("packAbi") != PACK_ABI:
         raise SystemExit("unsupported index schema")
     packages = index.get("packages", [])
@@ -373,7 +395,7 @@ def main() -> int:
         missing = set(item.get("requires", [])) - ids
         if missing:
             raise SystemExit(f"{item['id']}: missing dependencies {sorted(missing)}")
-        path = PACKS / item["file"]
+        path = packs / item["file"]
         validate(path, item)
         print(f"PASS {item['id']:<16} {item['kind']:<4} {item['size']:>9} bytes")
     print(f"all {len(packages)} packs are valid")

@@ -23,7 +23,10 @@ gen_data_packs.WEB_PACKS = output
 gen_data_packs.build_ui_packs([])
 gen_data_packs.build_move_pack([], output)
 
-names = [b"Fixture", b"Charizard", b"Blastoise", b"Alakazam"]
+names = [
+    b"Bulbasaur", b"Charmander", b"Charizard", b"Blastoise", b"Alakazam",
+    b"Ditto", b"Articuno",
+]
 name = b"".join(value + b"\0" for value in names)
 name_offsets = []
 offset = 0
@@ -32,21 +35,27 @@ for value in names:
     offset += len(value) + 1
 spec_record = struct.Struct("<HBBH10BIB")
 spec = b"".join([
-    spec_record.pack(1, 0, 1, 0xFFFF, 50, 50, 50, 50, 50, 50,
+    spec_record.pack(1, 0, 1, 0x2D7F, 50, 50, 50, 50, 50, 50,
                      0, 0, 255, 0, name_offsets[0], 4),
-    spec_record.pack(6, 0, 1, 0xFFFF, 78, 84, 78, 100, 109, 85,
+    spec_record.pack(4, 0, 1, 0xFFFF, 39, 52, 43, 65, 60, 50,
                      0, 1, 9, 0, name_offsets[1], 1),
+    spec_record.pack(6, 0, 1, 0xFFFF, 78, 84, 78, 100, 109, 85,
+                     0, 1, 9, 0, name_offsets[2], 1),
     spec_record.pack(9, 0, 1, 0xFFFF, 79, 83, 100, 78, 85, 105,
-                     0, 2, 255, 0, name_offsets[2], 1),
+                     0, 2, 255, 0, name_offsets[3], 1),
     spec_record.pack(65, 0, 1, 0xFFFF, 55, 50, 45, 120, 135, 95,
-                     0, 10, 255, 0, name_offsets[3], 2),
+                     0, 10, 255, 0, name_offsets[4], 2),
+    spec_record.pack(132, 0, 1, 0xFFFF, 48, 48, 48, 48, 48, 48,
+                     0, 0, 255, 0, name_offsets[5], 255),
+    spec_record.pack(144, 0, 1, 0xFFFF, 90, 85, 100, 85, 95, 125,
+                     0, 0, 255, 0, name_offsets[6], 255),
 ])
 ability_by_species = {
     int(row["dex"]): row["slots"] for row in gen_data_packs.ABILITY_DATA["species"]
 }
 ability_slots = b"".join(
     struct.pack("<HHHH", dex, *(int(value) for value in ability_by_species[dex]))
-    for dex in (1, 6, 9, 65)
+    for dex in (1, 4, 6, 9, 65, 132, 144)
 )
 region = struct.pack(
     "<B16sHHB16H",
@@ -88,16 +97,19 @@ sprite_index = struct.pack(
 )
 sprite_index += b"".join(
     struct.pack("<HIIIIIIIIB", dex, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-    for dex in (6, 9, 65)
+    for dex in (4, 6, 9, 65, 132, 144)
 )
 
 gym_strings = b"A\0B\0"
-trainer = struct.pack(
-    "<BBBBII" + "HB" * 6,
-    0, 0, 1, 0, 0, 2,
-    1, 1, *([0, 0] * 5),
+trainer = b"".join(
+    struct.pack(
+        "<BBBBII" + "HB" * 6,
+        trainer_id, 0, 1, 0, 0, 2,
+        1, 1, *([0, 0] * 5),
+    )
+    for trainer_id in range(6)
 )
-battle = struct.pack("<BBBBBBH", 0, 1, 1, 0, 0, 0, 0)
+battle = struct.pack("<BBBBBBH", 0, 6, 1, 0, 0, 0, 0)
 badge_index = struct.pack("<BBBBII", 0, 1, 1, 1, 0, 2)
 badge_blob = struct.pack("<H", 0xFFFF) + b"\0"
 thumb_pixels = variant_blobs[0][-16 * 16:]
@@ -105,16 +117,16 @@ thumb_blob = (bytes([16, 16, 1]) + struct.pack("<H", 0x2D7F) + thumb_pixels)
 thumbs = b"TPTH" + struct.pack("<HI", 1, 10) + thumb_blob
 
 blob = pack(2, "gender-fixture", 1, [
-    ("SPEC", spec, 4),
-    ("ASLT", ability_slots, 4),
+    ("SPEC", spec, 7),
+    ("ASLT", ability_slots, 7),
     ("EVOS", b"", 0),
     ("NAME", name, 1),
     ("REGN", region, 1),
-    ("SPRI", sprite_index, 4),
+    ("SPRI", sprite_index, 7),
     ("SBLB", sprites, 1),
     ("THMB", thumbs, 1),
     ("BTTL", battle, 1),
-    ("TRNR", trainer, 1),
+    ("TRNR", trainer, 6),
     ("GSTR", gym_strings, 2),
     ("BADG", badge_index, 1),
     ("BBLB", badge_blob, 1),

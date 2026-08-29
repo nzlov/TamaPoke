@@ -27,19 +27,21 @@ extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern QuizRuntime quiz;
 extern bool cardOpen, natureInfoOpen, galleryOpen, clockOpen, kbOpen, menuOpen,
-            navMenuOpen, bagOpen, boxOpen, partyPick;
+            navMenuOpen, bagOpen, boxOpen, breedingOpen, partyPick;
 extern bool trainOpen, movePickOpen, battleOpen, gymOpen, playerOpen;
 extern int16_t galleryDetail;
 extern uint32_t btlWinUntil;
 extern bool uiRenderDirty;
 extern uint32_t lastRender;
 extern uint8_t cardPage;
+extern uint8_t breedingView;
 void startBattle(int16_t dex, uint8_t lvl);
 
 static int bad = 0;
 static void clearAll(){
-  cardOpen=natureInfoOpen=galleryOpen=clockOpen=kbOpen=menuOpen=navMenuOpen=bagOpen=boxOpen=partyPick=false;
+  cardOpen=natureInfoOpen=galleryOpen=clockOpen=kbOpen=menuOpen=navMenuOpen=bagOpen=boxOpen=breedingOpen=partyPick=false;
   trainOpen=movePickOpen=battleOpen=gymOpen=playerOpen=false;
+  breedingView=0; party.breeding.status=BREEDING_IDLE;
   galleryDetail=0; btlWinUntil=0;
 }
 static void check(const char *name){
@@ -83,6 +85,10 @@ int main(){
   clearAll(); cardOpen = true; bool cardAnimated = uiScreenContinuous(uiCurrentScreen());
   clearAll(); bagOpen = true; bool bagStatic = !uiScreenContinuous(uiCurrentScreen());
   clearAll(); boxOpen = true; bool boxStatic = !uiScreenContinuous(uiCurrentScreen());
+  clearAll(); breedingOpen = true;
+  bool breedingStatic = !uiScreenContinuous(uiCurrentScreen());
+  party.breeding.status = BREEDING_RUNNING;
+  bool breedingRunning = uiScreenContinuous(uiCurrentScreen());
   clearAll(); clockOpen = true; bool clockStatic = !uiScreenContinuous(uiCurrentScreen());
   clearAll(); galleryOpen = true; galleryDetail = 0;
   bool galleryGridStatic = !uiScreenContinuous(uiCurrentScreen());
@@ -91,7 +97,8 @@ int main(){
   clearAll(); battleOpen = true; btlWinUntil = 1;
   bool winStatic = !uiScreenContinuous(uiCurrentScreen());
   btlWinUntil = 0;
-  if (!mainAnimated || !cardAnimated || !bagStatic || !boxStatic || !clockStatic ||
+  if (!mainAnimated || !cardAnimated || !bagStatic || !boxStatic ||
+      !breedingStatic || !breedingRunning || !clockStatic ||
       !galleryGridStatic || !galleryDetailAnimated || !winStatic) {
     printf("FAIL  frame scheduler misclassifies animated and static screens\n"); bad++;
   } else printf("PASS  frame scheduler redraws animated screens and idles static screens\n");
@@ -133,6 +140,7 @@ int main(){
   clearAll(); navMenuOpen=true;  check("navmenu");
   clearAll(); bagOpen=true;      check("bag");
   clearAll(); boxOpen=true;      check("box");
+  clearAll(); breedingOpen=true; check("breeding");
   clearAll(); clockOpen=true;    check("clock");
   for (uint8_t p=0;p<4;p++){ clearAll(); cardOpen=true; cardPage=p;
     char n[16]; snprintf(n,sizeof(n),"card%u",p); check(n); }
@@ -165,6 +173,7 @@ int main(){
   clearAll(); navMenuOpen=true;     crumbIs("menu");
   clearAll(); bagOpen=true;         crumbIs("bag");
   clearAll(); boxOpen=true;         crumbIs("box");
+  clearAll(); breedingOpen=true;    crumbIs("breeding");
   clearAll(); gymOpen=true;         crumbIs("gym");
   clearAll(); playerOpen=true;      crumbIs("player");
   clearAll(); movePickOpen=true;    crumbIs("movepick");

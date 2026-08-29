@@ -23,7 +23,8 @@ bool navMenuTap(int16_t x, int16_t y);
 void navMenuButtonPoint(uint8_t index, int *x, int *y);
 void onTap(int16_t x, int16_t y);
 void boxTap(int16_t x, int16_t y);
-extern bool bagOpen, boxOpen, gymOpen, gymPick, navMenuOpen, playerOpen;
+extern bool bagOpen, boxOpen, breedingOpen, gymOpen, gymPick, navMenuOpen, playerOpen;
+extern uint8_t breedingView, breedingPickPage;
 extern uint8_t playerPage, boxPage, boxSel, boxDetailPage;
 extern Pet pet;
 
@@ -37,7 +38,7 @@ int main() {
   second.level = 10;
   party.slots[1] = second;
 
-  bagOpen = boxOpen = gymOpen = gymPick = navMenuOpen = playerOpen = false;
+  bagOpen = boxOpen = breedingOpen = gymOpen = gymPick = navMenuOpen = playerOpen = false;
   onSwipe(-1);
   if (party.activeIndex() != 1 || bagOpen || gymOpen) {
     std::puts("FAIL left swipe did not select the next cultivation slot");
@@ -171,6 +172,16 @@ int main() {
     std::puts("FAIL navigation menu badges button");
     return 1;
   }
-  std::puts("PASS dynamic slot switcher, Box management, and navigation menu");
+  playerOpen = false;
+  navMenuOpen = true;
+  breedingView = 2;
+  breedingPickPage = 3;
+  navMenuButtonPoint(3, &buttonX, &buttonY);
+  if (!navMenuTap(buttonX, buttonY) || !breedingOpen || navMenuOpen ||
+      breedingView != 0 || breedingPickPage != 0) {
+    std::puts("FAIL navigation menu breeding-centre button");
+    return 1;
+  }
+  std::puts("PASS dynamic slot switcher, Box management, and four-button navigation menu");
   return 0;
 }

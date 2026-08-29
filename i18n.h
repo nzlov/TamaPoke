@@ -171,6 +171,11 @@ enum StrId : uint16_t {
   S_STONE_CONFIRM_FMT, S_STONE_INCOMPATIBLE_FMT, S_STONE_KNOWN_FMT, S_OK,
   // automatic battle turn presentation (append-only)
   S_BTL_ROUND_FMT,
+  // breeding centre (append-only)
+  S_BREED_CENTER, S_BREED_CHOOSE_TWO,
+  S_BREED_INCOMPATIBLE, S_BREED_START, S_BREED_WAIT_FMT,
+  S_BREED_LOCKED, S_BREED_TAKE,
+  S_BREED_REMOVE, S_BREED_REPLACE, S_BREED_PICK,
   STR_COUNT
 };
 

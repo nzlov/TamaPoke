@@ -84,9 +84,9 @@ operations require confirmation; restart the device after changing the card.
 > **Upgrade note:** the first migration to runtime packages clears saves made by
 > older firmware. For later same-schema updates, leave **Erase device** unchecked
 > to preserve the current save; flashing does not delete packages on the microSD.
-> ABI 6 adds canonical species ability slots, localized ability data, and
-> required move-tag records. Redeploy the move pack and every region pack with
-> this firmware; older package ABIs are rejected.
+> ABI 7 adds the required Egg Group, offspring-family and Egg Move catalogues
+> used by the Breeding Centre. Redeploy every UI, move and region pack with this
+> firmware; older package ABIs are rejected.
 > Region packages are large (a 40 MB package normally takes 10–15 minutes over
 > USB serial). Restart the device after deployment.
 
@@ -283,6 +283,36 @@ the answering side keeps the link alive, and the host settles once both actions 
   cultivation slots and all 24 Box slots are empty; if the team is empty but
   the Box is not, its first creature is withdrawn instead.
 
+### Breeding centre
+
+- Swipe down and open **Breeding**. Move two living, hatched parents from the
+  cultivation team or Box into its two dedicated slots. Opposite-sex parents
+  must share an Egg Group; Ditto follows the original exception, while the
+  Undiscovered group cannot breed.
+- **Start** schedules one birth after a random **1–2 real hours**. RTC/offline
+  catch-up continues the timer while the device is off. Both parents are frozen
+  in the centre and cannot be removed or replaced until the offspring is ready.
+- The offspring is the base form of the female/non-Ditto parent's family, with
+  the original Nidoran, Volbeat/Illumise and Manaphy/Phione exceptions. It is
+  collected directly as a level-one creature rather than as another waiting egg.
+- Gen-IX automatic inheritance applies without held items: nature and gender are
+  rolled anew; three distinct positions from TamaPoke's four IVs come from either
+  parent and the fourth is rolled at 8–31; compatible Egg Moves can come from
+  either parent's active or reserve list. A normal ability slot passes 80% of the
+  time and a Hidden Ability 60% of the time.
+- The shiny roll uses the exact wild base rate and shared farewell bonus. Each
+  shiny parent adds **5 percentage points**, so two add 10 points. A shiny bred
+  offspring follows the wild rule that floors every IV at 20.
+- The centre shows the male parent on the left and female parent on the right,
+  with the offspring area centred below. Tap an occupied parent for **Details /
+  Remove**; tap an empty side to choose from the six cultivation slots or four
+  Box pages. A ready offspring can also be tapped for its profile, stats and moves.
+- **Take** stores the child in the first free cultivation slot, then the first
+  free Box slot. The parents remain in place, so Start can be used again. If both
+  stores are full when removing a parent, choose any cultivation or Box member:
+  it swaps into the centre and the outgoing parent takes its slot, so nothing is
+  silently deleted.
+
 ### Evolution
 
 **Cross-generation and branching evolutions come from region packs.** Targets
@@ -311,7 +341,7 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
   together even though only one is shown on the main screen.
 - Swipe horizontally to change the displayed creature. The indicators above
   the creature name show only occupied cultivation slots; tapping them opens
-  the Box. Swipe down for the **bag / battle centre / badges** navigation page.
+  the Box. Swipe down for the **bag / battle centre / badges / breeding** navigation page.
 - The name menu can make the displayed creature the single **Lead**. That
   choice persists independently of which creature is displayed and sends the
   Lead out first whenever it is included in a battle squad.
@@ -759,7 +789,7 @@ If one bottoms out it counts as a *slip-up*.
   Progress; swipe between them; tapping the nature on Profile opens a localized
   temperament and stat-effect explanation; on Battle the "Train strength" button
   opens the bag).
-- Swipe down = open the **bag / battle centre / badges** navigation page.
+- Swipe down = open the **bag / battle centre / badges / breeding** navigation page.
 
 **Physical PWR button:** short = screen on/off · long (4 s) = full power-off
 (the RTC stays alive, so time passes even while it's off). The PMU handles the
@@ -953,7 +983,7 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
 
 - `TamaPoke.ino` — init, game loop, render of every screen, gestures, serial console, audio
 - `pet.h` / `pet.cpp` — pet state and logic (stats, evolution, life cycle, streak/bond/medals, NVS)
-- `party.h` / `party.cpp` — six cultivation records, active switching, migration and the 24-slot Box
+- `party.h` / `party.cpp` — six cultivation records, active switching, migration, the 24-slot Box and durable breeding-centre slots
 - `content.h` / `content.cpp` — pack ABI, CRC validation, catalogues, descriptions and lazy assets
 - `quiz.h` / `quiz.cpp` — global answer rules, exact arithmetic generation/input and timed settlement
 - `sdmon.h` / `sdmon.cpp` — packed TPK2 sprites + thumbnails and atomic pack reception over USB

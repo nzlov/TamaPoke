@@ -22,7 +22,8 @@ extern Pet pet;
 extern bool cardOpen, natureInfoOpen, galleryOpen, clockOpen, kbOpen, menuOpen,
             partyPick;
 extern bool trainOpen, movePickOpen, battleOpen, gymOpen, playerOpen, boxOpen, pickOpen;
-extern bool bagOpen, navMenuOpen;
+extern bool bagOpen, breedingOpen, breedingPickSwapRequired, navMenuOpen;
+extern uint8_t breedingView, breedingPickPage, breedingDetailPage;
 extern uint8_t cardPage, gymPage, playerPage, movePickPage, boxPage, pickPage;
 extern int galleryPage; extern uint8_t galleryDetail;
 extern uint8_t galleryRegion;
@@ -49,7 +50,9 @@ static void clearAll(){
   gymPick=galleryPick=false;
   cardOpen=natureInfoOpen=galleryOpen=clockOpen=kbOpen=menuOpen=partyPick=false;
   trainOpen=movePickOpen=battleOpen=gymOpen=playerOpen=boxOpen=pickOpen=false;
-  bagOpen=navMenuOpen=false;
+  bagOpen=breedingOpen=navMenuOpen=false;
+  breedingView=0; breedingPickPage=0; breedingDetailPage=0;
+  breedingPickSwapRequired=false;
   boxSel=0;
 }
 // swipe left; the page must advance and the screen must stay open
@@ -88,6 +91,21 @@ int main(){
   clearAll(); gymOpen=true; gymPick=false;        check("gyms",     &gymOpen,      &gymPage);
   clearAll(); playerOpen=true;                    check("player",   &playerOpen,   &playerPage);
   clearAll(); boxOpen=true;                       check("box",      &boxOpen,      &boxPage);
+  clearAll(); breedingOpen=true; breedingView=1; breedingPickPage=0;
+  onSwipe(-1);
+  if (!breedingOpen || breedingView != 1 || breedingPickPage != 1) {
+    printf("FAIL  breeding   parent picker did not advance to Box page 1\n"); bad++;
+  } else printf("PASS  %-10s parent picker pages into the Box\n", "breeding");
+  breedingPickPage=4;
+  onSwipe(-1);
+  if (!breedingOpen || breedingView != 1 || breedingPickPage != 4) {
+    printf("FAIL  breeding   parent picker closed at its final page\n"); bad++;
+  } else printf("PASS  %-10s parent picker stays open at its page edge\n", "breeding");
+  clearAll(); breedingOpen=true; breedingView=3; breedingDetailPage=0;
+  onSwipe(-1);
+  if (!breedingOpen || breedingView != 3 || breedingDetailPage != 1) {
+    printf("FAIL  breeding   detail introduction did not advance a page\n"); bad++;
+  } else printf("PASS  %-10s detail introduction pages horizontally\n", "breeding");
   clearAll(); movePickOpen=true; movePickParty=0; movePickSlot=0;
                                                   check("movepick", &movePickOpen, &movePickPage);
   clearAll(); pickTrainer=7; pickHard=false; pickDefault(squadCap(7,false)); pickOpen=true;

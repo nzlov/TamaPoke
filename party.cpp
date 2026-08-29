@@ -1,4 +1,5 @@
 #include "party.h"
+#include "breeding.h"
 #include "pet.h"
 #include "dex.h"
 #include "perf.h"
@@ -34,11 +35,13 @@ struct LegacyPartyMonV3 {
 static_assert(sizeof(LegacyPartyMonV3) == 164,
               "combat-only party layout must stay byte-exact");
 
-constexpr uint16_t ROSTER_VERSION = 4;
+constexpr uint16_t ROSTER_VERSION = 5;
+constexpr uint16_t ROSTER_VERSION_WITHOUT_BREEDING = 4;
 constexpr uint16_t ROSTER_VERSION_WITHOUT_PLAYER = 3;
 constexpr uint16_t ROSTER_VERSION_WITH_SEPARATE_CLOCK = 2;
 constexpr uint16_t ROSTER_VERSION_WITHOUT_DEATH = 1;
-constexpr uint32_t ROSTER_SNAPSHOT_MAGIC = 0x34534B54UL;  // "TKS4"
+constexpr uint32_t ROSTER_SNAPSHOT_MAGIC = 0x35534B54UL;  // "TKS5"
+constexpr uint32_t ROSTER_SNAPSHOT_MAGIC_V4 = 0x34534B54UL;  // "TKS4"
 constexpr uint32_t ROSTER_SNAPSHOT_MAGIC_V3 = 0x33534B54UL;  // "TKS3"
 static const char *const BOX_KEYS[BOX_SLOTS / BOX_PAGE_SLOTS] = {
   "box10", "box11", "box12", "box13"
@@ -52,12 +55,27 @@ struct RosterSnapshot {
   uint8_t reserved[2];
   PlayerSnapshot player;
   PartyMon slots[PARTY_SLOTS];
+  BreedingCenterState breeding;
 };
 static_assert(sizeof(RosterSnapshot) <= 4096,
               "one atomic roster snapshot must fit one NVS blob");
 static_assert(sizeof(RosterSnapshot) ==
-                  12 + sizeof(PlayerSnapshot) + sizeof(PartyMon) * PARTY_SLOTS,
+                  12 + sizeof(PlayerSnapshot) + sizeof(PartyMon) * PARTY_SLOTS +
+                      sizeof(BreedingCenterState),
               "roster snapshot header must stay byte-exact");
+
+struct RosterSnapshotV4 {
+  uint32_t magic;
+  uint32_t seenEpoch;
+  uint8_t active;
+  uint8_t lead;
+  uint8_t reserved[2];
+  PlayerSnapshot player;
+  PartyMon slots[PARTY_SLOTS];
+};
+static_assert(sizeof(RosterSnapshotV4) ==
+                  12 + sizeof(PlayerSnapshot) + sizeof(PartyMon) * PARTY_SLOTS,
+              "v4 roster snapshot must remain readable");
 
 struct RosterSnapshotV3 {
   uint32_t magic;
@@ -146,6 +164,7 @@ static void loadLegacyMons(Preferences &prefs, const char *key, PartyMon (&out)[
 void Party::begin() {
   for (auto &s : slots) s = PartyMon();
   for (auto &s : box) s = PartyMon();
+  breeding = BreedingCenterState();
   boundPet = nullptr;
   legacyMigration = false;
   rosterUpgradePending = false;
@@ -155,6 +174,7 @@ void Party::begin() {
   // GLUE: v1/v2 stored team, active slot and RTC baseline in separate keys.
   // Remove this branch when split roster saves are no longer supported.
   bool snapshotLoaded = (rosterVersion == ROSTER_VERSION ||
+                         rosterVersion == ROSTER_VERSION_WITHOUT_BREEDING ||
                          rosterVersion == ROSTER_VERSION_WITHOUT_PLAYER) &&
                         loadSnapshot();
   savedSeenEpoch = snapshotLoaded ? savedSeenEpoch : prefs.getUInt("seen", 0);
@@ -175,6 +195,14 @@ void Party::begin() {
   }
   for (auto &s : slots) sanitize(s, false);
   for (auto &s : box) sanitize(s, true);
+  for (auto &parent : breeding.parents) sanitize(parent, true);
+  sanitize(breeding.offspring, true);
+  if (breeding.status > BREEDING_READY ||
+      (breeding.status == BREEDING_RUNNING &&
+       (!breeding.readyEpoch || breeding.parents[0].empty() ||
+        breeding.parents[1].empty())) ||
+      (breeding.status == BREEDING_READY && breeding.offspring.empty()))
+    breeding = BreedingCenterState();
   if (active >= PARTY_SLOTS || slots[active].empty()) active = 0;
   normalizeLead();
   lastRosterTick = millis();
@@ -182,7 +210,8 @@ void Party::begin() {
                          (rosterVersion != ROSTER_VERSION ||
                           !playerSnapshotLoaded);
   if (rosterUpgradePending &&
-      rosterVersion != ROSTER_VERSION_WITHOUT_PLAYER) {
+      rosterVersion != ROSTER_VERSION_WITHOUT_PLAYER &&
+      rosterVersion != ROSTER_VERSION_WITHOUT_BREEDING) {
     saveTeam();
     if (rosterVersion == ROSTER_VERSION_WITHOUT_DEATH) boxSave();
     prefs.putUShort("rostv", ROSTER_VERSION);
@@ -230,6 +259,21 @@ bool Party::loadSnapshot() {
     lead = snapshot.lead;
     savedSeenEpoch = snapshot.seenEpoch;
     savedPlayer = snapshot.player;
+    breeding = snapshot.breeding;
+    playerSnapshotLoaded = true;
+    loadBox();
+    return true;
+  }
+  if (stored == sizeof(RosterSnapshotV4)) {
+    RosterSnapshotV4 snapshot;
+    if (prefs.getBytes("team2", &snapshot, sizeof(snapshot)) != sizeof(snapshot) ||
+        snapshot.magic != ROSTER_SNAPSHOT_MAGIC_V4) return false;
+    memcpy(slots, snapshot.slots, sizeof(slots));
+    active = snapshot.active;
+    lead = snapshot.lead;
+    savedSeenEpoch = snapshot.seenEpoch;
+    savedPlayer = snapshot.player;
+    breeding = BreedingCenterState();
     playerSnapshotLoaded = true;
     loadBox();
     return true;
@@ -393,6 +437,7 @@ void Party::saveTeam() {
   snapshot.player = boundPet ? boundPet->playerProgress().snapshot()
                              : player.snapshot();
   memcpy(snapshot.slots, slots, sizeof(slots));
+  snapshot.breeding = breeding;
   prefs.putBytes("team2", &snapshot, sizeof(snapshot));
   perfRecord(PERF_TEAM_SAVE, perfNowUs() - started, 1);
 }
@@ -451,6 +496,7 @@ void Party::normalizeLead() {
 }
 
 void Party::update(Pet &pet, uint32_t nowMs) {
+  breedingUpdate(pet.lastSeenEpoch, pet.playerProgress().wildRareBonus);
   while (nowMs - lastRosterTick >= PET_TICK_MS) {
     lastRosterTick += PET_TICK_MS;
     captureActive(pet, false);
@@ -481,6 +527,7 @@ void Party::syncClock(Pet &pet, uint32_t nowEpoch) {
     background.exportState(slots[i]);
   }
   pet.lastSeenEpoch = nowEpoch;
+  breedingUpdate(nowEpoch, pet.playerProgress().wildRareBonus);
   pet.saveNow();
 }
 
@@ -509,6 +556,9 @@ bool Party::hasUnavailableSpecies() const {
     if (m.dex > 0 && !dexValid(m.dex)) return true;
   for (const auto &m : box)
     if (m.dex > 0 && !dexValid(m.dex)) return true;
+  for (const auto &m : breeding.parents)
+    if (m.dex > 0 && !dexValid(m.dex)) return true;
+  if (breeding.offspring.dex > 0 && !dexValid(breeding.offspring.dex)) return true;
   return false;
 }
 
@@ -551,6 +601,120 @@ void Party::swapPartyBox(uint8_t partyIdx, uint8_t boxIdx) {
   normalizeLead();
   saveTeam();
   saveBoxPage(boxIdx / BOX_PAGE_SLOTS);
+}
+
+bool Party::breedingSwapParty(uint8_t parent, uint8_t partyIdx, Pet &pet) {
+  if (parent >= 2 || partyIdx >= PARTY_SLOTS ||
+      breeding.status == BREEDING_RUNNING || !breedingEligible(slots[partyIdx]))
+    return false;
+  captureActive(pet, false);
+  if (breeding.parents[parent].empty() && partyIdx == active && count() <= 1)
+    return false;
+  PartyMon previous = breeding.parents[parent];
+  breeding.parents[parent] = slots[partyIdx];
+  slots[partyIdx] = previous;
+  sanitize(breeding.parents[parent], true);
+  sanitize(slots[partyIdx], false);
+  if (partyIdx == active) {
+    if (!slots[active].empty()) pet.importState(slots[active]);
+    else {
+      for (uint8_t i = 0; i < PARTY_SLOTS; i++)
+        if (!slots[i].empty()) { active = i; pet.importState(slots[i]); break; }
+    }
+  }
+  normalizeLead();
+  saveTeam();
+  return true;
+}
+
+bool Party::breedingSwapBox(uint8_t parent, uint8_t boxIdx, Pet &pet) {
+  if (parent >= 2 || boxIdx >= BOX_SLOTS ||
+      breeding.status == BREEDING_RUNNING || !breedingEligible(box[boxIdx]))
+    return false;
+  captureActive(pet, false);
+  PartyMon previous = breeding.parents[parent];
+  breeding.parents[parent] = box[boxIdx];
+  box[boxIdx] = previous;
+  sanitize(breeding.parents[parent], true);
+  sanitize(box[boxIdx], true);
+  saveTeam();
+  saveBoxPage(boxIdx / BOX_PAGE_SLOTS);
+  return true;
+}
+
+PartyStoreResult Party::breedingRemoveParent(uint8_t parent, Pet &pet) {
+  if (parent >= 2 || breeding.status == BREEDING_RUNNING ||
+      breeding.parents[parent].empty()) return PARTY_STORE_FULL;
+  captureActive(pet, false);
+  int partySlot = firstFree();
+  if (partySlot >= 0) {
+    slots[partySlot] = breeding.parents[parent];
+    sanitize(slots[partySlot], false);
+    breeding.parents[parent] = PartyMon();
+    normalizeLead();
+    saveTeam();
+    return PARTY_STORE_PARTY;
+  }
+  int boxSlot = boxFirstFree();
+  if (boxSlot < 0) return PARTY_STORE_FULL;
+  box[boxSlot] = breeding.parents[parent];
+  sanitize(box[boxSlot], true);
+  breeding.parents[parent] = PartyMon();
+  saveTeam();
+  saveBoxPage((uint8_t)boxSlot / BOX_PAGE_SLOTS);
+  return PARTY_STORE_BOX;
+}
+
+bool Party::breedingStart(uint32_t nowEpoch) {
+  if (!nowEpoch || breeding.status != BREEDING_IDLE ||
+      !breedingCompatible(breeding.parents[0], breeding.parents[1])) return false;
+  breeding.status = BREEDING_RUNNING;
+  breeding.offspring = PartyMon();
+  breeding.readyEpoch = nowEpoch + BREEDING_MIN_SECONDS +
+      (uint32_t)random((long)(BREEDING_MAX_SECONDS - BREEDING_MIN_SECONDS + 1));
+  if (boundPet) captureActive(*boundPet, false);
+  saveTeam();
+  return true;
+}
+
+bool Party::breedingUpdate(uint32_t nowEpoch, uint8_t wildRareBonus) {
+  if (breeding.status != BREEDING_RUNNING || !nowEpoch ||
+      nowEpoch < breeding.readyEpoch) return false;
+  PartyMon offspring = breedingCreateOffspring(
+      breeding.parents[0], breeding.parents[1], wildRareBonus);
+  if (offspring.empty()) return false;
+  breeding.offspring = offspring;
+  breeding.readyEpoch = 0;
+  breeding.status = BREEDING_READY;
+  if (boundPet) captureActive(*boundPet, false);
+  saveTeam();
+  return true;
+}
+
+PartyStoreResult Party::breedingTakeOffspring(Pet &pet) {
+  if (breeding.status != BREEDING_READY || breeding.offspring.empty())
+    return PARTY_STORE_FULL;
+  captureActive(pet, false);
+  int partySlot = firstFree();
+  if (partySlot >= 0) {
+    slots[partySlot] = breeding.offspring;
+    sanitize(slots[partySlot], false);
+    pet.playerProgress().registerSpecies(slots[partySlot].dex, slots[partySlot].shiny);
+    breeding.offspring = PartyMon();
+    breeding.status = BREEDING_IDLE;
+    saveTeam();
+    return PARTY_STORE_PARTY;
+  }
+  int boxSlot = boxFirstFree();
+  if (boxSlot < 0) return PARTY_STORE_FULL;
+  box[boxSlot] = breeding.offspring;
+  sanitize(box[boxSlot], true);
+  pet.playerProgress().registerSpecies(box[boxSlot].dex, box[boxSlot].shiny);
+  breeding.offspring = PartyMon();
+  breeding.status = BREEDING_IDLE;
+  saveTeam();
+  saveBoxPage((uint8_t)boxSlot / BOX_PAGE_SLOTS);
+  return PARTY_STORE_BOX;
 }
 
 uint8_t Party::count() const {

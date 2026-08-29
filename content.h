@@ -7,7 +7,7 @@
 #include "items.h"
 #include "moves.h"
 
-constexpr uint16_t CONTENT_PACK_ABI = 6;
+constexpr uint16_t CONTENT_PACK_ABI = 7;
 constexpr uint8_t CONTENT_MAX_UI_LOCALES = 16;
 constexpr uint8_t CONTENT_MAX_QUIZ_OPTIONS = 4;
 constexpr uint16_t CONTENT_MAX_QUESTION_ID_BYTES = 40;
@@ -119,6 +119,7 @@ bool contentReady();
 bool contentHasUi();
 bool contentHasPets();
 bool contentHasMoves();
+bool contentHasBreeding();
 uint32_t contentMechanicsHash();
 
 // Question packs keep locale spans and fixed-width record indexes on the SD.
@@ -152,6 +153,13 @@ const char *itemDescription(ItemKey key, const char *locale);
 const char *speciesName(SpeciesId species);
 const char *moveName(MoveId move);
 const char *itemName(ItemKey key);
+
+// Gen-IX breeding metadata lives in the core move pack because egg moves use
+// that pack's stable MoveId values. Group bits follow PokeAPI IDs 1..15.
+uint16_t speciesEggGroups(SpeciesId species);
+uint8_t speciesOffspringCount(SpeciesId species);
+SpeciesId speciesOffspring(SpeciesId species, uint8_t index);
+bool speciesHasEggMove(SpeciesId species, MoveId move);
 
 uint16_t itemCount();
 const ItemEntry *itemAt(uint16_t index);
