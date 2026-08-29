@@ -128,7 +128,12 @@ region's answer, so it cannot be flipped to farm a legendary.
 | <img src="docs/screens/btlmenu.png" width="240"> | <img src="docs/screens/pick.png" width="240"> | <img src="docs/screens/win.png" width="240"> |
 
 Turn- and move-based, with the real type chart, ailments and STAB. Real Game Boy
-battle music plays throughout. Every local move opens a question before it acts:
+battle music plays throughout. Each exchange automatically presents its turn
+number, then plays both actions in speed order with move, impact, HP, status,
+field, end-of-turn, faint and replacement beats before accepting the next input.
+Contact moves carry the attacker into striking range, while non-contact attacks
+travel across the field with distinct Fire, Water, Electric and other type effects.
+Every local move opens a question before it acts:
 damaging moves scale their final damage by the answer stage, while status and
 healing moves take full effect after any correct answer and fail entirely after
 a wrong answer or timeout. The AI always acts at 100%. In LAN battles each player

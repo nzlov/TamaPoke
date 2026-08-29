@@ -931,6 +931,7 @@ void drawGenderIcon(PetGender gender, int x, int y, int scale);
 static void drawBtlBack();
 static void btlLinkPoll();   // defined with the battle code, called from render()
 static void btlSwitchTo(uint8_t i);
+static void btlDoSwap();
 static void btlResolve(MoveId yourMove, uint8_t yourPercent = 100,
                        BattleMechanic yourMechanic = BMECH_NONE);
 static void btlSetPersistentDead(uint8_t index, bool dead);
@@ -1030,7 +1031,8 @@ uint8_t btlSwapPending = 0;   // bit0 player, bit1 opponent
 // rather than on PmdMon: three PmdMon blobs are live already, and the battle
 // has to stay graceful on a board with no SD at all (S_NO_SPRITES). Index 0 is
 // you, 1 is the foe.
-uint32_t btlLungeUntil[2] = { 0, 0 };   // acted: leans toward the opponent
+uint32_t btlLungeUntil[2] = { 0, 0 };   // action pose; contact closes distance
+uint32_t btlHitFrom[2] = { 0, 0 };      // presentation may delay impact
 uint32_t btlHitUntil[2] = { 0, 0 };     // was hit: jitters and flashes
 uint16_t btlHpShown[2] = { 0, 0 };      // bars ease toward the real value
 // Two streamed sprites, so the creatures can actually swing and flinch. They
@@ -1094,9 +1096,61 @@ BattleMechanic btlWildMechanic = BMECH_NONE;
 MegaFormKind btlPendingMegaForm = MEGA_FORM_NONE;
 MegaFormKind btlWildMegaForm = MEGA_FORM_NONE;
 BattleSideMechanics btlYourMechanics, btlFoeMechanics;
-#define BTL_LUNGE_MS 260
+#define BTL_LUNGE_MS 600
 #define BTL_HIT_MS 420
 char btlMsg[6][96];
+
+enum : uint8_t {
+  BTL_TURN_INFO = 0,
+  BTL_TURN_ACTION,
+  BTL_TURN_EFFECT,
+  BTL_TURN_END,
+};
+
+enum : uint8_t {
+  BTL_ACTION_NONE = 0,
+  BTL_ACTION_MELEE,
+  BTL_ACTION_RANGED,
+};
+
+struct BtlTurnBeat {
+  char text[96];
+  uint16_t hp[2];
+  uint8_t kind;
+  uint8_t actor;
+  uint8_t target;
+  uint8_t moveType;
+  uint8_t moveStyle;
+  uint8_t sfx;
+  bool hit;
+  bool faint;
+};
+
+#define BTL_TURN_BEAT_MAX 16
+#define BTL_TURN_ROUND_MS 700UL
+#define BTL_TURN_ACTION_MS 900UL
+#define BTL_TURN_EFFECT_MS 700UL
+#define BTL_TURN_HP_MS 520UL
+BtlTurnBeat btlTurnBeats[BTL_TURN_BEAT_MAX];
+uint8_t btlTurnBeatCount = 0;
+uint8_t btlTurnBeatAt = 0;
+uint16_t btlTurnNumber = 0;
+bool btlTurnCapturing = false;
+bool btlTurnAnimating = false;
+bool btlTurnShowingRound = false;
+uint32_t btlTurnBeatStartedAt = 0;
+uint16_t btlTurnHpFrom[2] = { 0, 0 };
+uint16_t btlTurnHpTarget[2] = { 0, 0 };
+bool btlFaintPresented[2] = { false, false };
+
+static uint8_t btlTurnContextKind = BTL_TURN_INFO;
+static uint8_t btlTurnContextActor = 0;
+static uint8_t btlTurnContextTarget = 1;
+static uint8_t btlTurnContextMoveType = T_NORMAL;
+static uint8_t btlTurnContextMoveStyle = BTL_ACTION_NONE;
+static uint8_t btlTurnContextSfx = SFX_COUNT;
+static bool btlTurnContextHit = false;
+static bool btlTurnContextFaint = false;
 
 static const char *displaySpeciesName(SpeciesId dex, const char *nickname) {
   return nickname && nickname[0] ? nickname : speciesName(dex);
@@ -4842,12 +4896,180 @@ static void btlFreeSprites() {
   btlFreeBack();
 }
 
+static void btlResetTurnPresentation() {
+  btlTurnBeatCount = 0;
+  btlTurnBeatAt = 0;
+  btlTurnNumber = 0;
+  btlTurnCapturing = false;
+  btlTurnAnimating = false;
+  btlTurnShowingRound = false;
+  btlTurnBeatStartedAt = 0;
+  btlHitFrom[0] = btlHitFrom[1] = 0;
+  btlFaintPresented[0] = btlFaintPresented[1] = false;
+}
+
+static uint8_t btlActionStyle(MoveId move) {
+  if (!move) return BTL_ACTION_NONE;
+  const MoveEntry &entry = moveEntry(move);
+  if (entry.cat == MC_STATUS) return BTL_ACTION_NONE;
+  return entry.tags & MT_CONTACT ? BTL_ACTION_MELEE : BTL_ACTION_RANGED;
+}
+
+static void btlQueueTurnTextAt(const char *text, uint8_t kind,
+                               uint8_t actor, uint8_t target,
+                               uint16_t yourHp, uint16_t foeHp,
+                               uint8_t moveType, uint8_t moveStyle, uint8_t sfx,
+                               bool hit, bool faint) {
+  if (btlTurnBeatCount >= BTL_TURN_BEAT_MAX) return;
+  BtlTurnBeat &beat = btlTurnBeats[btlTurnBeatCount++];
+  snprintf(beat.text, sizeof(beat.text), "%s", text ? text : "");
+  beat.hp[0] = yourHp;
+  beat.hp[1] = foeHp;
+  beat.kind = kind;
+  beat.actor = actor > 1 ? 0 : actor;
+  beat.target = target > 1 ? 1 : target;
+  beat.moveType = moveType;
+  beat.moveStyle = moveStyle;
+  beat.sfx = sfx;
+  beat.hit = hit;
+  beat.faint = faint;
+}
+
+static void btlQueueTurnText(const char *text) {
+  btlQueueTurnTextAt(text, btlTurnContextKind,
+                     btlTurnContextActor, btlTurnContextTarget,
+                     btlYou.hp, btlFoe.hp, btlTurnContextMoveType,
+                     btlTurnContextMoveStyle, btlTurnContextSfx,
+                     btlTurnContextHit,
+                     btlTurnContextFaint);
+  if (btlTurnContextKind == BTL_TURN_ACTION)
+    btlTurnContextKind = BTL_TURN_EFFECT;
+  btlTurnContextSfx = SFX_COUNT;
+  btlTurnContextHit = false;
+  btlTurnContextFaint = false;
+}
+
+static void btlBeginTurnPresentation() {
+  btlTurnBeatCount = 0;
+  btlTurnBeatAt = 0;
+  btlTurnCapturing = true;
+  btlTurnAnimating = false;
+  btlTurnShowingRound = false;
+  btlFaintPresented[0] = btlFaintPresented[1] = false;
+  if (btlTurnNumber < UINT16_MAX) btlTurnNumber++;
+  btlTurnContextKind = BTL_TURN_INFO;
+  btlTurnContextActor = 0;
+  btlTurnContextTarget = 1;
+  btlTurnContextMoveType = T_NORMAL;
+  btlTurnContextMoveStyle = BTL_ACTION_NONE;
+  btlTurnContextSfx = SFX_COUNT;
+  btlTurnContextHit = false;
+  btlTurnContextFaint = false;
+  for (uint8_t i = 0; i < btlMsgCount; i++) btlQueueTurnText(btlMsg[i]);
+  btlMsgCount = 0;
+}
+
+static void btlStartTurnBeat(uint8_t index, uint32_t startedAt) {
+  if (index >= btlTurnBeatCount) return;
+  const BtlTurnBeat &beat = btlTurnBeats[index];
+  btlTurnBeatStartedAt = startedAt;
+  for (uint8_t side = 0; side < 2; side++) {
+    btlTurnHpFrom[side] = btlHpShown[side];
+    btlTurnHpTarget[side] = beat.hp[side];
+  }
+  if (beat.kind == BTL_TURN_ACTION && beat.actor != beat.target)
+    btlLungeUntil[beat.actor] = startedAt + BTL_LUNGE_MS;
+  if (beat.hit) {
+    btlHitFrom[beat.target] = startedAt + 260;
+    btlHitUntil[beat.target] = btlHitFrom[beat.target] + BTL_HIT_MS;
+  }
+  if (beat.faint) {
+    btlFaintPresented[beat.target] = true;
+    btlFaintUntil[beat.target] = startedAt + BTL_FAINT_MS;
+  }
+  if (beat.sfx < SFX_COUNT) sfxPlay(beat.sfx);
+}
+
+static void btlEndTurnPresentation() {
+  btlTurnCapturing = false;
+  btlTurnAnimating = true;
+  btlTurnShowingRound = true;
+  btlTurnBeatAt = 0;
+  btlTurnBeatStartedAt = millis();
+  btlTurnHpFrom[0] = btlTurnHpTarget[0] = btlHpShown[0];
+  btlTurnHpFrom[1] = btlTurnHpTarget[1] = btlHpShown[1];
+}
+
+static void btlFinishTurnPresentation(uint32_t now) {
+  if (btlSwapWho >= 0) {
+    uint8_t before = btlTurnBeatCount;
+    btlTurnCapturing = true;
+    btlTurnContextKind = BTL_TURN_INFO;
+    uint8_t swaps = 0;
+    while (btlSwapWho >= 0 && swaps++ < 2)
+      btlDoSwap();
+    btlTurnCapturing = false;
+    if (btlTurnBeatCount > before) {
+      btlStartTurnBeat(btlTurnBeatAt, now);
+      return;
+    }
+  }
+  btlTurnAnimating = false;
+  btlTurnShowingRound = false;
+  btlHpShown[0] = btlYou.hp;
+  btlHpShown[1] = btlFoe.hp;
+  if (btlOver && !btlWinUntil && btlTurnBeatCount) {
+    snprintf(btlMsg[0], sizeof(btlMsg[0]), "%s",
+             btlTurnBeats[btlTurnBeatCount - 1].text);
+    btlMsgCount = 1;
+  }
+}
+
+void btlUpdateTurnPresentation(uint32_t now) {
+  if (!btlTurnAnimating) return;
+  if (btlTurnShowingRound) {
+    if (now - btlTurnBeatStartedAt < BTL_TURN_ROUND_MS) return;
+    btlTurnShowingRound = false;
+    if (!btlTurnBeatCount) { btlFinishTurnPresentation(now); return; }
+    btlStartTurnBeat(0, btlTurnBeatStartedAt + BTL_TURN_ROUND_MS);
+  }
+
+  while (btlTurnAnimating && !btlTurnShowingRound &&
+         btlTurnBeatAt < btlTurnBeatCount) {
+    const BtlTurnBeat &beat = btlTurnBeats[btlTurnBeatAt];
+    uint32_t elapsed = now - btlTurnBeatStartedAt;
+    uint32_t hpElapsed = elapsed > BTL_TURN_HP_MS ? BTL_TURN_HP_MS : elapsed;
+    for (uint8_t side = 0; side < 2; side++) {
+      int32_t delta = (int32_t)btlTurnHpTarget[side] - btlTurnHpFrom[side];
+      btlHpShown[side] = (uint16_t)((int32_t)btlTurnHpFrom[side] +
+          delta * (int32_t)hpElapsed / (int32_t)BTL_TURN_HP_MS);
+    }
+    uint32_t duration = beat.kind == BTL_TURN_ACTION
+        ? BTL_TURN_ACTION_MS : BTL_TURN_EFFECT_MS;
+    if (elapsed < duration) return;
+    btlHpShown[0] = btlTurnHpTarget[0];
+    btlHpShown[1] = btlTurnHpTarget[1];
+    btlTurnBeatAt++;
+    if (btlTurnBeatAt >= btlTurnBeatCount) {
+      btlFinishTurnPresentation(btlTurnBeatStartedAt + duration);
+      return;
+    }
+    btlStartTurnBeat(btlTurnBeatAt, btlTurnBeatStartedAt + duration);
+  }
+}
+
 static void btlSay(const char *fmt, ...) {
-  if (btlMsgCount >= 6) return;
+  char line[96];
   va_list ap;
   va_start(ap, fmt);
-  vsnprintf(btlMsg[btlMsgCount], sizeof(btlMsg[0]), fmt, ap);
+  vsnprintf(line, sizeof(line), fmt, ap);
   va_end(ap);
+  if (btlTurnCapturing) {
+    btlQueueTurnText(line);
+    return;
+  }
+  if (btlMsgCount >= 6) return;
+  snprintf(btlMsg[btlMsgCount], sizeof(btlMsg[0]), "%s", line);
   btlMsgCount++;
 }
 
@@ -4855,20 +5077,20 @@ static void btlSay(const char *fmt, ...) {
 // engine -- nothing is recomputed, so the text can never disagree with the maths.
 // Picks the cue for an action from the TurnLog, so the sound can never
 // disagree with what actually happened.
-static void btlSfxFor(const TurnLog &lg) {
-  if (lg.targetFainted) { sfxPlay(SFX_FAINT); return; }
-  if (lg.inflicted) { sfxPlay(SFX_STATUS); return; }
-  if (lg.damage && lg.effPct > 100) { sfxPlay(SFX_SUPER); return; }
+static uint8_t btlSfxFor(const TurnLog &lg) {
+  if (lg.inflicted) return SFX_STATUS;
+  if (lg.damage && lg.effPct > 100) return SFX_SUPER;
   if (lg.damage) {
-    sfxPlay(lg.move && moveEntry(lg.move).cat == MC_SPEC ? SFX_BEAM : SFX_HIT);
-    return;
+    return lg.move && moveEntry(lg.move).cat == MC_SPEC ? SFX_BEAM : SFX_HIT;
   }
-  if (lg.move && moveEntry(lg.move).cat == MC_STATUS && !lg.missed) sfxPlay(SFX_STATUS);
+  if (lg.move && moveEntry(lg.move).cat == MC_STATUS && !lg.missed)
+    return SFX_STATUS;
+  return SFX_COUNT;
 }
 
 static void btlNarrate(const Combatant &actor, const Combatant &target, const TurnLog &lg) {
   if (lg.skipped) return;
-  btlSfxFor(lg);
+  btlTurnContextSfx = btlSfxFor(lg);
   char transformedName[32];
   const char *usedName = lg.move ? moveName(lg.move) : "";
   if (lg.mechanic == BMECH_Z_MOVE) {
@@ -4913,7 +5135,24 @@ static void btlNarrate(const Combatant &actor, const Combatant &target, const Tu
     if (lg.inflicted < 7)
       btlSay(T(S_BTL_STATUS), displayCombatantName(target), T(AIL_STR[lg.inflicted]));
   }
-  if (lg.targetFainted) btlSay(T(S_BTL_FAINT), displayCombatantName(target));
+  if (lg.targetFainted) {
+    btlTurnContextFaint = true;
+    btlTurnContextTarget = &target == &btlYou ? 0 : 1;
+    btlTurnContextSfx = SFX_FAINT;
+    btlSay(T(S_BTL_FAINT), displayCombatantName(target));
+  }
+}
+
+static void btlPrepareTurnAction(uint8_t actor, uint8_t target,
+                                 const TurnLog &log, uint8_t kind) {
+  btlTurnContextKind = kind;
+  btlTurnContextActor = actor;
+  btlTurnContextTarget = log.hurtSelf ? actor : target;
+  btlTurnContextMoveType = log.moveType;
+  btlTurnContextMoveStyle = btlActionStyle(log.move);
+  btlTurnContextSfx = SFX_COUNT;
+  btlTurnContextHit = log.damage != 0;
+  btlTurnContextFaint = false;
 }
 
 static void btlNarrateFieldEnd(const FieldLog &log) {
@@ -4961,7 +5200,9 @@ static bool btlReplaceActive(uint8_t side, uint8_t next, bool announce) {
   current = squad[active];
   if (!side) btlMarkEntered(active);
   btlHpShown[side] = current.hp;
+  btlFaintPresented[side] = false;
   btlSyncSprite(side, current);
+  btlHitFrom[side] = 0;
   btlLungeUntil[side] = btlHitUntil[side] = btlFaintUntil[side] = 0;
   btlEnterUntil[side] = millis() + BTL_ENTER_MS;
   if (announce) {
@@ -5126,6 +5367,7 @@ void startLinkBattle() {
   btlMyAct = 0;
   btlMyPercent = 0;
   btlMsgCount = 0;
+  btlResetTurnPresentation();
   btlOver = false;
   btlWon = false;
   btlFoeDetailOpen = false;
@@ -5179,6 +5421,7 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   btlFoe = btlFoeSquad[0];
   btlResetMechanics();
   btlMsgCount = 0;
+  btlResetTurnPresentation();
   btlOver = false;
   btlWon = false;
   btlFoeDetailOpen = false;
@@ -5226,6 +5469,7 @@ void startBattle(int16_t dex, uint8_t lvl) {
   btlResetMechanics();
   btlWild = false;
   btlMsgCount = 0;
+  btlResetTurnPresentation();
   btlOver = false;
   btlWon = false;
   btlFoeDetailOpen = false;
@@ -5329,6 +5573,7 @@ void startWildBattle(uint8_t region, bool hard) {
   btlLink = false;
   btlFoeAt = 0;
   btlMsgCount = 0;
+  btlResetTurnPresentation();
   if (btlField.weather != BWEATHER_NONE)
     btlSay(T(S_BTL_FIELD_BEGAN), btlWeatherName(btlField.weather));
   if (btlField.terrain != BTERRAIN_NONE)
@@ -5370,6 +5615,9 @@ static void btlApplyResult() {
   memcpy(&r, lan.result, sizeof(r));
   lan.resultNew = false;
   BattleField previousField = btlField;
+  uint16_t previousYouHp = btlYou.hp;
+  uint16_t previousFoeHp = btlFoe.hp;
+  btlBeginTurnPresentation();
 
   // The wire says "host"/"guest"; here we are always the guest, so their fields
   // are the foe's and ours are ours.
@@ -5381,6 +5629,7 @@ static void btlApplyResult() {
     btlYou = btlSquad[btlSquadAt];
     btlMarkEntered(btlSquadAt);
     btlSyncSprite(0, btlYou);
+    btlHitFrom[0] = 0;
     btlLungeUntil[0] = btlHitUntil[0] = btlFaintUntil[0] = 0;
     btlEnterUntil[0] = now + BTL_ENTER_MS;
   }
@@ -5389,6 +5638,7 @@ static void btlApplyResult() {
     linkMonTo(btlFoe, lan.theirs[btlFoeAt]);
     btlHpShown[1] = btlFoe.maxHp;
     btlSyncSprite(1, btlFoe);
+    btlHitFrom[1] = 0;
     btlLungeUntil[1] = btlHitUntil[1] = btlFaintUntil[1] = 0;
     btlEnterUntil[1] = now + BTL_ENTER_MS;
   }
@@ -5496,8 +5746,34 @@ static void btlApplyResult() {
              typeName(moveEntry(r.guestMove).type));
     guestUsed = guestMoveName;
   }
-  if (r.hostMove) btlSay(T(S_BTL_USED), displayCombatantName(btlFoe), hostUsed);
-  if (r.guestMove) btlSay(T(S_BTL_USED), displayCombatantName(btlYou), guestUsed);
+  char action[96];
+  uint16_t stagedYouHp = previousYouHp;
+  uint16_t stagedFoeHp = previousFoeHp;
+  bool hostFirst = (r.flags & 0x08) != 0;
+  for (uint8_t order = 0; order < 2; order++) {
+    bool hostActs = order == 0 ? hostFirst : !hostFirst;
+    MoveId move = hostActs ? r.hostMove : r.guestMove;
+    if (!move) continue;
+    uint8_t actor = hostActs ? 1 : 0;
+    uint8_t target = actor ^ 1u;
+    if (hostActs) stagedYouHp = btlYou.hp;
+    else stagedFoeHp = btlFoe.hp;
+    const char *used = hostActs ? hostUsed : guestUsed;
+    const Combatant &combatant = hostActs ? btlFoe : btlYou;
+    snprintf(action, sizeof(action), T(S_BTL_USED),
+             displayCombatantName(combatant), used);
+    uint8_t cue = moveEntry(move).cat == MC_SPEC ? SFX_BEAM : SFX_HIT;
+    bool hit = hostActs ? r.guestDmg != 0 : r.hostDmg != 0;
+    btlQueueTurnTextAt(action, BTL_TURN_ACTION, actor, target,
+                       stagedYouHp, stagedFoeHp, moveEntry(move).type,
+                       btlActionStyle(move), cue, hit, false);
+  }
+  btlTurnContextKind = BTL_TURN_END;
+  btlTurnContextActor = 0;
+  btlTurnContextTarget = 1;
+  btlTurnContextMoveStyle = BTL_ACTION_NONE;
+  btlTurnContextSfx = SFX_COUNT;
+  btlTurnContextHit = false;
   if (previousField.weather != btlField.weather) {
     if (previousField.weather != BWEATHER_NONE)
       btlSay(T(S_BTL_FIELD_ENDED), btlWeatherName(previousField.weather));
@@ -5510,16 +5786,19 @@ static void btlApplyResult() {
     if (btlField.terrain != BTERRAIN_NONE)
       btlSay(T(S_BTL_FIELD_BEGAN), btlTerrainName(btlField.terrain));
   }
-  if (r.guestDmg) { btlHitUntil[0] = now + BTL_HIT_MS; sfxPlay(SFX_HIT); }
-  if (r.hostDmg) { btlHitUntil[1] = now + BTL_HIT_MS; sfxPlay(SFX_HIT); }
   if (btlYou.fainted()) {
-    btlFaintUntil[0] = now + BTL_FAINT_MS;
-    btlSay(T(S_BTL_FAINT), displayCombatantName(btlYou));
+    snprintf(action, sizeof(action), T(S_BTL_FAINT), displayCombatantName(btlYou));
+    btlQueueTurnTextAt(action, BTL_TURN_EFFECT, 0, 0,
+                       btlYou.hp, btlFoe.hp, T_NORMAL, BTL_ACTION_NONE,
+                       SFX_FAINT, false, true);
   }
   if (btlFoe.fainted()) {
-    btlFaintUntil[1] = now + BTL_FAINT_MS;
-    btlSay(T(S_BTL_FAINT), displayCombatantName(btlFoe));
+    snprintf(action, sizeof(action), T(S_BTL_FAINT), displayCombatantName(btlFoe));
+    btlQueueTurnTextAt(action, BTL_TURN_EFFECT, 1, 1,
+                       btlYou.hp, btlFoe.hp, T_NORMAL, BTL_ACTION_NONE,
+                       SFX_FAINT, false, true);
   }
+  btlEndTurnPresentation();
 }
 
 // Radio packets land on another task, so the guest picks them up here, once a
@@ -5531,6 +5810,9 @@ static void btlLinkPoll() {
   // do -- there is no result coming, and pretending otherwise is the hang this
   // whole layer exists to remove.
   if (!lan.live() && !btlOver) {
+    btlTurnAnimating = false;
+    btlTurnCapturing = false;
+    btlTurnShowingRound = false;
     btlOver = true;
     btlWon = false;
     audioMusic(MUS_NONE);
@@ -5543,6 +5825,7 @@ static void btlLinkPoll() {
     // Our own action was latched when it was tapped; theirs arrives whenever
     // the radio manages it. Whichever is second sets the turn going.
     if (btlMyAct && lan.hasPeerAct() && !btlOver && !btlMsgCount &&
+        !btlTurnAnimating &&
         btlSwapWho < 0) {
       uint8_t act = btlMyAct;
       uint8_t percent = btlMyPercent;
@@ -5556,7 +5839,7 @@ static void btlLinkPoll() {
     return;
   }
 
-  if (lan.resultNew) btlApplyResult();
+  if (lan.resultNew && !btlTurnAnimating) btlApplyResult();
   if (lan.state == LINK_DONE && !btlOver) {
     btlOver = true;
     btlWon = lan.youWon;
@@ -5568,7 +5851,7 @@ static void btlLinkPoll() {
 
 // Packs the outcome for the guest. Only the host ever calls this.
 static void btlShipResult(const BattleMove &yourMove, const BattleMove &theirMove,
-                          uint16_t hp0You, uint16_t hp0Foe) {
+                          uint16_t hp0You, uint16_t hp0Foe, bool yourFirst) {
   LinkResult r = {};
   r.hostHp = btlYou.hp;   r.guestHp = btlFoe.hp;
   r.hostMaxHp = btlYou.maxHp; r.guestMaxHp = btlFoe.maxHp;
@@ -5633,6 +5916,7 @@ static void btlShipResult(const BattleMove &yourMove, const BattleMove &theirMov
     r.guestMemberForm[i] = member.form;
     r.guestMemberFormPrimed[i] = member.formPrimed ? 1 : 0;
   }
+  if (yourFirst) r.flags |= 0x08;
   if (btlYou.fainted() || btlFoe.fainted()) r.flags |= 0x04;
   lan.sendResult((const uint8_t *)&r, (uint8_t)sizeof(r));
 }
@@ -5742,11 +6026,11 @@ static void btlHandleFaints() {
   btlSwapPending = 0;
   if (youHaveNext) {
     btlSwapPending |= 0x01;
-    btlFaintUntil[0] = millis() + BTL_FAINT_MS;
+    if (!btlTurnCapturing) btlFaintUntil[0] = millis() + BTL_FAINT_MS;
   }
   if (foeHasNext) {
     btlSwapPending |= 0x02;
-    btlFaintUntil[1] = millis() + BTL_FAINT_MS;
+    if (!btlTurnCapturing) btlFaintUntil[1] = millis() + BTL_FAINT_MS;
   }
   btlSwapWho = (btlSwapPending & 0x02) ? 1 : 0;
 }
@@ -5769,6 +6053,7 @@ bool btlAttemptFoeRun(uint8_t roll) {
 // One exchange: both sides act in speed order, then burn/poison chip.
 static void btlResolve(MoveId yourMove, uint8_t yourPercent,
                        BattleMechanic yourMechanic) {
+  btlBeginTurnPresentation();
   TurnLog lg;
   // Against another device the opponent's move comes off the wire, never from
   // the AI -- and the host is the only side that runs this at all.
@@ -5778,7 +6063,6 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
   bool foeSwitched = false;
   bool foeWantsRun = false;
   uint8_t foeRunRoll = 100;
-  uint32_t now = millis();
   if (btlLink) {
     // Off the wire, never from the AI. A switch is carried in the same message
     // as a move, and like our own switch it costs the turn: they change, we act.
@@ -5847,13 +6131,15 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
 
   uint16_t hp0You = btlYou.hp, hp0Foe = btlFoe.hp;
   if (a == &btlFoe && foeWantsRun) {
-    if (btlAttemptFoeRun(foeRunRoll)) return;
+    if (btlAttemptFoeRun(foeRunRoll)) {
+      btlEndTurnPresentation();
+      return;
+    }
   } else {
     battleAct(*a, *b, btlField, ma, lg, a == &btlYou ? yourPercent : foePercent,
               aSide);
+    btlPrepareTurnAction(aSide, bSide, lg, BTL_TURN_ACTION);
     btlNarrate(*a, *b, lg);
-    if (lg.damage && !lg.hurtSelf)
-      btlLungeUntil[a == &btlYou ? 0 : 1] = now + BTL_LUNGE_MS;
   }
   bool skipSecond = false;
   if (lg.switchRequest == BSWITCH_TARGET && btlReplaceFirstAvailable(bSide))
@@ -5864,29 +6150,41 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
     if (b == &btlFoe && foeWantsRun) {
       if (btlYou.fainted()) {
         btlHandleFaints();
-        if (btlOver) return;
+        if (btlOver) {
+          btlEndTurnPresentation();
+          return;
+        }
       }
-      if (btlAttemptFoeRun(foeRunRoll)) return;
+      if (btlAttemptFoeRun(foeRunRoll)) {
+        btlEndTurnPresentation();
+        return;
+      }
     } else {
       battleAct(*b, *a, btlField, mb, lg, b == &btlYou ? yourPercent : foePercent,
                 bSide);
+      btlPrepareTurnAction(bSide, aSide, lg, BTL_TURN_ACTION);
       btlNarrate(*b, *a, lg);
-      if (lg.damage && !lg.hurtSelf)
-        btlLungeUntil[b == &btlYou ? 0 : 1] = now + BTL_LUNGE_MS + BTL_LUNGE_MS;
       if (lg.switchRequest == BSWITCH_TARGET)
         btlReplaceFirstAvailable(aSide);
       else if (lg.switchRequest == BSWITCH_USER)
         btlReplaceFirstAvailable(bSide);
     }
   }
-  // whoever actually lost health flinches, whichever side dealt it
-  if (btlYou.hp < hp0You) btlHitUntil[0] = now + BTL_HIT_MS;
-  if (btlFoe.hp < hp0Foe) btlHitUntil[1] = now + BTL_HIT_MS;
   TurnLog youEnd, foeEnd;
   FieldLog fieldEnd;
   battleEndRound(btlField, btlYou, btlFoe, youEnd, foeEnd, fieldEnd);
-  if (youEnd.damage || youEnd.healed) btlNarrate(btlYou, btlYou, youEnd);
-  if (foeEnd.damage || foeEnd.healed) btlNarrate(btlFoe, btlFoe, foeEnd);
+  if (youEnd.damage || youEnd.healed) {
+    btlPrepareTurnAction(0, 0, youEnd, BTL_TURN_END);
+    btlNarrate(btlYou, btlYou, youEnd);
+  }
+  if (foeEnd.damage || foeEnd.healed) {
+    btlPrepareTurnAction(1, 1, foeEnd, BTL_TURN_END);
+    btlNarrate(btlFoe, btlFoe, foeEnd);
+  }
+  btlTurnContextKind = BTL_TURN_END;
+  btlTurnContextMoveStyle = BTL_ACTION_NONE;
+  btlTurnContextSfx = SFX_COUNT;
+  btlTurnContextHit = false;
   btlNarrateFieldEnd(fieldEnd);
   uint16_t oldYouMaxHp = btlYou.maxHp, oldFoeMaxHp = btlFoe.maxHp;
   if (yourMove) battleAfterAction(btlYou);
@@ -5894,10 +6192,11 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
   btlScaleShownHp(0, oldYouMaxHp, btlYou.maxHp);
   btlScaleShownHp(1, oldFoeMaxHp, btlFoe.maxHp);
   if (btlLink && btlLinkHost)
-    btlShipResult(yourBattleMove, foeBattleMove, hp0You, hp0Foe);
+    btlShipResult(yourBattleMove, foeBattleMove, hp0You, hp0Foe, youFirst);
   // Persist deaths and either queue replacements or finish the battle. The
-  // replacement itself remains deferred until the faint message is dismissed.
+  // replacement itself remains deferred until the faint beat has played.
   btlHandleFaints();
+  btlEndTurnPresentation();
 }
 
 static void btlHpBar(int x, int y, int w, const Combatant &c, uint16_t shown) {
@@ -6011,25 +6310,36 @@ static void btlSide(int tx, int ty, int sx, int sy, const Combatant &c, uint8_t 
   // a platform under each creature, so they stand in the scene rather than
   // floating over it
   uint32_t now = millis();
+  bool hitActive = now >= btlHitFrom[who] && now < btlHitUntil[who];
   int ox = 0, oy = 0;
   bool flash = false;
   if (now < btlFaintUntil[who]) {          // sinks out of frame as it faints
     uint32_t left = btlFaintUntil[who] - now;
     oy += (int)((BTL_FAINT_MS - left) * 70 / BTL_FAINT_MS);
-  } else if (c.fainted() && btlSwapWho == (int8_t)who) {
+  } else if (c.fainted() &&
+             (btlFaintPresented[who] ||
+              (!btlTurnAnimating && btlSwapWho == (int8_t)who))) {
     return;                                // gone, waiting to be replaced
   }
   if (now < btlEnterUntil[who]) {          // and the next one rises into place
     uint32_t left = btlEnterUntil[who] - now;
     oy += (int)(left * 70 / BTL_ENTER_MS);
   }
-  if (now < btlLungeUntil[who]) {          // lean in, then back out
+  if (now < btlLungeUntil[who]) {          // close the distance, then return
     uint32_t left = btlLungeUntil[who] - now;
-    int amt = (int)(left > BTL_LUNGE_MS / 2 ? BTL_LUNGE_MS - left : left) * 22 / (BTL_LUNGE_MS / 2);
-    ox = who == 0 ? amt : -amt;            // you lunge right, the foe lunges left
-    oy = who == 0 ? -amt / 2 : amt / 2;
+    bool melee = btlTurnAnimating && !btlTurnShowingRound &&
+                 btlTurnBeatAt < btlTurnBeatCount &&
+                 btlTurnBeats[btlTurnBeatAt].actor == who &&
+                 btlTurnBeats[btlTurnBeatAt].moveStyle == BTL_ACTION_MELEE;
+    if (melee) {
+      uint32_t leg = left > BTL_LUNGE_MS / 2 ? BTL_LUNGE_MS - left : left;
+      int xTravel = (int)(leg * 124 / (BTL_LUNGE_MS / 2));
+      int yTravel = (int)(leg * 68 / (BTL_LUNGE_MS / 2));
+      ox = who == 0 ? xTravel : -xTravel;
+      oy = who == 0 ? -yTravel : yTravel;
+    }
   }
-  if (now < btlHitUntil[who]) {
+  if (hitActive) {
     uint32_t left = btlHitUntil[who] - now;
     ox += ((left / 50) % 2) ? 5 : -5;      // jitter
   }
@@ -6041,7 +6351,7 @@ static void btlSide(int tx, int ty, int sx, int sy, const Combatant &c, uint8_t 
   uint8_t act = PMD_IDLE;
   bool loop = true;
   uint32_t t = now;
-  if (now < btlHitUntil[who]) {
+  if (hitActive) {
     act = PMD_HURT; loop = false; t = now - (btlHitUntil[who] - BTL_HIT_MS);
   } else if (now < btlLungeUntil[who]) {
     act = PMD_ATTACK; loop = false; t = now - (btlLungeUntil[who] - BTL_LUNGE_MS);
@@ -6056,7 +6366,7 @@ static void btlSide(int tx, int ty, int sx, int sy, const Combatant &c, uint8_t 
   }
   if (angryLoop && act == PMD_IDLE)
     ox += ((int)(now / 90) % 3 - 1) * 3;
-  if (now < btlHitUntil[who]) flash = ((btlHitUntil[who] - now) / 60) % 2 == 0;
+  if (hitActive) flash = ((btlHitUntil[who] - now) / 60) % 2 == 0;
   btlDrawSprite(sx + ox, sy + oy, c, who, now, act, loop, t, flash);
   if (angryLoop && act == PMD_IDLE) {
     int cx = sx + 24, top = sy + 18 - (int)((now / 120) % 3);
@@ -6070,6 +6380,7 @@ static void btlSide(int tx, int ty, int sx, int sy, const Combatant &c, uint8_t 
 // Bars drain rather than snap: a hit that removes half your health should be
 // visible as it happens, not as a value that was already different.
 static void btlEaseBars() {
+  if (btlTurnAnimating) return;
   const uint16_t real[2] = { btlYou.hp, btlFoe.hp };
   for (int i = 0; i < 2; i++) {
     int diff = (int)real[i] - (int)btlHpShown[i];
@@ -6077,6 +6388,139 @@ static void btlEaseBars() {
     int step = diff / 5;
     if (!step) step = diff > 0 ? 1 : -1;
     btlHpShown[i] = (uint16_t)((int)btlHpShown[i] + step);
+  }
+}
+
+static void btlDrawRangedTypeEffect(uint8_t type, int x, int y,
+                                    uint16_t color, uint32_t tick) {
+  int wobble = (int)(tick % 7) - 3;
+  switch (type) {
+    case T_FIRE:
+      gfx->fillTriangle(x, y - 13, x - 9, y + 8, x + 9, y + 8, color);
+      gfx->fillCircle(x, y + 4, 6, UI_BAR_WARN);
+      break;
+    case T_WATER:
+      gfx->fillCircle(x, y, 8, color);
+      gfx->drawCircle(x - 11, y + wobble, 4, UI_WHITE);
+      gfx->drawCircle(x - 20, y - wobble, 2, color);
+      break;
+    case T_ELECTRIC:
+      gfx->drawLine(x - 14, y - 7, x - 5, y + 2, UI_BAR_WARN);
+      gfx->drawLine(x - 5, y + 2, x + 1, y - 9, UI_WHITE);
+      gfx->drawLine(x + 1, y - 9, x + 12, y + 7, UI_BAR_WARN);
+      gfx->drawLine(x - 13, y - 5, x - 4, y + 4, color);
+      break;
+    case T_GRASS:
+      gfx->fillTriangle(x, y - 11, x - 9, y + 8, x + 4, y + 5, color);
+      gfx->drawLine(x - 5, y + 7, x + 6, y - 7, UI_WHITE);
+      break;
+    case T_ICE:
+      gfx->drawLine(x - 11, y, x + 11, y, color);
+      gfx->drawLine(x, y - 11, x, y + 11, color);
+      gfx->drawLine(x - 8, y - 8, x + 8, y + 8, UI_WHITE);
+      gfx->drawLine(x - 8, y + 8, x + 8, y - 8, UI_WHITE);
+      break;
+    case T_FIGHTING:
+      gfx->fillCircle(x, y, 7, color);
+      gfx->drawLine(x - 16, y - 7, x - 7, y - 3, UI_WHITE);
+      gfx->drawLine(x - 17, y, x - 8, y, UI_WHITE);
+      gfx->drawLine(x - 16, y + 7, x - 7, y + 3, UI_WHITE);
+      break;
+    case T_POISON:
+      gfx->fillCircle(x, y, 7, color);
+      gfx->drawCircle(x - 9, y - 8, 4, color);
+      gfx->drawCircle(x + 8, y - 6, 3, UI_WHITE);
+      break;
+    case T_GROUND:
+      gfx->fillRect(x - 10, y - 7, 8, 8, color);
+      gfx->fillRect(x + 1, y - 2, 10, 9, color);
+      gfx->drawLine(x - 15, y + 9, x + 15, y + 9, UI_INK);
+      break;
+    case T_FLYING:
+      gfx->drawLine(x - 16, y - 7, x + 10, y - 7 + wobble, color);
+      gfx->drawLine(x - 11, y, x + 15, y + wobble, UI_WHITE);
+      gfx->drawLine(x - 15, y + 7, x + 8, y + 7 - wobble, color);
+      break;
+    case T_PSYCHIC:
+      gfx->drawCircle(x, y, 11, color);
+      gfx->drawCircle(x, y, 6, UI_WHITE);
+      gfx->fillCircle(x, y, 3, color);
+      break;
+    case T_BUG:
+      gfx->fillCircle(x, y, 6, color);
+      gfx->fillCircle(x - 8, y - 6, 3, color);
+      gfx->fillCircle(x - 8, y + 6, 3, color);
+      gfx->drawLine(x + 3, y - 4, x + 10, y - 9, UI_WHITE);
+      gfx->drawLine(x + 3, y + 4, x + 10, y + 9, UI_WHITE);
+      break;
+    case T_ROCK:
+      gfx->fillTriangle(x - 10, y + 8, x - 3, y - 11, x + 3, y + 7, color);
+      gfx->fillTriangle(x, y + 9, x + 7, y - 7, x + 12, y + 7, UI_TRACK);
+      break;
+    case T_GHOST:
+      gfx->fillCircle(x, y - 2, 9, color);
+      gfx->fillTriangle(x - 8, y + 2, x, y + 14, x + 8, y + 2, color);
+      gfx->fillCircle(x - 3, y - 4, 2, UI_WHITE);
+      gfx->fillCircle(x + 4, y - 4, 2, UI_WHITE);
+      break;
+    case T_DRAGON:
+      gfx->fillTriangle(x, y - 12, x - 10, y, x, y + 12, color);
+      gfx->fillTriangle(x, y - 12, x + 12, y, x, y + 12, UI_BAR_BAD);
+      gfx->fillCircle(x, y, 4, UI_WHITE);
+      break;
+    case T_DARK:
+      gfx->fillCircle(x, y, 11, UI_INK);
+      gfx->drawCircle(x, y, 8, color);
+      gfx->fillCircle(x + 4, y - 3, 3, UI_WHITE);
+      break;
+    case T_STEEL:
+      gfx->fillTriangle(x - 12, y, x + 8, y - 6, x + 8, y + 6, color);
+      gfx->drawLine(x - 5, y - 10, x + 8, y + 10, UI_WHITE);
+      gfx->drawLine(x - 7, y + 8, x + 5, y - 10, UI_INK);
+      break;
+    case T_FAIRY:
+      gfx->drawLine(x - 12, y, x + 12, y, color);
+      gfx->drawLine(x, y - 12, x, y + 12, color);
+      gfx->drawLine(x - 7, y - 7, x + 7, y + 7, UI_WHITE);
+      gfx->drawLine(x - 7, y + 7, x + 7, y - 7, UI_WHITE);
+      gfx->fillCircle(x, y, 3, UI_BAR_WARN);
+      break;
+    default:
+      gfx->fillCircle(x, y, 7, color);
+      gfx->drawCircle(x, y, 11, UI_WHITE);
+      break;
+  }
+}
+
+static void btlDrawTurnActionEffect(uint32_t now) {
+  if (!btlTurnAnimating || btlTurnShowingRound ||
+      btlTurnBeatAt >= btlTurnBeatCount) return;
+  const BtlTurnBeat &beat = btlTurnBeats[btlTurnBeatAt];
+  if (beat.kind != BTL_TURN_ACTION || beat.actor == beat.target) return;
+  uint32_t elapsed = now - btlTurnBeatStartedAt;
+  if (elapsed > 700) return;
+  const int cx[2] = { 100, 324 };
+  const int cy[2] = { 202, 76 };
+  uint16_t color = typeColor(beat.moveType);
+  if (beat.moveStyle == BTL_ACTION_RANGED && elapsed <= 430) {
+    uint32_t travel = elapsed > 360 ? 360 : elapsed;
+    int x = cx[beat.actor] +
+        (cx[beat.target] - cx[beat.actor]) * (int32_t)travel / 360;
+    int y = cy[beat.actor] +
+        (cy[beat.target] - cy[beat.actor]) * (int32_t)travel / 360;
+    btlDrawRangedTypeEffect(beat.moveType, x, y, color, elapsed / 40);
+  }
+  if (elapsed >= 260 && beat.hit) {
+    int radius = 10 + (int)((elapsed - 260) / 16);
+    gfx->drawCircle(cx[beat.target], cy[beat.target], radius, color);
+    if (beat.moveStyle == BTL_ACTION_RANGED)
+      gfx->drawCircle(cx[beat.target], cy[beat.target], radius + 7, UI_WHITE);
+    else {
+      gfx->drawLine(cx[beat.target] - radius, cy[beat.target],
+                    cx[beat.target] + radius, cy[beat.target], UI_WHITE);
+      gfx->drawLine(cx[beat.target], cy[beat.target] - radius,
+                    cx[beat.target], cy[beat.target] + radius, UI_WHITE);
+    }
   }
 }
 
@@ -6527,11 +6971,12 @@ static void renderBattleCapture(uint32_t now, uint8_t stage) {
 }
 
 void renderBattle() {
-  if (btlWinUntil) { renderWin(); return; }
+  if (btlWinUntil && !btlTurnAnimating) { renderWin(); return; }
   if (btlFoeDetailOpen) { renderBattleFoeDetail(); return; }
   uint32_t now = millis();
   btlUpdateCapture(now);
-  if (btlWinUntil) { renderWin(); return; }
+  btlUpdateTurnPresentation(now);
+  if (btlWinUntil && !btlTurnAnimating) { renderWin(); return; }
   uint8_t captureStage = btlCaptureStageAt(now);
   if (captureStage != BTL_CAPTURE_NONE) {
     renderBattleCapture(now, captureStage);
@@ -6554,6 +6999,7 @@ void renderBattle() {
   btlSide(250, 190, 76, 168, btlYou, 0);  // you read bottom-right, sprite bottom-left
   drawBattleSideLayers(1, 324, 118);
   drawBattleSideLayers(0, 100, 246);
+  btlDrawTurnActionEffect(now);
   drawBattleFieldHud();
 
   // Waiting on the other device. Without this the screen is identical to the
@@ -6562,7 +7008,35 @@ void renderBattle() {
   bool lanWait = btlLink && !btlOver &&
                  (btlLinkHost ? (btlMyAct && !lan.hasPeerAct())
                               : (lan.state == LINK_WAITING));
-  if (lanWait && !btlMsgCount) {
+  if (btlTurnAnimating) {
+    gfx->fillRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_WHITE);
+    gfx->drawRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_INK);
+    if (btlTurnShowingRound) {
+      char roundLabel[40];
+      snprintf(roundLabel, sizeof(roundLabel), T(S_BTL_ROUND_FMT), btlTurnNumber);
+      gfx->setTextColor(UI_BAR_WARN);
+      gfx->setTextSize(3);
+      uiDrawCenteredIn(roundLabel, BTL_GRID_X, BTL_GRID_Y,
+                       328, BTL_CELL_H * 2 + 8);
+    } else if (btlTurnBeatAt < btlTurnBeatCount) {
+      const BtlTurnBeat &beat = btlTurnBeats[btlTurnBeatAt];
+      gfx->setTextColor(beat.kind == BTL_TURN_ACTION &&
+                        !typeColorIsLight(beat.moveType)
+                            ? typeColor(beat.moveType) : UI_INK);
+      gfx->setTextSize(1);
+      uiDrawCenteredIn(beat.text, BTL_GRID_X + 10, BTL_GRID_Y + 12,
+                       308, BTL_CELL_H * 2 - 16);
+      uint8_t dots = btlTurnBeatCount > 8 ? 8 : btlTurnBeatCount;
+      uint8_t active = btlTurnBeatCount > 8
+          ? (uint8_t)((uint16_t)btlTurnBeatAt * 7 / (btlTurnBeatCount - 1))
+          : btlTurnBeatAt;
+      for (uint8_t i = 0; i < dots; i++) {
+        int dx = CX - (dots - 1) * 7 + i * 14;
+        if (i == active) gfx->fillCircle(dx, BTL_GRID_Y + 78, 3, UI_BAR_WARN);
+        else gfx->drawCircle(dx, BTL_GRID_Y + 78, 2, UI_TRACK);
+      }
+    }
+  } else if (lanWait && !btlMsgCount) {
     gfx->fillRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_WHITE);
     gfx->drawRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_INK);
     gfx->setTextColor(UI_MUTED);
@@ -6980,6 +7454,7 @@ static void btlDismissWin() {
 
 static bool btlDispatchTap(int16_t x, int16_t y) {
   if (btlCaptureAnimating) return false;
+  if (btlTurnAnimating) return false;
   if (btlThrowArmed) { btlCancelThrow(false); return true; }
   if (btlWinUntil) {          // dismiss the win screen and leave the fight
     btlDismissWin();

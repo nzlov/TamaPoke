@@ -265,7 +265,8 @@
         "Ensenar %s a %s?",
         "%s no puede aprender %s.",
         "%s ya conoce %s.",
-        "OK"
+        "OK",
+        "RONDA %u"
       ],
       "medalNames": [
         "Nv.10",
@@ -593,7 +594,8 @@
         "Teach %s to %s?",
         "%s cannot learn %s.",
         "%s already knows %s.",
-        "OK"
+        "OK",
+        "TURN %u"
       ],
       "medalNames": [
         "Lv.10",
@@ -921,7 +923,8 @@
         "Apprendre %s a %s ?",
         "%s ne peut pas apprendre %s.",
         "%s connait deja %s.",
-        "OK"
+        "OK",
+        "TOUR %u"
       ],
       "medalNames": [
         "Niv.10",
@@ -1249,7 +1252,8 @@
         "%s an %s lehren?",
         "%s kann %s nicht lernen.",
         "%s kennt %s bereits.",
-        "OK"
+        "OK",
+        "RUNDE %u"
       ],
       "medalNames": [
         "Lv.10",
@@ -1577,7 +1581,8 @@
         "Insegnare %s a %s?",
         "%s non puo imparare %s.",
         "%s conosce gia %s.",
-        "OK"
+        "OK",
+        "TURNO %u"
       ],
       "medalNames": [
         "Lv.10",
@@ -1905,7 +1910,8 @@
         "Ensinar %s a %s?",
         "%s nao pode aprender %s.",
         "%s ja conhece %s.",
-        "OK"
+        "OK",
+        "TURNO %u"
       ],
       "medalNames": [
         "Niv.10",
@@ -2239,7 +2245,8 @@
         "%s：让%s学习？",
         "%s无法学习%s。",
         "%s已经学会%s。",
-        "确定"
+        "确定",
+        "第%u回合"
       ],
       "medalNames": [
         "10级",

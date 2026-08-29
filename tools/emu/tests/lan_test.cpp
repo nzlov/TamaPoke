@@ -37,6 +37,17 @@ extern Combatant btlFoeSquad[];
 extern BattleSideMechanics btlYourMechanics, btlFoeMechanics;
 extern BattleField btlField;
 extern uint16_t squadMask;
+struct BtlTurnBeat {
+  char text[96];
+  uint16_t hp[2];
+  uint8_t kind, actor, target, moveType, moveStyle, sfx;
+  bool hit, faint;
+};
+extern BtlTurnBeat btlTurnBeats[];
+extern uint8_t btlTurnBeatCount;
+extern bool btlTurnAnimating;
+extern uint32_t btlTurnBeatStartedAt;
+void btlUpdateTurnPresentation(uint32_t now);
 extern bool pickOpen, lanWantHost;
 extern uint8_t pickTrainer, pickPage;
 extern bool pickHard;
@@ -291,20 +302,23 @@ int main(){
      btlField.sides[1].stealthRock && btlField.sides[1].stickyWeb,
      "and maps host and guest side conditions to the local perspective");
   bool narratedField = false;
-  for (uint8_t i=0;i<btlMsgCount;i++)
-    narratedField |= strstr(btlMsg[i], T(S_FIELD_SUN)) ||
-                     strstr(btlMsg[i], T(S_FIELD_GRASSY));
+  for (uint8_t i=0;i<btlTurnBeatCount;i++)
+    narratedField |= strstr(btlTurnBeats[i].text, T(S_FIELD_SUN)) ||
+                     strstr(btlTurnBeats[i].text, T(S_FIELD_GRASSY));
   ck(narratedField, "and narrates a field transition in the guest's locale");
   ck(!lan.resultNew, "a result is consumed once");
   uint16_t hpNow = btlYou.hp;
   render();
   ck(btlYou.hp==hpNow, "so a second frame does not replay the turn");
+  btlUpdateTurnPresentation(btlTurnBeatStartedAt + 60000);
+  ck(!btlTurnAnimating, "the guest presentation finishes automatically");
 
   // --- the rival's next creature arrives when the host says so
   r.hostIdx = 1; r.hostHp = 60;
   memcpy(lan.result,&r,sizeof(r)); lan.resultNew=true;
   render();
   ck(btlFoeAt==1 && btlFoe.dex==65, "the rival's next creature comes off the wire");
+  btlUpdateTurnPresentation(btlTurnBeatStartedAt + 60000);
 
   // --- and the guest never decides the ending
   lan.youWon = true; lan.state = LINK_DONE;

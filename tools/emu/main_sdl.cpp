@@ -200,6 +200,10 @@ extern bool cardOpen, natureInfoOpen, galleryOpen, clockOpen, kbOpen, menuOpen,
             partyPick, trainOpen, movePickOpen;
 extern bool bagOpen;
 extern bool battleOpen, btlWild;
+extern bool btlTurnAnimating, btlTurnShowingRound;
+extern uint32_t btlTurnBeatStartedAt;
+void commitBattleMove(uint8_t moveSlot, uint8_t percent);
+void btlUpdateTurnPresentation(uint32_t now);
 extern bool btlFoeDetailOpen;
 extern uint8_t btlFoeDetailPage;
 extern bool btlCaptureAnimating, btlCaptureSuccess, btlCaptureCuePlayed;
@@ -691,6 +695,29 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     btlFoe.hp = btlFoe.maxHp / 3;      // bar mid-drain
     btlLungeUntil[0] = millis() + 130; // you mid-lunge
     btlHitUntil[1] = millis() + 300;   // foe flinching
+  }
+  else if (!strcmp(screen, "btlturn") || !strcmp(screen, "btlaction") ||
+           !strcmp(screen, "btlspell")) {
+    pet.dbgHatchAs(1, false);
+    pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
+    pet.relearnFromLevel();
+    startBattle(1, 42);
+    quiz.config.questionTypes = 0;
+    if (strcmp(screen, "btlturn")) {
+      for (MoveId move = 1; move < moveCount(); move++) {
+        const MoveEntry &entry = moveEntry(move);
+        bool wanted = !strcmp(screen, "btlaction")
+            ? entry.cat == MC_PHYS && entry.power && (entry.tags & MT_CONTACT)
+            : entry.cat == MC_SPEC && entry.power && entry.type == T_FIRE;
+        if (wanted) { btlYou.moves[0] = move; break; }
+      }
+    }
+    commitBattleMove(0, 100);
+    if (!strcmp(screen, "btlaction") || !strcmp(screen, "btlspell")) {
+      usleep(720000);
+      btlUpdateTurnPresentation(millis());
+      usleep(280000);
+    }
   }
   else if (!strcmp(screen, "gyms") || !strcmp(screen, "battlecenter")) { gymOpen = true; }
   else if (!strcmp(screen, "wildfight") || !strcmp(screen, "wilditems")) {

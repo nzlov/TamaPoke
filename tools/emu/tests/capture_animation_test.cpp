@@ -16,7 +16,7 @@ int FakeSerial::available(){return 0;}
 String FakeSerial::readStringUntil(char){return String("");}
 
 extern bool battleOpen, btlOver, btlCaptureAnimating, btlCaptureSuccess,
-            btlCaptureCuePlayed;
+            btlCaptureCuePlayed, btlTurnAnimating;
 extern uint32_t btlCaptureStartedAt, btlWinUntil;
 extern uint8_t btlMenu, btlMsgCount;
 extern PartyMon btlWildMon, capturedMon;
@@ -98,8 +98,8 @@ int main(){
   ck(btlCaptureAnimating && battleOpen && !btlMsgCount,
      "battle UI stays hidden until the return movement completes");
   btlUpdateCapture(resultAt + RESULT + RETURN);
-  ck(!btlCaptureAnimating && battleOpen && btlMsgCount,
-     "failure restores battle UI and resolves the turn after returning");
+  ck(!btlCaptureAnimating && battleOpen && btlTurnAnimating && !btlMsgCount,
+     "failure restores battle UI and starts the automatic foe turn presentation");
   btlWild = true;
   btlOver = false;
   btlMsgCount = 0;

@@ -169,6 +169,8 @@ enum StrId : uint16_t {
   S_LEAD, S_LEADING,
   // attributed move-stone dialogs (append-only)
   S_STONE_CONFIRM_FMT, S_STONE_INCOMPATIBLE_FMT, S_STONE_KNOWN_FMT, S_OK,
+  // automatic battle turn presentation (append-only)
+  S_BTL_ROUND_FMT,
   STR_COUNT
 };
 

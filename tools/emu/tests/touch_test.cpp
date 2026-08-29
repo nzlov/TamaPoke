@@ -399,6 +399,7 @@ int main(int argc, char **argv) {
   int taps = 0;
   uint8_t sawFoeAt = 0;
   while (battleOpen && taps < 200) {
+    if (btlFoeAt > sawFoeAt) sawFoeAt = btlFoeAt;
     taps++;
     if (quiz.active) {
       if (!answerActiveQuiz()) { printf("FAIL: gym question could not be answered\n"); return 1; }
@@ -409,7 +410,6 @@ int main(int argc, char **argv) {
     int slot = bestMoveSlot();
     if (slot < 0) break;
     click(BTL_CELL_X(slot) + 40, BTL_CELL_Y(slot) + 20);
-    if (btlFoeAt > sawFoeAt) sawFoeAt = btlFoeAt;
   }
   printf("     %d taps, foe reached team index %u, won=%d\n", taps, sawFoeAt, (int)btlWon);
   if (sawFoeAt == 0) { printf("FAIL: the second gym creature never came out\n"); return 1; }
