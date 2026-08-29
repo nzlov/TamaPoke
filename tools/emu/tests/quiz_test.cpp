@@ -27,6 +27,10 @@ static void check(bool condition, const char *message) {
 }
 
 int main() {
+  QuizConfig defaults;
+  check(defaults.questionTypes == 0,
+        "questions are disabled by default");
+
   QuizConfig config;
   config.choiceWeight = 0;
   config.questionTypes = QUIZ_TYPE_ARITHMETIC;

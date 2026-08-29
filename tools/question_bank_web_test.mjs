@@ -7,7 +7,11 @@ import {
   paginateQuestions,
 } from '../web/question-bank-model.mjs';
 const serialSource = await readFile(new URL('../web/serial-client.js', import.meta.url), 'utf8');
+const pageSource = await readFile(new URL('../web/question-bank.html', import.meta.url), 'utf8');
 const { SerialClient } = await import(`data:text/javascript;base64,${Buffer.from(serialSource).toString('base64')}`);
+
+assert.doesNotMatch(pageSource, /id="enable-(?:choice|arithmetic)"[^>]*\bchecked\b/,
+  'the question-bank page defaults to every question type disabled');
 
 const packId = createPackId(new Uint8Array([0x12, 0x34, 0xab, 0xcd]));
 assert.equal(packId, 'quiz-1234abcd');

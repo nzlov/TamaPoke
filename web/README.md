@@ -25,7 +25,8 @@ automatically maintains internal IDs/revision, exports either format, and deploy
 the current bank directly. The same page reads and writes independent multiple-choice
 and arithmetic enable switches plus the device-wide timer, choice ratio and arithmetic
 generation rules shared by care, training and battle questions. With both types disabled,
-interactions run directly at 100% without opening the question modal.
+interactions run directly at 100% without opening the question modal; this is the default
+for new configurations.
 
 The firmware validates the common ABI and payload CRC before accepting an
 upload. Data is written to a `.part` file first; a valid replacement is renamed

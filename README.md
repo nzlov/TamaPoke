@@ -234,7 +234,8 @@ Choosing feed, bath or petting opens the modal question first, and the matching
 success animation starts only after a correct result settles. Ball, reaction and
 training-bag sessions ask their question after the session. Multiple-choice and
 arithmetic questions can be enabled independently, and only enabled types appear;
-when both are disabled the interaction runs directly at 100% with no modal. A
+both are disabled by default, so the interaction runs directly at 100% with no modal
+until a question type is enabled. Saved question settings remain in effect. A
 locale-matching multiple-choice question is selected by a direct random index from
 installed `.tquiz` packs. If none matches and arithmetic is enabled, the firmware
 creates an exact-rational arithmetic question from the global operator, operand, digit,

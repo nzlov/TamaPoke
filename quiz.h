@@ -36,7 +36,7 @@ struct QuizConfig {
   uint8_t flags = QUIZ_ALLOW_DECIMALS | QUIZ_ALLOW_FRACTIONS | QUIZ_ALLOW_PARENTHESES;
   uint8_t parenthesisDepth = 1;
   uint8_t choiceWeight = 50;
-  uint8_t questionTypes = QUIZ_TYPE_CHOICE | QUIZ_TYPE_ARITHMETIC;
+  uint8_t questionTypes = 0;
 };
 
 bool quizConfigValid(const QuizConfig &config);

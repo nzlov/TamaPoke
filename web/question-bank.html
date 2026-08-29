@@ -168,8 +168,8 @@
         <fieldset>
           <legend>启用题型</legend>
           <div class="checks">
-            <label class="check"><input id="enable-choice" type="checkbox" checked>选择题</label>
-            <label class="check"><input id="enable-arithmetic" type="checkbox" checked>四则运算题</label>
+            <label class="check"><input id="enable-choice" type="checkbox">选择题</label>
+            <label class="check"><input id="enable-arithmetic" type="checkbox">四则运算题</label>
           </div>
         </fieldset>
         <div class="grid">
@@ -201,7 +201,7 @@
             <label class="check"><input id="division-exact" data-arithmetic-setting type="checkbox">除法过程须整除</label>
           </div>
         </fieldset>
-        <p class="help">只会出现已启用的题型；两种题型都关闭时直接按 100% 执行交互，不弹出答题框。两种题型同时启用时使用选择题比例；若当前语言没有选择题，仅在四则运算已启用时回退生成。效果固定分为 6 个时间阶段：100%、83%、67%、50%、33%、17%；错误或超时为 0%。</p>
+        <p class="help">默认关闭全部答题；只会出现已启用的题型。两种题型都关闭时直接按 100% 执行交互，不弹出答题框。两种题型同时启用时使用选择题比例；若当前语言没有选择题，仅在四则运算已启用时回退生成。效果固定分为 6 个时间阶段：100%、83%、67%、50%、33%、17%；错误或超时为 0%。</p>
         <div class="row">
           <button id="read-config" type="button" disabled>读取设备规则</button>
           <button id="write-config" class="primary" type="button" disabled>保存到设备</button>
