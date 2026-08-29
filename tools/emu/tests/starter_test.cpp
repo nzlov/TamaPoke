@@ -80,7 +80,7 @@ int main(){
   // --- continue the real first-boot flow through a region and its middle starter
   uint8_t chosenRegion = regionAll() > 1 ? 1 : 0;
   onTap(233, regionRowY(chosenRegion));
-  ck(pet.region == chosenRegion, "tapping a region on the first screen sets the egg region");
+  ck(player.region == chosenRegion, "tapping a region on the first screen sets the egg region");
   ck(pet.awaitingStarter(), "and does not choose a creature by itself");
 
   render();                                   // now the starter list

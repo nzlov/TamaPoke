@@ -31,7 +31,7 @@ int main(){
   pet.shiny = true;
   pet.gigantamaxFactor = true;
   pet.raisedMinutes = 1234;
-  pet.wildRareBonus = 15;
+  player.wildRareBonus = 15;
   pet.ageMinutes = 72UL*MINUTES_PER_LEVEL;
   pet.ivAtk=31; pet.ivDef=7; pet.ivSpe=22; pet.ivHp=19;
   pet.trAtk=64; pet.trDef=31; pet.trSpe=90;
@@ -43,12 +43,12 @@ int main(){
   pet.gymIvRewards[71]=GYM_IV_REWARD_LEGACY_CLAIMED;
   pet.relearnFromLevel();
   pet.rename("SCORCH");
-  pet.avatar = 6;        // past the old four, so a stale & 3 mask would break it
-  pet.badges = 0x00BF; pet.badgesHard = 0x000A;
-  pet.streak = 12; pet.bestStreak = 19; pet.totalMedals = 41;
-  pet.gameHi = 33; pet.strHi = 21; pet.spdHi = 9;
+  player.avatar = 6;        // past the old four, so a stale & 3 mask would break it
+  player.badges = 0x00BF; player.badgesHard = 0x000A;
+  player.streak = 12; player.bestStreak = 19; player.totalMedals = 41;
+  player.gameHi = 33; player.strHi = 21; player.spdHi = 9;
   pet.bond = 77; pet.careMistakes = 2; pet.weight = 55;
-  pet.dexReg[0] = 0x5A; pet.dexReg[9] = 0xC3; pet.dexShinyReg[3] = 0x11;
+  player.dexReg[0] = 0x5A; player.dexReg[9] = 0xC3; player.dexShinyReg[3] = 0x11;
   party.begin();
   party.attach(pet);
   for (int i=1;i<PARTY_SLOTS;i++){ PartyMon m; m.dex=20+i*7; m.level=40+i;
@@ -75,7 +75,7 @@ int main(){
   party.boxSave();
   // renameTrainer() persists, and save() writes every field -- so this is also
   // what commits everything set above. save() itself is private on purpose.
-  pet.renameTrainer("DYLAN");
+  player.renameTrainer("DYLAN");
   pet.setDead(true);
   party.setDeadAt(1, true);
   party.box[7].setDead(true);
@@ -136,7 +136,7 @@ int main(){
   ck(p2.speciesId==6 && p2.shiny && p2.gigantamaxFactor,
      "the creature is back with its combined rare and Gigantamax states");
   ck(p2.isDead(), "the active creature's death state is restored");
-  ck(p2.raisedMinutes==1234 && p2.wildRareBonus==15,
+  ck(p2.raisedMinutes==1234 && player.wildRareBonus==15,
      "cultivation time and the player-wide wild bonus survive");
   ck(p2.ageMinutes==72UL*MINUTES_PER_LEVEL, "at the age it was");
   ck(p2.ivAtk==31 && p2.ivDef==7 && p2.ivSpe==22 && p2.ivHp==19, "with its IVs");
@@ -147,23 +147,21 @@ int main(){
   ck(p2.gender==GENDER_FEMALE,"and its gender");
   ck(p2.gymIvRewards[0]==GYM_IV_REWARD_DEF &&
      p2.gymIvRewards[71]==GYM_IV_REWARD_LEGACY_CLAIMED, "and its gym IV reward bytes");
-  ck(!strcmp(p2.trainerName,"DYLAN"), "the trainer name survives");
+  ck(!strcmp(player.trainerName,"DYLAN"), "the trainer name survives");
   ck(p2.abilitySlot==ABILITY_SLOT_HIDDEN,
      "the live creature's hidden ability survives backup and restore");
   ck(!strcmp(p2.nick,"SCORCH"), "so does the nickname");
-  ck(p2.avatar==6, "and the avatar, including one past the original four");
-  ck(p2.badges==0x00BF && p2.badgesHard==0x000A, "both badge ladders");
-  ck(p2.streak==12 && p2.bestStreak==19 && p2.totalMedals==41, "streak and medals");
-  ck(p2.gameHi==33 && p2.strHi==21 && p2.spdHi==9, "every minigame record");
+  ck(player.avatar==6, "and the avatar, including one past the original four");
+  ck(player.badges==0x00BF && player.badgesHard==0x000A, "both badge ladders");
+  ck(player.streak==12 && player.bestStreak==19 && player.totalMedals==41, "streak and medals");
+  ck(player.gameHi==33 && player.strHi==21 && player.spdHi==9, "every minigame record");
   ck(p2.bond==77 && p2.careMistakes==2 && p2.weight==55, "bond, mistakes, weight");
-  // A superset, not an equality: begin() re-registers the LIVE species on every
-  // load (pet.cpp:1011, seeding the dex for saves older than it existed), so
-  // Charizard's bit is set on top of whatever was restored. What the backup
-  // owes us is that no bit is LOST.
-  ck((p2.dexReg[0] & 0x5A)==0x5A && p2.dexReg[9]==0xC3 &&
-     (p2.dexShinyReg[3] & 0x11)==0x11, "the Pokedex, holes and all");
-  ck((p2.dexReg[0] & ~0x5A) == 0x20,
-     "and the only extra bit is the live creature re-registering itself");
+  // Roster v4 restores the player snapshot after the legacy scalar mirrors, so
+  // a partial boot load cannot add or lose Pokedex bits.
+  ck((player.dexReg[0] & 0x5A)==0x5A && player.dexReg[9]==0xC3 &&
+     (player.dexShinyReg[3] & 0x11)==0x11, "the Pokedex, holes and all");
+  ck((player.dexReg[0] & ~0x5A) == 0,
+     "and snapshot restore does not merge extra Pokedex bits");
   bool moves = true;
   for (int i=0;i<MOVE_SLOTS;i++) if (p2.moves[i]!=pet.moves[i]) moves=false;
   for (int i=0;i<RESERVE_MOVE_SLOTS;i++)
@@ -220,11 +218,11 @@ int main(){
   // --- a restore must not leave anything of whatever was there before
   {
     Pet p3; p3.begin();
-    p3.badges = 0xFFFF;
-    p3.renameTrainer("GHOST");
+    player.badges = 0xFFFF;
+    player.renameTrainer("GHOST");
     ck(saveImport(buf, n), "a second restore over a different save");
     Pet p4; p4.begin();
-    ck(!strcmp(p4.trainerName,"DYLAN") && p4.badges==0x00BF,
+    ck(!strcmp(player.trainerName,"DYLAN") && player.badges==0x00BF,
        "overwrites it rather than merging with it");
   }
 

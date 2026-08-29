@@ -9,6 +9,17 @@
 
 typedef std::map<std::string, std::vector<uint8_t>> NvsStore;
 inline NvsStore &nvs() { static NvsStore s; return s; }
+inline std::string &nvsFailKey() { static std::string key; return key; }
+inline int &nvsFailCount() { static int count = 0; return count; }
+inline void nvsFailWritesFor(const char *key, int count) {
+  nvsFailKey() = key ? key : "";
+  nvsFailCount() = count;
+}
+inline bool nvsWriteFails(const char *key) {
+  if (nvsFailCount() <= 0 || nvsFailKey() != key) return false;
+  nvsFailCount()--;
+  return true;
+}
 void nvsLoad(const char *path);
 void nvsSave(const char *path);
 
@@ -21,6 +32,7 @@ public:
   bool isKey(const char *k) { return kv.count(k) != 0; }
 
   template <typename T> void putT(const char *k, T v) {
+    if (nvsWriteFails(k)) return;
     std::vector<uint8_t> b(sizeof(T));
     memcpy(b.data(), &v, sizeof(T));
     kv[k] = b;
@@ -43,6 +55,7 @@ public:
   void putUShort(const char *k, uint16_t v) { putT(k, v); }
   uint16_t getUShort(const char *k, uint16_t d = 0) { return getT(k, d); }
   void putBytes(const char *k, const void *p, size_t n) {
+    if (nvsWriteFails(k)) return;
     const uint8_t *b = (const uint8_t *)p;
     kv[k] = std::vector<uint8_t>(b, b + n);
   }
@@ -60,6 +73,7 @@ public:
     return c;
   }
   void putString(const char *k, const char *v) {
+    if (nvsWriteFails(k)) return;
     kv[k] = std::vector<uint8_t>(v, v + strlen(v) + 1);
   }
   size_t getString(const char *k, char *out, size_t n) {

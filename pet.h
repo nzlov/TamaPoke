@@ -4,6 +4,7 @@
 #include "dex.h"
 #include "trainers.h"
 #include "party.h"
+#include "player.h"
 #include "nature.h"
 #include "gender.h"
 
@@ -107,6 +108,7 @@ struct CareAction {
 
 class Pet {
 public:
+  explicit Pet(PlayerProgress &owner = player) : progress(owner) {}
   // Estadisticas 0..100
   uint8_t fullness = 80;  // comida
   uint8_t joy = 80;       // felicidad
@@ -135,22 +137,12 @@ public:
   uint32_t lastSeenEpoch = 0;   // ultima hora RTC vista (para progresion offline)
   uint8_t ceremony = CER_NONE;  // despedida/escapada/liberacion en curso
   uint8_t lastEnd = CER_NONE;   // last ceremony, retained for save compatibility
-  // Pokedex bitmaps reserve the runtime pack ABI capacity, one bit per species.
-  uint8_t dexReg[(CONTENT_MAX_SPECIES + 7) / 8] = { 0 };       // criados
-  uint8_t dexShinyReg[(CONTENT_MAX_SPECIES + 7) / 8] = { 0 };  // criados en version shiny
-  // racha de cuidado diario (del jugador: persiste entre crianzas)
-  uint16_t streak = 0, bestStreak = 0;
-  uint8_t wildRareBonus = 0;  // player-wide, 0..15 percentage points
-  uint32_t lastCareDay = 0;
   // vinculo (del bicho: sube lento con cuidado, se resetea al nacer otro)
   uint8_t bond = 0;
   char nick[12] = "";    // apodo (vacio = nombre de especie)
-  // medallas: del individuo + contador acumulado entre todas las crianzas
-  uint16_t medals = 0, totalMedals = 0;
+  // medallas del individuo; los totales globales pertenecen al jugador
+  uint16_t medals = 0;
   uint16_t newMedal = 0;   // recien conseguida(s), para celebrar
-  uint16_t lastMilestone = 0;  // hito de racha ya celebrado
-  uint16_t gameHi = 0;     // record del minijuego (del jugador)
-  uint16_t strHi = 0;      // record de golpes al saco
 
   void begin();                 // carga estado de NVS (o crea el primer huevo)
   void update(uint32_t nowMs);  // llamar en cada loop()
@@ -178,7 +170,6 @@ public:
   bool gymIvClaimed(uint8_t region, uint8_t gym) const {
     return gymIvRewardAt(region, gym) != GYM_IV_REWARD_UNCLAIMED;
   }
-  uint16_t spdHi = 0;    // best reaction-test score
 
   // stats de combate: base real de gen 1 + nivel + IV + entrenamiento
   uint16_t atkStat() const;
@@ -209,8 +200,6 @@ public:
   // Rebuilds natural level-up moves for generated opponents and migrations.
   void relearnFromLevel();
 
-  // Player-wide, like the streak and the Pokedex: badges outlive the creature
-  // that earned them, so newEgg() must never clear this.
   // Compatibility flag from the former single-pet model. Team records are
   // active cultivation slots; only Box location now decides whether time stops.
   bool frozen = false;
@@ -223,85 +212,22 @@ public:
   void exportState(PartyMon &out) const;
   void importState(const PartyMon &in);
   void attachRoster(Party *owner) { roster = owner; }
-  void copySharedFrom(const Pet &other);
-  void mergeSharedFrom(const Pet &other);
+  PlayerProgress &playerProgress() const { return progress; }
   void advanceBackgroundMinute();
   void syncClockFrom(uint32_t nowEpoch, uint32_t seenEpoch, bool persist);
   bool isDead() const { return dead; }
   void setDead(bool value);
   bool giveGigantamaxFactor();
   void registerCaught(SpeciesId dex, bool color) {
-    registerSpecies(dex, color);
+    progress.registerSpecies(dex, color);
     save();
   }
-
-  // The player's own name, alongside the badges and the streak: it belongs to
-  // whoever is playing, not to the creature, so newEgg() must never clear it.
-  char trainerName[12] = "";
-  void renameTrainer(const char *n) {
-    strncpy(trainerName, n, sizeof(trainerName) - 1);
-    trainerName[sizeof(trainerName) - 1] = 0;
-    save();
-  }
-
-  // Which generation eggs come from. Player-wide, like the badges: it outlives
-  // every creature, so newEgg() must never reset it.
-  uint8_t region = 0xFF;
   // The species this egg would be in each region. Filled in as the player
   // looks, cleared by newEgg(). It exists so that switching region and back
   // shows the SAME creature rather than rolling a fresh one -- without it,
   // toggling would be a re-roll button.
   int16_t eggByRegion[CONTENT_MAX_REGIONS + 1] = { 0 };
   void setRegion(uint8_t r);
-  const char *regionName() const {
-    uint8_t count = regionCount();
-    return count ? ::regionName(region < count ? region : regionAll()) : "?";
-  }
-  // How much of one region's dex is filled in, for the Pokedex header.
-  uint16_t registeredCountIn(uint16_t lo, uint16_t hi) const {
-    uint16_t n = 0;
-    for (uint16_t d = lo; d <= hi && d <= dexCount(); d++) if (isRegistered(d)) n++;
-    return n;
-  }
-
-  uint8_t avatar = 0;       // which player sprite, 0..3
-  // Kanto's ladder, under the keys it has always used. Johto and Hoenn live in
-  // a SEPARATE array under new keys rather than widening these -- purely
-  // additive, so an existing save cannot be misread, exactly the reasoning that
-  // put the box under its own key instead of growing the party blob.
-  uint16_t badges = 0;      // bit n = trainer n beaten on easy
-  uint16_t badgesHard = 0;  // ... and on hard
-  uint16_t badgesX[CONTENT_MAX_REGIONS - 1] = { 0 };
-  uint16_t badgesHardX[CONTENT_MAX_REGIONS - 1] = { 0 };
-
-  uint16_t badgeMask(uint8_t rg, bool hard) const {
-    if (rg == 0) return hard ? badgesHard : badges;
-    if (rg >= CONTENT_MAX_REGIONS) return 0;
-    return hard ? badgesHardX[rg - 1] : badgesX[rg - 1];
-  }
-  bool hasBadge(uint8_t rg, uint8_t i, bool hard) const {
-    return (badgeMask(rg, hard) >> i) & 1;
-  }
-  void winBadge(uint8_t rg, uint8_t i, bool hard) {
-    if (rg >= CONTENT_MAX_REGIONS) return;
-    uint16_t bit = (uint16_t)1 << i;
-    if (rg == 0) { if (hard) badgesHard |= bit; else badges |= bit; }
-    else if (hard) badgesHardX[rg - 1] |= bit;
-    else badgesX[rg - 1] |= bit;
-    save();
-  }
-  uint8_t badgeCountIn(uint8_t rg, bool hard) const {
-    uint16_t v = badgeMask(rg, hard);
-    uint8_t n = 0;
-    while (v) { n += v & 1; v >>= 1; }
-    return n;
-  }
-  // Every region's badges together, for the player card's running total.
-  uint8_t badgeCount(bool hard) const {
-    uint8_t n = 0;
-    for (uint8_t r = 0; r < regionAll(); r++) n += badgeCountIn(r, hard);
-    return n;
-  }
 
   // Level-up learning. New moves fill battle slots, then reserves; once all
   // eight are occupied, one learned slot is replaced at random.
@@ -382,14 +308,6 @@ public:
     uint32_t l = 1 + ageMinutes / MINUTES_PER_LEVEL;
     return l > MAX_LEVEL ? MAX_LEVEL : (uint8_t)l;
   }
-  bool isRegistered(int16_t dex) const {
-    return dex >= 1 && dex <= dexCount() && (dexReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
-  }
-  bool isShinyRegistered(int16_t dex) const {
-    return dex >= 1 && dex <= dexCount() && (dexShinyReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
-  }
-  uint16_t registeredCount() const;
-  bool lineHasUnregistered(int16_t base) const;
   uint8_t eggRarity() const;       // rareza del huevo actual (sin revelar especie)
   int16_t pickEggSpecies();        // publica para poder simular tiradas (EGGS)
   // What the waiting egg would hatch into. Hidden from the PLAYER, not from the
@@ -427,6 +345,7 @@ public:
   void saveNow();
 
 private:
+  PlayerProgress &progress;
   Preferences prefs;
   Party *roster = nullptr;
   bool backgroundMode = false;
@@ -464,7 +383,6 @@ private:
   bool placeLearnedMove(MoveId mv);
   void applyAutoSleep();
   void hatch();
-  void registerSpecies(int16_t dex, bool color);
   void save();
   void load();
   static uint8_t clamp100(int v) { return v < 0 ? 0 : (v > 100 ? 100 : v); }

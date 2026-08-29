@@ -100,13 +100,14 @@ int main(){
   {
     Pet p; p.begin(); p.dbgHatchAs(25,false);
     uint8_t which=0;
-    p.winBadge(0, 6, false);
+    player.winBadge(0, 6, false);
     p.rewardGymIv(0, 6, which);
+    p.saveNow();
     Pet q; q.begin();
     ck(q.gymIvClaimed(0, 6), "the claim is persisted with the current creature");
     q.newEgg(); q.dbgHatchAs(25,false);
     ck(!q.gymIvClaimed(0, 6), "a different creature gets its own claim map");
-    ck(q.hasBadge(0, 6, false), "the player's badge remains global across creatures");
+    ck(player.hasBadge(0, 6, false), "the player's badge remains global across creatures");
   }
 
   printf("%s\n", bad?"FAILURES":"all good");

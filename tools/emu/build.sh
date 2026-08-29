@@ -43,7 +43,7 @@ g++ -std=c++17 -O1 -w \
   -DCONTENT_DIR="\"$PACKS\"" \
   $(sdl2-config --cflags) $(pkg-config --cflags freetype2 zlib) \
   -o tamapoke-emu \
-  sketch.cpp wavout.cpp "$ROOT/gbsynth.cpp" "$ROOT/art_codec.cpp" "$ROOT/content.cpp" "$ROOT/font_engine.cpp" "$ROOT/motion.cpp" "$ROOT/nature.cpp" "$ROOT/pet.cpp" "$ROOT/quiz.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/inventory.cpp" "$ROOT/items.cpp" "$ROOT/wild.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp" \
+  sketch.cpp wavout.cpp "$ROOT/gbsynth.cpp" "$ROOT/art_codec.cpp" "$ROOT/content.cpp" "$ROOT/font_engine.cpp" "$ROOT/motion.cpp" "$ROOT/nature.cpp" "$ROOT/player.cpp" "$ROOT/pet.cpp" "$ROOT/quiz.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/inventory.cpp" "$ROOT/items.cpp" "$ROOT/wild.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp" \
   host_impl.cpp font.cpp clock.cpp main_sdl.cpp \
   $(sdl2-config --libs) $(pkg-config --libs freetype2 zlib)
 

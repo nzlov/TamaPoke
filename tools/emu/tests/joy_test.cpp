@@ -106,7 +106,7 @@ int main(){
   answerCurrentQuiz();
   finishQuizFeedback();
   printf("\nleave early with score 9: joy 40 -> %u, gameOpen=%d, record=%u\n",
-         pet.joy, (int)gameOpen, pet.gameHi);
+         pet.joy, (int)gameOpen, player.gameHi);
   if (!waitedForAnswer || pet.joy <= 40) bad = 1;
 
   // --- the ball game is DEFENCE's trainer now

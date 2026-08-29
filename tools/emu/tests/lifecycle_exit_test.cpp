@@ -65,7 +65,7 @@ int main() {
     pet.ageMinutes = 98UL * MINUTES_PER_LEVEL;
     roster.add(mon(25, 30));
     pet.startFarewell(); finish(pet);
-    ck(pet.wildRareBonus == 1, "a normal farewell adds one shared percentage point");
+    ck(player.wildRareBonus == 1, "a normal farewell adds one shared percentage point");
     ck(roster.count() == 1 && pet.speciesId == 25,
        "farewell removes the active creature and activates the remaining member");
     ck(!pet.isEgg(), "farewell does not generate an egg while the roster has a member");
@@ -75,9 +75,9 @@ int main() {
     Pet pet; Party roster; fresh(pet, roster, 6);
     pet.raisedMinutes = FAREWELL_AGE_MIN;
     pet.ageMinutes = 99UL * MINUTES_PER_LEVEL;
-    pet.wildRareBonus = 14;
+    player.wildRareBonus = 14;
     pet.startFarewell(); finish(pet);
-    ck(pet.wildRareBonus == 15, "a level-one-hundred farewell adds two but respects the cap");
+    ck(player.wildRareBonus == 15, "a level-one-hundred farewell adds two but respects the cap");
     ck(roster.count() == 1 && pet.isEgg(),
        "the last creature leaving an empty team and Box creates one safety egg");
     ck(!pet.shiny, "the safety egg does not carry the wild rare state");
@@ -96,20 +96,20 @@ int main() {
 
   {
     Pet pet; Party roster; fresh(pet, roster, 4);
-    pet.wildRareBonus = 7;
+    player.wildRareBonus = 7;
     roster.add(mon(25, 30));
     pet.release(); finish(pet);
-    ck(pet.wildRareBonus == 7, "release has no probability effect");
+    ck(player.wildRareBonus == 7, "release has no probability effect");
     ck(roster.count() == 1 && pet.speciesId == 25,
        "release removes rather than banks the creature");
   }
 
   {
     Pet pet; Party roster; fresh(pet, roster, 4);
-    pet.wildRareBonus = 1;
+    player.wildRareBonus = 1;
     roster.add(mon(25, 30));
     pet.startRunaway(); finish(pet);
-    ck(pet.wildRareBonus == 0, "runaway subtracts two without crossing below zero");
+    ck(player.wildRareBonus == 0, "runaway subtracts two without crossing below zero");
   }
 
   {

@@ -65,12 +65,12 @@ int main(){
   if (pet.isEgg()) pet.dbgHatchAs(59,false);
   pet.ageMinutes = 61UL*MINUTES_PER_LEVEL;
   pet.ivAtk=29; pet.ivHp=13;
-  pet.badges = 0x0055;
-  pet.streak = 8;
+  player.badges = 0x0055;
+  player.streak = 8;
   for (int i=1;i<4;i++){ PartyMon m; m.dex=99+i; m.level=43+i;
     m.ageMinutes=(uint32_t)(m.level-1)*MINUTES_PER_LEVEL;
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=17; party.replaceAt(i,m); }
-  pet.renameTrainer("ASH");        // persists everything above
+  player.renameTrainer("ASH");        // persists everything above
 
   std::string out = runConsole({"EXPORT"});
   ck(out.find("# TamaPoke save") != std::string::npos, "EXPORT says what it is");
@@ -92,7 +92,7 @@ int main(){
   // --- wipe, then paste the block straight back
   pet.factoryReset();
   Pet gone; gone.begin();
-  ck(strcmp(gone.trainerName,"ASH") != 0, "the wipe really took the save");
+  ck(strcmp(player.trainerName,"ASH") != 0, "the wipe really took the save");
 
   gRestarted = false;
   std::string res = runConsole(back);
@@ -101,10 +101,10 @@ int main(){
 
   Pet p2; Party q2;
   p2.begin(); q2.begin(); q2.attach(p2);
-  ck(!strcmp(p2.trainerName,"ASH"), "the trainer name came back");
+  ck(!strcmp(player.trainerName,"ASH"), "the trainer name came back");
   ck(p2.speciesId==59 && p2.ageMinutes==61UL*MINUTES_PER_LEVEL,
      "so did the creature and its age");
-  ck(p2.ivAtk==29 && p2.ivHp==13 && p2.badges==0x0055 && p2.streak==8,
+  ck(p2.ivAtk==29 && p2.ivHp==13 && player.badges==0x0055 && player.streak==8,
      "and the IVs, badges and streak");
   ck(q2.count()==4 && q2.slots[2].dex==101 && q2.slots[2].level==45,
      "and the party");
@@ -122,7 +122,7 @@ int main(){
        "a single mistyped digit is rejected");
     ck(!gRestarted, "and nothing reboots on a rejection");
     Pet p3; p3.begin();
-    ck(!strcmp(p3.trainerName,"ASH"), "the save it was pasted over is untouched");
+    ck(!strcmp(player.trainerName,"ASH"), "the save it was pasted over is untouched");
   }
   {
     // an odd number of digits is a truncated paste, not a valid blob
@@ -145,7 +145,7 @@ int main(){
     ck(r5.find("IMPORT EMPTY") != std::string::npos,
        "committing nothing says so rather than wiping the save");
     Pet p4; p4.begin();
-    ck(!strcmp(p4.trainerName,"ASH"), "and the save is still there");
+    ck(!strcmp(player.trainerName,"ASH"), "and the save is still there");
   }
 
   // TR sets the training, and is bounded by the same IV ceiling the game is --

@@ -411,7 +411,9 @@ cap training.
 - Wild **shiny variants** floor every IV at 20 without imposing a 31 cap; an
   already higher IV is preserved.
 - Each gym can reward a given creature once. It picks any of the four IVs
-  uniformly and adds **+1**, even when that IV is already 31 or higher.
+  uniformly and adds **+1**, even when that IV is already 31 or higher. The
+  player-wide badge and that creature's IV reward are committed in one roster
+  snapshot, so a restart cannot restore only one half of the victory.
 - IVs are shown on the Battle page of the stat card; 31 and above are highlighted.
 
 Training: **STRENGTH** ← the bag, **SPEED** ← the reaction test, **DEFENSE** ← the

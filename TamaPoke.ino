@@ -963,7 +963,7 @@ uint8_t btlIvWhich = 0;
 bool btlLink = false;      // this fight is against another device
 bool btlLinkHost = false;
 static bool gymUnlocked(uint8_t idx, bool hard) {
-  return idx == 0 || pet.hasBadge(gymRegion, idx - 1, hard);
+  return idx == 0 || player.hasBadge(gymRegion, idx - 1, hard);
 }
 
 // Team select. Candidate bits map directly to the six cultivation slots.
@@ -1708,7 +1708,7 @@ void handleSerial() {
   } else if (line == "CAREDAY") {  // simula un dia nuevo cuidado (pruebas)
     pet.setClock(pet.lastSeenEpoch + 86400);
     pet.caress();
-    Serial.printf("streak=%u bond=%u medals=0x%X\n", pet.streak, pet.bond, pet.medals);
+    Serial.printf("streak=%u bond=%u medals=0x%X\n", player.streak, pet.bond, pet.medals);
     Serial.println("DONE");
   } else if (line == "BYE") {
     pet.startFarewell();
@@ -1817,9 +1817,9 @@ void handleSerial() {
     Serial.println();
     Serial.println("DONE");
   } else if (line == "REG") {
-    Serial.printf("pokedex %u/%u:", pet.registeredCount(), dexCount());
+    Serial.printf("pokedex %u/%u:", player.registeredCount(), dexCount());
     for (int i = 1; i <= dexCount(); i++)
-      if (pet.isRegistered(i)) Serial.printf(" %d", i);
+      if (player.isRegistered(i)) Serial.printf(" %d", i);
     Serial.println();
     Serial.println("DONE");
   } else if (line == "HEALTH") {
@@ -1846,8 +1846,8 @@ void handleSerial() {
                   pet.trMinAtk, pet.trMinDef, pet.trMinSpe,
                   pet.trMaxAtk(), pet.trMaxDef(), pet.trMaxSpe());
     Serial.printf("shiny=%d wildBonus=%u streak=%u/%u bond=%u medals=0x%X(%u) nick=%s\n",
-                  pet.shiny, pet.wildRareBonus, pet.streak,
-                  pet.bestStreak, pet.bond, pet.medals, pet.totalMedals, pet.nick);
+                  pet.shiny, player.wildRareBonus, player.streak,
+                  player.bestStreak, pet.bond, pet.medals, player.totalMedals, pet.nick);
     Serial.println("DONE");
   }
 }
@@ -2782,10 +2782,10 @@ void onTap(int16_t x, int16_t y) {
       }
       return;
     }
-    for (int i = 0; i < starterCountShown(pet.region); i++) {
+    for (int i = 0; i < starterCountShown(player.region); i++) {
       int ry = STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP);
       if (x >= 70 && x <= 396 && y >= ry && y <= ry + STARTER_ROW_H) {
-        pet.chooseStarter(starterOf(pet.region, (uint8_t)i));
+        pet.chooseStarter(starterOf(player.region, (uint8_t)i));
         sfxPlay(SFX_TAP);
         break;
       }
@@ -2824,8 +2824,8 @@ void onTap(int16_t x, int16_t y) {
     }
     // the avatar is the only other live target; everything else backs out
     if (playerPage == 0 && x > CX - 40 && x < CX + 40 && y > 70 && y < 146) {
-      pet.avatar = (uint8_t)((pet.avatar + 1) % AVATAR_COUNT);
-      pet.flushSave();
+      player.avatar = (uint8_t)((player.avatar + 1) % AVATAR_COUNT);
+      player.save();
       sfxPlay(SFX_TAP);
       return;
     }
@@ -3288,8 +3288,8 @@ void renderStarterSelect() {
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(t), 68);
   gfx->print(t);
-  for (int i = 0; i < starterCountShown(pet.region); i++) {
-    int16_t d = starterOf(pet.region, i);
+  for (int i = 0; i < starterCountShown(player.region); i++) {
+    int16_t d = starterOf(player.region, i);
     const DexEntry &de = dexEntry(d);
     int ry = STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP);
     gfx->fillRoundRect(70, ry, 326, STARTER_ROW_H, 14, lerp565(de.accent, UI_WHITE, 6, 8));
@@ -3512,7 +3512,7 @@ void render() {
       gfx->print(rar);
     }
     char reg[24];
-    snprintf(reg, sizeof(reg), T(S_POKEDEX_FMT), pet.registeredCount(), dexCount());
+    snprintf(reg, sizeof(reg), T(S_POKEDEX_FMT), player.registeredCount(), dexCount());
     gfx->fillRect(0, 312, 466, 154, gNight ? UI_BG_NIGHT : UI_BG_DAY);
     gfx->setTextColor(inkColor());
     gfx->setTextSize(2);
@@ -3780,13 +3780,13 @@ void stepGame() {
   }
   // the clock, or three misses, whichever lands first
   if (gameUntil && millis() >= gameUntil && !gameOverUntil) {
-    gameNewHi = (gameScore > pet.gameHi);
+    gameNewHi = (gameScore > player.gameHi);
     if (beginCareQuiz({ CARE_ACTION_PLAY, gameScore }, true)) gameUntil = 0;
     return;
   }
   if (ballY > 384) {  // al suelo
     if (++gameMisses >= 3) {
-      gameNewHi = (gameScore > pet.gameHi);
+      gameNewHi = (gameScore > player.gameHi);
       if (beginCareQuiz({ CARE_ACTION_PLAY, gameScore }, true)) gameUntil = 0;
     } else {
       respawnBall();
@@ -3847,7 +3847,7 @@ void renderSack() {
       gfx->print(T(S_NEW_RECORD));
     } else {
       char r[18];
-      snprintf(r, sizeof(r), T(S_RECORD_FMT), pet.strHi);
+      snprintf(r, sizeof(r), T(S_RECORD_FMT), player.strHi);
       gfx->setTextColor(ink);
       gfx->setCursor(uiCenterX(r), 256);
       gfx->print(r);
@@ -3858,7 +3858,7 @@ void renderSack() {
 
   // se acabaron los 10 s: aplicar entrenamiento
   if (now >= sackUntil) {
-    sackNewHi = (sackHits > pet.strHi);
+    sackNewHi = (sackHits > player.strHi);
     beginCareQuiz({ CARE_ACTION_TRAIN_STRENGTH, sackHits }, true);
     gfx->flush();
     return;
@@ -3942,7 +3942,7 @@ void renderGame() {
       gfx->print(T(S_NEW_RECORD));
     } else {
       char rec[20];
-      snprintf(rec, sizeof(rec), T(S_RECORD_FMT), pet.gameHi);
+      snprintf(rec, sizeof(rec), T(S_RECORD_FMT), player.gameHi);
       gfx->setTextColor(ink);
       gfx->setCursor(uiCenterX(rec), 214);
       gfx->print(rec);
@@ -3966,7 +3966,7 @@ void renderGame() {
   gfx->setCursor(uiCenterX(buf), 30);
   gfx->print(buf);
   char rec[12];
-  snprintf(rec, sizeof(rec), T(S_REC_FMT), pet.gameHi);
+  snprintf(rec, sizeof(rec), T(S_REC_FMT), player.gameHi);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(rec), 76);
   gfx->print(rec);
@@ -4236,12 +4236,12 @@ void clockTap(int16_t x, int16_t y) {
 
 // llama + numero de racha arriba a la izquierda
 void drawStreakBadge() {
-  if (pet.streak < 1) return;
+  if (player.streak < 1) return;
   int x = 26, y = 16;
   gfx->fillTriangle(x + 8, y, x + 1, y + 17, x + 15, y + 17, UI_BAR_BAD);
   gfx->fillTriangle(x + 8, y + 7, x + 4, y + 17, x + 12, y + 17, UI_BAR_WARN);
   char s[6];
-  snprintf(s, sizeof(s), "%u", pet.streak);
+  snprintf(s, sizeof(s), "%u", player.streak);
   gfx->setTextColor(inkColor());
   gfx->setTextSize(2);
   gfx->setCursor(x + 22, y + 2);
@@ -4257,7 +4257,7 @@ void drawCelebration() {
       if (pet.newMedal & (1 << i)) { l2 = medalName(i); break; }
     l1 = T(S_MEDAL_BANNER);
   } else if (pet.showMilestone()) {
-    snprintf(buf, sizeof(buf), T(S_STREAK_DAYS_FMT), pet.streak);
+    snprintf(buf, sizeof(buf), T(S_STREAK_DAYS_FMT), player.streak);
     l1 = T(S_GREAT);
     l2 = buf;
   }
@@ -4315,7 +4315,7 @@ void renderCardProfile() {
 
   // racha con llama
   char rl[30];
-  snprintf(rl, sizeof(rl), T(S_STREAK_FMT), pet.streak, pet.bestStreak);
+  snprintf(rl, sizeof(rl), T(S_STREAK_FMT), player.streak, player.bestStreak);
   gfx->setTextSize(2);
   int sx = CX - (15 + 9 + gfx->textWidth(rl)) / 2, sy = 224;
   gfx->fillTriangle(sx + 8, sy, sx + 1, sy + 18, sx + 15, sy + 18, UI_BAR_BAD);
@@ -5199,7 +5199,7 @@ static SpeciesId wildSpecies(uint8_t region) {
   if (region >= regionAll()) return SPECIES_NONE;
   const RegionInfo &info = regionInfo(region);
   bool legends = regionBattleInfo(region).trainerCount &&
-      pet.hasBadge(region, regionBattleInfo(region).trainerCount - 1, true);
+      player.hasBadge(region, regionBattleInfo(region).trainerCount - 1, true);
   uint32_t total = 0;
   for (SpeciesId dex = info.lo; dex <= info.hi && dex <= dexCount(); dex++) {
     uint8_t rarity = dexEntry(dex).rarity;
@@ -5239,7 +5239,7 @@ void startWildBattle(uint8_t region, bool hard) {
   };
   foe.ivAtk = rollIv(); foe.ivDef = rollIv(); foe.ivSpe = rollIv(); foe.ivHp = rollIv();
   bool rare = wildRareForRoll((uint32_t)random((long)WILD_RARE_ROLL_SCALE),
-                              pet.wildRareBonus);
+                              player.wildRareBonus);
   foe.shiny = rare;
   wildApplyRare(rare, foe.ivAtk, foe.ivDef, foe.ivSpe, foe.ivHp);
   foe.ageMinutes = (uint32_t)(level - 1) * MINUTES_PER_LEVEL;
@@ -5641,13 +5641,17 @@ void btlFinish(bool won) {
   btlResetRewardSummary();
   btlNewBadge = false;
   btlIvReward = GYM_IV_NONE;
-  if (btlWon && btlTrainer >= 0 && !pet.hasBadge(btlRegion, btlTrainer, btlHard)) {
-    pet.winBadge(btlRegion, btlTrainer, btlHard);
-    btlNewBadge = true;
+  if (btlWon && btlTrainer >= 0) {
+    if (!player.hasBadge(btlRegion, btlTrainer, btlHard)) {
+      player.winBadge(btlRegion, btlTrainer, btlHard);
+      btlNewBadge = true;
+    }
+    if (btlTrainer < regionBattleInfo(btlRegion).gymCount && btlPetIn)
+      btlIvReward = pet.rewardGymIv(btlRegion, btlTrainer, btlIvWhich);
+    // The v4 team2 snapshot contains both PlayerProgress and the active
+    // PartyMon, so this one blob is the gym outcome's commit boundary.
+    pet.saveNow();
   }
-  if (btlWon && btlTrainer >= 0 &&
-      btlTrainer < regionBattleInfo(btlRegion).gymCount && btlPetIn)
-    btlIvReward = pet.rewardGymIv(btlRegion, btlTrainer, btlIvWhich);
   audioMusic(btlWon ? MUS_VICTORY : MUS_NONE);
   if (btlWon) sfxPlay(SFX_VICTORY);
   if (btlLink && btlLinkHost) lan.sendEnd(btlWon);
@@ -6149,7 +6153,7 @@ void renderWin() {
       gfx->print(T(S_BTL_NEWBADGE));
     }
   }
-  snprintf(l, sizeof(l), T(S_BADGES_FMT), pet.badgeCountIn(btlRegion, btlHard));
+  snprintf(l, sizeof(l), T(S_BADGES_FMT), player.badgeCountIn(btlRegion, btlHard));
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(l), 316);
@@ -7083,7 +7087,7 @@ void battleTap(int16_t x, int16_t y) {
 static void renderPlayerBadges() {
   // the player's name if they have set one, the generic title if not; either
   // way tapping it opens the keyboard
-  const char *tn = pet.trainerName[0] ? pet.trainerName : T(S_TRAINER);
+  const char *tn = player.trainerName[0] ? player.trainerName : T(S_TRAINER);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
   gfx->setCursor(uiCenterX(tn), 40);
@@ -7101,9 +7105,9 @@ static void renderPlayerBadges() {
     for (uint8_t i = 0; i < AVATAR_COUNT; i++)
       drawAvatar(i, 60 + (i % 4) * 88, 60 + (i / 4) * 60, 3);
   } else {
-    drawAvatar(pet.avatar, CX - AVATAR_PX * 2, 72, 4);
+    drawAvatar(player.avatar, CX - AVATAR_PX * 2, 72, 4);
     // One metadata line leaves the 16px CJK hint clear of the first badge row.
-    const char *an = AVATARS[pet.avatar % AVATAR_COUNT].name;
+    const char *an = AVATARS[player.avatar % AVATAR_COUNT].name;
     char avatarMeta[48];
     snprintf(avatarMeta, sizeof(avatarMeta), "%s  %s", an, T(S_AVATAR_HINT));
     gfx->setTextColor(UI_INK);
@@ -7116,8 +7120,8 @@ static void renderPlayerBadges() {
   // of what is missing is still visible.
   for (int i = 0; i < regionBattleInfo(playerBadgeRegion).gymCount; i++) {
     int bx = 140 + (i % 4) * 62, by = 188 + (i / 4) * 62;
-    bool got = pet.hasBadge(playerBadgeRegion, i, false);
-    bool hard = pet.hasBadge(playerBadgeRegion, i, true);
+    bool got = player.hasBadge(playerBadgeRegion, i, false);
+    bool hard = player.hasBadge(playerBadgeRegion, i, true);
     if (hard) {
       // Beaten on hard: a golden halo. Concentric rings, not a filled disc --
       // a disc sat behind the art and read as a gold coin rather than a glow.
@@ -7142,10 +7146,10 @@ static void renderPlayerBadges() {
   char l[32];
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
-  snprintf(l, sizeof(l), T(S_STREAK_FMT), pet.streak, pet.bestStreak);
+  snprintf(l, sizeof(l), T(S_STREAK_FMT), player.streak, player.bestStreak);
   gfx->setCursor(uiCenterX(l), 286);
   gfx->print(l);
-  snprintf(l, sizeof(l), T(S_POKEDEX_FMT), pet.registeredCount(), dexCount());
+  snprintf(l, sizeof(l), T(S_POKEDEX_FMT), player.registeredCount(), dexCount());
   gfx->setCursor(uiCenterX(l), 312);
   gfx->print(l);
   snprintf(l, sizeof(l), T(S_PARTY_FMT), party.count());
@@ -7180,7 +7184,7 @@ static void renderPlayerMedals() {
     gfx->print(medalDesc(i));
   }
   char tot[28];
-  snprintf(tot, sizeof(tot), T(S_MEDALS_TOTAL_FMT), pet.totalMedals);
+  snprintf(tot, sizeof(tot), T(S_MEDALS_TOTAL_FMT), player.totalMedals);
   gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(1);
   gfx->setCursor(uiCenterX(tot), 344);
@@ -7280,7 +7284,7 @@ void renderSpeed() {
       gfx->print(T(S_NEW_RECORD));
     } else {
       char r[20];
-      snprintf(r, sizeof(r), T(S_RECORD_FMT), pet.spdHi);
+      snprintf(r, sizeof(r), T(S_RECORD_FMT), player.spdHi);
       gfx->setTextColor(ink);
       gfx->setCursor(uiCenterX(r), 256);
       gfx->print(r);
@@ -7291,7 +7295,7 @@ void renderSpeed() {
 
   // session over?
   if (now >= spdUntil) {
-    spdNewHi = (spdHits > pet.spdHi);
+    spdNewHi = (spdHits > player.spdHi);
     beginCareQuiz({ CARE_ACTION_TRAIN_SPEED, spdHits }, true);
     gfx->flush();
     return;
@@ -7600,8 +7604,8 @@ static void lanOffer(bool host) {
   // exactly what the player just chose in the picker, and that does not depend
   // on whether the radio comes up -- doing it the other way round meant a
   // failed radio skipped the squad entirely and left nothing to inspect.
-  lan.begin(host, pet.trainerName);
-  snprintf(lan.peerName, sizeof(lan.peerName), "%s", pet.trainerName);
+  lan.begin(host, player.trainerName);
+  snprintf(lan.peerName, sizeof(lan.peerName), "%s", player.trainerName);
   buildSquad(0, TRAINER_TEAM_MAX, squadMask);
   lanMineSourceN = btlSquadN;
   for (uint8_t i = 0; i < btlSquadN; i++) {
@@ -7699,7 +7703,7 @@ void renderGyms() {
     }
     uint8_t idx = entry - 1;
     const Trainer &t = trainerInfo(gymRegion, idx);
-    bool done = pet.hasBadge(gymRegion, idx, gymHard);
+    bool done = player.hasBadge(gymRegion, idx, gymHard);
     uint8_t ivReward = idx < regionBattleInfo(gymRegion).gymCount
                          ? pet.gymIvRewardAt(gymRegion, idx) : 0;
     bool open_ = gymUnlocked(idx, gymHard);
@@ -7777,7 +7781,7 @@ void renderGyms() {
 
 static void drawEggRegion() {
   char l[24];
-  snprintf(l, sizeof(l), "%s >", pet.regionName());
+  snprintf(l, sizeof(l), "%s >", player.regionName());
   gfx->fillRoundRect(EGGREG_X, EGGREG_Y, EGGREG_W, EGGREG_H, 10, UI_WHITE);
   gfx->drawRoundRect(EGGREG_X, EGGREG_Y, EGGREG_W, EGGREG_H, 10, UI_INK);
   gfx->setTextColor(UI_INK);
@@ -7809,7 +7813,7 @@ static int eggRegionTap(int16_t x, int16_t y) {
   bool hit = x >= EGGREG_X - inset && x <= EGGREG_X + EGGREG_W + inset &&
              y >= EGGREG_Y - inset && y <= EGGREG_Y + EGGREG_H + inset;
   if (hit) {
-    pet.setRegion(nextAvailableRegion(pet.region));
+    pet.setRegion(nextAvailableRegion(player.region));
     sfxPlay(SFX_TAP);
     return 1;
   }
@@ -7887,7 +7891,7 @@ static void renderRegionPick(uint8_t mode) {
   char ttl[40];
   if (mode == RPICK_FOR_START) snprintf(ttl, sizeof(ttl), "%s", T(S_CHOOSE_REGION));
   else if (forGyms) snprintf(ttl, sizeof(ttl), "%s", T(S_BATTLE_CENTER));
-  else snprintf(ttl, sizeof(ttl), T(S_POKEDEX_FMT), pet.registeredCount(), dexCount());
+  else snprintf(ttl, sizeof(ttl), T(S_POKEDEX_FMT), player.registeredCount(), dexCount());
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(ttl), 48);
@@ -7916,10 +7920,10 @@ static void renderRegionPick(uint8_t mode) {
     if (!open)
       snprintf(sub, sizeof(sub), "%s", T(S_NEED_PACK));
     else if (mode == RPICK_FOR_GYMS)
-      snprintf(sub, sizeof(sub), T(S_BADGES_FMT), pet.badgeCountIn(i, gymHard));
+      snprintf(sub, sizeof(sub), T(S_BADGES_FMT), player.badgeCountIn(i, gymHard));
     else if (mode == RPICK_FOR_DEX)
       snprintf(sub, sizeof(sub), "%u/%u",
-               pet.registeredCountIn(regionInfo(i).lo, regionInfo(i).hi),
+               player.registeredCountIn(regionInfo(i).lo, regionInfo(i).hi),
                (unsigned)(regionInfo(i).hi - regionInfo(i).lo + 1));
     if (sub[0]) {
       gfx->setTextColor(UI_MUTED);
@@ -8172,7 +8176,7 @@ static void menuRowLabel(int i, char *out, size_t n) {
   switch (i) {
     case 0: snprintf(out, n, "%s", T(party.activeIndex() == party.leadIndex()
                                      ? S_LEADING : S_LEAD)); break;
-    case 1: snprintf(out, n, T(S_POKEDEX_FMT), pet.registeredCount(), dexCount()); break;
+    case 1: snprintf(out, n, T(S_POKEDEX_FMT), player.registeredCount(), dexCount()); break;
     case 2: snprintf(out, n, "%s", T(S_SETTINGS)); break;
     case 3: snprintf(out, n, "%s",
                      pet.canFarewellNow() ? T(S_FAR_GO) : T(S_RETIRE)); break;
@@ -8217,7 +8221,7 @@ void renderNavMenu() {
   snprintf(bagLabel, sizeof(bagLabel), "%s", T(S_BAG));
   snprintf(battleLabel, sizeof(battleLabel), "%s", T(S_BATTLE_CENTER));
   snprintf(badges, sizeof(badges), T(S_BADGES_FMT),
-           pet.badgeCountIn(0, false));
+           player.badgeCountIn(0, false));
   const char *labels[NAVMENU_ROWS] = { bagLabel, battleLabel, badges };
   for (uint8_t i = 0; i < NAVMENU_ROWS; i++) {
     int y = NAVMENU_BTN_Y(i);
@@ -8539,7 +8543,7 @@ static const char KB_KEYS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ.-";  // 28 + DEL + OK 
 void openKeyboardFor(uint8_t target) {
   kbTarget = target;
   kbOpen = true;
-  const char *cur = (target == KB_TRAINER) ? pet.trainerName : pet.nick;
+  const char *cur = (target == KB_TRAINER) ? player.trainerName : pet.nick;
   strncpy(nameBuf, cur, sizeof(nameBuf) - 1);
   nameBuf[sizeof(nameBuf) - 1] = 0;
   nameLen = strlen(nameBuf);
@@ -8586,7 +8590,7 @@ void keyboardTap(int16_t x, int16_t y) {
   if (i == 28) {  // borrar
     if (nameLen) nameBuf[--nameLen] = 0;
   } else if (i == 29) {  // OK
-    if (kbTarget == KB_TRAINER) pet.renameTrainer(nameBuf);
+    if (kbTarget == KB_TRAINER) player.renameTrainer(nameBuf);
     else pet.rename(nameBuf);
     kbOpen = false;
   } else if (nameLen < sizeof(nameBuf) - 1) {
@@ -8852,11 +8856,11 @@ void renderGallery() {
     gfx->fillScreen(RGB565_BLACK);
     gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
     const DexEntry &d = dexEntry(galleryDetail);
-    bool reg = pet.isRegistered(galleryDetail);
+    bool reg = player.isRegistered(galleryDetail);
     const char *description = reg ? speciesDescription(galleryDetail, uiActiveLocaleCode()) : nullptr;
     char head[64];
     snprintf(head, sizeof(head), "N.%03d %s%s", galleryDetail,
-             pet.isShinyRegistered(galleryDetail) ? "*" : "",
+             player.isShinyRegistered(galleryDetail) ? "*" : "",
              reg ? speciesName(galleryDetail) : "???");
     gfx->setTextColor(reg ? d.accent : UI_INK);
     gfx->setTextSize(3);
@@ -8900,7 +8904,7 @@ void renderGallery() {
   char head[32];
   const RegionInfo &grg = regionInfo(galleryRegion % GAL_REGIONS);
   snprintf(head, sizeof(head), "%s %u/%u", regionName(galleryRegion % GAL_REGIONS),
-           pet.registeredCountIn(grg.lo, grg.hi), (unsigned)GAL_SPAN);
+           player.registeredCountIn(grg.lo, grg.hi), (unsigned)GAL_SPAN);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
   gfx->setCursor(uiCenterX(head), 36);
@@ -8913,8 +8917,8 @@ void renderGallery() {
       int x = GAL_X + c * GAL_CELL, y = GAL_Y + r * GAL_CELL;
       const uint8_t *t = thumbs.get(dex);
       if (t) {
-        drawThumb(t, x, y, 2, !pet.isRegistered(dex));
-        if (pet.isShinyRegistered(dex)) {
+        drawThumb(t, x, y, 2, !player.isRegistered(dex));
+        if (player.isShinyRegistered(dex)) {
           gfx->setTextColor(UI_BAR_WARN);
           gfx->setTextSize(2);
           gfx->setCursor(x + 62, y + 4);
@@ -8959,7 +8963,7 @@ void galleryTap(int16_t x, int16_t y) {
   int16_t dex = GAL_LO + galleryPage * GAL_PER_PAGE + r * 4 + c;
   if (dex > GAL_HI || dex > dexCount()) return;
   galleryDetail = dex;
-  galleryPmd.load(dex, pet.isShinyRegistered(dex), GENDER_NONE);
+  galleryPmd.load(dex, player.isShinyRegistered(dex), GENDER_NONE);
 }
 
 void drawBattery() {

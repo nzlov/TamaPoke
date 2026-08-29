@@ -285,9 +285,9 @@ int main(){
     }
 
     if (regionAll() > 1) {
-      uint8_t was = pet.region;
+      uint8_t was = player.region;
       pet.setRegion(1);
-      if (pet.region != was) { printf("FAIL  gating     setRegion accepted a locked region\n"); bad++; }
+      if (player.region != was) { printf("FAIL  gating     setRegion accepted a locked region\n"); bad++; }
       else printf("PASS  %-10s a locked region cannot be chosen\n", "gating");
     }
 

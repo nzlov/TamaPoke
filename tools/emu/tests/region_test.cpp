@@ -165,7 +165,7 @@ int main(){
     // stored table rather than the outcome
     bool cleared = true;
     for (uint8_t r = 0; r < regionCount(); r++)
-      if (r != p.region && p.eggByRegion[r] != 0) cleared = false;
+      if (r != player.region && p.eggByRegion[r] != 0) cleared = false;
     ck(cleared, "a new egg clears what the old one would have been");
     (void)before;
   }
@@ -178,20 +178,20 @@ int main(){
     p.newEgg();
     int16_t t = p.eggPeek();
     Pet q; q.begin();
-    ck(q.region==selected, "the region persists");
+    ck(player.region==selected, "the region persists");
     ck(q.eggPeek()==t, "and so does the egg it chose");
     q.setRegion(0);
     Pet r2; r2.begin();
-    ck(r2.region==0, "and a change persists too");
+    ck(player.region==0, "and a change persists too");
   }
 
   // --- an out-of-range region in a save cannot index the table
   {
     Pet p; seed(p);
     p.setRegion(1);
-    p.region = 99;               // as a corrupt or newer save might have it
+    player.region = 99;               // as a corrupt or newer save might have it
     p.setRegion(99);             // must normalise rather than read off the end
-    ck(p.region < regionCount(), "an impossible region is brought back in range");
+    ck(player.region < regionCount(), "an impossible region is brought back in range");
   }
 
   printf("%s\n", bad?"FAILURES":"all good");

@@ -72,9 +72,41 @@ int main() {
   migratedRoster.attach(migratedPet);
   migratedRoster.syncClock(migratedPet, 2000);
   bool migrated = migratedPet.fullness == 70 && nvs().count("team2") == 1 &&
-                  seed.getUShort("rostv", 0) == 3;
+                  seed.getUShort("rostv", 0) == 4;
   std::printf("%s  separate team1/seen save migrates to team2\n",
               migrated ? "PASS" : "FAIL");
   ok = ok && migrated;
+
+  nvs().clear();
+  struct RosterSnapshotV3 {
+    uint32_t magic;
+    uint32_t seenEpoch;
+    uint8_t active;
+    uint8_t reserved[3];
+    PartyMon slots[PARTY_SLOTS];
+  } oldSnapshot = {};
+  oldSnapshot.magic = 0x33534B54UL;
+  oldSnapshot.seenEpoch = 3000;
+  oldSnapshot.slots[0] = old[0];
+  oldSnapshot.slots[0].gymIvRewards[0] = GYM_IV_REWARD_DEF;
+  seed.putBool("init", true);
+  seed.putUShort("savev", SAVE_STATE_VERSION);
+  seed.putUShort("badg", 0x0005);
+  seed.putBytes("team2", &oldSnapshot, sizeof(oldSnapshot));
+  seed.putUShort("rostv", 3);
+
+  PlayerProgress v3Player;
+  Pet v3Pet(v3Player);
+  Party v3Roster;
+  v3Pet.begin();
+  v3Roster.begin();
+  v3Roster.attach(v3Pet);
+  bool v3Migrated = v3Player.badges == 0x0005 &&
+                    v3Pet.gymIvRewardAt(0, 0) == GYM_IV_REWARD_DEF &&
+                    seed.getUShort("rostv", 0) == 4 &&
+                    seed.getBytesLength("team2") > sizeof(oldSnapshot);
+  std::printf("%s  v3 roster and legacy player keys migrate to v4 snapshot\n",
+              v3Migrated ? "PASS" : "FAIL");
+  ok = ok && v3Migrated;
   return ok ? 0 : 1;
 }

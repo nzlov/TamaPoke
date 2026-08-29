@@ -6,6 +6,7 @@
 #include "moves.h"
 #include "nature.h"
 #include "gender.h"
+#include "player.h"
 
 // The six cultivation slots. Every occupied slot keeps the complete durable
 // state needed to become the pet shown on the main screen.
@@ -200,7 +201,10 @@ private:
   uint8_t ticksSinceSave = 0;
   bool pendingSave = false;
   bool legacyMigration = false;
+  bool rosterUpgradePending = false;
+  bool playerSnapshotLoaded = false;
   uint32_t savedSeenEpoch = 0;
+  PlayerSnapshot savedPlayer;
 
   void saveTeam();
   void saveBoxPage(uint8_t page);

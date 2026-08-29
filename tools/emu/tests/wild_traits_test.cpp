@@ -71,11 +71,11 @@ int main() {
   pet.begin();
   pet.dbgHatchAs(6, true);
   pet.registerCaught(25, false);
-  ck(pet.isRegistered(25) && !pet.isShinyRegistered(25),
+  ck(player.isRegistered(25) && !player.isShinyRegistered(25),
      "a normal catch is not mislabeled by the active creature's color");
   pet.shiny = false;
   pet.registerCaught(7, true);
-  ck(pet.isShinyRegistered(7),
+  ck(player.isShinyRegistered(7),
      "the caught creature's own color is what the Pokedex records");
 
   return bad ? 1 : 0;

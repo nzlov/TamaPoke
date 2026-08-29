@@ -186,8 +186,8 @@ int main(){
     Pet p; p.begin(); p.factoryReset();
     Pet q; q.begin();
     q.dbgHatchAs(dexCount(), false);      // hatching is what registers a species
-    ck(q.isRegistered(dexCount()), "the last species can be registered at all");
-    ck(!q.isRegistered(dexCount() - 1), "without spilling into its neighbour");
+    ck(player.isRegistered(dexCount()), "the last species can be registered at all");
+    ck(!player.isRegistered(dexCount() - 1), "without spilling into its neighbour");
   }
 
   // --- an evolution TARGET must never hatch from an egg, or the same creature

@@ -1,5 +1,4 @@
 #include "pet.h"
-#include "avatars.h"
 #include "dex.h"
 #include "moves.h"
 #include "audio.h"
@@ -7,24 +6,14 @@
 #include "wild.h"
 
 void Pet::begin() {
+  progress.begin();
   prefs.begin("tamapoke", false);
-  uint16_t storedVersion = prefs.getUShort("savev", 0);
-  if (storedVersion != SAVE_STATE_VERSION) {
-    if (prefs.isKey("init") || prefs.isKey("savev"))
-      Serial.printf("save schema %u unsupported; resetting\n", storedVersion);
-    prefs.clear();
-    prefs.putUShort("savev", SAVE_STATE_VERSION);
-  }
   // Zeroed BEFORE the branch below, not inside load(): getBytes() leaves its
   // destination untouched when the key is missing, and the fresh-install path
   // returns without ever calling load(). Without this a begin() after a factory
   // reset keeps the old Pokedex alive in RAM -- the firmware reboots on WIPE so
   // it never showed there, but anything calling begin() twice would see it, and
   // Party::begin() already guards the same way for the same reason.
-  memset(badgesX, 0, sizeof(badgesX));
-  memset(badgesHardX, 0, sizeof(badgesHardX));
-  memset(dexReg, 0, sizeof(dexReg));
-  memset(dexShinyReg, 0, sizeof(dexShinyReg));
   memset(gymIvRewards, 0, sizeof(gymIvRewards));
   for (int i = 0; i < regionCount(); i++) eggByRegion[i] = 0;
   if (!prefs.getBool("init", false)) {
@@ -47,8 +36,8 @@ void Pet::newEgg() {
   gender = GENDER_UNKNOWN;
   for (int i = 0; i < regionCount(); i++) eggByRegion[i] = 0;
   eggTarget = pickEggSpecies();  // especie oculta segun rareza y pokedex
-  eggByRegion[region % regionCount()] = eggTarget;
-  starterPick = (registeredCount() == 0);  // primera partida: el jugador elige inicial
+  eggByRegion[progress.region % regionCount()] = eggTarget;
+  starterPick = (progress.registeredCount() == 0);  // primera partida: el jugador elige inicial
   // The combined rare state belongs to wild encounters. A safety egg is
   // deliberately neutral rather than another route into the wild economy.
   shiny = false;
@@ -149,10 +138,11 @@ void Pet::update(uint32_t nowMs) {
     uint8_t ending = ceremony;
     if (ending == CER_FAREWELL) {
       uint8_t gain = level() >= 100 ? 2 : 1;
-      uint16_t next = (uint16_t)wildRareBonus + gain;
-      wildRareBonus = next > WILD_RARE_BONUS_MAX ? WILD_RARE_BONUS_MAX : next;
+      uint16_t next = (uint16_t)progress.wildRareBonus + gain;
+      progress.wildRareBonus = next > WILD_RARE_BONUS_MAX ? WILD_RARE_BONUS_MAX : next;
     } else if (ending == CER_RUNAWAY) {
-      wildRareBonus = wildRareBonus > 2 ? (uint8_t)(wildRareBonus - 2) : 0;
+      progress.wildRareBonus = progress.wildRareBonus > 2
+                                   ? (uint8_t)(progress.wildRareBonus - 2) : 0;
     }
     lastEnd = ending;
     ceremony = CER_NONE;
@@ -361,7 +351,7 @@ void Pet::exportState(PartyMon &out) const {
 void Pet::reviveFrom(const PartyMon &m) {
   importState(m);
   if (!m.empty()) {
-    registerSpecies(speciesId, shiny);
+    progress.registerSpecies(speciesId, shiny);
     save();
   }
 }
@@ -370,29 +360,6 @@ PartyMon Pet::toPartyMon() const {
   PartyMon out;
   exportState(out);
   return out;
-}
-
-void Pet::copySharedFrom(const Pet &other) {
-  memcpy(dexReg, other.dexReg, sizeof(dexReg));
-  memcpy(dexShinyReg, other.dexShinyReg, sizeof(dexShinyReg));
-  streak = other.streak; bestStreak = other.bestStreak;
-  wildRareBonus = other.wildRareBonus;
-  lastCareDay = other.lastCareDay;
-  totalMedals = other.totalMedals;
-  lastMilestone = other.lastMilestone;
-  gameHi = other.gameHi; strHi = other.strHi; spdHi = other.spdHi;
-  avatar = other.avatar; region = other.region;
-  badges = other.badges; badgesHard = other.badgesHard;
-  memcpy(badgesX, other.badgesX, sizeof(badgesX));
-  memcpy(badgesHardX, other.badgesHardX, sizeof(badgesHardX));
-  strncpy(trainerName, other.trainerName, sizeof(trainerName) - 1);
-  trainerName[sizeof(trainerName) - 1] = 0;
-  lastSeenEpoch = other.lastSeenEpoch;
-  screenIsOff = other.screenIsOff;
-}
-
-void Pet::mergeSharedFrom(const Pet &other) {
-  copySharedFrom(other);
 }
 
 // vuelca el guardado periodico pendiente (lo llama el loop en un momento sin
@@ -442,21 +409,6 @@ void Pet::trainingTick(bool resting) {
                   decayNumerator, decayDenominator);
   }
   trainingTicks = maintainedTicks | (uint16_t)lowStateTicks << 8;
-}
-
-static bool branchHasUnregistered(const Pet &pet, SpeciesId species, uint8_t depth) {
-  if (!pet.isRegistered(species)) return true;
-  if (depth >= CONTENT_MAX_EVOLUTIONS) return false;
-  for (uint8_t i = 0; i < evolutionCount(species); i++) {
-    SpeciesId target = evolutionTarget(species, i);
-    if (dexValid(target) && branchHasUnregistered(pet, target, depth + 1)) return true;
-  }
-  return false;
-}
-
-// quedan miembros sin registrar en la linea evolutiva de esta base?
-bool Pet::lineHasUnregistered(int16_t base) const {
-  return dexValid(base) && branchHasUnregistered(*this, (SpeciesId)base, 0);
 }
 
 uint8_t Pet::eggRarity() const {
@@ -513,7 +465,7 @@ static int16_t pickRegionSpecies(const RegionInfo &rg, uint8_t tier,
   for (int16_t d = rg.lo; d <= rg.hi; d++) {
     if (!spriteAvailable(d)) continue;
     if (dexEntry(d).rarity != tier) continue;
-    if (incompleteOnly && !pet.lineHasUnregistered(d)) continue;
+    if (incompleteOnly && !pet.playerProgress().lineHasUnregistered(d)) continue;
     if (!regionAvailable(regionOfDex(d))) continue;
     seen++;
     if (random(seen) == 0) selected = d;
@@ -522,17 +474,17 @@ static int16_t pickRegionSpecies(const RegionInfo &rg, uint8_t tier,
 }
 
 int16_t Pet::pickEggSpecies() {
-  const uint8_t use = eggRegionFallback(region % regionCount());
+  const uint8_t use = eggRegionFallback(progress.region % regionCount());
   const RegionInfo &rg = regionInfo(use);
   // primera partida: inicial clasico -- del region elegida, so a Johto run
   // starts with a Johto starter rather than a Kanto one
-  if (registeredCount() == 0) {
+  if (progress.registeredCount() == 0) {
     return rg.starters[random(rg.starterCount)];
   }
 
   uint8_t tier = R_COMUN;
   int rare = 27 + careBonus();
-  int leg = (registeredCount() >= 25) ? 3 + careBonus() / 3 : 0;
+  int leg = (progress.registeredCount() >= 25) ? 3 + careBonus() / 3 : 0;
   int r = random(100);
   if (r < leg) tier = R_LEGENDARIO;
   else if (r < leg + rare) tier = R_RARO;
@@ -579,9 +531,9 @@ void Pet::setRegion(uint8_t r) {
   // hiding it outright is how Johto and Hoenn once came to look absent when
   // they were built and reachable all along.
   if (!regionAvailable(r)) return;
-  if (r == region) return;
-  uint8_t old = region;
-  region = r;
+  if (r == progress.region) return;
+  uint8_t old = progress.region;
+  progress.region = r;
   if (isEgg() && eggTarget >= 1) {
     if (old < regionCount()) eggByRegion[old] = eggTarget;
     int16_t known = eggByRegion[r];
@@ -589,12 +541,6 @@ void Pet::setRegion(uint8_t r) {
     eggByRegion[r] = eggTarget;
   }
   save();
-}
-
-void Pet::registerSpecies(int16_t dex, bool color) {
-  if (dex < 1 || dex > dexCount()) return;
-  dexReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
-  if (color) dexShinyReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
 }
 
 void Pet::setDead(bool value) {
@@ -613,7 +559,7 @@ bool Pet::giveGigantamaxFactor() {
 
 // la racha y el vinculo mejoran el sorteo del huevo (0..~14)
 int Pet::careBonus() const {
-  int s = streak > 30 ? 30 : streak;
+  int s = progress.streak > 30 ? 30 : progress.streak;
   return s / 3 + bond / 25;
 }
 
@@ -621,21 +567,24 @@ int Pet::careBonus() const {
 void Pet::registerCare() {
   if (isEgg() || ceremony != CER_NONE) return;
   uint32_t d = today();
-  if (d == 0 || d == lastCareDay) return;  // sin reloj, o ya conto hoy
-  if (lastCareDay == 0 || d == lastCareDay + 1) {
-    streak++;
+  if (d == 0 || d == progress.lastCareDay) return;  // sin reloj, o ya conto hoy
+  if (progress.lastCareDay == 0 || d == progress.lastCareDay + 1) {
+    progress.streak++;
   } else {
-    streak = 1;        // hubo un hueco de dias
-    lastMilestone = 0;
+    progress.streak = 1;        // hubo un hueco de dias
+    progress.lastMilestone = 0;
   }
-  lastCareDay = d;
+  progress.lastCareDay = d;
   bondToday = 0;
-  if (streak > bestStreak) bestStreak = streak;
+  if (progress.streak > progress.bestStreak)
+    progress.bestStreak = progress.streak;
   bond = clamp100(bond + 4);
-  uint16_t ms = (streak >= 100) ? 100 : (streak >= 30) ? 30
-              : (streak >= 7)   ? 7   : (streak >= 3)  ? 3 : 0;
-  if (ms > lastMilestone) {
-    lastMilestone = ms;
+  uint16_t ms = (progress.streak >= 100) ? 100
+              : (progress.streak >= 30) ? 30
+              : (progress.streak >= 7)  ? 7
+              : (progress.streak >= 3)  ? 3 : 0;
+  if (ms > progress.lastMilestone) {
+    progress.lastMilestone = ms;
     milestoneUntil = millis() + 4500;
   }
   checkMedals();
@@ -655,13 +604,13 @@ void Pet::checkMedals() {
   if (level() >= 25) medals |= MED_LV25;
   if (level() >= 50) medals |= MED_LV50;
   if (berryKnown) medals |= MED_BERRY;
-  if (streak >= 7) medals |= MED_STREAK7;
+  if (progress.streak >= 7) medals |= MED_STREAK7;
   if (bond >= 100) medals |= MED_BOND;
   if (!evolutionAvailable(speciesId)) medals |= MED_FINAL;
   if (weight == 0 && level() >= 5 && careMistakes == 0) medals |= MED_FIT;
   uint16_t gained = medals & ~before;
   if (gained) {
-    for (uint16_t m = gained; m; m &= (m - 1)) totalMedals++;
+    for (uint16_t m = gained; m; m &= (m - 1)) progress.totalMedals++;
     newMedal = gained;
     medalUntil = millis() + 4000;
     if (!backgroundMode && !sleeping) sfxPlay(SFX_MEDAL);
@@ -866,13 +815,6 @@ void Pet::rollIVs() {
   }
 }
 
-uint16_t Pet::registeredCount() const {
-  uint16_t n = 0;
-  for (int i = 1; i <= dexCount(); i++)
-    if (isRegistered(i)) n++;
-  return n;
-}
-
 // Final form with three player-raised days: the menu may offer farewell.
 bool Pet::canFarewellNow() const {
   if (frozen || dead) return false;
@@ -950,7 +892,7 @@ void Pet::hatch() {
   medals = 0;
   newMedal = 0;
   nick[0] = 0;
-  registerSpecies(speciesId, shiny);  // criado = registrado en la pokedex
+  progress.registerSpecies(speciesId, shiny);  // criado = registrado en la pokedex
   // Start empty: checkLearnGates() fills natural level-1 moves in active slots
   // first, then reserves.
   for (MoveId &move : moves) move = MOVE_NONE;
@@ -982,7 +924,7 @@ void Pet::evolve() {
   uint8_t optionCount = 0;
   for (uint8_t i = 0; i < evolutionCount(speciesId); i++) {
     SpeciesId target = evolutionTarget(speciesId, i);
-    if (dexValid(target) && !isRegistered(target)) options[optionCount++] = target;
+    if (dexValid(target) && !progress.isRegistered(target)) options[optionCount++] = target;
   }
   if (!optionCount)
     for (uint8_t i = 0; i < evolutionCount(speciesId); i++) {
@@ -993,7 +935,7 @@ void Pet::evolve() {
   speciesId = next;
   if (!speciesAbility(speciesId, abilitySlot))
     abilitySlot = abilitySlotForLegacy(speciesId, ivAtk, ivDef, ivSpe, ivHp);
-  registerSpecies(speciesId, shiny);
+  progress.registerSpecies(speciesId, shiny);
   checkLearnGates();   // the new form may gate a move at this very level
   sfxPlay(SFX_EVOLVE);
   evolveUntil = millis() + EVOLVE_ANIM_MS;
@@ -1121,7 +1063,7 @@ uint8_t Pet::settleCare(const CareAction &action, uint8_t percent) {
     int burn = (int)weight - score * 2;  // el ejercicio quema peso
     weight = burn > 0 ? burn : 0;
     if (percent && score >= 5) heartUntil = millis() + HEART_MS;
-    if (score > gameHi) gameHi = score;  // nuevo record
+    if (score > progress.gameHi) progress.gameHi = score;  // nuevo record
     // Training bonds, and it scales with the session: a token effort is worth the
     // base, a full one is worth more. The daily cap in addBond() still stops it
     // being farmed -- this changes how fast a good session gets there, not the
@@ -1148,7 +1090,7 @@ uint8_t Pet::settleCare(const CareAction &action, uint8_t percent) {
     int burn = (int)weight - hits / 2;
     weight = burn > 0 ? burn : 0;
     joy = clamp100(joy + scaledCareGain(4, percent));
-    if (hits > spdHi) spdHi = hits;
+    if (hits > progress.spdHi) progress.spdHi = hits;
     if (percent) {
       addBond(scaledCareGain((uint8_t)(2 + potentialGain / 6), percent));
       registerCare();
@@ -1172,7 +1114,7 @@ uint8_t Pet::settleCare(const CareAction &action, uint8_t percent) {
     weight = burn > 0 ? burn : 0;
     joy = clamp100(joy + scaledCareGain(6, percent));
     if (percent && hits >= 20) heartUntil = millis() + HEART_MS;
-    if (hits > strHi) strHi = hits;
+    if (hits > progress.strHi) progress.strHi = hits;
     if (percent) {
       addBond(scaledCareGain((uint8_t)(2 + potentialGain / 6), percent));
       registerCare();
@@ -1204,7 +1146,6 @@ GymIvReward Pet::rewardGymIv(uint8_t region, uint8_t gym, uint8_t &which) {
     default: ivHp++; break;
   }
   gymIvRewards[at] = (uint8_t)(which + 1);
-  save();
   return GYM_IV_GAINED;
 }
 
@@ -1330,16 +1271,9 @@ void Pet::save() {
   prefs.putBytes("mvs", moves, sizeof(moves));
   prefs.putBytes("rsvm", reserveMoves, sizeof(reserveMoves));
   prefs.putUChar("mvlv", lastLearnLevel);
-  prefs.putUChar("avtr", avatar);
-  prefs.putUChar("reg", region);
-  prefs.putBytes("badgX", badgesX, sizeof(badgesX));
-  prefs.putBytes("badhX", badgesHardX, sizeof(badgesHardX));
   prefs.putBytes("eggR", eggByRegion, sizeof(eggByRegion));
-  prefs.putString("tnam", trainerName);
   prefs.putBool("froz", frozen);
   prefs.putBool("dead", dead);
-  prefs.putUShort("badg", badges);
-  prefs.putUShort("badh", badgesHard);
   prefs.putBool("bk", berryKnown);
   prefs.putBool("shy", shiny);
   prefs.putBool("spkl", shiny);  // legacy mirror for older firmware
@@ -1347,7 +1281,6 @@ void Pet::save() {
   prefs.putBool("eshy", eggShiny);
   prefs.putBool("stpk", starterPick);
   prefs.putUChar("slpa", sleepAuto);
-  prefs.putBytes("dexsh", dexShinyReg, sizeof(dexShinyReg));
   prefs.putUInt("age", ageMinutes);
   prefs.putUInt("raise", raisedMinutes);
   prefs.putShort("dexn", speciesId);
@@ -1357,20 +1290,10 @@ void Pet::save() {
   prefs.putBool("sleep", sleeping);
   prefs.putUChar("lend", lastEnd);
   if (lastSeenEpoch) prefs.putUInt("seen", lastSeenEpoch);
-  prefs.putBytes("dexreg", dexReg, sizeof(dexReg));
-  prefs.putUShort("strk", streak);
-  prefs.putUShort("bstrk", bestStreak);
-  prefs.putUChar("wrbon", wildRareBonus);
-  prefs.putUInt("cday", lastCareDay);
   prefs.putUChar("bond", bond);
   prefs.putUShort("medal", medals);
-  prefs.putUShort("tmedal", totalMedals);
-  prefs.putUShort("mstone", lastMilestone);
-  prefs.putUShort("ghi", gameHi);
-  prefs.putUShort("shi", strHi);
-  prefs.putUShort("qhi", spdHi);
   prefs.putString("nick", nick);
-  if (roster) roster->captureActive(*this);
+  progress.save();
 }
 
 void Pet::load() {
@@ -1411,7 +1334,6 @@ void Pet::load() {
   eggShiny = prefs.getBool("eshy", false);
   starterPick = prefs.getBool("stpk", false);
   sleepAuto = prefs.getUChar("slpa", SLEEP_NONE);
-  prefs.getBytes("dexsh", dexShinyReg, sizeof(dexShinyReg));
   ageMinutes = prefs.getUInt("age", 0);
   raisedMinutes = prefs.isKey("raise") ? prefs.getUInt("raise", 0) : ageMinutes;
   speciesId = prefs.getShort("dexn", -1);
@@ -1437,19 +1359,8 @@ void Pet::load() {
   careMistakes = prefs.getUChar("mist", 0);
   sleeping = prefs.getBool("sleep", false);
   lastEnd = prefs.getUChar("lend", CER_NONE);
-  prefs.getBytes("dexreg", dexReg, sizeof(dexReg));
-  streak = prefs.getUShort("strk", 0);
-  bestStreak = prefs.getUShort("bstrk", 0);
-  wildRareBonus = prefs.getUChar("wrbon", 0);
-  if (wildRareBonus > WILD_RARE_BONUS_MAX) wildRareBonus = WILD_RARE_BONUS_MAX;
-  lastCareDay = prefs.getUInt("cday", 0);
   bond = prefs.getUChar("bond", 0);
   medals = prefs.getUShort("medal", 0);
-  totalMedals = prefs.getUShort("tmedal", 0);
-  lastMilestone = prefs.getUShort("mstone", 0);
-  gameHi = prefs.getUShort("ghi", 0);
-  strHi = prefs.getUShort("shi", 0);
-  spdHi = prefs.getUShort("qhi", 0);
   prefs.getString("nick", nick, sizeof(nick));
   if (prefs.getBytesLength("mvs") == sizeof(moves)) {
     prefs.getBytes("mvs", moves, sizeof(moves));
@@ -1464,16 +1375,7 @@ void Pet::load() {
   lastLearnLevel = prefs.getUChar("mvlv", 0);
   frozen = prefs.getBool("froz", false);
   dead = prefs.getBool("dead", false) && speciesId >= 1;
-  avatar = prefs.getUChar("avtr", 0);
-  prefs.getBytes("badgX", badgesX, sizeof(badgesX));
-  prefs.getBytes("badhX", badgesHardX, sizeof(badgesHardX));
-  region = prefs.getUChar("reg", regionAll());
-  if (region >= regionCount()) region = regionAll();
   prefs.getBytes("eggR", eggByRegion, sizeof(eggByRegion));
-  prefs.getString("tnam", trainerName, sizeof(trainerName));
-  if (avatar >= AVATAR_COUNT) avatar = 0;
-  badges = prefs.getUShort("badg", 0);
-  badgesHard = prefs.getUShort("badh", 0);
   checkLearnGates();
-  if (speciesId >= 1) registerSpecies(speciesId, shiny);
+  if (speciesId >= 1) progress.registerSpecies(speciesId, shiny);
 }

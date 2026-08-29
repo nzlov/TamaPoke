@@ -3,6 +3,7 @@
 #include "Arduino.h"
 #include "Preferences.h"
 #include "pet.h"
+#include "party.h"
 #include <cstdio>
 
 uint32_t g_seed = 223;
@@ -17,10 +18,15 @@ String FakeSerial::readStringUntil(char) { return String(""); }
 
 void setup();
 void onTap(int16_t x, int16_t y);
+void btlFinish(bool won);
 extern Pet pet;
+extern Party party;
 extern bool menuOpen;
 extern uint8_t choiceKind;
 extern bool gPowerOffRequested;
+extern uint8_t btlRegion;
+extern int8_t btlTrainer;
+extern bool btlHard, btlPetIn;
 
 int main() {
   setup();
@@ -40,6 +46,16 @@ int main() {
   }
 
   pet.fullness = 73;
+  btlRegion = 0;
+  btlTrainer = 0;
+  btlHard = false;
+  btlPetIn = true;
+  btlFinish(true);
+  if (!player.hasBadge(0, 0, false) || !pet.gymIvClaimed(0, 0)) {
+    std::puts("FAIL  gym victory did not award progress before power off");
+    return 1;
+  }
+  onTap(233, 390);  // dismiss the victory settlement before opening the menu
   menuOpen = true;
   onTap(233, 343);
   onTap(233, 242);  // confirm
@@ -47,6 +63,17 @@ int main() {
     std::puts("FAIL  confirmed POWER OFF did not save before PMU shutdown");
     return 1;
   }
-  std::puts("PASS  confirmed POWER OFF saves then requests PMU shutdown");
+  PlayerProgress rebootedPlayer;
+  Pet rebooted(rebootedPlayer);
+  Party rebootedParty;
+  rebooted.begin();
+  rebootedParty.begin();
+  rebootedParty.attach(rebooted);
+  if (!rebootedPlayer.hasBadge(0, 0, false) || !rebooted.gymIvClaimed(0, 0) ||
+      rebooted.fullness != 73) {
+    std::puts("FAIL  confirmed POWER OFF lost gym progress after reboot");
+    return 1;
+  }
+  std::puts("PASS  confirmed POWER OFF preserves gym progress across reboot");
   return 0;
 }

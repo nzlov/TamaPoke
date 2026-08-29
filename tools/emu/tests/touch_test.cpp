@@ -176,7 +176,7 @@ int main(int argc, char **argv) {
   // Pick KANTO so row 0 below is Bulbasaur.
   click(233, 108 + 30);
   pump(2);
-  if (pet.region != 0) { printf("FAIL: region tap did not land\n"); return 1; }
+  if (player.region != 0) { printf("FAIL: region tap did not land\n"); return 1; }
   if (!pet.awaitingStarter()) { printf("FAIL: the region tap chose a starter\n"); return 1; }
   printf("picked KANTO, still on the starter flow\n");
 
@@ -391,7 +391,7 @@ int main(int argc, char **argv) {
   pet.dbgHatchAs(9, false);                   // a stable favourable matchup for Brock
   pet.ageMinutes = 100 * MINUTES_PER_LEVEL;
   pet.relearnFromLevel();
-  bool hadBadge = pet.hasBadge(0, 0, false);
+  bool hadBadge = player.hasBadge(0, 0, false);
   startTrainerBattle(0, false);
   if (!battleOpen) { printf("FAIL: trainer battle did not start\n"); return 1; }
   printf("PASS: gym battle starts (squad of %u vs BROCK)\n", btlSquadN);
@@ -415,8 +415,8 @@ int main(int argc, char **argv) {
   if (sawFoeAt == 0) { printf("FAIL: the second gym creature never came out\n"); return 1; }
   printf("PASS: the trainer sends out its next creature on a faint\n");
   if (!btlWon) { printf("FAIL: a L100 creature lost to Brock\n"); return 1; }
-  if (!pet.hasBadge(0, 0, false) || hadBadge) { printf("FAIL: no badge awarded\n"); return 1; }
-  printf("PASS: beating a leader awards its badge (%u/8)\n", pet.badgeCount(false));
+  if (!player.hasBadge(0, 0, false) || hadBadge) { printf("FAIL: no badge awarded\n"); return 1; }
+  printf("PASS: beating a leader awards its badge (%u/8)\n", player.badgeCount(false));
 
   // A trainer battle snapshots the selected region. Before that handoff was
   // added, the first opponent came from gymRegion but every later one came
@@ -482,7 +482,7 @@ int main(int argc, char **argv) {
   battleOpen = false;
 
   // ---- switching mid-fight
-  battleOpen = false; pickOpen = false; pet.badges = 0;
+  battleOpen = false; pickOpen = false; player.badges = 0;
   for (int i = 0; i < 3; i++) { PartyMon m; m.dex = 9 + i * 20; m.level = 40;
     m.ivAtk = m.ivDef = m.ivSpe = m.ivHp = 25; party.replaceAt(i, m); }
   squadMask = 0xFFFF;
@@ -514,7 +514,7 @@ int main(int argc, char **argv) {
 
   // ---- the gym ladder is sequential: only the next one may be entered
   battleOpen = false; pickOpen = false;
-  pet.badges = 0;                       // nothing beaten yet
+  player.badges = 0;                       // nothing beaten yet
   gymOpen = true; gymHard = false; gymPage = 0;
   click(233, 110 + 2 * 50 + 20);        // MISTY, after the WILD row and BROCK
   if (pickOpen || battleOpen) { printf("FAIL: a locked leader was enterable\n"); return 1; }
@@ -523,7 +523,7 @@ int main(int argc, char **argv) {
   if (!pickOpen) { printf("FAIL: the first leader was not enterable\n"); return 1; }
   printf("PASS: the first leader is always open\n");
   pickOpen = false;
-  pet.badges = 1;                       // Brock beaten
+  player.badges = 1;                       // Brock beaten
   gymOpen = true; gymPage = 0;
   click(233, 110 + 2 * 50 + 20);        // MISTY again
   if (!pickOpen) { printf("FAIL: beating one did not unlock the next\n"); return 1; }
@@ -538,7 +538,7 @@ int main(int argc, char **argv) {
   click(327, 61);
   if (!gymOpen) { printf("FAIL: tapping the cleared battle-centre corner changed context\n"); return 1; }
   printf("PASS: battle-centre top-right team entry is removed\n");
-  gymHard = false; gymOpen = false; pet.badges = 0;
+  gymHard = false; gymOpen = false; player.badges = 0;
 
   // ---- the six cultivation slots are the complete candidate pool. The old
   // live-pet-plus-party model accidentally produced a seventh candidate.

@@ -362,15 +362,15 @@ int main(){
     const int band = (gx - hx) + 4;
     pet.newEgg();
     while (!pet.isEgg()) pet.newEgg();
-    uint8_t wasRegion = pet.region;
+    uint8_t wasRegion = player.region;
     int changed = 0, hatched = 0;
     for (int i = 0; i < 6; i++) {
       // checked after EVERY tap, so no number of taps can cancel out again
       onTap((int16_t)(gx + gw / 2), (int16_t)(gy + gh + band));  // just below
-      if (pet.region != wasRegion) changed++;
+      if (player.region != wasRegion) changed++;
       if (!pet.isEgg()) hatched++;
       onTap((int16_t)(gx - band), (int16_t)(gy + gh / 2));       // just left
-      if (pet.region != wasRegion) changed++;
+      if (player.region != wasRegion) changed++;
       if (!pet.isEgg()) hatched++;
     }
     ck(hatched == 0, "a near miss on the pill does NOT hatch the egg");
@@ -380,7 +380,7 @@ int main(){
 
     // on the pill: it cycles
     onTap((int16_t)(gx + gw / 2), (int16_t)(gy + gh / 2));
-    ck(pet.region != wasRegion, "tapping the pill really does change the region");
+    ck(player.region != wasRegion, "tapping the pill really does change the region");
     ck(pet.isEgg(), "and never cracks the egg while doing it");
 
     // and the egg itself still hatches when you actually tap the egg

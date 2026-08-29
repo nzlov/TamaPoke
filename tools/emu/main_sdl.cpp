@@ -820,7 +820,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     // No radio here, so the pairing is faked at the point the radio would have
     // finished it: both squads present, state READY. Everything past this --
     // layout, the battle screen, the guest's restrictions -- is the real code.
-    pet.renameTrainer("DYLAN");
+    player.renameTrainer("DYLAN");
     lan.begin(true, "DYLAN");
     snprintf(lan.peerName, sizeof(lan.peerName), "%s", "MISTY");
     static const int mineDex[] = {9, 25, 143}, theirDex[] = {6, 65, 131};
@@ -900,7 +900,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   }
   else if (!strcmp(screen, "win")) {
     startTrainerBattle(2, true);
-    btlNewBadge = true; btlWinUntil = 60000; pet.badgesHard = 0x07;
+    btlNewBadge = true; btlWinUntil = 60000; player.badgesHard = 0x07;
     btlIvReward = GYM_IV_GAINED; btlIvWhich = 2;
   }
   else if (!strcmp(screen, "pick")) {
@@ -911,21 +911,21 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pickTrainer = 7; pickHard = false; pickPage = 0;
     pickDefault(6); pickOpen = true;
   }
-  else if (!strcmp(screen, "gymshard")) { gymOpen = true; gymHard = true; pet.badgesHard = 0x03; }
+  else if (!strcmp(screen, "gymshard")) { gymOpen = true; gymHard = true; player.badgesHard = 0x03; }
   else if (!strcmp(screen, "speed")) { startSpeedGame(); }
   else if (!strcmp(screen, "avatars")) {
-    pet.renameTrainer("DYLAN");
+    player.renameTrainer("DYLAN");
     playerOpen = true;
     gShowAllAvatars = true;
   }
-  else if (!strcmp(screen, "player")) { pet.renameTrainer("DYLAN"); pet.badges = 0xBF; pet.badgesHard = 0x0A; pet.streak = 5; playerOpen = true; }
+  else if (!strcmp(screen, "player")) { player.renameTrainer("DYLAN"); player.badges = 0xBF; player.badgesHard = 0x0A; player.streak = 5; playerOpen = true; }
   else if (!strcmp(screen, "player2")) {
-    pet.renameTrainer("DYLAN");
-    pet.badgesX[0] = 0x3F; pet.badgesHardX[0] = 0x05;   // Johto
+    player.renameTrainer("DYLAN");
+    player.badgesX[0] = 0x3F; player.badgesHardX[0] = 0x05;   // Johto
     playerOpen = true; playerPage = 1;
   }
   else if (!strcmp(screen, "medals2") || !strcmp(screen, "playermedals")) {
-    pet.medals = 0x5B; pet.totalMedals = 12;
+    pet.medals = 0x5B; player.totalMedals = 12;
     playerOpen = true; playerPage = regionAll();
   }
   else if (!strcmp(screen, "gymfight")) { startTrainerBattle(0, false); }

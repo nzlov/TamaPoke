@@ -101,7 +101,7 @@ int main() {
   pet.energy = 100;
   pet.fullness = 100;
   check(pet.settleCare({ CARE_ACTION_TRAIN_STRENGTH, 40 }, 0) == 0 &&
-        pet.trAtk == 0 && pet.energy == 88 && pet.fullness == 95 && pet.strHi == 40,
+        pet.trAtk == 0 && pet.energy == 88 && pet.fullness == 95 && player.strHi == 40,
         "a failed training answer keeps costs and the real session record");
   pet.ivAtk = pet.ivDef = pet.ivSpe = 31;
   check(pet.settleCare({ CARE_ACTION_TRAIN_STRENGTH, 40 }, 50) == 8 && pet.trAtk == 8,
