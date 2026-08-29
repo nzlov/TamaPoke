@@ -4,6 +4,7 @@
 #include "party.h"
 #include "moves.h"
 #include "items.h"
+#include "content.h"
 
 // Turn resolution. Deliberately free of any UI or hardware so the whole thing
 // can be simulated headlessly -- see tools/emu.
@@ -40,6 +41,10 @@ struct BattleSideConditions {
   uint8_t toxicSpikesLayers = 0;
   bool stealthRock = false;
   bool stickyWeb = false;
+  bool steelsurge = false;
+  uint8_t critStages = 0;
+  uint8_t gmaxResidualEffect = GMAX_EFFECT_NONE;
+  uint8_t gmaxResidualTurns = 0;
 };
 
 // Weather and terrain belong to the battle, not either creature. Wild battles
@@ -52,6 +57,7 @@ struct BattleField {
   BattleTerrain baseTerrain = BTERRAIN_NONE;
   BattleTerrain terrain = BTERRAIN_NONE;
   uint8_t terrainTurns = 0;
+  uint8_t gravityTurns = 0;
   BattleSideConditions sides[2];
 };
 
@@ -143,6 +149,13 @@ struct Combatant {
   PetGender gender = GENDER_UNKNOWN;
   bool gigantamaxFactor = false;
   bool gigantamax = false;
+  uint8_t statPercent = 100;
+  uint8_t bindTurns = 0;
+  uint8_t drowsyTurns = 0;
+  bool trapped = false;
+  bool tormented = false;
+  bool infatuated = false;
+  MoveId lastMove = MOVE_NONE;
   bool flashFireActive = false;
   bool abilityTriggered = false;
   bool abilityCharged = false;
@@ -160,6 +173,8 @@ struct BattleMove {
   MoveId source = MOVE_NONE;
   MoveEntry entry = {};
   BattleMechanic mechanic = BMECH_NONE;
+  GmaxMoveId gmaxMove = GMAX_MOVE_NONE;
+  GmaxEffect gmaxEffect = GMAX_EFFECT_NONE;
   uint8_t abilityPowerPercent = 100;
 
   bool valid() const { return source != MOVE_NONE; }
@@ -173,6 +188,7 @@ void battleInitializeForm(Combatant &combatant);
 struct TurnLog {
   MoveId move = 0;
   BattleMechanic mechanic = BMECH_NONE;
+  GmaxMoveId gmaxMove = GMAX_MOVE_NONE;
   uint8_t moveType = T_NORMAL;
   uint16_t damage = 0;
   uint16_t effPct = 100;   // type effectiveness, percent
@@ -199,6 +215,9 @@ struct TurnLog {
   BattleScreen screenSet = BSCREEN_NONE;
   BattleHazard hazardSet = BHAZARD_NONE;
   bool fieldCleared = false;
+  uint8_t bonusRewardItems = 0;
+  bool restoreLastItem = false;
+  bool statsWeakened = false;
   BattleSwitchRequest switchRequest = BSWITCH_NONE;
 };
 
@@ -206,9 +225,11 @@ void battleSetEnvironment(BattleField &field, BattleWeather weather,
                           BattleTerrain terrain = BTERRAIN_NONE);
 void battleSetWeather(BattleField &field, BattleWeather weather);
 void battleSetTerrain(BattleField &field, BattleTerrain terrain);
-bool battleGrounded(const Combatant &combatant);
+bool battleGrounded(const Combatant &combatant,
+                    const BattleField *field = nullptr);
 bool battleGuaranteedEscape(const Combatant &combatant);
-bool battleCanSwitch(const Combatant &combatant, const Combatant &opponent);
+bool battleCanSwitch(const Combatant &combatant, const Combatant &opponent,
+                     const BattleField *field = nullptr);
 
 BattleMove battleMove(MoveId move);
 BattleMove battleMoveFor(const Combatant &attacker, MoveId move,
@@ -225,7 +246,7 @@ bool battleActivateMechanic(BattleSideMechanics &side, Combatant &combatant,
                             BattleMechanic mechanic, MoveId move = MOVE_NONE,
                             MegaFormKind megaForm = MEGA_FORM_NONE);
 void battleAfterAction(Combatant &combatant);
-void battleOnSwitchOut(Combatant &combatant);
+void battleOnSwitchOut(Combatant &combatant, Combatant *opponent = nullptr);
 void battleRefreshForms(BattleField &field, Combatant &a, Combatant &b);
 void battleOnEnter(Combatant &combatant, Combatant &opponent,
                    BattleField &field, uint8_t side, EntryLog &log);

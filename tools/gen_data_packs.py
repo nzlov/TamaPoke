@@ -97,6 +97,39 @@ TYPE_ZH = {
     "dark": "恶", "steel": "钢", "fairy": "妖精",
 }
 
+MAX_MOVE_NAMES = (
+    ("Max Strike", "极巨攻击"),
+    ("Max Flare", "极巨火爆"),
+    ("Max Geyser", "极巨水流"),
+    ("Max Lightning", "极巨闪电"),
+    ("Max Overgrowth", "极巨草原"),
+    ("Max Hailstorm", "极巨寒冰"),
+    ("Max Knuckle", "极巨拳斗"),
+    ("Max Ooze", "极巨酸毒"),
+    ("Max Quake", "极巨大地"),
+    ("Max Airstream", "极巨飞冲"),
+    ("Max Mindstorm", "极巨超能"),
+    ("Max Flutterby", "极巨虫蛊"),
+    ("Max Rockfall", "极巨岩石"),
+    ("Max Phantasm", "极巨幽魂"),
+    ("Max Wyrmwind", "极巨龙骑"),
+    ("Max Darkness", "极巨恶霸"),
+    ("Max Steelspike", "极巨钢铁"),
+    ("Max Starfall", "极巨妖精"),
+    ("Max Guard", "极巨防壁"),
+)
+
+GMAX_EFFECT_NAMES = (
+    "vine-lash", "wildfire", "cannonade", "befuddle", "volt-crash",
+    "gold-rush", "chi-strike", "terror", "foam-burst", "resonance",
+    "cuddle", "replenish", "malodor", "meltdown", "drum-solo",
+    "fireball", "hydrosnipe", "wind-rage", "gravitas", "stonesurge",
+    "volcalith", "tartness", "sweetness", "sandblast", "stun-shock",
+    "centiferno", "smite", "snooze", "finale", "steelsurge",
+    "depletion", "one-blow", "rapid-flow",
+)
+GMAX_EFFECT_IDS = {name: index + 1 for index, name in enumerate(GMAX_EFFECT_NAMES)}
+
 
 def string_pool(values: list[str]) -> tuple[bytes, list[int]]:
     blob = bytearray()
@@ -935,12 +968,30 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
         previous_key = (species, form_id)
 
     gigantamax_blob = bytearray()
+    gigantamax_move_rows = []
     previous_species = 0
     for entry in GIGANTAMAX_DATA:
         species = int(entry["species"])
         if species <= previous_species or species > 0xFFFF:
             raise ValueError("Gigantamax species IDs must be unique and sorted")
         gigantamax_blob.extend(struct.pack("<H", species))
+        moves = entry.get("moves", [])
+        if not moves:
+            raise ValueError(f"Gigantamax species {species} has no signature move")
+        previous_type = -1
+        for move in sorted(moves, key=lambda row: type_ids.get(row.get("type"), 0xFF)):
+            move_type = type_ids.get(move.get("type"), 0xFF)
+            effect = GMAX_EFFECT_IDS.get(move.get("effect"), 0)
+            power = int(move.get("power", 0))
+            names = move.get("names", {})
+            if move_type >= len(TYPE_ORDER) or move_type <= previous_type or not effect:
+                raise ValueError(f"Gigantamax species {species} has an invalid move mapping")
+            if set(names) != {"en-US", "zh-CN"} or not all(names.values()):
+                raise ValueError(f"Gigantamax species {species} has incomplete move names")
+            if power < 0 or power > 255:
+                raise ValueError(f"Gigantamax species {species} has invalid move power")
+            gigantamax_move_rows.append((species, move_type, effect, power, names))
+            previous_type = move_type
         previous_species = species
 
     if BREEDING_DATA.get("schema") != 1:
@@ -967,9 +1018,31 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
             species, groups, offspring[0], offspring[-1], offset, len(egg_moves)
         ))
 
+    gmax_names, gmax_name_offsets = string_pool(
+        [row[4]["en-US"] for row in gigantamax_move_rows]
+    )
+    gmax_moves = bytearray()
+    gmax_move_record = struct.Struct("<HBBBBI")
+    for row, name_offset in zip(gigantamax_move_rows, gmax_name_offsets):
+        species, move_type, effect, power, _names = row
+        gmax_moves.extend(gmax_move_record.pack(
+            species, move_type, effect, power, 0, name_offset,
+        ))
+    gmax_localized_names = localized_strings({
+        "zh-CN": [row[4]["zh-CN"] for row in gigantamax_move_rows],
+    }, len(gigantamax_move_rows))
+    if len(MAX_MOVE_NAMES) != len(TYPE_ORDER) + 1:
+        raise ValueError("Max Move names must cover every type plus Max Guard")
+    max_move_names, _max_move_name_offsets = string_pool(
+        [names[0] for names in MAX_MOVE_NAMES]
+    )
+    max_move_localized_names = localized_strings({
+        "zh-CN": [names[1] for names in MAX_MOVE_NAMES],
+    }, len(MAX_MOVE_NAMES))
+
     mechanics_hash = binascii.crc32(
         move_blob + field_flags + move_tags + learn + offset_blob + chart + item_blob + mega_blob +
-        gigantamax_blob + ability_blob + breeding_blob + egg_move_blob
+        gigantamax_blob + gmax_moves + ability_blob + breeding_blob + egg_move_blob
     ) & 0xFFFFFFFF
     sections = [
         ("MOVE", bytes(move_blob), len(move_rows)),
@@ -994,6 +1067,11 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
         ("ALOC", ability_localized_descriptions, len(ability_rows)),
         ("MEGA", bytes(mega_blob), len(MEGA_DATA)),
         ("GMAX", bytes(gigantamax_blob), len(GIGANTAMAX_DATA)),
+        ("GMOV", bytes(gmax_moves), len(gigantamax_move_rows)),
+        ("GMNM", gmax_names, len(gigantamax_move_rows)),
+        ("GMLN", gmax_localized_names, len(gigantamax_move_rows)),
+        ("MXNM", max_move_names, len(MAX_MOVE_NAMES)),
+        ("MXLN", max_move_localized_names, len(MAX_MOVE_NAMES)),
         ("BRSP", bytes(breeding_blob), len(breeding_rows)),
         ("BEMV", bytes(egg_move_blob), len(egg_move_blob) // 2),
     ]

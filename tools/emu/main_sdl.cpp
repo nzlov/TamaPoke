@@ -705,7 +705,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     btlField.sides[1].spikesLayers = 1;
     btlMsgCount = 0;
   }
-  else if (!strcmp(screen, "btldynamax")) {
+  else if (!strcmp(screen, "btldynamax") || !strcmp(screen, "btlgmaxmoves")) {
     pet.dbgHatchAs(6, false);
     pet.gigantamaxFactor = true;
     pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
@@ -715,6 +715,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     battleActivateMechanic(btlYourMechanics, btlYou, BMECH_DYNAMAX,
                            btlYou.moves[0]);
     btlHpShown[0] = btlYou.hp;
+    if (!strcmp(screen, "btlgmaxmoves")) btlMenu = 1;
   }
   else if (!strcmp(screen, "btlmega")) {
     pet.dbgHatchAs(6, false);

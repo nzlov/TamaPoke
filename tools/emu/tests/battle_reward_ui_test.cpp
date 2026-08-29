@@ -63,14 +63,18 @@ extern bool btlThrowArmed;
 extern uint32_t btlThrowStartedAt;
 extern ItemKey btlThrowItem;
 extern uint16_t btlRewardTraining[3];
-extern ItemRef btlRewardItems[4];
+extern ItemRef btlRewardItems[];
 extern uint8_t btlRewardItemCount;
+extern uint8_t btlGmaxBonusDrops;
 extern UiScrollView btlRewardScroll;
 void btlUpdateCapture(uint32_t now);
 void btlUpdateThrow(uint32_t now);
 bool btlFeedThrowSample(const MotionSample &sample);
 bool btlStartCapture(const ItemEntry &item, uint8_t roll, uint32_t now);
 void btlUpdateTurnPresentation(uint32_t now);
+void btlApplyGmaxInventoryEffect(uint8_t actorSide, uint8_t bonusRewardItems,
+                                 bool restoreLastItem);
+extern ItemRef btlLastConsumedItem;
 
 static int bad = 0;
 
@@ -113,6 +117,18 @@ int main() {
         "the reusable scroll view clamps at the start of arbitrary content");
 
   setup();
+  const ItemEntry *replenishItem = itemCount() ? itemAt(0) : nullptr;
+  if (replenishItem) {
+    inventory.add(replenishItem->key);
+    inventory.consume(replenishItem->key);
+    uint8_t consumedCount = inventory.count(replenishItem->key);
+    btlLastConsumedItem = { replenishItem->key, MOVE_NONE };
+    btlApplyGmaxInventoryEffect(0, 0, true);
+    check(inventory.count(replenishItem->key) == consumedCount + 1 &&
+          !btlLastConsumedItem,
+          "G-Max Replenish restores and clears the latest consumed battle item");
+    inventory.consume(replenishItem->key);
+  }
   if (pet.awaitingStarter()) pet.chooseStarter(1);
   pet.speciesId = 1;
   pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
@@ -145,6 +161,19 @@ int main() {
   check(gfx->frameReady, "the reward settlement page flushes to the panel");
   onTap(233, 390);
   check(!btlWinUntil && !battleOpen, "dismissing settlement leaves the battle");
+
+  btlWild = true;
+  btlLink = false;
+  battleOpen = true;
+  btlGmaxBonusDrops = 3;
+  inventoryWrites = perfSample(PERF_INVENTORY_SAVE).nvsWrites;
+  btlFinish(true);
+  check(btlRewardItemCount >= 4 && btlRewardItemCount <= 5,
+        "three successful G-Max Gold Rush hits add three weighted wild rewards");
+  check(perfSample(PERF_INVENTORY_SAVE).nvsWrites == inventoryWrites + 1,
+        "Gold Rush rewards remain inside the single victory inventory commit");
+  onTap(233, 438);
+  btlGmaxBonusDrops = 0;
 
   btlHard = true;
   btlWildMechanic = BMECH_Z_MOVE;

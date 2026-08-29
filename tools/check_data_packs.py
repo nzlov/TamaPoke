@@ -24,7 +24,8 @@ REQUIRED_SECTIONS = {
         b"LOCL", b"BTTL", b"TRNR", b"GSTR", b"BADG", b"BBLB"},
     3: {b"MOVE", b"MFLG", b"MTAG", b"NAME", b"LNAM", b"LOFS", b"LERN", b"TYPS", b"TSTR", b"TLNM",
         b"CHRT", b"LOCL", b"ITEM", b"INAM", b"ILNM", b"ILOC", b"ABIL", b"ANAM", b"ALNM",
-        b"ALOC", b"MEGA", b"GMAX", b"BRSP", b"BEMV"},
+        b"ALOC", b"MEGA", b"GMAX", b"GMOV", b"GMNM", b"GMLN", b"MXNM", b"MXLN",
+        b"BRSP", b"BEMV"},
     4: {b"QLOC", b"QIDX", b"QDAT"},
 }
 OPTIONAL_SECTIONS = {2: {b"MFSP", b"MFBL"}, 3: {b"IICO"}}
@@ -342,15 +343,44 @@ def validate(path: Path, expected: dict) -> None:
             raise ValueError("invalid breeding table size")
         egg_moves = struct.unpack(f"<{egg_move_count}H", sections[b"BEMV"])
         for index in range(breeding_count):
-            species, groups, child_a, child_b, first, count = breeding_record.unpack_from(
+            breeding_species, groups, child_a, child_b, first, count = breeding_record.unpack_from(
                 sections[b"BRSP"], index * breeding_record.size)
             moves = egg_moves[first:first + count]
-            if species != index + 1 or not groups or groups & 0x8000 or \
+            if breeding_species != index + 1 or not groups or groups & 0x8000 or \
                     not 0 < child_a <= breeding_count or not 0 < child_b <= breeding_count or \
                     first > egg_move_count or count > egg_move_count - first or \
                     any(not 0 < move < move_count for move in moves) or \
                     any(left >= right for left, right in zip(moves, moves[1:])):
                 raise ValueError("invalid species breeding record")
+        gmax_move_record = struct.Struct("<HBBBBI")
+        gmax_move_count = section_counts[b"GMOV"]
+        if not gmax_move_count or gmax_move_count > 255 or \
+                len(sections[b"GMOV"]) != gmax_move_count * gmax_move_record.size or \
+                section_counts[b"GMNM"] != gmax_move_count or \
+                section_counts[b"GMLN"] != gmax_move_count:
+            raise ValueError("invalid Gigantamax move table size")
+        previous_key = (0, -1)
+        names = sections[b"GMNM"]
+        for offset in range(0, len(sections[b"GMOV"]), gmax_move_record.size):
+            move_species, move_type, effect, _power, reserved, name_at = \
+                gmax_move_record.unpack_from(sections[b"GMOV"], offset)
+            key = (move_species, move_type)
+            name_end = names.find(b"\0", name_at) if name_at < len(names) else -1
+            if move_species not in species or key <= previous_key or move_type >= type_count or \
+                    not 1 <= effect <= 33 or reserved or name_end <= name_at or \
+                    (name_at and names[name_at - 1] != 0):
+                raise ValueError("invalid Gigantamax move record")
+            previous_key = key
+        validate_localized_strings(sections[b"GMLN"], gmax_move_count)
+        max_move_count = type_count + 1
+        if section_counts[b"MXNM"] != max_move_count or \
+                section_counts[b"MXLN"] != max_move_count:
+            raise ValueError("invalid Max Move name count")
+        max_names = sections[b"MXNM"].split(b"\0")
+        if len(max_names) != max_move_count + 1 or max_names[-1] or \
+                any(not name for name in max_names[:-1]):
+            raise ValueError("invalid Max Move name table")
+        validate_localized_strings(sections[b"MXLN"], max_move_count)
     if kind == 2 and ((b"MFSP" in sections) != (b"MFBL" in sections)):
         raise ValueError("incomplete regional Mega sprite sections")
     if kind == 2 and b"MFSP" in sections:

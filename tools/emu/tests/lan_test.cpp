@@ -12,6 +12,7 @@
 #include "party.h"
 #include "battle.h"
 #include "i18n.h"
+#include "inventory.h"
 #include "link.h"
 #include "quiz.h"
 #include <chrono>
@@ -36,6 +37,7 @@ extern uint8_t btlMyAct, btlMyPercent, btlFoeSquadN;
 extern Combatant btlFoeSquad[];
 extern BattleSideMechanics btlYourMechanics, btlFoeMechanics;
 extern BattleField btlField;
+extern ItemRef btlLastConsumedItem;
 extern uint16_t squadMask;
 struct BtlTurnBeat {
   char text[96];
@@ -121,6 +123,7 @@ int main(){
 
   startLinkBattle();
   openBattleRound();
+  quiz.config.questionTypes = QUIZ_TYPE_ARITHMETIC;
   quiz.config.choiceWeight = 0;
   ck(battleOpen && btlLink && btlLinkHost, "the host starts a linked battle");
   // The party above is full of level-30 nobodies and the live pet is level 1.
@@ -253,8 +256,14 @@ int main(){
   r.hostHp = btlFoe.maxHp/2; r.guestHp = guestNormalMaxHp/2;
   r.hostMaxHp = btlFoe.maxHp; r.guestMaxHp = guestNormalMaxHp*2;
   r.hostMove = 1; r.guestMove = 1; r.hostDmg = 5; r.guestDmg = 7;
+  r.hostMoveType = moveEntry(r.hostMove).type;
+  r.guestMoveType = moveEntry(r.guestMove).type;
+  const GmaxMoveEntry *wireWildfire = gmaxMoveFor(6, T_FIRE);
+  if (wireWildfire) r.hostGmaxMove = wireWildfire->id;
   r.hostIdx = 0; r.guestIdx = 0;
   r.guestAil = AIL_BURN;
+  r.guestAilTurns = 2;
+  r.guestConfuseTurns = 3;
   r.hostType1 = btlFoe.type1; r.hostType2 = btlFoe.type2;
   r.guestType1 = btlYou.type1; r.guestType2 = btlYou.type2;
   r.hostActive = BMECH_MEGA;
@@ -273,6 +282,7 @@ int main(){
   r.baseTerrain = BTERRAIN_ELECTRIC;
   r.terrain = BTERRAIN_GRASSY;
   r.terrainTurns = 2;
+  r.gravityTurns = 4;
   r.guestStage[SI_ATK] = 2;
   r.hostStage[SI_DEF] = -1;
   r.guestAccuracyStage = 1;
@@ -280,7 +290,25 @@ int main(){
   r.sideReflectTurns[1] = 4;
   r.sideSpikesLayers[0] = 3;
   r.sideToxicSpikesLayers[1] = 2;
-  r.sideHazardFlags[0] = 3;
+  r.sideHazardFlags[0] = 7;
+  r.sideCritStages[1] = 2;
+  r.sideGmaxResidualEffect[1] = GMAX_EFFECT_WILDFIRE;
+  r.sideGmaxResidualTurns[1] = 3;
+  r.guestStatPercent = 60;
+  r.hostStatPercent = 80;
+  r.guestBindTurns = 4;
+  r.guestDrowsyTurns = 2;
+  r.guestVolatileFlags = 7;
+  r.guestLastMove = 1;
+  const ItemEntry *replenished = itemCount() ? itemAt(0) : nullptr;
+  uint8_t replenishedBefore = 0;
+  if (replenished) {
+    inventory.add(replenished->key);
+    inventory.consume(replenished->key);
+    replenishedBefore = inventory.count(replenished->key);
+    btlLastConsumedItem = { replenished->key, MOVE_NONE };
+    r.flags |= LINK_RESULT_GUEST_REPLENISH;
+  }
   r.hostMemberMechanic[0] = BMECH_MEGA;
   r.guestMemberMechanic[0] = BMECH_DYNAMAX;
   r.hostMemberForm[0] = BFORM_AEGISLASH_BLADE;
@@ -290,7 +318,8 @@ int main(){
   memcpy(lan.result,&r,sizeof(r)); lan.resultN=sizeof(r); lan.resultNew=true;
   render();
   ck(btlYou.hp==r.guestHp && btlFoe.hp==r.hostHp, "the guest takes the host's numbers");
-  ck(btlYou.ailment==AIL_BURN, "and the ailment it was handed");
+  ck(btlYou.ailment==AIL_BURN && btlYou.ailTurns==2 && btlYou.confuseTurns==3,
+     "and the ailment timers it was handed");
   ck(btlYou.maxHp==guestNormalMaxHp*2 && btlYou.normalMaxHp==guestNormalMaxHp &&
      btlYou.activeMechanic==BMECH_DYNAMAX && btlYou.dynamaxTurns==2,
      "and restores the guest's absolute Dynamax state");
@@ -304,25 +333,47 @@ int main(){
      "and restores the per-team and per-creature mechanic limits");
   ck(btlField.baseWeather==BWEATHER_RAIN && btlField.weather==BWEATHER_SUN &&
      btlField.weatherTurns==3 && btlField.baseTerrain==BTERRAIN_ELECTRIC &&
-     btlField.terrain==BTERRAIN_GRASSY && btlField.terrainTurns==2,
+     btlField.terrain==BTERRAIN_GRASSY && btlField.terrainTurns==2 &&
+     btlField.gravityTurns==4,
      "and restores the host-authoritative field state");
   ck(btlYou.stage[SI_ATK]==2 && btlFoe.stage[SI_DEF]==-1 &&
      btlYou.accuracyStage==1 && btlFoe.evasionStage==2,
      "and restores ordinary, accuracy and evasion stages");
   ck(btlField.sides[0].reflectTurns==4 &&
      btlField.sides[0].toxicSpikesLayers==2 &&
+     btlField.sides[0].critStages==2 &&
+     btlField.sides[0].gmaxResidualEffect==GMAX_EFFECT_WILDFIRE &&
+     btlField.sides[0].gmaxResidualTurns==3 &&
      btlField.sides[1].spikesLayers==3 &&
-     btlField.sides[1].stealthRock && btlField.sides[1].stickyWeb,
+     btlField.sides[1].stealthRock && btlField.sides[1].stickyWeb &&
+     btlField.sides[1].steelsurge,
      "and maps host and guest side conditions to the local perspective");
+  ck(btlYou.statPercent==60 && btlFoe.statPercent==80 &&
+     btlYou.bindTurns==4 && btlYou.drowsyTurns==2 && btlYou.trapped &&
+     btlYou.tormented && btlYou.infatuated && btlYou.lastMove==1,
+     "and restores Gigantamax volatile combatant state");
+  ck(!replenished ||
+     (inventory.count(replenished->key)==replenishedBefore+1 &&
+      !btlLastConsumedItem),
+     "and applies a guest G-Max Replenish result exactly once");
   bool narratedField = false;
+  bool narratedGmax = false;
   for (uint8_t i=0;i<btlTurnBeatCount;i++)
     narratedField |= strstr(btlTurnBeats[i].text, T(S_FIELD_SUN)) ||
                      strstr(btlTurnBeats[i].text, T(S_FIELD_GRASSY));
+  for (uint8_t i=0;i<btlTurnBeatCount;i++)
+    narratedGmax |= wireWildfire &&
+        strstr(btlTurnBeats[i].text, gmaxMoveName(wireWildfire->id));
   ck(narratedField, "and narrates a field transition in the guest's locale");
+  ck(narratedGmax, "and narrates the official G-Max move name on the guest");
   ck(!lan.resultNew, "a result is consumed once");
   uint16_t hpNow = btlYou.hp;
+  uint8_t replenishedAfter = replenished
+      ? inventory.count(replenished->key) : 0;
   render();
-  ck(btlYou.hp==hpNow, "so a second frame does not replay the turn");
+  ck(btlYou.hp==hpNow &&
+     (!replenished || inventory.count(replenished->key)==replenishedAfter),
+     "so a second frame does not replay the turn or item restoration");
   btlUpdateTurnPresentation(btlTurnBeatStartedAt + 60000);
   ck(btlTurnAnimating && btlTurnShowingRound,
      "the guest presentation advances to the next round title");

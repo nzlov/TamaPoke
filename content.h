@@ -73,6 +73,56 @@ struct MegaFormEntry {
   uint32_t shinySpriteAt = 0, shinySpriteSize = 0;
 };
 
+using GmaxMoveId = uint8_t;
+constexpr GmaxMoveId GMAX_MOVE_NONE = 0;
+
+enum GmaxEffect : uint8_t {
+  GMAX_EFFECT_NONE = 0,
+  GMAX_EFFECT_VINE_LASH,
+  GMAX_EFFECT_WILDFIRE,
+  GMAX_EFFECT_CANNONADE,
+  GMAX_EFFECT_BEFUDDLE,
+  GMAX_EFFECT_VOLT_CRASH,
+  GMAX_EFFECT_GOLD_RUSH,
+  GMAX_EFFECT_CHI_STRIKE,
+  GMAX_EFFECT_TERROR,
+  GMAX_EFFECT_FOAM_BURST,
+  GMAX_EFFECT_RESONANCE,
+  GMAX_EFFECT_CUDDLE,
+  GMAX_EFFECT_REPLENISH,
+  GMAX_EFFECT_MALODOR,
+  GMAX_EFFECT_MELTDOWN,
+  GMAX_EFFECT_DRUM_SOLO,
+  GMAX_EFFECT_FIREBALL,
+  GMAX_EFFECT_HYDROSNIPE,
+  GMAX_EFFECT_WIND_RAGE,
+  GMAX_EFFECT_GRAVITAS,
+  GMAX_EFFECT_STONESURGE,
+  GMAX_EFFECT_VOLCALITH,
+  GMAX_EFFECT_TARTNESS,
+  GMAX_EFFECT_SWEETNESS,
+  GMAX_EFFECT_SANDBLAST,
+  GMAX_EFFECT_STUN_SHOCK,
+  GMAX_EFFECT_CENTIFERNO,
+  GMAX_EFFECT_SMITE,
+  GMAX_EFFECT_SNOOZE,
+  GMAX_EFFECT_FINALE,
+  GMAX_EFFECT_STEELSURGE,
+  GMAX_EFFECT_DEPLETION,
+  GMAX_EFFECT_ONE_BLOW,
+  GMAX_EFFECT_RAPID_FLOW,
+  GMAX_EFFECT_COUNT,
+};
+
+struct GmaxMoveEntry {
+  SpeciesId species = SPECIES_NONE;
+  GmaxMoveId id = GMAX_MOVE_NONE;
+  uint8_t sourceType = T_NORMAL;
+  GmaxEffect effect = GMAX_EFFECT_NONE;
+  uint8_t power = 0;  // zero derives power from the source move
+  const char *name = nullptr;
+};
+
 struct ItemIconView {
   uint8_t width = 0, height = 0, paletteCount = 0;
   // RGB565 palette entries are little-endian; 0xFF pixels are transparent.
@@ -168,6 +218,9 @@ bool contentItemIcon(ItemKey key, ItemIconView &out);
 const MegaFormEntry *megaFormFor(SpeciesId species,
                                  MegaFormKind form = MEGA_FORM_NONE);
 bool contentGigantamaxEligible(SpeciesId species);
+const GmaxMoveEntry *gmaxMoveFor(SpeciesId species, uint8_t sourceType);
+const char *gmaxMoveName(GmaxMoveId move);
+const char *maxMoveName(uint8_t sourceType, bool status = false);
 
 uint8_t typeEffectTenth(uint8_t attack, uint8_t defense);
 const char *packedTypeName(uint8_t type);

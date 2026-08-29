@@ -109,27 +109,37 @@ struct LinkResult {
   uint16_t hostHp, guestHp;
   uint16_t hostMaxHp, guestMaxHp;
   uint8_t hostAil, guestAil;
+  uint8_t hostAilTurns, guestAilTurns;
+  uint8_t hostConfuseTurns, guestConfuseTurns;
   MoveId hostMove, guestMove;
   uint16_t hostDmg, guestDmg;
   uint8_t hostIdx, guestIdx;   // which squad member is out on each side
-  uint8_t flags;               // bit0 crit, bit1 super, bit2 a faint happened
+  uint8_t flags;
   uint8_t hostType1, hostType2, guestType1, guestType2;
   BattleMechanic hostActive, guestActive;
   MegaFormKind hostMegaForm, guestMegaForm;
   BattleForm hostForm, guestForm;
   uint8_t hostFormPrimed, guestFormPrimed;
   uint8_t hostGigantamax, guestGigantamax;
+  GmaxMoveId hostGmaxMove, guestGmaxMove;
+  uint8_t hostMoveType, guestMoveType;
   BattleMechanic hostMoveMechanic, guestMoveMechanic;
   uint8_t hostDynamaxTurns, guestDynamaxTurns;
   uint8_t hostUsedMask, guestUsedMask;
   uint8_t baseWeather, weather, weatherTurns;
   uint8_t baseTerrain, terrain, terrainTurns;
+  uint8_t gravityTurns;
   int8_t hostStage[SI_COUNT], guestStage[SI_COUNT];
   int8_t hostAccuracyStage, hostEvasionStage;
   int8_t guestAccuracyStage, guestEvasionStage;
   uint8_t sideReflectTurns[2], sideLightScreenTurns[2], sideAuroraVeilTurns[2];
   uint8_t sideSpikesLayers[2], sideToxicSpikesLayers[2];
-  uint8_t sideHazardFlags[2];  // bit0 Stealth Rock, bit1 Sticky Web
+  uint8_t sideHazardFlags[2];  // bit0 Stealth Rock, bit1 Sticky Web, bit2 Steelsurge
+  uint8_t sideCritStages[2], sideGmaxResidualEffect[2], sideGmaxResidualTurns[2];
+  uint8_t hostStatPercent, guestStatPercent;
+  uint8_t hostBindTurns, guestBindTurns, hostDrowsyTurns, guestDrowsyTurns;
+  uint8_t hostVolatileFlags, guestVolatileFlags;  // trapped, tormented, infatuated
+  MoveId hostLastMove, guestLastMove;
   uint16_t hostBase[SI_COUNT], guestBase[SI_COUNT];
   BattleMechanic hostMemberMechanic[TRAINER_TEAM_MAX];
   BattleMechanic guestMemberMechanic[TRAINER_TEAM_MAX];
@@ -140,6 +150,12 @@ struct LinkResult {
   uint8_t hostMemberFormPrimed[TRAINER_TEAM_MAX];
   uint8_t guestMemberFormPrimed[TRAINER_TEAM_MAX];
 };
+
+constexpr uint8_t LINK_RESULT_FAINT = 0x04;
+constexpr uint8_t LINK_RESULT_HOST_FIRST = 0x08;
+constexpr uint8_t LINK_RESULT_GUEST_REPLENISH = 0x10;
+static_assert(sizeof(LinkResult) <= 0xFFu,
+              "LinkResult must fit the one-byte protocol length");
 
 struct Link {
   uint8_t state = LINK_OFF;

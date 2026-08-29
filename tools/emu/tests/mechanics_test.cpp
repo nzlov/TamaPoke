@@ -81,8 +81,191 @@ int main() {
   Combatant gmaxUser = mon(6, flame);
   gmaxUser.gigantamaxFactor = true;
   CHECK(battleGigantamaxEligible(6) && !battleGigantamaxEligible(7));
+  BattleMove pendingWildfire = battleMoveFor(gmaxUser, flame, BMECH_DYNAMAX);
+  BattleMove pendingGuard = battleMoveFor(gmaxUser, recover, BMECH_DYNAMAX);
+  CHECK(pendingWildfire.gmaxEffect == GMAX_EFFECT_WILDFIRE &&
+        pendingWildfire.mechanic == BMECH_DYNAMAX);
+  CHECK(pendingGuard.gmaxMove == GMAX_MOVE_NONE &&
+        pendingGuard.entry.effect == EF_PROTECT);
   CHECK(battleActivateMechanic(gmaxSide, gmaxUser, BMECH_DYNAMAX, flame));
   CHECK(gmaxUser.gigantamax);
+  BattleMove wildfire = battleMoveFor(gmaxUser, flame);
+  CHECK(wildfire.gmaxMove != GMAX_MOVE_NONE &&
+        !std::strcmp(gmaxMoveName(wildfire.gmaxMove), "G-Max Wildfire"));
+  CHECK(!std::strcmp(maxMoveName(T_FIRE), "Max Flare"));
+  CHECK(!std::strcmp(maxMoveName(T_NORMAL, true), "Max Guard"));
+  int8_t zhLocale = uiFindLocale("zh-CN");
+  CHECK(zhLocale >= 0 && uiActivateLocale((uint8_t)zhLocale));
+  CHECK(!std::strcmp(maxMoveName(T_DARK), "极巨恶霸"));
+  CHECK(!std::strcmp(maxMoveName(T_NORMAL, true), "极巨防壁"));
+  CHECK(!std::strcmp(gmaxMoveName(wildfire.gmaxMove), "超极巨地狱灭焰"));
+  int8_t enLocale = uiFindLocale("en-US");
+  CHECK(enLocale >= 0 && uiActivateLocale((uint8_t)enLocale));
+  CHECK(wildfire.gmaxEffect == GMAX_EFFECT_WILDFIRE);
+  CHECK(wildfire.entry.effect == EF_NONE && wildfire.entry.acc == 0);
+
+  Combatant wildfireTarget = mon(9, flame);
+  wildfireTarget.maxHp = wildfireTarget.hp = 1000;
+  wildfireTarget.type1 = T_NORMAL;
+  TurnLog gmaxLog;
+  battleAct(gmaxUser, wildfireTarget, field, wildfire, gmaxLog, 100, 0);
+  CHECK(field.sides[1].gmaxResidualEffect == GMAX_EFFECT_WILDFIRE &&
+        field.sides[1].gmaxResidualTurns == 4);
+  TurnLog gmaxEndUser, gmaxEndTarget;
+  FieldLog gmaxFieldLog;
+  uint16_t beforeResidual = wildfireTarget.hp;
+  battleEndRound(field, gmaxUser, wildfireTarget, gmaxEndUser, gmaxEndTarget,
+                 gmaxFieldLog);
+  CHECK(beforeResidual - wildfireTarget.hp == wildfireTarget.maxHp / 6);
+
+  Combatant fireTarget = wildfireTarget;
+  fireTarget.hp = fireTarget.maxHp;
+  fireTarget.type1 = T_FIRE;
+  battleEndRound(field, gmaxUser, fireTarget, gmaxEndUser, gmaxEndTarget,
+                 gmaxFieldLog);
+  CHECK(fireTarget.hp == fireTarget.maxHp);
+
+  MoveId water = findMove("SURF");
+  BattleMove offType = battleMoveFor(gmaxUser, water);
+  CHECK(offType.gmaxMove == GMAX_MOVE_NONE && offType.entry.effect == EF_SET_WEATHER &&
+        offType.entry.param == BWEATHER_RAIN);
+
+  bool seenEffects[GMAX_EFFECT_COUNT] = {};
+  uint8_t signatureCount = 0;
+  for (SpeciesId species = 1; species <= 1025; species++) {
+    for (uint8_t type = 0; type < TYPE_COUNT; type++) {
+      const GmaxMoveEntry *signature = gmaxMoveFor(species, type);
+      if (!signature) continue;
+      signatureCount++;
+      CHECK(signature->effect > GMAX_EFFECT_NONE &&
+            signature->effect < GMAX_EFFECT_COUNT && signature->name &&
+            signature->name[0]);
+      seenEffects[signature->effect] = true;
+    }
+  }
+  CHECK(signatureCount == 33);
+  for (uint8_t effect = 1; effect < GMAX_EFFECT_COUNT; effect++)
+    CHECK(seenEffects[effect]);
+
+  Combatant urshifu = mon(892, flame);
+  urshifu.gigantamax = true;
+  urshifu.activeMechanic = BMECH_DYNAMAX;
+  MoveId dark = findMove("CRUNCH");
+  BattleMove oneBlow = battleMoveFor(urshifu, dark);
+  BattleMove rapidFlow = battleMoveFor(urshifu, water);
+  CHECK(oneBlow.gmaxEffect == GMAX_EFFECT_ONE_BLOW &&
+        !std::strcmp(gmaxMoveName(oneBlow.gmaxMove), "G-Max One Blow"));
+  CHECK(rapidFlow.gmaxEffect == GMAX_EFFECT_RAPID_FLOW &&
+        !std::strcmp(gmaxMoveName(rapidFlow.gmaxMove), "G-Max Rapid Flow"));
+  Combatant protectedTarget = mon(9, flame);
+  protectedTarget.maxHp = protectedTarget.hp = 1000;
+  protectedTarget.protectedTurn = true;
+  battleAct(urshifu, protectedTarget, field, oneBlow, gmaxLog);
+  CHECK(!gmaxLog.missed && gmaxLog.damage && protectedTarget.hp < protectedTarget.maxHp);
+
+  MoveId normalHit = findMove("TACKLE");
+  CHECK(normalHit != MOVE_NONE);
+  Combatant meowth = mon(52, normalHit);
+  meowth.gigantamax = true;
+  meowth.activeMechanic = BMECH_DYNAMAX;
+  BattleMove goldRush = battleMoveFor(meowth, normalHit);
+  Combatant rewardTarget = mon(9, flame);
+  rewardTarget.maxHp = rewardTarget.hp = 1000;
+  battleAct(meowth, rewardTarget, field, goldRush, gmaxLog);
+  CHECK(gmaxLog.bonusRewardItems == 1 && rewardTarget.confuseTurns);
+
+  Combatant snorlax = mon(143, normalHit);
+  snorlax.gigantamax = true;
+  snorlax.activeMechanic = BMECH_DYNAMAX;
+  BattleMove replenish = battleMoveFor(snorlax, normalHit);
+  battleAct(snorlax, rewardTarget, field, replenish, gmaxLog);
+  CHECK(gmaxLog.restoreLastItem);
+
+  MoveId dragon = findMove("DRAGON CLAW");
+  CHECK(dragon != MOVE_NONE);
+  Combatant duraludon = mon(884, dragon);
+  duraludon.gigantamax = true;
+  duraludon.activeMechanic = BMECH_DYNAMAX;
+  BattleMove depletion = battleMoveFor(duraludon, dragon);
+  Combatant weakened = mon(9, flame);
+  weakened.maxHp = weakened.hp = 1000;
+  for (uint8_t i = 0; i < 5; i++)
+    battleAct(duraludon, weakened, field, depletion, gmaxLog);
+  CHECK(weakened.statPercent == 50 && gmaxLog.statsWeakened);
+
+  Combatant cinderace = mon(815, flame);
+  cinderace.gigantamax = true;
+  cinderace.activeMechanic = BMECH_DYNAMAX;
+  BattleMove fireball = battleMoveFor(cinderace, flame);
+  Combatant flashFireTarget = mon(9, flame);
+  flashFireTarget.maxHp = flashFireTarget.hp = 1000;
+  flashFireTarget.ability = ABILITY_FLASH_FIRE;
+  battleAct(cinderace, flashFireTarget, field, fireball, gmaxLog);
+  CHECK(gmaxLog.damage && !gmaxLog.immune && !flashFireTarget.flashFireActive);
+
+  field = BattleField();
+  MoveId ice = findMove("ICE BEAM");
+  CHECK(ice != MOVE_NONE);
+  Combatant lapras = mon(131, ice);
+  lapras.gigantamax = true;
+  lapras.activeMechanic = BMECH_DYNAMAX;
+  rewardTarget.hp = rewardTarget.maxHp;
+  battleAct(lapras, rewardTarget, field, battleMoveFor(lapras, ice), gmaxLog);
+  CHECK(field.sides[0].auroraVeilTurns == BATTLE_FIELD_TURNS &&
+        gmaxLog.screenSet == BSCREEN_AURORA_VEIL);
+
+  field = BattleField();
+  MoveId psychic = findMove("PSYCHIC");
+  CHECK(psychic != MOVE_NONE);
+  Combatant orbeetle = mon(826, psychic);
+  orbeetle.gigantamax = true;
+  orbeetle.activeMechanic = BMECH_DYNAMAX;
+  rewardTarget.hp = rewardTarget.maxHp;
+  battleAct(orbeetle, rewardTarget, field, battleMoveFor(orbeetle, psychic), gmaxLog);
+  CHECK(field.gravityTurns == BATTLE_FIELD_TURNS);
+  MoveId ground = findMove("EARTHQUAKE");
+  CHECK(ground != MOVE_NONE);
+  Combatant airborne = mon(12, flame);
+  airborne.maxHp = airborne.hp = 1000;
+  airborne.type1 = T_FLYING;
+  airborne.ability = ABILITY_LEVITATE;
+  CHECK(battleGrounded(airborne, &field));
+  battleAct(orbeetle, airborne, field, battleMove(ground), gmaxLog);
+  CHECK(gmaxLog.damage && !gmaxLog.immune);
+  Combatant arenaTrapper = mon(51, flame);
+  arenaTrapper.ability = ABILITY_ARENA_TRAP;
+  CHECK(battleCanSwitch(airborne, arenaTrapper));
+  CHECK(!battleCanSwitch(airborne, arenaTrapper, &field));
+  battleEndRound(field, orbeetle, rewardTarget, gmaxEndUser, gmaxEndTarget,
+                 gmaxFieldLog);
+  CHECK(field.gravityTurns == BATTLE_FIELD_TURNS - 1);
+
+  field = BattleField();
+  Combatant sandaconda = mon(844, ground);
+  sandaconda.gigantamax = true;
+  sandaconda.activeMechanic = BMECH_DYNAMAX;
+  rewardTarget.hp = rewardTarget.maxHp;
+  battleAct(sandaconda, rewardTarget, field,
+            battleMoveFor(sandaconda, ground), gmaxLog);
+  CHECK(rewardTarget.bindTurns == 4 &&
+        !battleCanSwitch(rewardTarget, sandaconda));
+
+  field = BattleField();
+  MoveId steel = findMove("IRON HEAD");
+  CHECK(steel != MOVE_NONE);
+  Combatant copperajah = mon(879, steel);
+  copperajah.gigantamax = true;
+  copperajah.activeMechanic = BMECH_DYNAMAX;
+  rewardTarget.hp = rewardTarget.maxHp;
+  battleAct(copperajah, rewardTarget, field,
+            battleMoveFor(copperajah, steel), gmaxLog, 100, 0);
+  CHECK(field.sides[1].steelsurge);
+  Combatant entrant = mon(9, flame);
+  entrant.type1 = T_NORMAL;
+  EntryLog entryLog;
+  uint16_t beforeEntry = entrant.hp;
+  battleOnEnter(entrant, copperajah, field, 1, entryLog);
+  CHECK(beforeEntry - entrant.hp == entrant.maxHp / 8 && entryLog.hazardDamage);
   BattleMove maxMove = battleMoveFor(maxUser, flame);
   CHECK(maxMove.mechanic == BMECH_DYNAMAX && maxMove.entry.power > normal.entry.power);
   CHECK(maxMove.entry.effect == EF_SET_WEATHER &&
@@ -126,10 +309,15 @@ int main() {
 
   BattleSideMechanics switchSide;
   Combatant switched = mon(9, flame);
+  Combatant switchOpponent = mon(133, flame);
   switched.hp = 25;
+  switched.infatuated = true;
+  switchOpponent.infatuated = true;
   CHECK(battleActivateMechanic(switchSide, switched, BMECH_DYNAMAX, flame));
-  battleOnSwitchOut(switched);
-  CHECK(switched.activeMechanic == BMECH_NONE && switched.hp == 25 && switched.maxHp == 100);
+  battleOnSwitchOut(switched, &switchOpponent);
+  CHECK(switched.activeMechanic == BMECH_NONE && switched.hp == 25 &&
+        switched.maxHp == 100 && !switched.infatuated &&
+        !switchOpponent.infatuated);
 
   Combatant megaUser = mon(6, flame);
   CHECK(battleMegaEligible(megaUser.dex, MEGA_FORM_X));

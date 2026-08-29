@@ -179,10 +179,22 @@ static bool moveMakesContact(const Combatant &attacker, const MoveEntry &move) {
 }
 
 static uint16_t typeEffVsCombatant(uint8_t attack, const Combatant &defender,
-                                   const Combatant *attacker = nullptr) {
-  if (attack == T_GROUND && (combatantHasAbility(defender, ABILITY_LEVITATE) ||
-                             combatantHasAbility(defender, ABILITY_EELEVATE))) return 0;
-  uint16_t effect = typeEffPct(attack, defender.type1, defender.type2);
+                                   const Combatant *attacker = nullptr,
+                                   bool gravity = false) {
+  if (attack == T_GROUND && !gravity &&
+      (combatantHasAbility(defender, ABILITY_LEVITATE) ||
+       combatantHasAbility(defender, ABILITY_EELEVATE))) return 0;
+  uint16_t effect;
+  if (attack == T_GROUND && gravity) {
+    uint16_t first = defender.type1 == T_FLYING
+        ? 10 : typeEffectTenth(attack, defender.type1);
+    uint16_t second = defender.type2 == T_FLYING
+        ? 10 : defender.type2 < TYPE_COUNT
+            ? typeEffectTenth(attack, defender.type2) : 10;
+    effect = first * second;
+  } else {
+    effect = typeEffPct(attack, defender.type1, defender.type2);
+  }
   if (attacker && (attack == T_NORMAL || attack == T_FIGHTING) && effect == 0 &&
       combatantHasAbility(*attacker, ABILITY_SCRAPPY)) {
     uint8_t other = defender.type1 == T_GHOST ? defender.type2 : defender.type1;
@@ -214,7 +226,8 @@ void battleSetTerrain(BattleField &field, BattleTerrain terrain) {
   field.terrainTurns = terrain == BTERRAIN_NONE ? 0 : BATTLE_FIELD_TURNS;
 }
 
-bool battleGrounded(const Combatant &combatant) {
+bool battleGrounded(const Combatant &combatant, const BattleField *field) {
+  if (field && field->gravityTurns) return true;
   return !combatantHasType(combatant, T_FLYING) &&
          !combatantHasAbility(combatant, ABILITY_LEVITATE) &&
          !combatantHasAbility(combatant, ABILITY_EELEVATE);
@@ -224,11 +237,13 @@ bool battleGuaranteedEscape(const Combatant &combatant) {
   return combatantHasAbility(combatant, ABILITY_RUN_AWAY);
 }
 
-bool battleCanSwitch(const Combatant &combatant, const Combatant &opponent) {
+bool battleCanSwitch(const Combatant &combatant, const Combatant &opponent,
+                     const BattleField *field) {
   if (combatantHasType(combatant, T_GHOST)) return true;
+  if (combatant.trapped || combatant.bindTurns) return false;
   if (combatantHasAbility(opponent, ABILITY_SHADOW_TAG)) return false;
   if (combatantHasAbility(opponent, ABILITY_ARENA_TRAP) &&
-      battleGrounded(combatant)) return false;
+      battleGrounded(combatant, field)) return false;
   if (combatantHasAbility(opponent, ABILITY_MAGNET_PULL) &&
       combatantHasType(combatant, T_STEEL)) return false;
   return true;
@@ -320,7 +335,8 @@ BattleMove battleMoveFor(const Combatant &attacker, MoveId move,
     result.entry.ailment = AIL_NONE;
     result.entry.ailChance = 0;
     result.entry.fieldFlags = MF_NONE;
-  } else if (attacker.activeMechanic == BMECH_DYNAMAX) {
+  } else if (attacker.activeMechanic == BMECH_DYNAMAX ||
+             requested == BMECH_DYNAMAX) {
     result.mechanic = BMECH_DYNAMAX;
     result.entry.acc = 0;
     result.entry.ailment = AIL_NONE;
@@ -335,7 +351,18 @@ BattleMove battleMoveFor(const Combatant &attacker, MoveId move,
       result.entry.power = maxPower(result.entry.power, result.entry.type);
       result.entry.effect = EF_NONE;
       result.entry.param = 0;
-      setMaxStageEffect(result.entry);
+      bool gigantamax = attacker.gigantamax ||
+          (requested == BMECH_DYNAMAX && attacker.gigantamaxFactor &&
+           battleGigantamaxEligible(attacker.dex));
+      const GmaxMoveEntry *signature = gigantamax
+          ? gmaxMoveFor(attacker.dex, result.entry.type) : nullptr;
+      if (signature) {
+        result.gmaxMove = signature->id;
+        result.gmaxEffect = signature->effect;
+        if (signature->power) result.entry.power = signature->power;
+      } else {
+        setMaxStageEffect(result.entry);
+      }
     }
   }
   return result;
@@ -450,7 +477,7 @@ void battleAfterAction(Combatant &combatant) {
   if (!combatant.dynamaxTurns || combatant.fainted()) endDynamax(combatant);
 }
 
-void battleOnSwitchOut(Combatant &combatant) {
+void battleOnSwitchOut(Combatant &combatant, Combatant *opponent) {
   endDynamax(combatant);
   if (exclusiveAbility(combatant, 964, ABILITY_ZERO_TO_HERO))
     combatant.formPrimed = true;
@@ -465,6 +492,13 @@ void battleOnSwitchOut(Combatant &combatant) {
     combatant.hp = hp > combatant.maxHp ? combatant.maxHp : (uint16_t)hp;
   }
   combatant.protectedTurn = false;
+  combatant.bindTurns = 0;
+  combatant.drowsyTurns = 0;
+  combatant.trapped = false;
+  combatant.tormented = false;
+  combatant.infatuated = false;
+  if (opponent) opponent->infatuated = false;
+  combatant.lastMove = MOVE_NONE;
   combatant.abilityTriggered = false;
   combatant.abilityCharged = false;
   for (uint8_t i = 0; i < SI_COUNT; i++) combatant.stage[i] = 0;
@@ -570,6 +604,7 @@ static uint16_t battleEffectiveStatFor(const Combatant &c, uint8_t idx,
   if ((idx == SI_ATK || idx == SI_SPD) && c.form == BFORM_CHERRIM_SUN)
     v = v > UINT16_MAX * 2u / 3u ? UINT16_MAX
                                   : (uint16_t)((uint32_t)v * 3u / 2u);
+  v = (uint16_t)((uint32_t)v * c.statPercent / 100u);
   return v ? v : 1;
 }
 
@@ -616,10 +651,22 @@ uint8_t battleAccuracy(const Combatant &atk, const Combatant &def,
     accuracy = accuracy * 4u / 5u;
   if (def.confuseTurns && combatantHasAbility(def, ABILITY_TANGLED_FEET))
     accuracy /= 2u;
+  if (field.gravityTurns) accuracy = accuracy * 5u / 3u;
   return accuracy > 100 ? 100 : (uint8_t)accuracy;
 }
 
 // ---------- damage ----------
+
+static bool gmaxIgnoresTargetAbility(const BattleMove &move) {
+  return move.gmaxEffect == GMAX_EFFECT_DRUM_SOLO ||
+         move.gmaxEffect == GMAX_EFFECT_FIREBALL ||
+         move.gmaxEffect == GMAX_EFFECT_HYDROSNIPE;
+}
+
+static bool gmaxBypassesProtect(const BattleMove &move) {
+  return move.gmaxEffect == GMAX_EFFECT_ONE_BLOW ||
+         move.gmaxEffect == GMAX_EFFECT_RAPID_FLOW;
+}
 
 // roll is 217..255, the series' damage spread, passed in so tests can pin it.
 uint16_t battleDamage(const Combatant &atk, const Combatant &def,
@@ -635,42 +682,45 @@ uint16_t battleDamage(const Combatant &atk, const Combatant &def,
   if (!move.valid()) return 0;
   const MoveEntry &m = move.entry;
   if (m.cat == MC_STATUS) return 0;
+  Combatant abilitylessDef = def;
+  if (gmaxIgnoresTargetAbility(move)) abilitylessDef.ability = ABILITY_NONE;
+  const Combatant &defRules = abilitylessDef;
 
   if (m.effect == EF_FIXED_LVL) return atk.level ? atk.level : 1;
   if (m.effect == EF_FIXED) return m.param > 0 ? (uint16_t)m.param : 1;
 
-  if (combatantHasAbility(def, ABILITY_BATTLE_ARMOR) ||
-      combatantHasAbility(def, ABILITY_SHELL_ARMOR)) crit = false;
+  if (combatantHasAbility(defRules, ABILITY_BATTLE_ARMOR) ||
+      combatantHasAbility(defRules, ABILITY_SHELL_ARMOR)) crit = false;
 
   BattleField effectiveField = field;
-  if (weatherSuppressed(atk, def)) effectiveField.weather = BWEATHER_NONE;
+  if (weatherSuppressed(atk, defRules)) effectiveField.weather = BWEATHER_NONE;
   if (combatantHasAbility(atk, ABILITY_MEGA_SOL)) effectiveField.weather = BWEATHER_SUN;
   uint8_t atkStat = m.cat == MC_PHYS ? SI_ATK : SI_SPA;
   uint8_t defStat = m.cat == MC_PHYS ? SI_DEF : SI_SPD;
   uint16_t A = battleEffectiveStatFor(
-      atk, atkStat, &effectiveField, combatantHasAbility(def, ABILITY_UNAWARE));
+      atk, atkStat, &effectiveField, combatantHasAbility(defRules, ABILITY_UNAWARE));
   uint16_t D = battleEffectiveStatFor(
-      def, defStat, &effectiveField, combatantHasAbility(atk, ABILITY_UNAWARE));
+      defRules, defStat, &effectiveField, combatantHasAbility(atk, ABILITY_UNAWARE));
   // A critical hit ignores the defender's positive stages and the attacker's
   // negative ones, so a Barrier cannot make you immune to a lucky roll.
   if (crit) {
     A = battleEffectiveStatFor(atk, atkStat, &effectiveField, true);
-    D = battleEffectiveStatFor(def, defStat, &effectiveField, true);
+    D = battleEffectiveStatFor(defRules, defStat, &effectiveField, true);
   }
   if (m.cat == MC_PHYS && effectiveField.weather == BWEATHER_SNOW &&
-      combatantHasType(def, T_ICE))
+      combatantHasType(defRules, T_ICE))
     D = (uint16_t)((uint32_t)D * 3u / 2u);
   if (m.cat == MC_SPEC && effectiveField.weather == BWEATHER_SAND &&
-      combatantHasType(def, T_ROCK))
+      combatantHasType(defRules, T_ROCK))
     D = (uint16_t)((uint32_t)D * 3u / 2u);
-  if (m.cat == MC_PHYS && combatantHasAbility(def, ABILITY_FUR_COAT))
+  if (m.cat == MC_PHYS && combatantHasAbility(defRules, ABILITY_FUR_COAT))
     D = D > UINT16_MAX / 2u ? UINT16_MAX : (uint16_t)(D * 2u);
   if (m.cat == MC_PHYS && effectiveField.terrain == BTERRAIN_GRASSY &&
-      combatantHasAbility(def, ABILITY_GRASS_PELT))
+      combatantHasAbility(defRules, ABILITY_GRASS_PELT))
     D = (uint16_t)((uint32_t)D * 3u / 2u);
-  if (m.cat == MC_PHYS && combatantHasAbility(def, ABILITY_TABLETS_OF_RUIN))
+  if (m.cat == MC_PHYS && combatantHasAbility(defRules, ABILITY_TABLETS_OF_RUIN))
     A = (uint16_t)((uint32_t)A * 3u / 4u);
-  if (m.cat == MC_SPEC && combatantHasAbility(def, ABILITY_VESSEL_OF_RUIN))
+  if (m.cat == MC_SPEC && combatantHasAbility(defRules, ABILITY_VESSEL_OF_RUIN))
     A = (uint16_t)((uint32_t)A * 3u / 4u);
   if (m.cat == MC_PHYS && combatantHasAbility(atk, ABILITY_SWORD_OF_RUIN))
     D = (uint16_t)((uint32_t)D * 3u / 4u);
@@ -734,51 +784,53 @@ uint16_t battleDamage(const Combatant &atk, const Combatant &def,
   if (m.type == T_ROCK && combatantHasAbility(atk, ABILITY_ROCKY_PAYLOAD)) dmg = dmg * 3u / 2u;
   if (m.type == T_FIRE && combatantHasAbility(atk, ABILITY_FIRE_MANE)) dmg = dmg * 3u / 2u;
   if (m.type == T_DARK && (combatantHasAbility(atk, ABILITY_DARK_AURA) ||
-                          combatantHasAbility(def, ABILITY_DARK_AURA)))
+                          combatantHasAbility(defRules, ABILITY_DARK_AURA)))
     dmg = dmg * (combatantHasAbility(atk, ABILITY_AURA_BREAK) ||
-                 combatantHasAbility(def, ABILITY_AURA_BREAK) ? 3u : 4u) /
+                 combatantHasAbility(defRules, ABILITY_AURA_BREAK) ? 3u : 4u) /
           (combatantHasAbility(atk, ABILITY_AURA_BREAK) ||
-           combatantHasAbility(def, ABILITY_AURA_BREAK) ? 4u : 3u);
+           combatantHasAbility(defRules, ABILITY_AURA_BREAK) ? 4u : 3u);
   if (m.type == T_FAIRY && (combatantHasAbility(atk, ABILITY_FAIRY_AURA) ||
-                           combatantHasAbility(def, ABILITY_FAIRY_AURA)))
+                           combatantHasAbility(defRules, ABILITY_FAIRY_AURA)))
     dmg = dmg * (combatantHasAbility(atk, ABILITY_AURA_BREAK) ||
-                 combatantHasAbility(def, ABILITY_AURA_BREAK) ? 3u : 4u) /
+                 combatantHasAbility(defRules, ABILITY_AURA_BREAK) ? 3u : 4u) /
           (combatantHasAbility(atk, ABILITY_AURA_BREAK) ||
-           combatantHasAbility(def, ABILITY_AURA_BREAK) ? 4u : 3u);
+           combatantHasAbility(defRules, ABILITY_AURA_BREAK) ? 4u : 3u);
   if (atk.gender != GENDER_UNKNOWN && atk.gender != GENDER_NONE &&
       def.gender != GENDER_UNKNOWN && def.gender != GENDER_NONE &&
       combatantHasAbility(atk, ABILITY_RIVALRY))
     dmg = atk.gender == def.gender ? dmg * 5u / 4u : dmg * 3u / 4u;
   if ((m.type == T_FIRE || m.type == T_ICE) &&
-      combatantHasAbility(def, ABILITY_THICK_FAT)) dmg /= 2u;
-  if (m.type == T_FIRE && combatantHasAbility(def, ABILITY_WATER_BUBBLE)) dmg /= 2u;
-  if (m.type == T_FIRE && combatantHasAbility(def, ABILITY_DRY_SKIN)) dmg = dmg * 5u / 4u;
-  if (m.type == T_FIRE && combatantHasAbility(def, ABILITY_HEATPROOF)) dmg /= 2u;
-  if (m.type == T_GHOST && combatantHasAbility(def, ABILITY_PURIFYING_SALT)) dmg /= 2u;
-  if (m.cat == MC_SPEC && combatantHasAbility(def, ABILITY_ICE_SCALES)) dmg /= 2u;
-  if ((m.tags & MT_SOUND) && combatantHasAbility(def, ABILITY_PUNK_ROCK)) dmg /= 2u;
-  if (moveMakesContact(atk, m) && combatantHasAbility(def, ABILITY_FLUFFY)) dmg /= 2u;
-  if (m.type == T_FIRE && combatantHasAbility(def, ABILITY_FLUFFY)) dmg *= 2u;
-  if (battleGrounded(atk) &&
+      combatantHasAbility(defRules, ABILITY_THICK_FAT)) dmg /= 2u;
+  if (m.type == T_FIRE && combatantHasAbility(defRules, ABILITY_WATER_BUBBLE)) dmg /= 2u;
+  if (m.type == T_FIRE && combatantHasAbility(defRules, ABILITY_DRY_SKIN)) dmg = dmg * 5u / 4u;
+  if (m.type == T_FIRE && combatantHasAbility(defRules, ABILITY_HEATPROOF)) dmg /= 2u;
+  if (m.type == T_GHOST && combatantHasAbility(defRules, ABILITY_PURIFYING_SALT)) dmg /= 2u;
+  if (m.cat == MC_SPEC && combatantHasAbility(defRules, ABILITY_ICE_SCALES)) dmg /= 2u;
+  if ((m.tags & MT_SOUND) && combatantHasAbility(defRules, ABILITY_PUNK_ROCK)) dmg /= 2u;
+  if (moveMakesContact(atk, m) && combatantHasAbility(defRules, ABILITY_FLUFFY)) dmg /= 2u;
+  if (m.type == T_FIRE && combatantHasAbility(defRules, ABILITY_FLUFFY)) dmg *= 2u;
+  if (battleGrounded(atk, &field) &&
       ((field.terrain == BTERRAIN_ELECTRIC && m.type == T_ELECTRIC) ||
        (field.terrain == BTERRAIN_GRASSY && m.type == T_GRASS) ||
        (field.terrain == BTERRAIN_PSYCHIC && m.type == T_PSYCHIC)))
     dmg = dmg * 13u / 10u;
-  if (field.terrain == BTERRAIN_MISTY && m.type == T_DRAGON && battleGrounded(def))
+  if (field.terrain == BTERRAIN_MISTY && m.type == T_DRAGON &&
+      battleGrounded(defRules, &field))
     dmg /= 2u;
   if (field.terrain == BTERRAIN_GRASSY &&
-      (m.fieldFlags & MF_GRASSY_WEAKENED) && battleGrounded(def))
+      (m.fieldFlags & MF_GRASSY_WEAKENED) && battleGrounded(defRules, &field))
     dmg /= 2u;
-  uint16_t eff = typeEffVsCombatant(m.type, def, &atk);
+  uint16_t eff = typeEffVsCombatant(
+      m.type, defRules, &atk, field.gravityTurns != 0);
   dmg = dmg * eff / 100;
   if (eff == 0) return 0;               // immune: no chip, no minimum
   if (eff < 100 && combatantHasAbility(atk, ABILITY_TINTED_LENS)) dmg *= 2u;
-  if (eff > 100 && (combatantHasAbility(def, ABILITY_FILTER) ||
-                    combatantHasAbility(def, ABILITY_SOLID_ROCK) ||
-                    combatantHasAbility(def, ABILITY_PRISM_ARMOR)))
+  if (eff > 100 && (combatantHasAbility(defRules, ABILITY_FILTER) ||
+                    combatantHasAbility(defRules, ABILITY_SOLID_ROCK) ||
+                    combatantHasAbility(defRules, ABILITY_PRISM_ARMOR)))
     dmg = dmg * 3u / 4u;
-  if (def.hp == def.maxHp && (combatantHasAbility(def, ABILITY_MULTISCALE) ||
-                             combatantHasAbility(def, ABILITY_SHADOW_SHIELD)))
+  if (def.hp == def.maxHp && (combatantHasAbility(defRules, ABILITY_MULTISCALE) ||
+                             combatantHasAbility(defRules, ABILITY_SHADOW_SHIELD)))
     dmg /= 2u;
   if (!crit && defendingSide &&
       (defendingSide->auroraVeilTurns ||
@@ -943,7 +995,7 @@ static bool tryInflictTriggeredAilment(Combatant &source, Combatant &target,
                                        const BattleField &field) {
   if (target.ailment != AIL_NONE || abilityPreventsAilment(target, ailment, field) ||
       ailmentTypeImmune(target, ailment, &source) ||
-      (battleGrounded(target) &&
+      (battleGrounded(target, &field) &&
        (field.terrain == BTERRAIN_MISTY ||
         (field.terrain == BTERRAIN_ELECTRIC && ailment == AIL_SLEEP))))
     return false;
@@ -1171,9 +1223,9 @@ static bool battleSetHazard(BattleSideConditions &side, BattleHazard hazard) {
 
 static bool battleClearHazards(BattleSideConditions &side) {
   bool changed = side.spikesLayers || side.toxicSpikesLayers ||
-                 side.stealthRock || side.stickyWeb;
+                 side.stealthRock || side.stickyWeb || side.steelsurge;
   side.spikesLayers = side.toxicSpikesLayers = 0;
-  side.stealthRock = side.stickyWeb = false;
+  side.stealthRock = side.stickyWeb = side.steelsurge = false;
   return changed;
 }
 
@@ -1186,6 +1238,135 @@ static bool battleClearAll(BattleField &field) {
     side.reflectTurns = side.lightScreenTurns = side.auroraVeilTurns = 0;
   }
   return changed;
+}
+
+static bool gmaxConfuse(Combatant &target, const BattleField &field) {
+  if (target.fainted() || target.confuseTurns ||
+      abilityPreventsAilment(target, AIL_CONFUSE, field) ||
+      (battleGrounded(target, &field) && field.terrain == BTERRAIN_MISTY)) return false;
+  target.confuseTurns = 2 + random(3);
+  return true;
+}
+
+static void applyGmaxEffect(Combatant &atk, Combatant &def, BattleField &field,
+                            const BattleMove &move, uint8_t attackerSide,
+                            TurnLog &log) {
+  GmaxEffect effect = move.gmaxEffect;
+  BattleSideConditions &own = field.sides[attackerSide & 1u];
+  BattleSideConditions &foe = field.sides[(attackerSide & 1u) ^ 1u];
+  if (effect == GMAX_EFFECT_NONE) return;
+  if (effect == GMAX_EFFECT_VINE_LASH || effect == GMAX_EFFECT_WILDFIRE ||
+      effect == GMAX_EFFECT_CANNONADE || effect == GMAX_EFFECT_VOLCALITH) {
+    foe.gmaxResidualEffect = effect;
+    foe.gmaxResidualTurns = 4;
+    return;
+  }
+  if (effect == GMAX_EFFECT_BEFUDDLE || effect == GMAX_EFFECT_STUN_SHOCK) {
+    static const uint8_t BEFUDDLE[] = { AIL_PARA, AIL_POISON, AIL_SLEEP };
+    static const uint8_t STUN_SHOCK[] = { AIL_PARA, AIL_POISON };
+    const uint8_t *choices = effect == GMAX_EFFECT_BEFUDDLE ? BEFUDDLE : STUN_SHOCK;
+    uint8_t count = effect == GMAX_EFFECT_BEFUDDLE ? 3 : 2;
+    uint8_t ailment = choices[random(count)];
+    if (!def.fainted() && tryInflictTriggeredAilment(atk, def, ailment, field))
+      log.inflicted = ailment;
+    return;
+  }
+  if (effect == GMAX_EFFECT_VOLT_CRASH || effect == GMAX_EFFECT_MALODOR) {
+    uint8_t ailment = effect == GMAX_EFFECT_VOLT_CRASH ? AIL_PARA : AIL_POISON;
+    if (!def.fainted() && tryInflictTriggeredAilment(atk, def, ailment, field))
+      log.inflicted = ailment;
+    return;
+  }
+  if (effect == GMAX_EFFECT_GOLD_RUSH) {
+    log.bonusRewardItems = 1;
+    if (gmaxConfuse(def, field)) log.inflicted = AIL_CONFUSE;
+    return;
+  }
+  if (effect == GMAX_EFFECT_CHI_STRIKE) {
+    if (own.critStages < 3) own.critStages++;
+    return;
+  }
+  if (effect == GMAX_EFFECT_TERROR) {
+    if (!def.fainted()) def.trapped = true;
+    return;
+  }
+  if (effect == GMAX_EFFECT_FOAM_BURST || effect == GMAX_EFFECT_TARTNESS) {
+    uint8_t mask = effect == GMAX_EFFECT_FOAM_BURST ? ST_SPE : ST_EVA;
+    int8_t delta = effect == GMAX_EFFECT_FOAM_BURST ? -2 : -1;
+    if (!def.fainted()) {
+      log.stageMask = applyStages(def, mask, delta, &atk);
+      if (log.stageMask) log.stageDelta = abilityStageDelta(def, delta);
+    }
+    return;
+  }
+  if (effect == GMAX_EFFECT_RESONANCE) {
+    own.auroraVeilTurns = BATTLE_FIELD_TURNS;
+    log.screenSet = BSCREEN_AURORA_VEIL;
+    return;
+  }
+  if (effect == GMAX_EFFECT_CUDDLE) {
+    bool known = atk.gender != GENDER_UNKNOWN && atk.gender != GENDER_NONE &&
+                 def.gender != GENDER_UNKNOWN && def.gender != GENDER_NONE;
+    if (!def.fainted() && known && atk.gender != def.gender) def.infatuated = true;
+    return;
+  }
+  if (effect == GMAX_EFFECT_REPLENISH) {
+    log.restoreLastItem = true;
+    return;
+  }
+  if (effect == GMAX_EFFECT_MELTDOWN) {
+    if (!def.fainted()) def.tormented = true;
+    return;
+  }
+  if (effect == GMAX_EFFECT_WIND_RAGE) {
+    log.fieldCleared = battleClearAll(field);
+    return;
+  }
+  if (effect == GMAX_EFFECT_GRAVITAS) {
+    field.gravityTurns = BATTLE_FIELD_TURNS;
+    return;
+  }
+  if (effect == GMAX_EFFECT_STONESURGE) {
+    if (!foe.stealthRock) {
+      foe.stealthRock = true;
+      log.hazardSet = BHAZARD_STEALTH_ROCK;
+    }
+    return;
+  }
+  if (effect == GMAX_EFFECT_SWEETNESS) {
+    atk.ailment = AIL_NONE;
+    atk.ailTurns = 0;
+    atk.confuseTurns = 0;
+    return;
+  }
+  if (effect == GMAX_EFFECT_SANDBLAST || effect == GMAX_EFFECT_CENTIFERNO) {
+    if (!def.fainted()) def.bindTurns = 4;
+    return;
+  }
+  if (effect == GMAX_EFFECT_SMITE) {
+    if (gmaxConfuse(def, field)) log.inflicted = AIL_CONFUSE;
+    return;
+  }
+  if (effect == GMAX_EFFECT_SNOOZE) {
+    if (!def.fainted() && def.ailment == AIL_NONE) def.drowsyTurns = 2;
+    return;
+  }
+  if (effect == GMAX_EFFECT_FINALE) {
+    uint16_t amount = atk.maxHp / 6u;
+    if (!amount) amount = 1;
+    log.healed = heal(atk, amount) != 0;
+    return;
+  }
+  if (effect == GMAX_EFFECT_STEELSURGE) {
+    foe.steelsurge = true;
+    return;
+  }
+  if (effect == GMAX_EFFECT_DEPLETION && !def.fainted()) {
+    uint8_t before = def.statPercent;
+    def.statPercent = before > 50 ? (uint8_t)(before - 10) : 50;
+    if (def.statPercent < 50) def.statPercent = 50;
+    log.statsWeakened = def.statPercent != before;
+  }
 }
 
 void battleOnEnter(Combatant &combatant, Combatant &opponent,
@@ -1202,7 +1383,16 @@ void battleOnEnter(Combatant &combatant, Combatant &opponent,
       hurt(combatant, damage);
       log.hazardDamage += before - combatant.hp;
     }
-    if (!combatant.fainted() && battleGrounded(combatant)) {
+    if (!combatant.fainted() && side.steelsurge &&
+        !combatantHasAbility(combatant, ABILITY_MAGIC_GUARD)) {
+      uint16_t effect = typeEffPct(T_STEEL, combatant.type1, combatant.type2);
+      uint16_t damage = (uint32_t)combatant.maxHp * effect / 800u;
+      if (effect && !damage) damage = 1;
+      uint16_t before = combatant.hp;
+      hurt(combatant, damage);
+      log.hazardDamage += before - combatant.hp;
+    }
+    if (!combatant.fainted() && battleGrounded(combatant, &field)) {
       if (side.spikesLayers && !combatantHasAbility(combatant, ABILITY_MAGIC_GUARD)) {
         static const uint8_t DENOMINATOR[] = { 0, 8, 6, 4 };
         uint16_t damage = combatant.maxHp / DENOMINATOR[side.spikesLayers];
@@ -1303,9 +1493,15 @@ static void battleActImpl(Combatant &atk, Combatant &def, BattleField &field,
   log = TurnLog();
   log.move = move.source;
   log.mechanic = move.mechanic;
+  log.gmaxMove = move.gmaxMove;
   log.moveType = move.entry.type;
   if (effectPercent > 100) effectPercent = 100;
   if (atk.fainted() || def.fainted()) { log.skipped = true; return; }
+  if (selected.valid() && atk.tormented && selected.source == atk.lastMove) {
+    log.skipped = true;
+    return;
+  }
+  if (atk.infatuated && random(100) < 50) { log.skipped = true; return; }
   BattleField effectiveField = field;
   if (weatherSuppressed(atk, def)) effectiveField.weather = BWEATHER_NONE;
   if (combatantHasAbility(atk, ABILITY_MEGA_SOL))
@@ -1352,6 +1548,7 @@ static void battleActImpl(Combatant &atk, Combatant &def, BattleField &field,
   if (firingCharge) { move = battleMove(atk.charging); atk.charging = 0; }
   log.move = move.source;
   log.mechanic = move.mechanic;
+  log.gmaxMove = move.gmaxMove;
   log.moveType = move.entry.type;
   if (!effectPercent) { log.missed = true; return; }
   bool sunnyCharge = move.valid() && (move.entry.fieldFlags & MF_SOLAR_CHARGE) &&
@@ -1364,6 +1561,7 @@ static void battleActImpl(Combatant &atk, Combatant &def, BattleField &field,
   }
 
   if (!move.valid()) { log.skipped = true; return; }
+  atk.lastMove = move.source;
   if (exclusiveAbility(atk, 681, ABILITY_STANCE_CHANGE)) {
     BattleForm next = (move.entry.fieldFlags & MF_STANCE_SHIELD)
         ? BFORM_BASE : move.entry.cat != MC_STATUS
@@ -1390,14 +1588,17 @@ static void battleActImpl(Combatant &atk, Combatant &def, BattleField &field,
     }
   }
   const MoveEntry &m = move.entry;
+  bool ignoreTargetAbility = gmaxIgnoresTargetAbility(move);
   log.move = move.source;
+  log.gmaxMove = move.gmaxMove;
 
   int priority = battlePriority(atk, move);
   bool priorityBlocked = priority > 0 && m.target == TG_FOE &&
-      ((field.terrain == BTERRAIN_PSYCHIC && battleGrounded(def)) ||
-       combatantHasAbility(def, ABILITY_QUEENLY_MAJESTY) ||
-       combatantHasAbility(def, ABILITY_DAZZLING) ||
-       combatantHasAbility(def, ABILITY_ARMOR_TAIL));
+      ((field.terrain == BTERRAIN_PSYCHIC && battleGrounded(def, &field)) ||
+       (!ignoreTargetAbility &&
+        (combatantHasAbility(def, ABILITY_QUEENLY_MAJESTY) ||
+         combatantHasAbility(def, ABILITY_DAZZLING) ||
+         combatantHasAbility(def, ABILITY_ARMOR_TAIL))));
   bool pranksterBlocked = m.cat == MC_STATUS && m.target == TG_FOE &&
       combatantHasAbility(atk, ABILITY_PRANKSTER) && combatantHasType(def, T_DARK);
   if (priorityBlocked || pranksterBlocked) {
@@ -1405,7 +1606,7 @@ static void battleActImpl(Combatant &atk, Combatant &def, BattleField &field,
     return;
   }
 
-  if (m.target == TG_FOE &&
+  if (!ignoreTargetAbility && m.target == TG_FOE &&
       (((m.tags & MT_SOUND) && combatantHasAbility(def, ABILITY_SOUNDPROOF)) ||
        ((m.tags & MT_BALLISTIC) && combatantHasAbility(def, ABILITY_BULLETPROOF)) ||
        ((m.tags & MT_POWDER) && (combatantHasAbility(def, ABILITY_OVERCOAT) ||
@@ -1413,7 +1614,7 @@ static void battleActImpl(Combatant &atk, Combatant &def, BattleField &field,
     log.immune = true;
     return;
   }
-  if (m.target == TG_FOE && (m.tags & MT_WIND) &&
+  if (!ignoreTargetAbility && m.target == TG_FOE && (m.tags & MT_WIND) &&
       combatantHasAbility(def, ABILITY_WIND_RIDER)) {
     log.stageMask = applyStages(def, ST_ATK, 1, &atk);
     log.stageDelta = 1;
@@ -1516,7 +1717,7 @@ static void battleActImpl(Combatant &atk, Combatant &def, BattleField &field,
     return;
   }
 
-  if (def.protectedTurn &&
+  if (def.protectedTurn && !gmaxBypassesProtect(move) &&
       !(moveMakesContact(atk, m) && combatantHasAbility(atk, ABILITY_UNSEEN_FIST))) {
     log.missed = true;
     return;
@@ -1525,37 +1726,38 @@ static void battleActImpl(Combatant &atk, Combatant &def, BattleField &field,
   StageSnapshot absorbedStagesBefore;
   rememberStages(def, absorbedStagesBefore);
   bool absorbed = false;
-  if (m.type == T_WATER && (combatantHasAbility(def, ABILITY_WATER_ABSORB) ||
+  if (!ignoreTargetAbility &&
+      m.type == T_WATER && (combatantHasAbility(def, ABILITY_WATER_ABSORB) ||
                             combatantHasAbility(def, ABILITY_DRY_SKIN))) {
     log.healed = heal(def, def.maxHp / 4u ? def.maxHp / 4u : 1u) != 0;
     absorbed = true;
-  } else if (m.type == T_WATER && combatantHasAbility(def, ABILITY_STORM_DRAIN)) {
+  } else if (!ignoreTargetAbility && m.type == T_WATER && combatantHasAbility(def, ABILITY_STORM_DRAIN)) {
     log.stageMask = applyStages(def, ST_SPA, 1, &atk);
     log.stageDelta = 1;
     absorbed = true;
-  } else if (m.type == T_ELECTRIC && combatantHasAbility(def, ABILITY_VOLT_ABSORB)) {
+  } else if (!ignoreTargetAbility && m.type == T_ELECTRIC && combatantHasAbility(def, ABILITY_VOLT_ABSORB)) {
     log.healed = heal(def, def.maxHp / 4u ? def.maxHp / 4u : 1u) != 0;
     absorbed = true;
-  } else if (m.type == T_ELECTRIC && combatantHasAbility(def, ABILITY_LIGHTNING_ROD)) {
+  } else if (!ignoreTargetAbility && m.type == T_ELECTRIC && combatantHasAbility(def, ABILITY_LIGHTNING_ROD)) {
     log.stageMask = applyStages(def, ST_SPA, 1, &atk);
     log.stageDelta = 1;
     absorbed = true;
-  } else if (m.type == T_ELECTRIC && combatantHasAbility(def, ABILITY_MOTOR_DRIVE)) {
+  } else if (!ignoreTargetAbility && m.type == T_ELECTRIC && combatantHasAbility(def, ABILITY_MOTOR_DRIVE)) {
     log.stageMask = applyStages(def, ST_SPE, 1, &atk);
     log.stageDelta = 1;
     absorbed = true;
-  } else if (m.type == T_FIRE && combatantHasAbility(def, ABILITY_FLASH_FIRE)) {
+  } else if (!ignoreTargetAbility && m.type == T_FIRE && combatantHasAbility(def, ABILITY_FLASH_FIRE)) {
     def.flashFireActive = true;
     absorbed = true;
-  } else if (m.type == T_FIRE && combatantHasAbility(def, ABILITY_WELL_BAKED_BODY)) {
+  } else if (!ignoreTargetAbility && m.type == T_FIRE && combatantHasAbility(def, ABILITY_WELL_BAKED_BODY)) {
     log.stageMask = applyStages(def, ST_DEF, 2, &atk);
     log.stageDelta = 2;
     absorbed = true;
-  } else if (m.type == T_GRASS && combatantHasAbility(def, ABILITY_SAP_SIPPER)) {
+  } else if (!ignoreTargetAbility && m.type == T_GRASS && combatantHasAbility(def, ABILITY_SAP_SIPPER)) {
     log.stageMask = applyStages(def, ST_ATK, 1, &atk);
     log.stageDelta = 1;
     absorbed = true;
-  } else if (m.type == T_GROUND && combatantHasAbility(def, ABILITY_EARTH_EATER)) {
+  } else if (!ignoreTargetAbility && m.type == T_GROUND && combatantHasAbility(def, ABILITY_EARTH_EATER)) {
     log.healed = heal(def, def.maxHp / 4u ? def.maxHp / 4u : 1u) != 0;
     absorbed = true;
   }
@@ -1572,23 +1774,32 @@ static void battleActImpl(Combatant &atk, Combatant &def, BattleField &field,
   uint32_t rawTotal = 0;
   uint16_t total = 0;
   uint16_t knockoutHp = 0;
-  log.effPct = typeEffVsCombatant(m.type, def, &atk);
+  Combatant abilitylessDef = def;
+  if (ignoreTargetAbility) abilitylessDef.ability = ABILITY_NONE;
+  log.effPct = typeEffVsCombatant(
+      m.type, abilitylessDef, &atk, field.gravityTurns != 0);
   if (log.effPct == 0) { log.immune = true; return; }
   bool spendCharge = m.type == T_ELECTRIC && atk.abilityCharged;
   for (uint8_t h = 0; h < hits; h++) {
-    uint8_t critRate = combatantHasAbility(atk, ABILITY_SUPER_LUCK) ? 8 : 16;
+    uint8_t critStage = field.sides[attackerSide].critStages +
+        (combatantHasAbility(atk, ABILITY_SUPER_LUCK) ? 1u : 0u);
+    if (critStage > 3) critStage = 3;
+    static const uint8_t CRIT_RATE[] = { 16, 8, 2, 1 };
+    uint8_t critRate = CRIT_RATE[critStage];
     bool crit = (combatantHasAbility(atk, ABILITY_MERCILESS) &&
                  def.ailment == AIL_POISON) ||
         (random(critRate) == 0 &&
-        !combatantHasAbility(def, ABILITY_BATTLE_ARMOR) &&
-        !combatantHasAbility(def, ABILITY_SHELL_ARMOR));  // ~6%, base rate
+        (ignoreTargetAbility ||
+         (!combatantHasAbility(def, ABILITY_BATTLE_ARMOR) &&
+          !combatantHasAbility(def, ABILITY_SHELL_ARMOR))));
     uint16_t d = battleDamage(atk, def, field, move, crit,
                               (uint8_t)(217 + random(39)),
                               &field.sides[attackerSide ^ 1u]);
     if (h == 0 && d >= def.hp && def.hp == def.maxHp && def.hp > 1 &&
-        combatantHasAbility(def, ABILITY_STURDY)) d = (uint16_t)(def.hp - 1u);
+        !ignoreTargetAbility && combatantHasAbility(def, ABILITY_STURDY))
+      d = (uint16_t)(def.hp - 1u);
     bool formBlocked = false;
-    if (def.form == BFORM_MIMIKYU_DISGUISED &&
+    if (!ignoreTargetAbility && def.form == BFORM_MIMIKYU_DISGUISED &&
         exclusiveAbility(def, 778, ABILITY_DISGUISE)) {
       setBattleForm(def, BFORM_MIMIKYU_BUSTED);
       log.formChanged = BFORM_MIMIKYU_BUSTED;
@@ -1596,7 +1807,7 @@ static void battleActImpl(Combatant &atk, Combatant &def, BattleField &field,
       hurt(def, disguiseDamage);
       d = 0;
       formBlocked = true;
-    } else if (def.form == BFORM_EISCUE_ICE && m.cat == MC_PHYS &&
+    } else if (!ignoreTargetAbility && def.form == BFORM_EISCUE_ICE && m.cat == MC_PHYS &&
                exclusiveAbility(def, 875, ABILITY_ICE_FACE)) {
       setBattleForm(def, BFORM_EISCUE_NOICE);
       log.formChanged = BFORM_EISCUE_NOICE;
@@ -1611,7 +1822,8 @@ static void battleActImpl(Combatant &atk, Combatant &def, BattleField &field,
     if (crit) log.crit = true;
     uint16_t hpBefore = def.hp;
     hurt(def, d);
-    if (!formBlocked) abilityAfterHit(atk, def, field, m, crit, hpBefore, log);
+    if (!formBlocked && !ignoreTargetAbility)
+      abilityAfterHit(atk, def, field, m, crit, hpBefore, log);
     if (def.fainted()) { knockoutHp = hpBefore; hits = h + 1; break; }
   }
   log.hits = hits;
@@ -1640,6 +1852,7 @@ static void battleActImpl(Combatant &atk, Combatant &def, BattleField &field,
     battleSetTerrain(field, (BattleTerrain)m.param);
     log.terrainSet = (BattleTerrain)m.param;
   }
+  if (total) applyGmaxEffect(atk, def, field, move, attackerSide, log);
   battleRefreshForms(field, atk, def);
   if (m.effect == EF_CLEAR_FIELD && total) {
     if (m.param == BCLEAR_OWN_HAZARDS)
@@ -1656,7 +1869,7 @@ static void battleActImpl(Combatant &atk, Combatant &def, BattleField &field,
       log.switchRequest = BSWITCH_TARGET;
   }
   if (total && !atk.fainted() && m.effect == EF_PIVOT &&
-      battleCanSwitch(atk, def))
+      battleCanSwitch(atk, def, &field))
     log.switchRequest = BSWITCH_USER;
 
   if (m.statMask && m.stages &&
@@ -1686,7 +1899,7 @@ static void battleActImpl(Combatant &atk, Combatant &def, BattleField &field,
       !combatantHasAbility(def, ABILITY_SHIELD_DUST) &&
       random(100) < ailChance) {
     bool blocked = (effectiveField.weather == BWEATHER_SUN && m.ailment == AIL_FREEZE) ||
-                   (battleGrounded(def) &&
+                   (battleGrounded(def, &field) &&
                     ((field.terrain == BTERRAIN_ELECTRIC && m.ailment == AIL_SLEEP) ||
                      field.terrain == BTERRAIN_MISTY));
     bool mycelium = m.cat == MC_STATUS && m.target == TG_FOE &&
@@ -1734,7 +1947,9 @@ static void battleActImpl(Combatant &atk, Combatant &def, BattleField &field,
 
 // ---------- end of turn ----------
 
-static void battleEndCombatant(const BattleField &field, Combatant &c, TurnLog &log) {
+static void battleEndCombatant(const BattleField &field,
+                               const BattleSideConditions &side,
+                               Combatant &c, TurnLog &log) {
   log = TurnLog();
   if (c.fainted()) return;
   if ((c.ailment == AIL_BURN || c.ailment == AIL_POISON) &&
@@ -1791,7 +2006,41 @@ static void battleEndCombatant(const BattleField &field, Combatant &c, TurnLog &
     hurt(c, chip);
     log.damage += before - c.hp;
   }
-  if (!c.fainted() && field.terrain == BTERRAIN_GRASSY && battleGrounded(c)) {
+  if (!c.fainted() && side.gmaxResidualTurns &&
+      !combatantHasAbility(c, ABILITY_MAGIC_GUARD)) {
+    uint8_t immuneType = side.gmaxResidualEffect == GMAX_EFFECT_VINE_LASH ? T_GRASS
+        : side.gmaxResidualEffect == GMAX_EFFECT_WILDFIRE ? T_FIRE
+        : side.gmaxResidualEffect == GMAX_EFFECT_CANNONADE ? T_WATER
+        : side.gmaxResidualEffect == GMAX_EFFECT_VOLCALITH ? T_ROCK : T_NONE;
+    if (immuneType != T_NONE && !combatantHasType(c, immuneType)) {
+      uint16_t chip = c.maxHp / 6u;
+      if (!chip) chip = 1;
+      uint16_t before = c.hp;
+      hurt(c, chip);
+      log.damage += before - c.hp;
+    }
+  }
+  if (!c.fainted() && c.bindTurns) {
+    if (!combatantHasAbility(c, ABILITY_MAGIC_GUARD)) {
+      uint16_t chip = c.maxHp / 8u;
+      if (!chip) chip = 1;
+      uint16_t before = c.hp;
+      hurt(c, chip);
+      log.damage += before - c.hp;
+    }
+    c.bindTurns--;
+  }
+  if (!c.fainted() && c.drowsyTurns && --c.drowsyTurns == 0 &&
+      c.ailment == AIL_NONE &&
+      !abilityPreventsAilment(c, AIL_SLEEP, field) &&
+      !(battleGrounded(c, &field) &&
+        (field.terrain == BTERRAIN_ELECTRIC || field.terrain == BTERRAIN_MISTY))) {
+    c.ailment = AIL_SLEEP;
+    c.ailTurns = 2 + random(3);
+    log.inflicted = AIL_SLEEP;
+  }
+  if (!c.fainted() && field.terrain == BTERRAIN_GRASSY &&
+      battleGrounded(c, &field)) {
     uint16_t amount = c.maxHp / 16;
     if (!amount) amount = 1;
     log.healed = heal(c, amount) != 0;
@@ -1839,8 +2088,8 @@ void battleEndRound(BattleField &field, Combatant &a, Combatant &b,
   rememberStages(b, bStagesBefore);
   BattleField effectiveField = field;
   if (weatherSuppressed(a, b)) effectiveField.weather = BWEATHER_NONE;
-  battleEndCombatant(effectiveField, a, aLog);
-  battleEndCombatant(effectiveField, b, bLog);
+  battleEndCombatant(effectiveField, field.sides[0], a, aLog);
+  battleEndCombatant(effectiveField, field.sides[1], b, bLog);
   copyPositiveStageChanges(a, b, bStagesBefore);
   copyPositiveStageChanges(b, a, aStagesBefore);
   if (!a.fainted() && combatantHasAbility(a, ABILITY_BAD_DREAMS) &&
@@ -1894,6 +2143,7 @@ void battleEndRound(BattleField &field, Combatant &a, Combatant &b,
       fieldLog.terrainRestored = field.terrain;
     }
   }
+  if (field.gravityTurns) field.gravityTurns--;
   BattleField refreshedField = field;
   if (weatherSuppressed(a, b)) refreshedField.weather = BWEATHER_NONE;
   if (refreshForm(a, refreshedField)) aLog.formChanged = a.form;
@@ -1906,6 +2156,8 @@ void battleEndRound(BattleField &field, Combatant &a, Combatant &b,
       fieldLog.screensExpired[sideIndex] |= 1u << (BSCREEN_LIGHT_SCREEN - 1u);
     if (side.auroraVeilTurns && --side.auroraVeilTurns == 0)
       fieldLog.screensExpired[sideIndex] |= 1u << (BSCREEN_AURORA_VEIL - 1u);
+    if (side.gmaxResidualTurns && --side.gmaxResidualTurns == 0)
+      side.gmaxResidualEffect = GMAX_EFFECT_NONE;
   }
 }
 
@@ -1975,7 +2227,8 @@ MoveId aiChooseMove(const Combatant &self, const Combatant &foe,
     } else {
       uint16_t dmg = battleDamage(self, foe, field, mv, false, 236);  // average roll
       sc = dmg;
-      bool blocked = field.terrain == BTERRAIN_PSYCHIC && battleGrounded(foe) &&
+      bool blocked = field.terrain == BTERRAIN_PSYCHIC &&
+          battleGrounded(foe, &field) &&
                      m.effect == EF_PRIORITY && m.param > 0;
       if (dmg >= foe.hp) sc += 1000;              // a kill this turn beats all
       uint8_t acc = m.acc ? m.acc : 100;

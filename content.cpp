@@ -23,7 +23,7 @@
 namespace {
 
 constexpr uint8_t MAX_PACKS = 32;
-constexpr uint8_t MAX_SECTIONS = 24;
+constexpr uint8_t MAX_SECTIONS = 30;
 constexpr uint16_t COMMON_SIZE = 48;
 constexpr uint16_t SECTION_SIZE = 16;
 constexpr uint8_t MAX_PET_PACKS = CONTENT_MAX_REGIONS;
@@ -159,6 +159,15 @@ static MegaFormEntry *gMegaForms = nullptr;
 static uint16_t gMegaFormCount = 0;
 static SpeciesId *gGigantamaxSpecies = nullptr;
 static uint16_t gGigantamaxCount = 0;
+static GmaxMoveEntry *gGmaxMoves = nullptr;
+static uint8_t gGmaxMoveCount = 0;
+static char *gGmaxMoveNames = nullptr;
+static uint8_t *gGmaxMoveLocalizedNames = nullptr;
+static uint32_t gGmaxMoveLocalizedNamesSize = 0;
+static char *gMaxMoveNames = nullptr;
+static uint32_t gMaxMoveNameOffsets[TYPE_COUNT + 1] = {};
+static uint8_t *gMaxMoveLocalizedNames = nullptr;
+static uint32_t gMaxMoveLocalizedNamesSize = 0;
 static uint8_t *gTypeLocalizedNames = nullptr;
 static uint32_t gTypeLocalizedNamesSize = 0;
 static uint8_t gTypeChart[TYPE_COUNT * TYPE_COUNT] = {};
@@ -874,13 +883,96 @@ static bool loadMovePack(uint8_t packIndex) {
   }
   free(rawGmax);
 
+  uint32_t gmaxMoveSize = 0, gmaxMoveRecords = 0, gmaxNameSize = 0;
+  uint32_t gmaxLocalizedNameSize = 0, gmaxLocalizedNameCount = 0;
+  uint8_t *rawGmaxMoves = nullptr;
+  uint8_t *gmaxNames = nullptr;
+  uint8_t *gmaxLocalizedNames = nullptr;
+  GmaxMoveEntry *gmaxMoves = nullptr;
+  bool hasGmaxMoves = findSection(pack, "GMOV") || findSection(pack, "GMNM") ||
+                      findSection(pack, "GMLN");
+  if (hasGmaxMoves) {
+    rawGmaxMoves = readSection(pack, "GMOV", &gmaxMoveSize, &gmaxMoveRecords);
+    gmaxNames = readSection(pack, "GMNM", &gmaxNameSize);
+    gmaxLocalizedNames = readSection(
+        pack, "GMLN", &gmaxLocalizedNameSize, &gmaxLocalizedNameCount);
+    gmaxMoves = (GmaxMoveEntry *)contentAlloc(
+        sizeof(GmaxMoveEntry) * gmaxMoveRecords);
+    bool validGmaxMoves = rawGmaxMoves && gmaxNames && gmaxLocalizedNames &&
+        gmaxMoves && gmaxMoveRecords && gmaxMoveRecords <= UINT8_MAX &&
+        gmaxMoveSize == gmaxMoveRecords * 10u &&
+        gmaxLocalizedNameCount == gmaxMoveRecords;
+    SpeciesId previousMoveSpecies = SPECIES_NONE;
+    uint8_t previousMoveType = 0;
+    for (uint32_t i = 0; validGmaxMoves && i < gmaxMoveRecords; i++) {
+      const uint8_t *row = rawGmaxMoves + i * 10u;
+      GmaxMoveEntry &move = gmaxMoves[i];
+      move.species = rd16(row);
+      move.id = (GmaxMoveId)(i + 1u);
+      move.sourceType = row[2];
+      move.effect = (GmaxEffect)row[3];
+      move.power = row[4];
+      uint32_t nameOffset = rd32(row + 6);
+      bool speciesEligible = false;
+      for (uint32_t j = 0; j < gmaxRecords; j++)
+        if (gmaxSpecies[j] == move.species) { speciesEligible = true; break; }
+      if (!speciesEligible || move.sourceType >= TYPE_COUNT ||
+          move.effect <= GMAX_EFFECT_NONE || move.effect >= GMAX_EFFECT_COUNT ||
+          row[5] || !validString(gmaxNames, gmaxNameSize, nameOffset) ||
+          (i && (move.species < previousMoveSpecies ||
+                 (move.species == previousMoveSpecies &&
+                  move.sourceType <= previousMoveType)))) {
+        validGmaxMoves = false;
+        break;
+      }
+      move.name = (const char *)(gmaxNames + nameOffset);
+      previousMoveSpecies = move.species;
+      previousMoveType = move.sourceType;
+    }
+    free(rawGmaxMoves);
+    if (!validGmaxMoves) {
+      free(gmaxMoves); free(gmaxNames); free(gmaxLocalizedNames);
+      free(gmaxSpecies); free(megaForms); free(itemNames); free(itemLocalizedNames);
+      free(itemLocales); free(items); free(locales); free(localizedNames);
+      free(localizedTypeNames); free(typeNames); free(offsets); free(entries);
+      free(names); free(table); return false;
+    }
+  }
+
+  uint32_t maxNameSize = 0, maxNameCount = 0;
+  uint32_t maxLocalizedNameSize = 0, maxLocalizedNameCount = 0;
+  uint8_t *maxNames = readSection(pack, "MXNM", &maxNameSize, &maxNameCount);
+  uint8_t *maxLocalizedNames = readSection(
+      pack, "MXLN", &maxLocalizedNameSize, &maxLocalizedNameCount);
+  bool validMaxNames = maxNames && maxLocalizedNames &&
+      maxNameCount == TYPE_COUNT + 1u && maxLocalizedNameCount == maxNameCount;
+  uint32_t maxNameAt = 0;
+  for (uint8_t i = 0; validMaxNames && i < TYPE_COUNT + 1u; i++) {
+    if (!validString(maxNames, maxNameSize, maxNameAt)) {
+      validMaxNames = false;
+      break;
+    }
+    gMaxMoveNameOffsets[i] = maxNameAt;
+    maxNameAt += strlen((const char *)(maxNames + maxNameAt)) + 1u;
+  }
+  if (!validMaxNames || maxNameAt != maxNameSize) {
+    free(maxNames); free(maxLocalizedNames);
+    free(gmaxMoves); free(gmaxNames); free(gmaxLocalizedNames);
+    free(gmaxSpecies); free(megaForms); free(itemNames); free(itemLocalizedNames);
+    free(itemLocales); free(items); free(locales); free(localizedNames);
+    free(localizedTypeNames); free(typeNames); free(offsets); free(entries);
+    free(names); free(table); return false;
+  }
+
   uint32_t itemIconsSize = 0, itemIconCount = 0;
   uint8_t *itemIcons = nullptr;
   if (findSection(pack, "IICO")) {
     itemIcons = readSection(pack, "IICO", &itemIconsSize, &itemIconCount);
     if (!itemIcons || itemIconCount != itemRecords ||
         !validItemIcons(itemIcons, itemIconsSize, itemRecords)) {
-      free(itemIcons); free(gmaxSpecies); free(megaForms); free(itemNames);
+      free(itemIcons); free(maxNames); free(maxLocalizedNames);
+      free(gmaxMoves); free(gmaxNames); free(gmaxLocalizedNames);
+      free(gmaxSpecies); free(megaForms); free(itemNames);
       free(itemLocalizedNames);
       free(itemLocales); free(items); free(locales); free(localizedNames);
       free(localizedTypeNames); free(typeNames); free(offsets); free(entries);
@@ -929,7 +1021,9 @@ static bool loadMovePack(uint8_t packIndex) {
   free(rawAbilities);
   if (!validAbilities) {
     free(abilities); free(abilityNames); free(abilityLocalizedNames); free(abilityLocales);
-    free(itemIcons); free(gmaxSpecies); free(megaForms); free(itemNames);
+    free(itemIcons); free(maxNames); free(maxLocalizedNames);
+    free(gmaxMoves); free(gmaxNames); free(gmaxLocalizedNames);
+    free(gmaxSpecies); free(megaForms); free(itemNames);
     free(itemLocalizedNames); free(itemLocales); free(items); free(locales);
     free(localizedNames); free(localizedTypeNames); free(typeNames); free(offsets);
     free(entries); free(names); free(table); return false;
@@ -1006,6 +1100,13 @@ static bool loadMovePack(uint8_t packIndex) {
   gItemIcons = itemIcons; gItemIconsSize = itemIconsSize;
   gMegaForms = megaForms; gMegaFormCount = (uint16_t)megaRecords;
   gGigantamaxSpecies = gmaxSpecies; gGigantamaxCount = (uint16_t)gmaxRecords;
+  gGmaxMoves = gmaxMoves; gGmaxMoveCount = (uint8_t)gmaxMoveRecords;
+  gGmaxMoveNames = (char *)gmaxNames;
+  gGmaxMoveLocalizedNames = gmaxLocalizedNames;
+  gGmaxMoveLocalizedNamesSize = gmaxLocalizedNameSize;
+  gMaxMoveNames = (char *)maxNames;
+  gMaxMoveLocalizedNames = maxLocalizedNames;
+  gMaxMoveLocalizedNamesSize = maxLocalizedNameSize;
   gTypeLocalizedNames = localizedTypeNames;
   gTypeLocalizedNamesSize = localizedTypeNamesSize;
   gTypeNames = (char *)typeNames;
@@ -1816,6 +1917,46 @@ bool contentGigantamaxEligible(SpeciesId species) {
     else hi = mid;
   }
   return lo < gGigantamaxCount && gGigantamaxSpecies[lo] == species;
+}
+
+const GmaxMoveEntry *gmaxMoveFor(SpeciesId species, uint8_t sourceType) {
+  ensureContent();
+  uint8_t lo = 0, hi = gGmaxMoveCount;
+  while (lo < hi) {
+    uint8_t mid = (uint8_t)(lo + (hi - lo) / 2u);
+    const GmaxMoveEntry &candidate = gGmaxMoves[mid];
+    if (candidate.species < species ||
+        (candidate.species == species && candidate.sourceType < sourceType))
+      lo = (uint8_t)(mid + 1u);
+    else
+      hi = mid;
+  }
+  if (lo >= gGmaxMoveCount || gGmaxMoves[lo].species != species ||
+      gGmaxMoves[lo].sourceType != sourceType) return nullptr;
+  return &gGmaxMoves[lo];
+}
+
+const char *gmaxMoveName(GmaxMoveId move) {
+  ensureContent();
+  if (!move || move > gGmaxMoveCount) return "?";
+  const GmaxMoveEntry &entry = gGmaxMoves[move - 1u];
+  const char *localized = gUiActive < gUiCount
+      ? localizedAt(gGmaxMoveLocalizedNames, gGmaxMoveLocalizedNamesSize,
+                    uiActiveLocaleCode(), move - 1u)
+      : nullptr;
+  return localized && *localized ? localized : entry.name;
+}
+
+const char *maxMoveName(uint8_t sourceType, bool status) {
+  ensureContent();
+  uint8_t index = status ? TYPE_COUNT : sourceType;
+  if (index > TYPE_COUNT || !gMaxMoveNames) return nullptr;
+  const char *localized = gUiActive < gUiCount
+      ? localizedAt(gMaxMoveLocalizedNames, gMaxMoveLocalizedNamesSize,
+                    uiActiveLocaleCode(), index)
+      : nullptr;
+  return localized && *localized
+      ? localized : gMaxMoveNames + gMaxMoveNameOffsets[index];
 }
 uint16_t learnCount(SpeciesId species) {
   ensureContent();

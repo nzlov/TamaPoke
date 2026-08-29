@@ -922,10 +922,30 @@ const char *rareMark(bool rare) {
 bool btlNewBadge = false;
 uint32_t btlWinUntil = 0;   // the win screen is up
 uint16_t btlRewardTraining[3] = { 0, 0, 0 };
-static constexpr uint8_t BTL_REWARD_ITEM_MAX = 4;
+static constexpr uint8_t BTL_REWARD_ITEM_MAX = 8;
 ItemRef btlRewardItems[BTL_REWARD_ITEM_MAX] = {};
 uint8_t btlRewardItemCount = 0;
 UiScrollView btlRewardScroll;
+ItemRef btlLastConsumedItem;
+uint8_t btlGmaxBonusDrops = 0;
+
+static bool btlConsumeItem(ItemRef item) {
+  if (!item || !inventory.consume(item)) return false;
+  btlLastConsumedItem = item;
+  return true;
+}
+
+void btlApplyGmaxInventoryEffect(uint8_t actorSide, uint8_t bonusRewardItems,
+                                 bool restoreLastItem) {
+  if (actorSide != 0) return;
+  if (bonusRewardItems) {
+    uint16_t total = btlGmaxBonusDrops + bonusRewardItems;
+    btlGmaxBonusDrops = total > 3 ? 3 : (uint8_t)total;
+  }
+  if (restoreLastItem && btlLastConsumedItem &&
+      inventory.add(btlLastConsumedItem))
+    btlLastConsumedItem = ItemRef();
+}
 
 static void btlResetRewardSummary() {
   btlRewardTraining[0] = btlRewardTraining[1] = btlRewardTraining[2] = 0;
@@ -5259,8 +5279,12 @@ static void btlNarrate(const Combatant &actor, const Combatant &target, const Tu
     snprintf(transformedName, sizeof(transformedName), "Z-%s", typeName(lg.moveType));
     usedName = transformedName;
   } else if (lg.mechanic == BMECH_DYNAMAX) {
-    snprintf(transformedName, sizeof(transformedName), "MAX %s", typeName(lg.moveType));
-    usedName = transformedName;
+    if (lg.gmaxMove) usedName = gmaxMoveName(lg.gmaxMove);
+    else {
+      bool status = lg.move && moveEntry(lg.move).cat == MC_STATUS;
+      const char *maxName = maxMoveName(lg.moveType, status);
+      if (maxName) usedName = maxName;
+    }
   }
   if (lg.hurtSelf) { btlSay(T(S_BTL_HURTSELF)); return; }
   if (lg.charged) { btlSay(T(S_BTL_USED), displayCombatantName(actor), usedName); return; }
@@ -5356,7 +5380,8 @@ static bool btlReplaceActive(uint8_t side, uint8_t next, bool announce) {
   uint8_t &active = side ? btlFoeAt : btlSquadAt;
   Combatant &current = side ? btlFoe : btlYou;
   if (next >= count || next == active || squad[next].fainted()) return false;
-  battleOnSwitchOut(current);
+  Combatant &opponent = side ? btlYou : btlFoe;
+  battleOnSwitchOut(current, &opponent);
   squad[active] = current;
   active = next;
   current = squad[active];
@@ -5427,6 +5452,8 @@ static void btlResetMechanics() {
   btlMyMechanic = BMECH_NONE;
   btlPendingMegaForm = MEGA_FORM_NONE;
   btlWildMegaForm = MEGA_FORM_NONE;
+  btlLastConsumedItem = ItemRef();
+  btlGmaxBonusDrops = 0;
   btlField = BattleField();
 }
 
@@ -5781,6 +5808,8 @@ static void btlApplyResult() {
   LinkResult r;
   memcpy(&r, lan.result, sizeof(r));
   lan.resultNew = false;
+  if (r.flags & LINK_RESULT_GUEST_REPLENISH)
+    btlApplyGmaxInventoryEffect(0, 0, true);
   BattleField previousField = btlField;
   uint16_t previousYouHp = btlYou.hp;
   uint16_t previousFoeHp = btlFoe.hp;
@@ -5790,7 +5819,7 @@ static void btlApplyResult() {
   // are the foe's and ours are ours.
   uint32_t now = millis();
   if (r.guestIdx < btlSquadN && r.guestIdx != btlSquadAt) {
-    battleOnSwitchOut(btlYou);
+    battleOnSwitchOut(btlYou, &btlFoe);
     btlSquad[btlSquadAt] = btlYou;
     btlSquadAt = r.guestIdx;
     btlYou = btlSquad[btlSquadAt];
@@ -5818,6 +5847,10 @@ static void btlApplyResult() {
   btlFoe.hp = r.hostHp > btlFoe.maxHp ? btlFoe.maxHp : r.hostHp;
   btlYou.ailment = r.guestAil;
   btlFoe.ailment = r.hostAil;
+  btlYou.ailTurns = r.guestAilTurns;
+  btlFoe.ailTurns = r.hostAilTurns;
+  btlYou.confuseTurns = r.guestConfuseTurns;
+  btlFoe.confuseTurns = r.hostConfuseTurns;
   // GLUE: LinkResult is the stable byte-oriented wire shape; remove this
   // mapping only if the protocol gains a BattleField serializer of its own.
   btlField.baseWeather = r.baseWeather <= BWEATHER_SNOW
@@ -5832,6 +5865,7 @@ static void btlApplyResult() {
       ? (BattleTerrain)r.terrain : BTERRAIN_NONE;
   btlField.terrainTurns = r.terrainTurns <= BATTLE_FIELD_TURNS
       ? r.terrainTurns : BATTLE_FIELD_TURNS;
+  btlField.gravityTurns = min(r.gravityTurns, BATTLE_FIELD_TURNS);
   for (uint8_t localSide = 0; localSide < 2; localSide++) {
     uint8_t wireSide = localSide ^ 1u;
     BattleSideConditions &side = btlField.sides[localSide];
@@ -5842,6 +5876,11 @@ static void btlApplyResult() {
     side.toxicSpikesLayers = min(r.sideToxicSpikesLayers[wireSide], (uint8_t)2);
     side.stealthRock = (r.sideHazardFlags[wireSide] & 1u) != 0;
     side.stickyWeb = (r.sideHazardFlags[wireSide] & 2u) != 0;
+    side.steelsurge = (r.sideHazardFlags[wireSide] & 4u) != 0;
+    side.critStages = min(r.sideCritStages[wireSide], (uint8_t)3);
+    side.gmaxResidualEffect = r.sideGmaxResidualEffect[wireSide] < GMAX_EFFECT_COUNT
+        ? r.sideGmaxResidualEffect[wireSide] : GMAX_EFFECT_NONE;
+    side.gmaxResidualTurns = min(r.sideGmaxResidualTurns[wireSide], (uint8_t)4);
   }
   if (!btlField.weatherTurns) btlField.weather = btlField.baseWeather;
   if (!btlField.terrainTurns) btlField.terrain = btlField.baseTerrain;
@@ -5859,6 +5898,22 @@ static void btlApplyResult() {
   btlFoe.gigantamax = r.hostGigantamax != 0;
   btlYou.dynamaxTurns = r.guestDynamaxTurns;
   btlFoe.dynamaxTurns = r.hostDynamaxTurns;
+  btlYou.statPercent = r.guestStatPercent >= 50 && r.guestStatPercent <= 100
+      ? r.guestStatPercent : 100;
+  btlFoe.statPercent = r.hostStatPercent >= 50 && r.hostStatPercent <= 100
+      ? r.hostStatPercent : 100;
+  btlYou.bindTurns = min(r.guestBindTurns, (uint8_t)4);
+  btlFoe.bindTurns = min(r.hostBindTurns, (uint8_t)4);
+  btlYou.drowsyTurns = min(r.guestDrowsyTurns, (uint8_t)2);
+  btlFoe.drowsyTurns = min(r.hostDrowsyTurns, (uint8_t)2);
+  btlYou.trapped = (r.guestVolatileFlags & 1u) != 0;
+  btlFoe.trapped = (r.hostVolatileFlags & 1u) != 0;
+  btlYou.tormented = (r.guestVolatileFlags & 2u) != 0;
+  btlFoe.tormented = (r.hostVolatileFlags & 2u) != 0;
+  btlYou.infatuated = (r.guestVolatileFlags & 4u) != 0;
+  btlFoe.infatuated = (r.hostVolatileFlags & 4u) != 0;
+  btlYou.lastMove = linkSafeMove(r.guestLastMove);
+  btlFoe.lastMove = linkSafeMove(r.hostLastMove);
   btlYou.normalMaxHp = btlYou.activeMechanic == BMECH_DYNAMAX
       ? (uint16_t)((btlYou.maxHp + 1u) / 2u) : 0;
   btlFoe.normalMaxHp = btlFoe.activeMechanic == BMECH_DYNAMAX
@@ -5901,22 +5956,40 @@ static void btlApplyResult() {
   char hostMoveName[32], guestMoveName[32];
   const char *hostUsed = r.hostMove ? moveName(r.hostMove) : "";
   const char *guestUsed = r.guestMove ? moveName(r.guestMove) : "";
-  if (r.hostMoveMechanic == BMECH_Z_MOVE || r.hostMoveMechanic == BMECH_DYNAMAX) {
-    snprintf(hostMoveName, sizeof(hostMoveName), "%s%s",
-             r.hostMoveMechanic == BMECH_Z_MOVE ? "Z-" : "MAX ",
-             typeName(moveEntry(r.hostMove).type));
+  uint8_t hostMoveType = r.hostMoveType < TYPE_COUNT
+      ? r.hostMoveType : moveEntry(r.hostMove).type;
+  uint8_t guestMoveType = r.guestMoveType < TYPE_COUNT
+      ? r.guestMoveType : moveEntry(r.guestMove).type;
+  if (r.hostGmaxMove) hostUsed = gmaxMoveName(r.hostGmaxMove);
+  else if (r.hostMoveMechanic == BMECH_Z_MOVE || r.hostMoveMechanic == BMECH_DYNAMAX) {
+    if (r.hostMoveMechanic == BMECH_DYNAMAX) {
+      const char *maxName = maxMoveName(
+          hostMoveType, moveEntry(r.hostMove).cat == MC_STATUS);
+      snprintf(hostMoveName, sizeof(hostMoveName), "%s",
+               maxName ? maxName : moveName(r.hostMove));
+    } else {
+      snprintf(hostMoveName, sizeof(hostMoveName), "%s%s",
+               "Z-", typeName(hostMoveType));
+    }
     hostUsed = hostMoveName;
   }
-  if (r.guestMoveMechanic == BMECH_Z_MOVE || r.guestMoveMechanic == BMECH_DYNAMAX) {
-    snprintf(guestMoveName, sizeof(guestMoveName), "%s%s",
-             r.guestMoveMechanic == BMECH_Z_MOVE ? "Z-" : "MAX ",
-             typeName(moveEntry(r.guestMove).type));
+  if (r.guestGmaxMove) guestUsed = gmaxMoveName(r.guestGmaxMove);
+  else if (r.guestMoveMechanic == BMECH_Z_MOVE || r.guestMoveMechanic == BMECH_DYNAMAX) {
+    if (r.guestMoveMechanic == BMECH_DYNAMAX) {
+      const char *maxName = maxMoveName(
+          guestMoveType, moveEntry(r.guestMove).cat == MC_STATUS);
+      snprintf(guestMoveName, sizeof(guestMoveName), "%s",
+               maxName ? maxName : moveName(r.guestMove));
+    } else {
+      snprintf(guestMoveName, sizeof(guestMoveName), "%s%s",
+               "Z-", typeName(guestMoveType));
+    }
     guestUsed = guestMoveName;
   }
   char action[96];
   uint16_t stagedYouHp = previousYouHp;
   uint16_t stagedFoeHp = previousFoeHp;
-  bool hostFirst = (r.flags & 0x08) != 0;
+  bool hostFirst = (r.flags & LINK_RESULT_HOST_FIRST) != 0;
   for (uint8_t order = 0; order < 2; order++) {
     bool hostActs = order == 0 ? hostFirst : !hostFirst;
     MoveId move = hostActs ? r.hostMove : r.guestMove;
@@ -5932,7 +6005,8 @@ static void btlApplyResult() {
     uint8_t cue = moveEntry(move).cat == MC_SPEC ? SFX_BEAM : SFX_HIT;
     bool hit = hostActs ? r.guestDmg != 0 : r.hostDmg != 0;
     btlQueueTurnTextAt(action, BTL_TURN_ACTION, actor, target,
-                       stagedYouHp, stagedFoeHp, moveEntry(move).type,
+                       stagedYouHp, stagedFoeHp,
+                       hostActs ? hostMoveType : guestMoveType,
                        btlActionStyle(move), cue, hit, false);
   }
   btlTurnContextKind = BTL_TURN_END;
@@ -6019,11 +6093,15 @@ static void btlLinkPoll() {
 
 // Packs the outcome for the guest. Only the host ever calls this.
 static void btlShipResult(const BattleMove &yourMove, const BattleMove &theirMove,
-                          uint16_t hp0You, uint16_t hp0Foe, bool yourFirst) {
+                          uint16_t hp0You, uint16_t hp0Foe, bool yourFirst,
+                          bool guestReplenished) {
   LinkResult r = {};
   r.hostHp = btlYou.hp;   r.guestHp = btlFoe.hp;
   r.hostMaxHp = btlYou.maxHp; r.guestMaxHp = btlFoe.maxHp;
   r.hostAil = btlYou.ailment; r.guestAil = btlFoe.ailment;
+  r.hostAilTurns = btlYou.ailTurns; r.guestAilTurns = btlFoe.ailTurns;
+  r.hostConfuseTurns = btlYou.confuseTurns;
+  r.guestConfuseTurns = btlFoe.confuseTurns;
   r.hostMove = yourMove.source;  r.guestMove = theirMove.source;
   r.hostDmg = (hp0You > btlYou.hp) ? hp0You - btlYou.hp : 0;
   r.guestDmg = (hp0Foe > btlFoe.hp) ? hp0Foe - btlFoe.hp : 0;
@@ -6037,6 +6115,10 @@ static void btlShipResult(const BattleMove &yourMove, const BattleMove &theirMov
   r.guestFormPrimed = btlFoe.formPrimed ? 1 : 0;
   r.hostGigantamax = btlYou.gigantamax ? 1 : 0;
   r.guestGigantamax = btlFoe.gigantamax ? 1 : 0;
+  r.hostGmaxMove = yourMove.gmaxMove;
+  r.guestGmaxMove = theirMove.gmaxMove;
+  r.hostMoveType = yourMove.entry.type;
+  r.guestMoveType = theirMove.entry.type;
   r.hostMoveMechanic = yourMove.mechanic; r.guestMoveMechanic = theirMove.mechanic;
   r.hostDynamaxTurns = btlYou.dynamaxTurns;
   r.guestDynamaxTurns = btlFoe.dynamaxTurns;
@@ -6050,6 +6132,7 @@ static void btlShipResult(const BattleMove &yourMove, const BattleMove &theirMov
   r.baseTerrain = btlField.baseTerrain;
   r.terrain = btlField.terrain;
   r.terrainTurns = btlField.terrainTurns;
+  r.gravityTurns = btlField.gravityTurns;
   for (uint8_t sideIndex = 0; sideIndex < 2; sideIndex++) {
     const BattleSideConditions &side = btlField.sides[sideIndex];
     r.sideReflectTurns[sideIndex] = side.reflectTurns;
@@ -6058,8 +6141,25 @@ static void btlShipResult(const BattleMove &yourMove, const BattleMove &theirMov
     r.sideSpikesLayers[sideIndex] = side.spikesLayers;
     r.sideToxicSpikesLayers[sideIndex] = side.toxicSpikesLayers;
     r.sideHazardFlags[sideIndex] = (side.stealthRock ? 1u : 0u) |
-                                   (side.stickyWeb ? 2u : 0u);
+                                   (side.stickyWeb ? 2u : 0u) |
+                                   (side.steelsurge ? 4u : 0u);
+    r.sideCritStages[sideIndex] = side.critStages;
+    r.sideGmaxResidualEffect[sideIndex] = side.gmaxResidualEffect;
+    r.sideGmaxResidualTurns[sideIndex] = side.gmaxResidualTurns;
   }
+  r.hostStatPercent = btlYou.statPercent;
+  r.guestStatPercent = btlFoe.statPercent;
+  r.hostBindTurns = btlYou.bindTurns; r.guestBindTurns = btlFoe.bindTurns;
+  r.hostDrowsyTurns = btlYou.drowsyTurns;
+  r.guestDrowsyTurns = btlFoe.drowsyTurns;
+  r.hostVolatileFlags = (btlYou.trapped ? 1u : 0u) |
+                        (btlYou.tormented ? 2u : 0u) |
+                        (btlYou.infatuated ? 4u : 0u);
+  r.guestVolatileFlags = (btlFoe.trapped ? 1u : 0u) |
+                         (btlFoe.tormented ? 2u : 0u) |
+                         (btlFoe.infatuated ? 4u : 0u);
+  r.hostLastMove = btlYou.lastMove;
+  r.guestLastMove = btlFoe.lastMove;
   for (uint8_t i = 0; i < SI_COUNT; i++) {
     r.hostBase[i] = btlYou.base[i];
     r.guestBase[i] = btlFoe.base[i];
@@ -6084,8 +6184,9 @@ static void btlShipResult(const BattleMove &yourMove, const BattleMove &theirMov
     r.guestMemberForm[i] = member.form;
     r.guestMemberFormPrimed[i] = member.formPrimed ? 1 : 0;
   }
-  if (yourFirst) r.flags |= 0x08;
-  if (btlYou.fainted() || btlFoe.fainted()) r.flags |= 0x04;
+  if (yourFirst) r.flags |= LINK_RESULT_HOST_FIRST;
+  if (btlYou.fainted() || btlFoe.fainted()) r.flags |= LINK_RESULT_FAINT;
+  if (guestReplenished) r.flags |= LINK_RESULT_GUEST_REPLENISH;
   lan.sendResult((const uint8_t *)&r, (uint8_t)sizeof(r));
 }
 
@@ -6137,6 +6238,12 @@ static void btlGrantWildRewards() {
   uint8_t dropCount = wildWeightedDropCount(
       btlHard, (uint8_t)random(100));
   for (uint8_t i = 0; i < dropCount; i++) {
+    ItemRef drop = inventory.grantWeightedDrop(
+        (uint32_t)random(0x7FFFFFFF), foeMoves, LEARNED_MOVE_SLOTS,
+        btlRewardItems, btlRewardItemCount);
+    btlRememberRewardItem(drop);
+  }
+  for (uint8_t i = 0; i < btlGmaxBonusDrops; i++) {
     ItemRef drop = inventory.grantWeightedDrop(
         (uint32_t)random(0x7FFFFFFF), foeMoves, LEARNED_MOVE_SLOTS,
         btlRewardItems, btlRewardItemCount);
@@ -6257,6 +6364,7 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
   BattleMechanic foeMechanic = BMECH_NONE;
   uint8_t foePercent = 100;
   bool foeSwitched = false;
+  bool guestReplenished = false;
   bool foeWantsRun = false;
   uint8_t foeRunRoll = 100;
   if (btlLink) {
@@ -6328,6 +6436,8 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
   } else {
     battleAct(*a, *b, btlField, ma, lg, a == &btlYou ? yourPercent : foePercent,
               aSide);
+    guestReplenished |= aSide == 1 && lg.restoreLastItem;
+    btlApplyGmaxInventoryEffect(aSide, lg.bonusRewardItems, lg.restoreLastItem);
     btlPrepareTurnAction(aSide, bSide, lg, BTL_TURN_ACTION);
     btlNarrate(*a, *b, lg);
   }
@@ -6353,6 +6463,8 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
     } else {
       battleAct(*b, *a, btlField, mb, lg, b == &btlYou ? yourPercent : foePercent,
                 bSide);
+      guestReplenished |= bSide == 1 && lg.restoreLastItem;
+      btlApplyGmaxInventoryEffect(bSide, lg.bonusRewardItems, lg.restoreLastItem);
       btlPrepareTurnAction(bSide, aSide, lg, BTL_TURN_ACTION);
       btlNarrate(*b, *a, lg);
       if (lg.switchRequest == BSWITCH_TARGET)
@@ -6383,7 +6495,8 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
   btlScaleShownHp(0, oldYouMaxHp, btlYou.maxHp);
   btlScaleShownHp(1, oldFoeMaxHp, btlFoe.maxHp);
   if (btlLink && btlLinkHost)
-    btlShipResult(yourBattleMove, foeBattleMove, hp0You, hp0Foe, youFirst);
+    btlShipResult(yourBattleMove, foeBattleMove, hp0You, hp0Foe, youFirst,
+                  guestReplenished);
   // Persist deaths and either queue replacements or finish the battle. The
   // replacement itself remains deferred until the faint beat has played.
   btlHandleFaints();
@@ -7377,13 +7490,21 @@ void renderBattle() {
       gfx->setTextColor(UI_INK);
       gfx->setTextSize(1);
       char moveLabel[64];
-      const char *shown = (btlPendingMechanic == BMECH_Z_MOVE ||
-                           btlYou.activeMechanic == BMECH_DYNAMAX)
-                              ? typeName(moveEntry(mv).type) : moveName(mv);
-      snprintf(moveLabel, sizeof(moveLabel), "%s%s",
-               btlPendingMechanic == BMECH_Z_MOVE ? "Z-"
-               : btlYou.activeMechanic == BMECH_DYNAMAX ? "MAX " : "",
-               shown);
+      BattleMove displayed = battleMoveFor(btlYou, mv, btlPendingMechanic);
+      if (displayed.gmaxMove) {
+        snprintf(moveLabel, sizeof(moveLabel), "%s",
+                 gmaxMoveName(displayed.gmaxMove));
+      } else if (displayed.mechanic == BMECH_Z_MOVE) {
+        snprintf(moveLabel, sizeof(moveLabel), "Z-%s",
+                 typeName(displayed.entry.type));
+      } else if (displayed.mechanic == BMECH_DYNAMAX) {
+        const char *maxName = maxMoveName(
+            displayed.entry.type, displayed.entry.cat == MC_STATUS);
+        snprintf(moveLabel, sizeof(moveLabel), "%s",
+                 maxName ? maxName : moveName(mv));
+      } else {
+        snprintf(moveLabel, sizeof(moveLabel), "%s", moveName(mv));
+      }
       int16_t left, top, right, bottom;
       if (gfx->textInkBounds(moveLabel, &left, &top, &right, &bottom))
         gfx->setCursor(x + 10 - left, y + 5 - top);
@@ -7393,8 +7514,15 @@ void renderBattle() {
 
       // Match the move list's information order: name at top-left, type below,
       // and the effective power (including Z/Max conversion) on the right.
-      BattleMove displayed = battleMoveFor(btlYou, mv, btlPendingMechanic);
-      drawTypeChip(x + 10, y + 24, displayed.entry.type);
+      int chipWidth = drawTypeChip(x + 10, y + 24, displayed.entry.type);
+      if (displayed.mechanic == BMECH_DYNAMAX) {
+        const char *tag = displayed.gmaxMove ? "G-MAX" : "MAX";
+        int tagX = x + 16 + chipWidth;
+        int tagW = gfx->textWidth(tag) + 10;
+        gfx->fillRoundRect(tagX, y + 24, tagW, MOVE_CHIP_H, 4, UI_INK);
+        gfx->setTextColor(UI_WHITE);
+        uiDrawCenteredIn(tag, tagX, y + 24, tagW, MOVE_CHIP_H);
+      }
       bool stab = (btlYou.type1 == displayed.entry.type ||
                    btlYou.type2 == displayed.entry.type) &&
                   displayed.entry.cat != MC_STATUS;
@@ -7442,7 +7570,7 @@ static void btlDoSwap() {
 // being a free look at the matchup every round.
 static void btlSwitchTo(uint8_t i) {
   if ((!btlLink && !btlCanSubmitTurn()) || i >= btlSquadN || i == btlSquadAt) return;
-  if (!battleCanSwitch(btlYou, btlFoe)) { sfxPlay(SFX_DENY); return; }
+  if (!battleCanSwitch(btlYou, btlFoe, &btlField)) { sfxPlay(SFX_DENY); return; }
   if (!btlReplaceActive(0, i, true)) return;
   btlMenu = 0;
   btlResolve(MOVE_NONE, 100, BMECH_NONE);
@@ -7464,7 +7592,7 @@ void commitBattleMove(uint8_t moveSlot, uint8_t percent) {
     BattleSideMechanics activatedSide = btlYourMechanics;
     if (!item || !battleActivateMechanic(activatedSide, activated, mechanic, move,
                                          megaForm) ||
-        !inventory.consume(item->key)) {
+        !btlConsumeItem({ item->key, MOVE_NONE })) {
       sfxPlay(SFX_DENY);
       return;
     }
@@ -7556,7 +7684,7 @@ static void btlSpendItemTurn(const ItemEntry &item, uint8_t targetIndex) {
   Combatant *target = btlMember(targetIndex);
   Combatant applied = target ? *target : Combatant();
   if (!target || !itemApplyToCombatant(item, applied) ||
-      !inventory.consume(item.key)) {
+      !btlConsumeItem({ item.key, MOVE_NONE })) {
     sfxPlay(SFX_DENY);
     return;
   }
@@ -7594,7 +7722,8 @@ void btlCompleteCapture() {
 bool btlStartCapture(const ItemEntry &item, uint8_t roll, uint32_t now) {
   btlResetThrow();
   if (!btlCanSubmitTurn() || btlCaptureAnimating || !btlWild ||
-      item.effect != ITEM_EFFECT_CATCH || !inventory.consume(item.key)) {
+      item.effect != ITEM_EFFECT_CATCH ||
+      !btlConsumeItem({ item.key, MOVE_NONE })) {
     sfxPlay(SFX_DENY);
     return false;
   }
