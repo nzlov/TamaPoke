@@ -648,11 +648,10 @@ bool navMenuOpen = false;
 #define NAVMENU_BTN_Y(i) (100 + (i) * (NAVMENU_BTN_H + NAVMENU_BTN_GAP))
 #define NAVMENU_ROWS 3
 
-// Box is the only cultivation-management screen. Selecting any Box cell opens
-// its embedded cultivation picker: an empty cell deposits the chosen creature,
-// while an occupied cell can be withdrawn into a free cultivation slot or
-// exchanged with a chosen member. `partyPick` reuses that picker when a captured
-// creature needs a replacement slot.
+// Box is the only cultivation-management screen. Empty cells open the deposit
+// picker; occupied cells first open their actions, and WITHDRAW continues into
+// the same picker only when the cultivation roster is full. `partyPick` reuses
+// that picker when a captured creature needs a replacement slot.
 bool partyPick = false;
 PartyMon partyPending;
 #define BURY_TARGET_NONE  -2
@@ -661,7 +660,20 @@ int8_t buryTarget = BURY_TARGET_NONE;
 bool boxOpen = false;
 uint8_t boxPage = 0;
 uint8_t boxSel = 0;        // selected Box slot + 1; may refer to an empty cell
+enum BoxView : uint8_t {
+  BOX_VIEW_GRID,
+  BOX_VIEW_ACTIONS,
+  BOX_VIEW_PICKER,
+  BOX_VIEW_DETAIL,
+  BOX_VIEW_RELEASE_CONFIRM,
+};
+uint8_t boxView = BOX_VIEW_GRID;
+uint8_t boxDetailPage = 0;
 #define BOX_PER_PAGE 6
+#define BOX_ACTION_X 93
+#define BOX_ACTION_W 280
+#define BOX_ACTION_Y(i) (148 + (i) * 58)
+#define BOX_ACTION_H 48
 uint32_t partyBannerUntil = 0;   // "<name> joined the party!"
 char partyBannerName[32] = "";
 #define PARTY_CELL_W 150
@@ -975,8 +987,6 @@ BattleMechanic btlMyMechanic = BMECH_NONE;
 #define BOXPICK_BACK_H UI_TAP_MIN
 #define BOXPICK_BACK_X 133
 #define BOXPICK_BACK_W 200
-#define BOXPICK_ACTION_X (PARTY_GRID_X + PARTY_CELL_W + 10)
-#define BOXPICK_ACTION_W PARTY_CELL_W
 
 uint8_t gymRegion = 0;
 uint8_t btlRegion = 0;
@@ -2101,10 +2111,20 @@ void onSwipeV(int dir) {
     return;
   }
   if (boxOpen) {
-    if (boxSel) { boxSel = 0; return; }
     if (partyPick) {
       partyPick = false;
       partyPending = PartyMon();
+      boxOpen = false;
+      return;
+    }
+    if (boxView == BOX_VIEW_DETAIL || boxView == BOX_VIEW_RELEASE_CONFIRM) {
+      boxView = BOX_VIEW_ACTIONS;
+      return;
+    }
+    if (boxView == BOX_VIEW_ACTIONS || boxView == BOX_VIEW_PICKER) {
+      boxView = BOX_VIEW_GRID;
+      boxSel = 0;
+      return;
     }
     boxOpen = false;
     return;
@@ -2759,7 +2779,22 @@ void onSwipe(int dir) {
   }
   if (boxOpen) {
     if (partyPick) return;          // a pending creature needs an explicit choice
-    if (boxSel) { boxSel = 0; return; }
+    if (boxView == BOX_VIEW_DETAIL) {
+      int p = (int)boxDetailPage + (dir > 0 ? -1 : 1);
+      if (p < 0) p = 0;
+      if (p >= BTL_FOE_DETAIL_PAGES) p = BTL_FOE_DETAIL_PAGES - 1;
+      boxDetailPage = (uint8_t)p;
+      return;
+    }
+    if (boxView == BOX_VIEW_RELEASE_CONFIRM) {
+      boxView = BOX_VIEW_ACTIONS;
+      return;
+    }
+    if (boxView == BOX_VIEW_ACTIONS || boxView == BOX_VIEW_PICKER) {
+      boxView = BOX_VIEW_GRID;
+      boxSel = 0;
+      return;
+    }
     uint8_t pages = BOX_SLOTS / BOX_PER_PAGE;
     int p = (int)boxPage + (dir > 0 ? -1 : 1);
     if (p < 0 || p >= pages) boxOpen = false;
@@ -2827,6 +2862,8 @@ bool petNavTap(int16_t x, int16_t y) {
   boxOpen = true;
   boxPage = 0;
   boxSel = 0;
+  boxView = BOX_VIEW_GRID;
+  boxDetailPage = 0;
   sfxPlay(SFX_TAP);
   return true;
 }
@@ -6749,15 +6786,20 @@ static bool btlFoeDetailHit(int16_t x, int16_t y) {
   return x >= 60 && x <= 406 && y >= 28 && y <= 150;
 }
 
-static void renderBattleFoeDetail() {
+static void renderStoredMonDetail(const PartyMon &mon,
+                                  const Combatant *battleStats,
+                                  uint8_t page, PmdMon *portrait) {
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
-  const DexEntry &entry = dexEntry(btlFoe.dex);
+  int16_t dex = battleStats ? battleStats->dex : mon.dex;
+  uint8_t level = battleStats ? battleStats->level : (uint8_t)mon.level;
+  bool shiny = battleStats ? battleStats->shiny : mon.shiny || mon.sparkle;
+  PetGender gender = battleStats ? battleStats->gender : mon.gender;
+  const DexEntry &entry = dexEntry(dex);
 
-  if (btlFoeDetailPage == 0) {
+  if (page == 0) {
     char head[64];
     snprintf(head, sizeof(head), T(S_NAME_FMT),
-             rareMark(btlFoe.shiny),
-             speciesName(btlFoe.dex), btlFoe.level);
+             rareMark(shiny), displaySpeciesName(dex, mon.nick), level);
     gfx->setTextColor(entry.accent);
     gfx->setTextSize(3);
     int titleSize = gfx->textWidth(head) <= 250 ? 3 : 2;
@@ -6765,7 +6807,7 @@ static void renderBattleFoeDetail() {
     int titleX = uiCenterX(head, CX - 10);
     gfx->setCursor(titleX, titleSize == 3 ? 38 : 44);
     gfx->print(head);
-    drawGenderIcon(btlFoe.gender,
+    drawGenderIcon(gender,
                    titleX + gfx->textWidth(head) + 4,
                    titleSize == 3 ? 33 : 39, 1);
 
@@ -6777,21 +6819,21 @@ static void renderBattleFoeDetail() {
     gfx->setCursor(uiCenterX(type), 70);
     gfx->print(type);
 
-    if (btlPmd[1].loaded)
-      drawPmdActM(btlPmd[1], PMD_IDLE, CX, 198, millis(), true, false, 3, 0);
+    if (portrait && portrait->loaded)
+      drawPmdActM(*portrait, PMD_IDLE, CX, 198, millis(), true, false, 3, 0);
     else {
-      const uint8_t *thumb = thumbs.get(btlFoe.dex);
+      const uint8_t *thumb = thumbs.get(dex);
       if (thumb) drawThumb(thumb, CX - 48, 98, 3, false);
     }
 
-    const char *description = speciesDescription(btlFoe.dex, uiActiveLocaleCode());
+    const char *description = speciesDescription(dex, uiActiveLocaleCode());
     if (description && description[0]) {
       gfx->setTextColor(UI_INK);
       gfx->setTextSize((uint8_t)uiLayoutMetric(UI_LAYOUT_DETAIL_DESCRIPTION_TEXT_SIZE, 1));
       drawWrappedText(description, uiLayoutMetric(UI_LAYOUT_DETAIL_DESCRIPTION_X, 78),
                       220, uiLayoutMetric(UI_LAYOUT_DETAIL_DESCRIPTION_WIDTH, 310), 6);
     }
-  } else if (btlFoeDetailPage == 1) {
+  } else if (page == 1) {
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(3);
     gfx->setCursor(uiCenterX(T(S_STATS)), 36);
@@ -6806,29 +6848,36 @@ static void renderBattleFoeDetail() {
     gfx->print(type);
 
     char nature[48];
-    snprintf(nature, sizeof(nature), T(S_NATURE_FMT), natureName(btlWildMon.nature));
+    snprintf(nature, sizeof(nature), T(S_NATURE_FMT), natureName(mon.nature));
     gfx->setTextColor(UI_INK);
     gfx->setCursor(uiCenterX(nature), 94);
     gfx->print(nature);
 
-    drawCardStat(122, T(S_STAT_ATK), btlFoe.base[SI_ATK], 800, UI_BAR_BAD, btlWildMon.ivAtk);
-    drawCardStat(154, T(S_STAT_DEF), btlFoe.base[SI_DEF], 800, 0x4C98, btlWildMon.ivDef);
-    drawCardStat(186, "Sp.A", btlFoe.base[SI_SPA], 800, UI_BAR_BAD, btlWildMon.ivAtk);
-    drawCardStat(218, "Sp.D", btlFoe.base[SI_SPD], 800, 0x4C98, btlWildMon.ivDef);
-    drawCardStat(250, T(S_STAT_SPE), btlFoe.base[SI_SPE], 800, UI_BAR_WARN, btlWildMon.ivSpe);
-    drawCardStat(282, T(S_STAT_VIT), btlFoe.maxHp, 800, UI_BAR_OK, btlWildMon.ivHp);
+    drawCardStat(122, T(S_STAT_ATK), battleStats ? battleStats->base[SI_ATK] : party.atkOf(mon),
+                 800, UI_BAR_BAD, mon.ivAtk);
+    drawCardStat(154, T(S_STAT_DEF), battleStats ? battleStats->base[SI_DEF] : party.defOf(mon),
+                 800, 0x4C98, mon.ivDef);
+    drawCardStat(186, "Sp.A", battleStats ? battleStats->base[SI_SPA] : party.spaOf(mon),
+                 800, UI_BAR_BAD, mon.ivAtk);
+    drawCardStat(218, "Sp.D", battleStats ? battleStats->base[SI_SPD] : party.spdOf(mon),
+                 800, 0x4C98, mon.ivDef);
+    drawCardStat(250, T(S_STAT_SPE), battleStats ? battleStats->base[SI_SPE] : party.speOf(mon),
+                 800, UI_BAR_WARN, mon.ivSpe);
+    drawCardStat(282, T(S_STAT_VIT), battleStats ? battleStats->maxHp : party.vitOf(mon),
+                 800, UI_BAR_OK, mon.ivHp);
   } else {
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(3);
     gfx->setCursor(uiCenterX(T(S_MOVES)), 44);
     gfx->print(T(S_MOVES));
     for (int i = 0; i < MOVE_SLOTS; i++)
-      drawMoveRow(MOVE_ROW_Y(i), btlFoe.moves[i], false, btlFoe.dex);
+      drawMoveRow(MOVE_ROW_Y(i), battleStats ? battleStats->moves[i] : mon.moves[i],
+                  false, dex);
   }
 
   for (uint8_t i = 0; i < BTL_FOE_DETAIL_PAGES; i++) {
     int x = CX - (BTL_FOE_DETAIL_PAGES - 1) * 13 + i * 26;
-    if (i == btlFoeDetailPage) gfx->fillCircle(x, 374, 5, UI_INK);
+    if (i == page) gfx->fillCircle(x, 374, 5, UI_INK);
     else gfx->drawCircle(x, 374, 4, UI_INK);
   }
   gfx->setTextColor(UI_MUTED);
@@ -6836,6 +6885,10 @@ static void renderBattleFoeDetail() {
   gfx->setCursor(uiCenterX(T(S_DETAIL_BACK)), 398);
   gfx->print(T(S_DETAIL_BACK));
   gfx->flush();
+}
+
+static void renderBattleFoeDetail() {
+  renderStoredMonDetail(btlWildMon, &btlFoe, btlFoeDetailPage, &btlPmd[1]);
 }
 
 uint8_t btlCaptureStageAt(uint32_t now) {
@@ -7374,6 +7427,7 @@ void btlCompleteCapture() {
     partyPick = true;
     boxOpen = true;
     boxSel = 0;
+    boxView = BOX_VIEW_PICKER;
   }
   battleOpen = false;
   btlOver = true;
@@ -8842,12 +8896,9 @@ void renderTrain() {
 // ---------- the box ----------
 // Box owns the complete cultivation-management flow. A Box cell is selected
 // first. Empty Box cells deposit a chosen cultivation member; occupied Box
-// cells can be withdrawn into a free slot or exchanged with an occupied slot.
+// cells expose view, withdraw and release actions. A full cultivation roster
+// continues from WITHDRAW into the existing member-exchange picker.
 // There is no separate party-management screen.
-static bool boxCanWithdraw() {
-  return !partyPick && boxSel && !party.box[boxSel - 1].empty() &&
-         party.firstFree() >= 0;
-}
 
 static void drawCultivationSlot(uint8_t slot, int x, int y) {
   const PartyMon &m = party.slots[slot];
@@ -8888,7 +8939,55 @@ static void drawCultivationSlot(uint8_t slot, int x, int y) {
   }
 }
 
+static void drawBoxActions() {
+  gfx->fillRoundRect(73, 124, 320, 224, 16, UI_WHITE);
+  gfx->drawRoundRect(73, 124, 320, 224, 16, UI_INK);
+  const char *labels[3] = {
+    T(S_ITEM_VIEW), T(S_BOX_WITHDRAW), T(S_RETIRE)
+  };
+  for (uint8_t row = 0; row < 3; row++) {
+    uint16_t fill = row == 2 ? UI_BAR_BAD : UI_BG_DAY;
+    gfx->fillRoundRect(BOX_ACTION_X, BOX_ACTION_Y(row), BOX_ACTION_W,
+                       BOX_ACTION_H, 12, fill);
+    gfx->drawRoundRect(BOX_ACTION_X, BOX_ACTION_Y(row), BOX_ACTION_W,
+                       BOX_ACTION_H, 12, UI_INK);
+    gfx->setTextColor(row == 2 ? UI_WHITE : UI_INK);
+    gfx->setTextSize(2);
+    uiDrawCenteredIn(labels[row], BOX_ACTION_X, BOX_ACTION_Y(row),
+                     BOX_ACTION_W, BOX_ACTION_H);
+  }
+}
+
+static void drawBoxReleaseConfirm() {
+  if (!boxSel || party.box[boxSel - 1].empty()) return;
+  const PartyMon &selected = party.box[boxSel - 1];
+  char question[96];
+  snprintf(question, sizeof(question), T(S_RELEASE_FMT),
+           displaySpeciesName(selected.dex, selected.nick));
+  gfx->fillRoundRect(73, 156, 320, 188, 16, UI_WHITE);
+  gfx->drawRoundRect(73, 156, 320, 188, 16, UI_INK);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(1);
+  uiDrawCenteredIn(question, 83, 166, 300, 42);
+  gfx->fillRoundRect(CHOICE_BTN_X, CHOICE_BTN1_Y, CHOICE_BTN_W,
+                     CHOICE_BTN_H, 12, UI_BAR_BAD);
+  gfx->setTextColor(UI_WHITE);
+  uiDrawCenteredIn(T(S_YES), CHOICE_BTN_X, CHOICE_BTN1_Y,
+                   CHOICE_BTN_W, CHOICE_BTN_H);
+  gfx->fillRoundRect(CHOICE_BTN_X, CHOICE_BTN2_Y, CHOICE_BTN_W,
+                     CHOICE_BTN_H, 12, UI_TRACK);
+  gfx->setTextColor(UI_INK);
+  uiDrawCenteredIn(T(S_NO), CHOICE_BTN_X, CHOICE_BTN2_Y,
+                   CHOICE_BTN_W, CHOICE_BTN_H);
+}
+
 void renderBox() {
+  if (boxView == BOX_VIEW_DETAIL && boxSel &&
+      !party.box[boxSel - 1].empty()) {
+    renderStoredMonDetail(party.box[boxSel - 1], nullptr,
+                          boxDetailPage, nullptr);
+    return;
+  }
   beginRoundFrame(UI_BG_DAY);
   char head[32];
   snprintf(head, sizeof(head), T(S_BOX_FMT), party.boxCount(), BOX_SLOTS);
@@ -8897,7 +8996,7 @@ void renderBox() {
   gfx->setCursor(uiCenterX(head), 40);
   gfx->print(head);
 
-  if (boxSel || partyPick) {
+  if (boxView == BOX_VIEW_PICKER || partyPick) {
     if (partyPick) {
       gfx->setTextColor(UI_BAR_BAD);
       gfx->setTextSize(1);
@@ -8923,26 +9022,15 @@ void renderBox() {
       drawCultivationSlot((uint8_t)slot, x, y);
       shown++;
     }
-    const bool canWithdraw = boxCanWithdraw();
-    const int backX = canWithdraw ? PARTY_GRID_X : BOXPICK_BACK_X;
-    const int backW = canWithdraw ? PARTY_CELL_W : BOXPICK_BACK_W;
     const char *back = partyPick ? T(S_PARTY_LETGO) : T(S_BACK);
-    gfx->fillRoundRect(backX, BOXPICK_BACK_Y, backW,
+    gfx->fillRoundRect(BOXPICK_BACK_X, BOXPICK_BACK_Y, BOXPICK_BACK_W,
                        BOXPICK_BACK_H, 12, partyPick ? UI_BAR_BAD : UI_TRACK);
-    gfx->drawRoundRect(backX, BOXPICK_BACK_Y, backW,
+    gfx->drawRoundRect(BOXPICK_BACK_X, BOXPICK_BACK_Y, BOXPICK_BACK_W,
                        BOXPICK_BACK_H, 12, UI_INK);
     gfx->setTextColor(partyPick ? UI_WHITE : UI_INK);
     gfx->setTextSize(2);
-    uiDrawCenteredIn(back, backX, BOXPICK_BACK_Y, backW, BOXPICK_BACK_H);
-    if (canWithdraw) {
-      gfx->fillRoundRect(BOXPICK_ACTION_X, BOXPICK_BACK_Y, BOXPICK_ACTION_W,
-                         BOXPICK_BACK_H, 12, UI_BAR_OK);
-      gfx->drawRoundRect(BOXPICK_ACTION_X, BOXPICK_BACK_Y, BOXPICK_ACTION_W,
-                         BOXPICK_BACK_H, 12, UI_INK);
-      gfx->setTextColor(UI_WHITE);
-      uiDrawCenteredIn(T(S_BOX_WITHDRAW), BOXPICK_ACTION_X, BOXPICK_BACK_Y,
-                       BOXPICK_ACTION_W, BOXPICK_BACK_H);
-    }
+    uiDrawCenteredIn(back, BOXPICK_BACK_X, BOXPICK_BACK_Y,
+                     BOXPICK_BACK_W, BOXPICK_BACK_H);
     gfx->flush();
     return;
   }
@@ -8987,11 +9075,64 @@ void renderBox() {
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(T(S_BACK)), 392);
   gfx->print(T(S_BACK));
+  if (boxView == BOX_VIEW_ACTIONS || boxView == BOX_VIEW_RELEASE_CONFIRM)
+    drawBoxActions();
+  if (boxView == BOX_VIEW_RELEASE_CONFIRM) drawBoxReleaseConfirm();
   gfx->flush();
 }
 
 void boxTap(int16_t x, int16_t y) {
-  if (boxSel || partyPick) {
+  if (boxView == BOX_VIEW_DETAIL) {
+    boxView = BOX_VIEW_ACTIONS;
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  if (boxView == BOX_VIEW_RELEASE_CONFIRM) {
+    bool yes = x >= CHOICE_BTN_X && x <= CHOICE_BTN_X + CHOICE_BTN_W &&
+               y >= CHOICE_BTN1_Y && y <= CHOICE_BTN1_Y + CHOICE_BTN_H;
+    bool no = x >= CHOICE_BTN_X && x <= CHOICE_BTN_X + CHOICE_BTN_W &&
+              y >= CHOICE_BTN2_Y && y <= CHOICE_BTN2_Y + CHOICE_BTN_H;
+    if (yes && boxSel) {
+      party.boxReleaseAt(boxSel - 1);
+      boxSel = 0;
+      boxView = BOX_VIEW_GRID;
+      sfxPlay(SFX_TAP);
+    } else if (no) {
+      boxView = BOX_VIEW_ACTIONS;
+      sfxPlay(SFX_TAP);
+    }
+    return;
+  }
+  if (boxView == BOX_VIEW_ACTIONS) {
+    for (uint8_t row = 0; row < 3; row++) {
+      int top = BOX_ACTION_Y(row);
+      if (x < BOX_ACTION_X || x > BOX_ACTION_X + BOX_ACTION_W ||
+          y < top || y > top + BOX_ACTION_H) continue;
+      if (row == 0) {
+        boxDetailPage = 0;
+        boxView = BOX_VIEW_DETAIL;
+      } else if (row == 1) {
+        int freeSlot = party.firstFree();
+        if (freeSlot >= 0) {
+          party.swapPartyBox((uint8_t)freeSlot, boxSel - 1);
+          boxSel = 0;
+          boxView = BOX_VIEW_GRID;
+          sfxPlay(SFX_MEDAL);
+          return;
+        }
+        boxView = BOX_VIEW_PICKER;
+      } else {
+        boxView = BOX_VIEW_RELEASE_CONFIRM;
+      }
+      sfxPlay(SFX_TAP);
+      return;
+    }
+    boxSel = 0;
+    boxView = BOX_VIEW_GRID;
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  if (boxView == BOX_VIEW_PICKER || partyPick) {
     for (uint8_t ordinal = 0; ordinal < party.count(); ordinal++) {
       int slot = partySlotAtOrdinal(ordinal);
       if (slot < 0) break;
@@ -9018,32 +9159,20 @@ void boxTap(int16_t x, int16_t y) {
       }
       party.swapPartyBox((uint8_t)slot, boxIndex);
       boxSel = 0;
+      boxView = BOX_VIEW_GRID;
       sfxPlay(SFX_MEDAL);
       return;
     }
-    if (boxCanWithdraw() &&
-        y >= BOXPICK_BACK_Y && y <= BOXPICK_BACK_Y + BOXPICK_BACK_H &&
-        x >= BOXPICK_ACTION_X && x <= BOXPICK_ACTION_X + BOXPICK_ACTION_W) {
-      const uint8_t boxIndex = boxSel - 1;
-      const int freeSlot = party.firstFree();
-      if (freeSlot >= 0) {
-        party.swapPartyBox((uint8_t)freeSlot, boxIndex);
-        boxSel = 0;
-        sfxPlay(SFX_MEDAL);
-      }
-      return;
-    }
-    const bool dualButtons = boxCanWithdraw();
-    const int backX = dualButtons ? PARTY_GRID_X : BOXPICK_BACK_X;
-    const int backW = dualButtons ? PARTY_CELL_W : BOXPICK_BACK_W;
     if ((y >= BOXPICK_BACK_Y && y <= BOXPICK_BACK_Y + BOXPICK_BACK_H &&
-         x >= backX && x <= backX + backW) || y < 34) {
+         x >= BOXPICK_BACK_X && x <= BOXPICK_BACK_X + BOXPICK_BACK_W) ||
+        y < 34) {
       if (partyPick) {
         partyPick = false;
         partyPending = PartyMon();
         boxOpen = false;
       } else {
         boxSel = 0;
+        boxView = BOX_VIEW_GRID;
       }
       sfxPlay(SFX_TAP);
     }
@@ -9058,6 +9187,7 @@ void boxTap(int16_t x, int16_t y) {
     if (x < cx0 || x > cx0 + PARTY_CELL_W ||
         y < cy0 || y > cy0 + PARTY_CELL_H) continue;
     boxSel = idx + 1;
+    boxView = party.box[idx].empty() ? BOX_VIEW_PICKER : BOX_VIEW_ACTIONS;
     sfxPlay(SFX_TAP);
     return;
   }

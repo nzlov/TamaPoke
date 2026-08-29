@@ -316,9 +316,11 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
   Lead out first whenever it is included in a battle squad.
 - The **Box holds 24 creatures** across four pages of six. Box state is frozen;
   exchanging a creature with a cultivation slot resumes it with no state reset.
-- The Box is the only cultivation-management screen. Tap any Box cell: an empty
-  cell accepts a chosen cultivation member; an occupied cell can be withdrawn
-  directly when a cultivation slot is free, or exchanged with a chosen member.
+- The Box is the only cultivation-management screen. Tap an empty cell to store
+  a chosen cultivation member. Tapping an occupied cell opens **View / Withdraw /
+  Release**: View pages through its profile, stats and moves; Withdraw uses the
+  first free cultivation slot or asks which member to exchange when all six are
+  full; Release always asks for confirmation.
 - Box cells and embedded cultivation-member cards use the same 2× thumbnails,
   vertically centred in each row.
 - A **runaway does not join.** It's the one ending with a cost, and letting a

@@ -24,7 +24,7 @@ void navMenuButtonPoint(uint8_t index, int *x, int *y);
 void onTap(int16_t x, int16_t y);
 void boxTap(int16_t x, int16_t y);
 extern bool bagOpen, boxOpen, gymOpen, gymPick, navMenuOpen, playerOpen;
-extern uint8_t playerPage, boxPage, boxSel;
+extern uint8_t playerPage, boxPage, boxSel, boxDetailPage;
 extern Pet pet;
 
 int main() {
@@ -98,17 +98,52 @@ int main() {
   boxOpen = true;
   boxPage = boxSel = 0;
   boxTap(100, 110);  // occupied Box slot 0
-  if (boxSel != 1) {
-    std::puts("FAIL occupied Box slot did not open cultivation selection");
+  boxTap(100, 110);  // outside the action menu: must not exchange immediately
+  if (party.slots[0].dex != 1 || party.box[0].dex != 7 || boxSel) {
+    std::puts("FAIL occupied Box slot did not open an action menu first");
     return 1;
   }
-  boxTap(100, 110);  // first cultivation member
+  boxTap(100, 110);  // occupied Box slot 0
+  boxTap(233, 172);  // VIEW
+  onSwipe(-1);
+  if (boxDetailPage != 1 || party.box[0].dex != 7) {
+    std::puts("FAIL Box VIEW did not page through the stored creature details");
+    return 1;
+  }
+  boxTap(233, 400);  // detail back to actions
+  boxTap(233, 230);  // WITHDRAW into the first free cultivation slot
+  if (party.count() != 3 || party.slots[2].dex != 7 || !party.box[0].empty() || boxSel) {
+    std::puts("FAIL Box WITHDRAW did not use the first free cultivation slot");
+    return 1;
+  }
+  party.box[0] = boxed;
+  for (uint8_t slot = 3; slot < PARTY_SLOTS; slot++) {
+    PartyMon filler;
+    filler.dex = 20 + slot;
+    filler.level = 20;
+    party.replaceAt(slot, filler);
+  }
+  boxTap(100, 110);  // occupied Box slot 0
+  boxTap(233, 230);  // WITHDRAW from a full cultivation roster
+  boxTap(100, 110);  // exchange with the first cultivation member
   if (party.slots[0].dex != 7 || party.box[0].dex != 1 || boxSel) {
-    std::printf("FAIL occupied Box slot did not exchange with selected member "
-                "(team=%d box=%d selected=%u)\n",
-                party.slots[0].dex, party.box[0].dex, boxSel);
+    std::puts("FAIL full-roster WITHDRAW did not continue into exchange selection");
     return 1;
   }
+  boxTap(100, 110);  // occupied Box slot 0
+  boxTap(233, 288);  // RELEASE
+  boxTap(233, 300);  // NO
+  if (party.box[0].empty()) {
+    std::puts("FAIL Box RELEASE ignored cancellation");
+    return 1;
+  }
+  boxTap(233, 288);  // RELEASE again
+  boxTap(233, 240);  // YES
+  if (!party.box[0].empty() || boxSel) {
+    std::puts("FAIL confirmed Box RELEASE kept the stored creature");
+    return 1;
+  }
+  for (uint8_t slot = 2; slot < PARTY_SLOTS; slot++) party.releaseAt(slot);
   boxTap(260, 110);  // empty Box slot 1
   boxTap(260, 110);  // second cultivation member
   if (party.count() != 1 || party.box[1].dex != 4 || boxSel) {
@@ -122,12 +157,10 @@ int main() {
     return 1;
   }
   boxTap(200, 398);  // back to the Box grid after the denied deposit
-  boxTap(100, 110);  // occupied Box slot 0, with a free cultivation slot
-  boxTap(310, 398);  // withdraw button
-  if (party.count() != 2 || party.slots[1].dex != 1 || !party.box[0].empty() || boxSel) {
-    std::printf("FAIL Box member was not withdrawn into the first free slot "
-                "(count=%u team=%d box=%d selected=%u)\n",
-                party.count(), party.slots[1].dex, party.box[0].dex, boxSel);
+  boxTap(260, 110);  // occupied Box slot 1: opens actions
+  boxTap(233, 230);  // WITHDRAW
+  if (party.count() != 2 || party.slots[1].dex != 4 || !party.box[1].empty() || boxSel) {
+    std::puts("FAIL Box member was not withdrawn after using its action menu");
     return 1;
   }
   boxOpen = false;

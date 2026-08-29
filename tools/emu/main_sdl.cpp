@@ -159,6 +159,7 @@ void onTap(int16_t x, int16_t y);   // the first-boot shots tap their way in
 void onSwipe(int dir);
 void onSwipeV(int dir);
 void bagTap(int16_t x, int16_t y);
+void boxTap(int16_t x, int16_t y);
 void refreshUiFont();
 extern bool gymOpen, playerOpen, navMenuOpen;
 extern uint8_t galleryRegion;
@@ -228,7 +229,8 @@ extern uint8_t gameScore, gameMisses, sackGain, spdGain;
 extern uint16_t sackHits, spdHits;
 extern ItemKey bagSelectedKey, bagDetailKey, btlPendingItem;
 extern MoveId bagSelectedMove, bagDetailMove;
-extern uint8_t bagView, bagDiscardAmount, boxSel, btlItemPage, btlSquadN;
+extern uint8_t bagView, bagDiscardAmount, boxSel, boxDetailPage,
+               btlItemPage, btlSquadN;
 extern Combatant btlSquad[];
 #define PANEL 466
 
@@ -902,9 +904,12 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     PartyMon stored; stored.dex = 6; stored.level = 58;
     stored.ivAtk = stored.ivDef = stored.ivSpe = stored.ivHp = 27;
     party.box[0] = stored;
-    boxOpen = true; boxSel = 1;
+    boxOpen = true; boxSel = 0;
+    boxTap(100, 110);
+    boxTap(233, 230);
   }
-  else if (!strcmp(screen, "boxwithdraw")) {
+  else if (!strcmp(screen, "boxwithdraw") || !strcmp(screen, "boxdetail") ||
+           !strcmp(screen, "boxrelease")) {
     static const int fill[] = { 9, 25, 143 };
     for (int i = 0; i < 3; i++) {
       PartyMon m; m.dex = fill[i]; m.level = 30 + i * 5;
@@ -914,7 +919,13 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     PartyMon stored; stored.dex = 6; stored.level = 42;
     stored.ivAtk = stored.ivDef = stored.ivSpe = stored.ivHp = 26;
     party.box[0] = stored;
-    boxOpen = true; boxSel = 1;
+    boxOpen = true; boxSel = 0;
+    boxTap(100, 110);
+    if (!strcmp(screen, "boxdetail")) {
+      boxTap(233, 172);
+      boxDetailPage = 1;
+    }
+    else if (!strcmp(screen, "boxrelease")) boxTap(233, 288);
   }
   else if (!strcmp(screen, "boxdeposit")) {
     static const int fill[] = { 9, 25, 143 };
@@ -925,7 +936,8 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     }
     PartyMon stored; stored.dex = 6; stored.level = 36;
     party.box[0] = stored;
-    boxOpen = true; boxSel = 2;
+    boxOpen = true; boxSel = 0;
+    boxTap(260, 110);
   }
   else if (!strcmp(screen, "win")) {
     startTrainerBattle(2, true);
