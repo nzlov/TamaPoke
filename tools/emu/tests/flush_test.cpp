@@ -43,9 +43,13 @@ static void clearAll(){
 }
 static void check(const char *name){
   gfx->frameReady = false;
+  gfx->fullBlackClears = 0;
   render();
   if (!gfx->frameReady) { printf("FAIL  %-12s never flushed -- the panel would freeze\n", name); bad++; }
-  else printf("PASS  %-12s flushes\n", name);
+  else if (gfx->fullBlackClears) {
+    printf("FAIL  %-12s clears the shared framebuffer to black before redraw\n", name);
+    bad++;
+  } else printf("PASS  %-12s flushes without a black intermediate frame\n", name);
 }
 
 // The crash breadcrumb has to name the screen that is ACTUALLY drawn, or a

@@ -67,8 +67,35 @@ Arduino_CO5300 *panel = new Arduino_CO5300(
 
 class TamaCanvas : public Arduino_Canvas {
 public:
-  using Arduino_Canvas::Arduino_Canvas;
   using Arduino_Canvas::print;
+
+  TamaCanvas(int16_t width, int16_t height, Arduino_CO5300 *output)
+      : Arduino_Canvas(width, height, output), display(output) {}
+
+#if defined(ARDUINO) && defined(ESP32)
+  bool begin(int32_t speed = GFX_NOT_DEFINED) override {
+    if (!Arduino_Canvas::begin(speed)) return false;
+
+    size_t bytes = (size_t)width() * height() * sizeof(uint16_t);
+    spareFramebuffer = (uint16_t *)heap_caps_aligned_alloc(
+        16, bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    frameQueue = xQueueCreate(1, sizeof(uint16_t *));
+    frameDone = xSemaphoreCreateBinary();
+    displayMutex = xSemaphoreCreateMutex();
+    if (!spareFramebuffer || !frameQueue || !frameDone || !displayMutex) {
+      disableAsyncDisplay();
+      return true;
+    }
+    xSemaphoreGive(frameDone);
+    if (xTaskCreatePinnedToCore(displayTaskEntry, "display", 4096, this, 1,
+                                &displayTaskHandle, 0) != pdPASS) {
+      disableAsyncDisplay();
+      return true;
+    }
+    asyncDisplayReady = true;
+    return true;
+  }
+#endif
 
   static uint8_t packScale(uint8_t requested) {
     uint8_t height = uiFontLineHeight();
@@ -216,13 +243,97 @@ public:
     return true;
   }
 
+  void setPanelBrightness(uint8_t brightness) {
+#if defined(ARDUINO) && defined(ESP32)
+    if (asyncDisplayReady) xSemaphoreTake(displayMutex, portMAX_DELAY);
+#endif
+    display->setBrightness(brightness);
+#if defined(ARDUINO) && defined(ESP32)
+    if (asyncDisplayReady) xSemaphoreGive(displayMutex);
+#endif
+  }
+
+#if defined(ARDUINO) && defined(ESP32)
+  void flush(bool forceFlush = false) override {
+    if (!asyncDisplayReady) {
+      uint32_t started = perfNowUs();
+      Arduino_Canvas::flush(forceFlush);
+      perfRecord(PERF_FLUSH, perfNowUs() - started);
+      return;
+    }
+
+    // GLUE: Arduino_Canvas exposes only a blocking full-frame flush. Swapping
+    // a completed PSRAM frame into a display task keeps touch sampling on the
+    // loop task; remove this bridge when the library provides async flushing.
+    xSemaphoreTake(frameDone, portMAX_DELAY);
+    uint16_t *completed = _framebuffer;
+    _framebuffer = spareFramebuffer;
+    spareFramebuffer = completed;
+    if (xQueueSend(frameQueue, &completed, portMAX_DELAY) != pdTRUE)
+      xSemaphoreGive(frameDone);
+  }
+#else
   void flush() {
     uint32_t started = perfNowUs();
     Arduino_Canvas::flush();
     perfRecord(PERF_FLUSH, perfNowUs() - started);
   }
+#endif
 
 private:
+#if defined(ARDUINO) && defined(ESP32)
+  static void displayTaskEntry(void *argument) {
+    static_cast<TamaCanvas *>(argument)->displayTask();
+  }
+
+  void displayTask() {
+    uint16_t *completed = nullptr;
+    while (xQueueReceive(frameQueue, &completed, portMAX_DELAY) == pdTRUE) {
+      uint32_t started = perfNowUs();
+      xSemaphoreTake(displayMutex, portMAX_DELAY);
+      _output->draw16bitRGBBitmap(_output_x, _output_y, completed,
+                                  width(), height());
+      xSemaphoreGive(displayMutex);
+      perfRecord(PERF_FLUSH, perfNowUs() - started);
+      xSemaphoreGive(frameDone);
+    }
+    vTaskDelete(nullptr);
+  }
+
+  void disableAsyncDisplay() {
+    if (displayTaskHandle) {
+      vTaskDelete(displayTaskHandle);
+      displayTaskHandle = nullptr;
+    }
+    if (frameQueue) {
+      vQueueDelete(frameQueue);
+      frameQueue = nullptr;
+    }
+    if (frameDone) {
+      vSemaphoreDelete(frameDone);
+      frameDone = nullptr;
+    }
+    if (displayMutex) {
+      vSemaphoreDelete(displayMutex);
+      displayMutex = nullptr;
+    }
+    if (spareFramebuffer) {
+      free(spareFramebuffer);
+      spareFramebuffer = nullptr;
+    }
+    asyncDisplayReady = false;
+  }
+
+  uint16_t *spareFramebuffer = nullptr;
+  QueueHandle_t frameQueue = nullptr;
+  SemaphoreHandle_t frameDone = nullptr;
+  SemaphoreHandle_t displayMutex = nullptr;
+  TaskHandle_t displayTaskHandle = nullptr;
+  bool asyncDisplayReady = false;
+#endif
+
+  Arduino_CO5300 *display;
+
   static uint16_t blend565(uint16_t background, uint16_t foreground, uint8_t alpha) {
     if (!alpha) return background;
     if (alpha >= 15) return foreground;
@@ -325,7 +436,7 @@ private:
   bool fontVector = false;
 };
 
-// Framebuffer completo en PSRAM: dibujamos todo y hacemos flush() (sin parpadeo)
+// Two complete PSRAM frames keep drawing separate from the panel transfer.
 TamaCanvas *gfx = new TamaCanvas(LCD_WIDTH, LCD_HEIGHT, panel);
 
 void refreshUiFont() { gfx->setPackFont(contentHasUi()); }
@@ -1226,6 +1337,12 @@ static inline bool btlCellHit(int i, int16_t x, int16_t y) {
 #define CY 233
 #define PET_CY 202  // centro vertical del sprite
 
+static void beginRoundFrame(uint16_t color) {
+  // Only repaint the visible round panel. Clearing the shared framebuffer to
+  // black first can expose that intermediate state while a page is redrawn.
+  gfx->fillCircle(CX, CY, 231, color);
+}
+
 // Main-screen roster navigation. Only occupied cultivation slots get dots;
 // horizontal swipes switch creatures and tapping the dot strip opens the Box.
 #define PETNAV_HIT_Y 24
@@ -1343,8 +1460,7 @@ void renderBootSplash() {
 
 void renderRecovery() {
   gfx->setPackFont(false);
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, 0xF77C);
+  beginRoundFrame(0xF77C);
   gfx->setTextColor(0x2946);
   gfx->setTextSize(3);
   gfx->setCursor(CX - 117, 72);
@@ -1393,7 +1509,7 @@ void setup() {
   // QSPI a 80MHz (por defecto 40): el flush del framebuffer es el cuello de
   // botella del fps (~56ms a 40MHz). Si el panel mostrara basura, bajar a 40M.
   if (!gfx->begin(80000000)) Serial.println("gfx->begin() fallo");
-  panel->setBrightness(180);
+  gfx->setPanelBrightness(180);
   renderBootSplash();
 
   sdBegin();
@@ -1564,9 +1680,8 @@ void loop() {
     printHealthReport();
   }
 
-  // 85 ms en juego/saco: margen seguro para que el redibujado no pise el envio
-  // DMA del frame anterior (a 40-65 ms solapaba y causaba flashes negros; con
-  // sprites grandes el dibujo tarda mas, asi que se deja colchon)
+  // Keep the animation rate bounded even though panel transfer now runs on the
+  // display task; rendering and sprite decoding still consume loop-task time.
   uint8_t screen = uiCurrentScreen();
   bool renderDue = uiRenderDirty || screen != uiLastRenderedScreen ||
                    uiScreenContinuous(screen);
@@ -1602,7 +1717,7 @@ void updateBrightness(uint32_t now) {
   static uint8_t current = 255;
   if (target != current) {
     current = target;
-    panel->setBrightness(target);
+    gfx->setPanelBrightness(target);
   }
 }
 
@@ -1984,7 +2099,10 @@ bool inPetNavZone(int16_t x, int16_t y) {
 void handleTouch() {
   static uint32_t lastPoll = 0;
   static bool brightnessDrag = false;
-  if (millis() - lastPoll < 20) return;  // 50 Hz le sobra a un dedo
+  // Rapid game taps can begin and end inside the normal 20 ms UI window.
+  // The IRQ gate below still avoids I2C traffic while no finger is present.
+  uint8_t pollMs = (gameOpen || sackOpen || spdOpen) ? 5 : 20;
+  if (millis() - lastPoll < pollMs) return;
   lastPoll = millis();
   // solo tocamos el bus si el chip aviso por INT o si el dedo sigue abajo (hay
   // que detectar el levantamiento). Leer el CST9217 dormido se colgaba ~1s y
@@ -2202,8 +2320,7 @@ static bool bagHasUsableTarget(const ItemEntry &item) {
 }
 
 static void drawBagList() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
   gfx->setCursor(uiCenterX(T(S_BAG)), 42);
@@ -2253,8 +2370,7 @@ static void drawBagList() {
 }
 
 static void drawBagDetail(const ItemEntry &item) {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   drawItemIcon(item, CX, 92, 2);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
@@ -2305,8 +2421,7 @@ static void drawBagActions(const ItemEntry &item) {
 }
 
 static void drawBagTargets(const ItemEntry &item) {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(T(S_ITEM_CHOOSE_TARGET)), 42);
@@ -3363,8 +3478,7 @@ void drawScene(uint8_t biome, uint32_t now, bool night) {
 
 // primera partida: elige el idioma antes de la region y el inicial
 void renderFirstBootLanguage() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   const char *title = T(S_LANG_LABEL);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
@@ -3386,8 +3500,7 @@ void renderFirstBootLanguage() {
 
 // primera partida: elige inicial entre Bulbasaur / Charmander / Squirtle
 void renderStarterSelect() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   const char *t = T(S_CHOOSE_STARTER);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
@@ -3592,8 +3705,8 @@ void render() {
   }
   int h = sceneHour();
   gNight = pet.sleeping || h < 6 || h >= 20;
-  // drawScene cubre los 466x466 completos: sin fillScreen(NEGRO) previo para
-  // que un flush DMA solapado nunca capture negro a medias (anti-parpadeo)
+  // drawScene covers the complete drawing frame; the display task owns the
+  // previous completed frame until its panel transfer finishes.
   drawScene(pet.isEgg() ? 0 : dexEntry(pet.speciesId).biome, millis(), gNight);
 
   if (pet.ceremony) {
@@ -4028,9 +4141,8 @@ void drawGameScene() {
 }
 
 void renderGame() {
-  // sin fillScreen(NEGRO): drawGameScene cubre los 466x466 completos. Si el
-  // DMA del flush anterior aun lee el buffer, vera contenido valido (no negro
-  // a medio pintar), que era el parpadeo a 25 fps.
+  // drawGameScene covers the complete drawing frame while the display task
+  // transfers the previous completed frame.
   bool night = sceneHour() < 6 || sceneHour() >= 20;
   uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
 
@@ -4205,8 +4317,7 @@ static_assert(BRIGHT_HIT_Y + BRIGHT_HIT_H < LANG_PILL_Y,
               "brightness and volume touch targets must not overlap");
 
 void renderClock() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
   gfx->setCursor(uiCenterX(T(S_SET_TIME)), 44);
@@ -4611,8 +4722,7 @@ int16_t pickTargetDex() {
 void renderMoveInfo() {
   MoveId move = pickTargetMoves()[movePickSlot];
   if (!moveValid(move)) { moveInfoOpen = false; return; }
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
   gfx->setCursor(uiCenterX(moveName(move)), 42);
@@ -4640,8 +4750,7 @@ void renderMoveInfo() {
 }
 
 void renderMovePick() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(T(S_MOVE_PICK)), 40);
@@ -6983,8 +7092,8 @@ void renderBattle() {
     return;
   }
   btlEaseBars();
-  // The previous frame can still be crossing the CO5300 DMA boundary here.
-  // Keep it valid while repainting instead of exposing a full black clear.
+  // Paint the complete battle frame; the display task still owns the previous
+  // completed frame until the CO5300 transfer ends.
   drawBattleBack(0, 2, 254);
   drawBattleFieldEffects(now);
   // the lower band stays flat so the move grid and the HP text keep their
@@ -7726,8 +7835,7 @@ static void renderPlayerMedals() {
 }
 
 void renderPlayer() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   if (playerPage < regionAll()) renderPlayerBadges();
   else renderPlayerMedals();
 
@@ -7946,8 +8054,7 @@ static void drawPickCell(uint8_t n, int x, int y, uint8_t capLvl) {
 }
 
 void renderPick() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   uint8_t cap = squadCap(pickTrainer, pickHard);
   uint8_t top = 0;          // the level cap shown on each cell; 0 = uncapped
   char head[40];
@@ -8050,8 +8157,7 @@ void pickTap(int16_t x, int16_t y) {
 // protocol does the rest. There is no MAC entry because there is no keyboard
 // worth typing one on.
 void renderLan() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(T(S_LAN)), 44);
@@ -8195,8 +8301,7 @@ void lanTap(int16_t x, int16_t y) {
 // ---------- gym list ----------
 
 void renderGyms() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   const char *title = T(S_BATTLE_CENTER);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
@@ -8420,8 +8525,7 @@ static void renderRegionPick(uint8_t mode) {
   uint8_t pages = rpickPageCount(mode);
   if (rpickPage >= pages) rpickPage = 0;
   uint8_t first = (uint8_t)(rpickPage * RPICK_PER_PAGE);
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   char ttl[40];
   if (mode == RPICK_FOR_START) snprintf(ttl, sizeof(ttl), "%s", T(S_CHOOSE_REGION));
   else if (forGyms) snprintf(ttl, sizeof(ttl), "%s", T(S_BATTLE_CENTER));
@@ -8679,8 +8783,7 @@ void renderNatureInfo() {
 }
 
 void renderCard() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   if (cardPage == 0) renderCardProfile();
   else if (cardPage == 1) renderCardStats();
   else if (cardPage == 2) renderCardMoves();
@@ -8744,8 +8847,7 @@ void drawMenu() {
 }
 
 void renderNavMenu() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
   gfx->setCursor(uiCenterX(T(S_MENU_TITLE)), 44);
@@ -8887,8 +8989,7 @@ static void drawCultivationSlot(uint8_t slot, int x, int y) {
 }
 
 void renderBox() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   char head[32];
   snprintf(head, sizeof(head), T(S_BOX_FMT), party.boxCount(), BOX_SLOTS);
   gfx->setTextColor(UI_INK);
@@ -9085,8 +9186,7 @@ void openKeyboardFor(uint8_t target) {
 void openKeyboard() { openKeyboardFor(KB_PET); }
 
 void renderKeyboard() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(T(S_NAME)), 56);
@@ -9396,8 +9496,7 @@ void renderQuiz() {
 
 void renderGallery() {
   if (galleryDetail) {  // vista detalle: se redibuja siempre (animada)
-    gfx->fillScreen(RGB565_BLACK);
-    gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+    beginRoundFrame(UI_BG_DAY);
     const DexEntry &d = dexEntry(galleryDetail);
     bool reg = player.isRegistered(galleryDetail);
     const char *description = reg ? speciesDescription(galleryDetail, uiActiveLocaleCode()) : nullptr;
@@ -9440,8 +9539,7 @@ void renderGallery() {
   if (!galleryDirty) return;  // la rejilla es estatica
   galleryDirty = false;
 
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  beginRoundFrame(UI_BG_DAY);
   // the region's own name and its own tally: "how much of Johto have I seen"
   // is the question you are actually asking here
   char head[32];
