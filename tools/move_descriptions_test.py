@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """Regression checks for player-facing move descriptions."""
 
-from dex_moves import MOVES
+import json
+from pathlib import Path
+
 from gen_data_packs import move_descriptions
+
+MOVES = json.loads((Path(__file__).parent / "move_data.json").read_text(
+    encoding="utf-8"
+))["moves"]
 
 
 def description(name: str, locale: str) -> str:
-    descriptions = move_descriptions(list(MOVES))[locale]
-    index = next(i for i, row in enumerate(MOVES, 1) if row[0] == name)
+    descriptions = move_descriptions()[locale]
+    index = next(row["id"] for row in MOVES if row["names"]["en-US"] == name)
     return descriptions[index]
 
 

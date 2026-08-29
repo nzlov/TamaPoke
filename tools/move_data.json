@@ -1,0 +1,3260 @@
+{
+  "schema": 1,
+  "appendOnlyIds": true,
+  "source": {
+    "repository": "https://github.com/PokeAPI/pokeapi",
+    "revision": "c40a25c6544b97334a1ae8b1965a378fa3317c28",
+    "path": "data/v2/csv",
+    "supplemental": "Scarlet/Violet slicing and wind move groupings"
+  },
+  "maxMoveNames": {
+    "en-US": [
+      "Max Strike", "Max Flare", "Max Geyser", "Max Lightning",
+      "Max Overgrowth", "Max Hailstorm", "Max Knuckle", "Max Ooze",
+      "Max Quake", "Max Airstream", "Max Mindstorm", "Max Flutterby",
+      "Max Rockfall", "Max Phantasm", "Max Wyrmwind", "Max Darkness",
+      "Max Steelspike", "Max Starfall", "Max Guard"
+    ],
+    "zh-CN": [
+      "极巨攻击", "极巨火爆", "极巨水流", "极巨闪电", "极巨草原", "极巨寒冰",
+      "极巨拳斗", "极巨酸毒", "极巨大地", "极巨飞冲", "极巨超能", "极巨虫蛊",
+      "极巨岩石", "极巨幽魂", "极巨龙骑", "极巨恶霸", "极巨钢铁", "极巨妖精",
+      "极巨防壁"
+    ]
+  },
+  "gigantamaxMoves": [
+    {"id": 1, "slug": "vine-lash", "sourceType": "grass", "effect": "vine-lash", "power": 0, "names": {"en-US": "G-Max Vine Lash", "zh-CN": "超极巨灰飞鞭灭"}},
+    {"id": 2, "slug": "wildfire", "sourceType": "fire", "effect": "wildfire", "power": 0, "names": {"en-US": "G-Max Wildfire", "zh-CN": "超极巨地狱灭焰"}},
+    {"id": 3, "slug": "cannonade", "sourceType": "water", "effect": "cannonade", "power": 0, "names": {"en-US": "G-Max Cannonade", "zh-CN": "超极巨水炮轰灭"}},
+    {"id": 4, "slug": "befuddle", "sourceType": "bug", "effect": "befuddle", "power": 0, "names": {"en-US": "G-Max Befuddle", "zh-CN": "超极巨蝶影蛊惑"}},
+    {"id": 5, "slug": "volt-crash", "sourceType": "electric", "effect": "volt-crash", "power": 0, "names": {"en-US": "G-Max Volt Crash", "zh-CN": "超极巨万雷轰顶"}},
+    {"id": 6, "slug": "gold-rush", "sourceType": "normal", "effect": "gold-rush", "power": 0, "names": {"en-US": "G-Max Gold Rush", "zh-CN": "超极巨特大金币"}},
+    {"id": 7, "slug": "chi-strike", "sourceType": "fighting", "effect": "chi-strike", "power": 0, "names": {"en-US": "G-Max Chi Strike", "zh-CN": "超极巨会心一击"}},
+    {"id": 8, "slug": "terror", "sourceType": "ghost", "effect": "terror", "power": 0, "names": {"en-US": "G-Max Terror", "zh-CN": "超极巨幻影幽魂"}},
+    {"id": 9, "slug": "foam-burst", "sourceType": "water", "effect": "foam-burst", "power": 0, "names": {"en-US": "G-Max Foam Burst", "zh-CN": "超极巨激漩泡涡"}},
+    {"id": 10, "slug": "resonance", "sourceType": "ice", "effect": "resonance", "power": 0, "names": {"en-US": "G-Max Resonance", "zh-CN": "超极巨极光旋律"}},
+    {"id": 11, "slug": "cuddle", "sourceType": "normal", "effect": "cuddle", "power": 0, "names": {"en-US": "G-Max Cuddle", "zh-CN": "超极巨热情拥抱"}},
+    {"id": 12, "slug": "replenish", "sourceType": "normal", "effect": "replenish", "power": 0, "names": {"en-US": "G-Max Replenish", "zh-CN": "超极巨资源再生"}},
+    {"id": 13, "slug": "malodor", "sourceType": "poison", "effect": "malodor", "power": 0, "names": {"en-US": "G-Max Malodor", "zh-CN": "超极巨臭气冲天"}},
+    {"id": 14, "slug": "meltdown", "sourceType": "steel", "effect": "meltdown", "power": 0, "names": {"en-US": "G-Max Meltdown", "zh-CN": "超极巨液金熔击"}},
+    {"id": 15, "slug": "drum-solo", "sourceType": "grass", "effect": "drum-solo", "power": 160, "names": {"en-US": "G-Max Drum Solo", "zh-CN": "超极巨狂擂乱打"}},
+    {"id": 16, "slug": "fireball", "sourceType": "fire", "effect": "fireball", "power": 160, "names": {"en-US": "G-Max Fireball", "zh-CN": "超极巨破阵火球"}},
+    {"id": 17, "slug": "hydrosnipe", "sourceType": "water", "effect": "hydrosnipe", "power": 160, "names": {"en-US": "G-Max Hydrosnipe", "zh-CN": "超极巨狙击神射"}},
+    {"id": 18, "slug": "wind-rage", "sourceType": "flying", "effect": "wind-rage", "power": 0, "names": {"en-US": "G-Max Wind Rage", "zh-CN": "超极巨旋风袭卷"}},
+    {"id": 19, "slug": "gravitas", "sourceType": "psychic", "effect": "gravitas", "power": 0, "names": {"en-US": "G-Max Gravitas", "zh-CN": "超极巨天道七星"}},
+    {"id": 20, "slug": "stonesurge", "sourceType": "water", "effect": "stonesurge", "power": 0, "names": {"en-US": "G-Max Stonesurge", "zh-CN": "超极巨岩阵以待"}},
+    {"id": 21, "slug": "volcalith", "sourceType": "rock", "effect": "volcalith", "power": 0, "names": {"en-US": "G-Max Volcalith", "zh-CN": "超极巨炎石喷发"}},
+    {"id": 22, "slug": "tartness", "sourceType": "grass", "effect": "tartness", "power": 0, "names": {"en-US": "G-Max Tartness", "zh-CN": "超极巨酸不溜丢"}},
+    {"id": 23, "slug": "sweetness", "sourceType": "grass", "effect": "sweetness", "power": 0, "names": {"en-US": "G-Max Sweetness", "zh-CN": "超极巨琼浆玉液"}},
+    {"id": 24, "slug": "sandblast", "sourceType": "ground", "effect": "sandblast", "power": 0, "names": {"en-US": "G-Max Sandblast", "zh-CN": "超极巨沙尘漫天"}},
+    {"id": 25, "slug": "stun-shock", "sourceType": "electric", "effect": "stun-shock", "power": 0, "names": {"en-US": "G-Max Stun Shock", "zh-CN": "超极巨异毒电场"}},
+    {"id": 26, "slug": "centiferno", "sourceType": "fire", "effect": "centiferno", "power": 0, "names": {"en-US": "G-Max Centiferno", "zh-CN": "超极巨百火焚野"}},
+    {"id": 27, "slug": "smite", "sourceType": "fairy", "effect": "smite", "power": 0, "names": {"en-US": "G-Max Smite", "zh-CN": "超极巨天谴雷诛"}},
+    {"id": 28, "slug": "snooze", "sourceType": "dark", "effect": "snooze", "power": 0, "names": {"en-US": "G-Max Snooze", "zh-CN": "超极巨睡魔降临"}},
+    {"id": 29, "slug": "finale", "sourceType": "fairy", "effect": "finale", "power": 0, "names": {"en-US": "G-Max Finale", "zh-CN": "超极巨幸福圆满"}},
+    {"id": 30, "slug": "steelsurge", "sourceType": "steel", "effect": "steelsurge", "power": 0, "names": {"en-US": "G-Max Steelsurge", "zh-CN": "超极巨钢铁阵法"}},
+    {"id": 31, "slug": "depletion", "sourceType": "dragon", "effect": "depletion", "power": 0, "names": {"en-US": "G-Max Depletion", "zh-CN": "超极巨劣化衰变"}},
+    {"id": 32, "slug": "one-blow", "sourceType": "dark", "effect": "one-blow", "power": 130, "names": {"en-US": "G-Max One Blow", "zh-CN": "超极巨夺命一击"}},
+    {"id": 33, "slug": "rapid-flow", "sourceType": "water", "effect": "rapid-flow", "power": 130, "names": {"en-US": "G-Max Rapid Flow", "zh-CN": "超极巨流水连击"}}
+  ],
+  "tagBits": {
+    "contact": 1,
+    "sound": 2,
+    "punch": 4,
+    "bite": 8,
+    "pulse": 16,
+    "ballistic": 32,
+    "powder": 64,
+    "dance": 128,
+    "slicing": 256,
+    "wind": 512,
+    "reflectable": 1024
+  },
+  "moves": [
+    {
+      "id": 1,
+      "slug": "tackle",
+      "names": {
+        "en-US": "TACKLE",
+        "zh-CN": "撞击"
+      },
+      "descriptions": {
+        "en-US": "Normal Physical move; power 40, accuracy 100%.",
+        "zh-CN": "一般属性物理招式；威力40，命中100%。"
+      },
+      "type": "normal",
+      "category": 0,
+      "power": 40,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 2,
+      "slug": "scratch",
+      "names": {
+        "en-US": "SCRATCH",
+        "zh-CN": "抓"
+      },
+      "descriptions": {
+        "en-US": "Normal Physical move; power 40, accuracy 100%.",
+        "zh-CN": "一般属性物理招式；威力40，命中100%。"
+      },
+      "type": "normal",
+      "category": 0,
+      "power": 40,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 3,
+      "slug": "pound",
+      "names": {
+        "en-US": "POUND",
+        "zh-CN": "拍击"
+      },
+      "descriptions": {
+        "en-US": "Normal Physical move; power 40, accuracy 100%.",
+        "zh-CN": "一般属性物理招式；威力40，命中100%。"
+      },
+      "type": "normal",
+      "category": 0,
+      "power": 40,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 4,
+      "slug": "fury-attack",
+      "names": {
+        "en-US": "FURY ATTACK",
+        "zh-CN": "乱击"
+      },
+      "descriptions": {
+        "en-US": "Normal Physical move; power 15, accuracy 85%. Hits 2-5 times.",
+        "zh-CN": "一般属性物理招式；威力15，命中85%。 连续攻击2-5次。"
+      },
+      "type": "normal",
+      "category": 0,
+      "power": 15,
+      "accuracy": 85,
+      "effect": 8,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 5,
+      "slug": "quick-attack",
+      "names": {
+        "en-US": "QUICK ATTACK",
+        "zh-CN": "电光一闪"
+      },
+      "descriptions": {
+        "en-US": "Normal Physical move; power 40, accuracy 100%. Usually moves first.",
+        "zh-CN": "一般属性物理招式；威力40，命中100%。 通常会提前行动。"
+      },
+      "type": "normal",
+      "category": 0,
+      "power": 40,
+      "accuracy": 100,
+      "effect": 6,
+      "param": 1,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 6,
+      "slug": "swift",
+      "names": {
+        "en-US": "SWIFT",
+        "zh-CN": "高速星星"
+      },
+      "descriptions": {
+        "en-US": "Normal Special move; power 60, never misses.",
+        "zh-CN": "一般属性特殊招式；威力60，必中。"
+      },
+      "type": "normal",
+      "category": 1,
+      "power": 60,
+      "accuracy": 0,
+      "effect": 7,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 7,
+      "slug": "body-slam",
+      "names": {
+        "en-US": "BODY SLAM",
+        "zh-CN": "泰山压顶"
+      },
+      "descriptions": {
+        "en-US": "Normal Physical move; power 85, accuracy 100%.",
+        "zh-CN": "一般属性物理招式；威力85，命中100%。"
+      },
+      "type": "normal",
+      "category": 0,
+      "power": 85,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 8,
+      "slug": "double-edge",
+      "names": {
+        "en-US": "DOUBLE-EDGE",
+        "zh-CN": "舍身冲撞"
+      },
+      "descriptions": {
+        "en-US": "Normal Physical move; power 120, accuracy 100%. User takes 1/3 of damage dealt as recoil.",
+        "zh-CN": "一般属性物理招式；威力120，命中100%。 使用者的生命也会变少，数值为伤害的1/3。"
+      },
+      "type": "normal",
+      "category": 0,
+      "power": 120,
+      "accuracy": 100,
+      "effect": 2,
+      "param": 3,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 9,
+      "slug": "hyper-beam",
+      "names": {
+        "en-US": "HYPER BEAM",
+        "zh-CN": "破坏光线"
+      },
+      "descriptions": {
+        "en-US": "Normal Special move; power 150, accuracy 90%. User must recharge on the next turn.",
+        "zh-CN": "一般属性特殊招式；威力150，命中90%。 下一回合无法行动。"
+      },
+      "type": "normal",
+      "category": 1,
+      "power": 150,
+      "accuracy": 90,
+      "effect": 10,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 10,
+      "slug": "peck",
+      "names": {
+        "en-US": "PECK",
+        "zh-CN": "啄"
+      },
+      "descriptions": {
+        "en-US": "Flying Physical move; power 35, accuracy 100%.",
+        "zh-CN": "飞行属性物理招式；威力35，命中100%。"
+      },
+      "type": "flying",
+      "category": 0,
+      "power": 35,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 11,
+      "slug": "ember",
+      "names": {
+        "en-US": "EMBER",
+        "zh-CN": "火花"
+      },
+      "descriptions": {
+        "en-US": "Fire Special move; power 40, accuracy 100%. Has a 10% chance to cause a burn.",
+        "zh-CN": "火属性特殊招式；威力40，命中100%。 有10%概率使对手陷入灼伤。"
+      },
+      "type": "fire",
+      "category": 1,
+      "power": 40,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 2,
+      "ailmentChance": 10,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 12,
+      "slug": "fire-punch",
+      "names": {
+        "en-US": "FIRE PUNCH",
+        "zh-CN": "火焰拳"
+      },
+      "descriptions": {
+        "en-US": "Fire Physical move; power 75, accuracy 100%. Has a 10% chance to cause a burn.",
+        "zh-CN": "火属性物理招式；威力75，命中100%。 有10%概率使对手陷入灼伤。"
+      },
+      "type": "fire",
+      "category": 0,
+      "power": 75,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 2,
+      "ailmentChance": 10,
+      "fieldFlags": 0,
+      "tags": [
+        "contact",
+        "punch"
+      ]
+    },
+    {
+      "id": 13,
+      "slug": "flamethrower",
+      "names": {
+        "en-US": "FLAMETHROWER",
+        "zh-CN": "喷射火焰"
+      },
+      "descriptions": {
+        "en-US": "Fire Special move; power 90, accuracy 100%. Has a 10% chance to cause a burn.",
+        "zh-CN": "火属性特殊招式；威力90，命中100%。 有10%概率使对手陷入灼伤。"
+      },
+      "type": "fire",
+      "category": 1,
+      "power": 90,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 2,
+      "ailmentChance": 10,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 14,
+      "slug": "fire-blast",
+      "names": {
+        "en-US": "FIRE BLAST",
+        "zh-CN": "大字爆炎"
+      },
+      "descriptions": {
+        "en-US": "Fire Special move; power 110, accuracy 85%. Has a 10% chance to cause a burn.",
+        "zh-CN": "火属性特殊招式；威力110，命中85%。 有10%概率使对手陷入灼伤。"
+      },
+      "type": "fire",
+      "category": 1,
+      "power": 110,
+      "accuracy": 85,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 2,
+      "ailmentChance": 10,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 15,
+      "slug": "bubble",
+      "names": {
+        "en-US": "BUBBLE",
+        "zh-CN": "泡沫"
+      },
+      "descriptions": {
+        "en-US": "Water Special move; power 30, accuracy 100%.",
+        "zh-CN": "水属性特殊招式；威力30，命中100%。"
+      },
+      "type": "water",
+      "category": 1,
+      "power": 30,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 16,
+      "slug": "water-gun",
+      "names": {
+        "en-US": "WATER GUN",
+        "zh-CN": "水枪"
+      },
+      "descriptions": {
+        "en-US": "Water Special move; power 40, accuracy 100%.",
+        "zh-CN": "水属性特殊招式；威力40，命中100%。"
+      },
+      "type": "water",
+      "category": 1,
+      "power": 40,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 17,
+      "slug": "waterfall",
+      "names": {
+        "en-US": "WATERFALL",
+        "zh-CN": "攀瀑"
+      },
+      "descriptions": {
+        "en-US": "Water Physical move; power 80, accuracy 100%.",
+        "zh-CN": "水属性物理招式；威力80，命中100%。"
+      },
+      "type": "water",
+      "category": 0,
+      "power": 80,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 18,
+      "slug": "surf",
+      "names": {
+        "en-US": "SURF",
+        "zh-CN": "冲浪"
+      },
+      "descriptions": {
+        "en-US": "Water Special move; power 90, accuracy 100%. Triggers Gulp Missile.",
+        "zh-CN": "水属性特殊招式；威力90，命中100%。 会触发一口导弹。"
+      },
+      "type": "water",
+      "category": 1,
+      "power": 90,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 64,
+      "tags": []
+    },
+    {
+      "id": 19,
+      "slug": "hydro-pump",
+      "names": {
+        "en-US": "HYDRO PUMP",
+        "zh-CN": "水炮"
+      },
+      "descriptions": {
+        "en-US": "Water Special move; power 110, accuracy 80%.",
+        "zh-CN": "水属性特殊招式；威力110，命中80%。"
+      },
+      "type": "water",
+      "category": 1,
+      "power": 110,
+      "accuracy": 80,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 20,
+      "slug": "spark",
+      "names": {
+        "en-US": "SPARK",
+        "zh-CN": "电光"
+      },
+      "descriptions": {
+        "en-US": "Electric Physical move; power 35, accuracy 100%. Has a 20% chance to cause paralysis.",
+        "zh-CN": "电属性物理招式；威力35，命中100%。 有20%概率使对手陷入麻痹。"
+      },
+      "type": "electric",
+      "category": 0,
+      "power": 35,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 1,
+      "ailmentChance": 20,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 21,
+      "slug": "thunder-shock",
+      "names": {
+        "en-US": "THUNDERSHOCK",
+        "zh-CN": "电击"
+      },
+      "descriptions": {
+        "en-US": "Electric Special move; power 40, accuracy 100%. Has a 10% chance to cause paralysis.",
+        "zh-CN": "电属性特殊招式；威力40，命中100%。 有10%概率使对手陷入麻痹。"
+      },
+      "type": "electric",
+      "category": 1,
+      "power": 40,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 1,
+      "ailmentChance": 10,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 22,
+      "slug": "thunder-punch",
+      "names": {
+        "en-US": "THUNDERPUNCH",
+        "zh-CN": "雷电拳"
+      },
+      "descriptions": {
+        "en-US": "Electric Physical move; power 75, accuracy 100%. Has a 10% chance to cause paralysis.",
+        "zh-CN": "电属性物理招式；威力75，命中100%。 有10%概率使对手陷入麻痹。"
+      },
+      "type": "electric",
+      "category": 0,
+      "power": 75,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 1,
+      "ailmentChance": 10,
+      "fieldFlags": 0,
+      "tags": [
+        "contact",
+        "punch"
+      ]
+    },
+    {
+      "id": 23,
+      "slug": "thunderbolt",
+      "names": {
+        "en-US": "THUNDERBOLT",
+        "zh-CN": "十万伏特"
+      },
+      "descriptions": {
+        "en-US": "Electric Special move; power 90, accuracy 100%. Has a 10% chance to cause paralysis.",
+        "zh-CN": "电属性特殊招式；威力90，命中100%。 有10%概率使对手陷入麻痹。"
+      },
+      "type": "electric",
+      "category": 1,
+      "power": 90,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 1,
+      "ailmentChance": 10,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 24,
+      "slug": "thunder",
+      "names": {
+        "en-US": "THUNDER",
+        "zh-CN": "打雷"
+      },
+      "descriptions": {
+        "en-US": "Electric Special move; power 110, accuracy 70%. Always hits in rain; accuracy is 50% in harsh sun. Has a 30% chance to cause paralysis.",
+        "zh-CN": "电属性特殊招式；威力110，命中70%。 雨天必中；晴天命中率为50%。 有30%概率使对手陷入麻痹。"
+      },
+      "type": "electric",
+      "category": 1,
+      "power": 110,
+      "accuracy": 70,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 1,
+      "ailmentChance": 30,
+      "fieldFlags": 1,
+      "tags": []
+    },
+    {
+      "id": 25,
+      "slug": "absorb",
+      "names": {
+        "en-US": "ABSORB",
+        "zh-CN": "吸取"
+      },
+      "descriptions": {
+        "en-US": "Grass Special move; power 20, accuracy 100%. Restores HP equal to 50% of damage dealt.",
+        "zh-CN": "草属性特殊招式；威力20，命中100%。 回复造成伤害50%的生命。"
+      },
+      "type": "grass",
+      "category": 1,
+      "power": 20,
+      "accuracy": 100,
+      "effect": 3,
+      "param": 50,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 26,
+      "slug": "vine-whip",
+      "names": {
+        "en-US": "VINE WHIP",
+        "zh-CN": "藤鞭"
+      },
+      "descriptions": {
+        "en-US": "Grass Physical move; power 45, accuracy 100%.",
+        "zh-CN": "草属性物理招式；威力45，命中100%。"
+      },
+      "type": "grass",
+      "category": 0,
+      "power": 45,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 27,
+      "slug": "razor-leaf",
+      "names": {
+        "en-US": "RAZOR LEAF",
+        "zh-CN": "飞叶快刀"
+      },
+      "descriptions": {
+        "en-US": "Grass Physical move; power 55, accuracy 95%.",
+        "zh-CN": "草属性物理招式；威力55，命中95%。"
+      },
+      "type": "grass",
+      "category": 0,
+      "power": 55,
+      "accuracy": 95,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "slicing"
+      ]
+    },
+    {
+      "id": 28,
+      "slug": "mega-drain",
+      "names": {
+        "en-US": "MEGA DRAIN",
+        "zh-CN": "超级吸取"
+      },
+      "descriptions": {
+        "en-US": "Grass Special move; power 40, accuracy 100%. Restores HP equal to 50% of damage dealt.",
+        "zh-CN": "草属性特殊招式；威力40，命中100%。 回复造成伤害50%的生命。"
+      },
+      "type": "grass",
+      "category": 1,
+      "power": 40,
+      "accuracy": 100,
+      "effect": 3,
+      "param": 50,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 29,
+      "slug": "solar-beam",
+      "names": {
+        "en-US": "SOLAR BEAM",
+        "zh-CN": "日光束"
+      },
+      "descriptions": {
+        "en-US": "Grass Special move; power 120, accuracy 100%. Charges on the first turn and attacks on the next. Attacks immediately in harsh sun; power is halved in other weather.",
+        "zh-CN": "草属性特殊招式；威力120，命中100%。 首回合准备，下一回合攻击。 晴天立即攻击；其他天气下威力减半。"
+      },
+      "type": "grass",
+      "category": 1,
+      "power": 120,
+      "accuracy": 100,
+      "effect": 11,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 4,
+      "tags": []
+    },
+    {
+      "id": 30,
+      "slug": "aurora-beam",
+      "names": {
+        "en-US": "AURORA BEAM",
+        "zh-CN": "极光束"
+      },
+      "descriptions": {
+        "en-US": "Ice Special move; power 65, accuracy 100%.",
+        "zh-CN": "冰属性特殊招式；威力65，命中100%。"
+      },
+      "type": "ice",
+      "category": 1,
+      "power": 65,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 31,
+      "slug": "ice-punch",
+      "names": {
+        "en-US": "ICE PUNCH",
+        "zh-CN": "冰冻拳"
+      },
+      "descriptions": {
+        "en-US": "Ice Physical move; power 75, accuracy 100%. Has a 10% chance to cause freezing.",
+        "zh-CN": "冰属性物理招式；威力75，命中100%。 有10%概率使对手陷入冰冻。"
+      },
+      "type": "ice",
+      "category": 0,
+      "power": 75,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 5,
+      "ailmentChance": 10,
+      "fieldFlags": 0,
+      "tags": [
+        "contact",
+        "punch"
+      ]
+    },
+    {
+      "id": 32,
+      "slug": "ice-beam",
+      "names": {
+        "en-US": "ICE BEAM",
+        "zh-CN": "冰冻光束"
+      },
+      "descriptions": {
+        "en-US": "Ice Special move; power 90, accuracy 100%. Has a 10% chance to cause freezing.",
+        "zh-CN": "冰属性特殊招式；威力90，命中100%。 有10%概率使对手陷入冰冻。"
+      },
+      "type": "ice",
+      "category": 1,
+      "power": 90,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 5,
+      "ailmentChance": 10,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 33,
+      "slug": "blizzard",
+      "names": {
+        "en-US": "BLIZZARD",
+        "zh-CN": "暴风雪"
+      },
+      "descriptions": {
+        "en-US": "Ice Special move; power 110, accuracy 70%. Always hits in snow. Has a 10% chance to cause freezing.",
+        "zh-CN": "冰属性特殊招式；威力110，命中70%。 雪天必中。 有10%概率使对手陷入冰冻。"
+      },
+      "type": "ice",
+      "category": 1,
+      "power": 110,
+      "accuracy": 70,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 5,
+      "ailmentChance": 10,
+      "fieldFlags": 2,
+      "tags": [
+        "wind"
+      ]
+    },
+    {
+      "id": 34,
+      "slug": "karate-chop",
+      "names": {
+        "en-US": "KARATE CHOP",
+        "zh-CN": "空手劈"
+      },
+      "descriptions": {
+        "en-US": "Fighting Physical move; power 50, accuracy 100%.",
+        "zh-CN": "格斗属性物理招式；威力50，命中100%。"
+      },
+      "type": "fighting",
+      "category": 0,
+      "power": 50,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 35,
+      "slug": "seismic-toss",
+      "names": {
+        "en-US": "SEISMIC TOSS",
+        "zh-CN": "地球上投"
+      },
+      "descriptions": {
+        "en-US": "Fighting Physical move; power 0, accuracy 100%. Damage equals the user's level.",
+        "zh-CN": "格斗属性物理招式；威力0，命中100%。 造成等同于使用者等级的伤害。"
+      },
+      "type": "fighting",
+      "category": 0,
+      "power": 0,
+      "accuracy": 100,
+      "effect": 4,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 36,
+      "slug": "submission",
+      "names": {
+        "en-US": "SUBMISSION",
+        "zh-CN": "深渊翻滚"
+      },
+      "descriptions": {
+        "en-US": "Fighting Physical move; power 80, accuracy 80%. User takes 1/4 of damage dealt as recoil.",
+        "zh-CN": "格斗属性物理招式；威力80，命中80%。 使用者的生命也会变少，数值为伤害的1/4。"
+      },
+      "type": "fighting",
+      "category": 0,
+      "power": 80,
+      "accuracy": 80,
+      "effect": 2,
+      "param": 4,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 37,
+      "slug": "high-jump-kick",
+      "names": {
+        "en-US": "HI JUMP KICK",
+        "zh-CN": "飞膝踢"
+      },
+      "descriptions": {
+        "en-US": "Fighting Physical move; power 100, accuracy 90%.",
+        "zh-CN": "格斗属性物理招式；威力100，命中90%。"
+      },
+      "type": "fighting",
+      "category": 0,
+      "power": 100,
+      "accuracy": 90,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 38,
+      "slug": "poison-sting",
+      "names": {
+        "en-US": "POISON STING",
+        "zh-CN": "毒针"
+      },
+      "descriptions": {
+        "en-US": "Poison Physical move; power 15, accuracy 100%. Has a 30% chance to cause poison.",
+        "zh-CN": "毒属性物理招式；威力15，命中100%。 有30%概率使对手陷入中毒。"
+      },
+      "type": "poison",
+      "category": 0,
+      "power": 15,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 3,
+      "ailmentChance": 30,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 39,
+      "slug": "acid",
+      "names": {
+        "en-US": "ACID",
+        "zh-CN": "溶解液"
+      },
+      "descriptions": {
+        "en-US": "Poison Special move; power 40, accuracy 100%. Has a 10% chance to cause poison.",
+        "zh-CN": "毒属性特殊招式；威力40，命中100%。 有10%概率使对手陷入中毒。"
+      },
+      "type": "poison",
+      "category": 1,
+      "power": 40,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 3,
+      "ailmentChance": 10,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 40,
+      "slug": "sludge",
+      "names": {
+        "en-US": "SLUDGE",
+        "zh-CN": "污泥攻击"
+      },
+      "descriptions": {
+        "en-US": "Poison Special move; power 65, accuracy 100%. Has a 30% chance to cause poison.",
+        "zh-CN": "毒属性特殊招式；威力65，命中100%。 有30%概率使对手陷入中毒。"
+      },
+      "type": "poison",
+      "category": 1,
+      "power": 65,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 3,
+      "ailmentChance": 30,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 41,
+      "slug": "sludge-bomb",
+      "names": {
+        "en-US": "SLUDGE BOMB",
+        "zh-CN": "污泥炸弹"
+      },
+      "descriptions": {
+        "en-US": "Poison Special move; power 90, accuracy 100%. Has a 30% chance to cause poison.",
+        "zh-CN": "毒属性特殊招式；威力90，命中100%。 有30%概率使对手陷入中毒。"
+      },
+      "type": "poison",
+      "category": 1,
+      "power": 90,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 3,
+      "ailmentChance": 30,
+      "fieldFlags": 0,
+      "tags": [
+        "ballistic"
+      ]
+    },
+    {
+      "id": 42,
+      "slug": "bone-club",
+      "names": {
+        "en-US": "BONE CLUB",
+        "zh-CN": "骨棒"
+      },
+      "descriptions": {
+        "en-US": "Ground Physical move; power 65, accuracy 85%.",
+        "zh-CN": "地面属性物理招式；威力65，命中85%。"
+      },
+      "type": "ground",
+      "category": 0,
+      "power": 65,
+      "accuracy": 85,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 43,
+      "slug": "dig",
+      "names": {
+        "en-US": "DIG",
+        "zh-CN": "挖洞"
+      },
+      "descriptions": {
+        "en-US": "Ground Physical move; power 80, accuracy 100%. Charges on the first turn and attacks on the next.",
+        "zh-CN": "地面属性物理招式；威力80，命中100%。 首回合准备，下一回合攻击。"
+      },
+      "type": "ground",
+      "category": 0,
+      "power": 80,
+      "accuracy": 100,
+      "effect": 11,
+      "param": 1,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 44,
+      "slug": "earthquake",
+      "names": {
+        "en-US": "EARTHQUAKE",
+        "zh-CN": "地震"
+      },
+      "descriptions": {
+        "en-US": "Ground Physical move; power 100, accuracy 100%. Power is halved against grounded targets on Grassy Terrain.",
+        "zh-CN": "地面属性物理招式；威力100，命中100%。 对青草场地上的地面目标威力减半。"
+      },
+      "type": "ground",
+      "category": 0,
+      "power": 100,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 8,
+      "tags": []
+    },
+    {
+      "id": 45,
+      "slug": "wing-attack",
+      "names": {
+        "en-US": "WING ATTACK",
+        "zh-CN": "翅膀攻击"
+      },
+      "descriptions": {
+        "en-US": "Flying Physical move; power 60, accuracy 100%.",
+        "zh-CN": "飞行属性物理招式；威力60，命中100%。"
+      },
+      "type": "flying",
+      "category": 0,
+      "power": 60,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 46,
+      "slug": "drill-peck",
+      "names": {
+        "en-US": "DRILL PECK",
+        "zh-CN": "啄钻"
+      },
+      "descriptions": {
+        "en-US": "Flying Physical move; power 80, accuracy 100%.",
+        "zh-CN": "飞行属性物理招式；威力80，命中100%。"
+      },
+      "type": "flying",
+      "category": 0,
+      "power": 80,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 47,
+      "slug": "fly",
+      "names": {
+        "en-US": "FLY",
+        "zh-CN": "飞翔"
+      },
+      "descriptions": {
+        "en-US": "Flying Physical move; power 90, accuracy 95%. Charges on the first turn and attacks on the next.",
+        "zh-CN": "飞行属性物理招式；威力90，命中95%。 首回合准备，下一回合攻击。"
+      },
+      "type": "flying",
+      "category": 0,
+      "power": 90,
+      "accuracy": 95,
+      "effect": 11,
+      "param": 1,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 48,
+      "slug": "psywave",
+      "names": {
+        "en-US": "PSYWAVE",
+        "zh-CN": "精神波"
+      },
+      "descriptions": {
+        "en-US": "Psychic Special move; power 30, accuracy 100%.",
+        "zh-CN": "超能力属性特殊招式；威力30，命中100%。"
+      },
+      "type": "psychic",
+      "category": 1,
+      "power": 30,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 49,
+      "slug": "confusion",
+      "names": {
+        "en-US": "CONFUSION",
+        "zh-CN": "念力"
+      },
+      "descriptions": {
+        "en-US": "Psychic Special move; power 50, accuracy 100%. Has a 10% chance to cause confusion.",
+        "zh-CN": "超能力属性特殊招式；威力50，命中100%。 有10%概率使对手陷入混乱。"
+      },
+      "type": "psychic",
+      "category": 1,
+      "power": 50,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 6,
+      "ailmentChance": 10,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 50,
+      "slug": "psybeam",
+      "names": {
+        "en-US": "PSYBEAM",
+        "zh-CN": "幻象光线"
+      },
+      "descriptions": {
+        "en-US": "Psychic Special move; power 65, accuracy 100%. Has a 10% chance to cause confusion.",
+        "zh-CN": "超能力属性特殊招式；威力65，命中100%。 有10%概率使对手陷入混乱。"
+      },
+      "type": "psychic",
+      "category": 1,
+      "power": 65,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 6,
+      "ailmentChance": 10,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 51,
+      "slug": "psychic",
+      "names": {
+        "en-US": "PSYCHIC",
+        "zh-CN": "精神强念"
+      },
+      "descriptions": {
+        "en-US": "Psychic Special move; power 90, accuracy 100%.",
+        "zh-CN": "超能力属性特殊招式；威力90，命中100%。"
+      },
+      "type": "psychic",
+      "category": 1,
+      "power": 90,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 52,
+      "slug": "bug-bite",
+      "names": {
+        "en-US": "BUG BITE",
+        "zh-CN": "虫咬"
+      },
+      "descriptions": {
+        "en-US": "Bug Physical move; power 30, accuracy 100%.",
+        "zh-CN": "虫属性物理招式；威力30，命中100%。"
+      },
+      "type": "bug",
+      "category": 0,
+      "power": 30,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 53,
+      "slug": "pin-missile",
+      "names": {
+        "en-US": "PIN MISSILE",
+        "zh-CN": "飞弹针"
+      },
+      "descriptions": {
+        "en-US": "Bug Physical move; power 25, accuracy 95%. Hits 2-5 times.",
+        "zh-CN": "虫属性物理招式；威力25，命中95%。 连续攻击2-5次。"
+      },
+      "type": "bug",
+      "category": 0,
+      "power": 25,
+      "accuracy": 95,
+      "effect": 8,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 54,
+      "slug": "leech-life",
+      "names": {
+        "en-US": "LEECH LIFE",
+        "zh-CN": "汲取"
+      },
+      "descriptions": {
+        "en-US": "Bug Physical move; power 80, accuracy 100%. Restores HP equal to 50% of damage dealt.",
+        "zh-CN": "虫属性物理招式；威力80，命中100%。 回复造成伤害50%的生命。"
+      },
+      "type": "bug",
+      "category": 0,
+      "power": 80,
+      "accuracy": 100,
+      "effect": 3,
+      "param": 50,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 55,
+      "slug": "megahorn",
+      "names": {
+        "en-US": "MEGAHORN",
+        "zh-CN": "超级角击"
+      },
+      "descriptions": {
+        "en-US": "Bug Physical move; power 120, accuracy 85%.",
+        "zh-CN": "虫属性物理招式；威力120，命中85%。"
+      },
+      "type": "bug",
+      "category": 0,
+      "power": 120,
+      "accuracy": 85,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 56,
+      "slug": "bug-buzz",
+      "names": {
+        "en-US": "BUG BUZZ",
+        "zh-CN": "虫鸣"
+      },
+      "descriptions": {
+        "en-US": "Bug Special move; power 90, accuracy 100%.",
+        "zh-CN": "虫属性特殊招式；威力90，命中100%。"
+      },
+      "type": "bug",
+      "category": 1,
+      "power": 90,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "sound"
+      ]
+    },
+    {
+      "id": 57,
+      "slug": "x-scissor",
+      "names": {
+        "en-US": "X-SCISSOR",
+        "zh-CN": "十字剪"
+      },
+      "descriptions": {
+        "en-US": "Bug Physical move; power 80, accuracy 100%.",
+        "zh-CN": "虫属性物理招式；威力80，命中100%。"
+      },
+      "type": "bug",
+      "category": 0,
+      "power": 80,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact",
+        "slicing"
+      ]
+    },
+    {
+      "id": 58,
+      "slug": "rock-smash",
+      "names": {
+        "en-US": "ROCK SMASH",
+        "zh-CN": "碎岩"
+      },
+      "descriptions": {
+        "en-US": "Fighting Physical move; power 40, accuracy 100%.",
+        "zh-CN": "格斗属性物理招式；威力40，命中100%。"
+      },
+      "type": "fighting",
+      "category": 0,
+      "power": 40,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 59,
+      "slug": "rock-throw",
+      "names": {
+        "en-US": "ROCK THROW",
+        "zh-CN": "落石"
+      },
+      "descriptions": {
+        "en-US": "Rock Physical move; power 50, accuracy 90%.",
+        "zh-CN": "岩石属性物理招式；威力50，命中90%。"
+      },
+      "type": "rock",
+      "category": 0,
+      "power": 50,
+      "accuracy": 90,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 60,
+      "slug": "rock-slide",
+      "names": {
+        "en-US": "ROCK SLIDE",
+        "zh-CN": "岩崩"
+      },
+      "descriptions": {
+        "en-US": "Rock Physical move; power 75, accuracy 90%.",
+        "zh-CN": "岩石属性物理招式；威力75，命中90%。"
+      },
+      "type": "rock",
+      "category": 0,
+      "power": 75,
+      "accuracy": 90,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 61,
+      "slug": "ancient-power",
+      "names": {
+        "en-US": "ANCIENTPOWER",
+        "zh-CN": "原始之力"
+      },
+      "descriptions": {
+        "en-US": "Rock Special move; power 60, accuracy 100%.",
+        "zh-CN": "岩石属性特殊招式；威力60，命中100%。"
+      },
+      "type": "rock",
+      "category": 1,
+      "power": 60,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 62,
+      "slug": "lick",
+      "names": {
+        "en-US": "LICK",
+        "zh-CN": "舌舔"
+      },
+      "descriptions": {
+        "en-US": "Ghost Physical move; power 30, accuracy 100%. Has a 30% chance to cause paralysis.",
+        "zh-CN": "幽灵属性物理招式；威力30，命中100%。 有30%概率使对手陷入麻痹。"
+      },
+      "type": "ghost",
+      "category": 0,
+      "power": 30,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 1,
+      "ailmentChance": 30,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 63,
+      "slug": "night-shade",
+      "names": {
+        "en-US": "NIGHT SHADE",
+        "zh-CN": "黑夜魔影"
+      },
+      "descriptions": {
+        "en-US": "Ghost Special move; power 0, accuracy 100%. Damage equals the user's level.",
+        "zh-CN": "幽灵属性特殊招式；威力0，命中100%。 造成等同于使用者等级的伤害。"
+      },
+      "type": "ghost",
+      "category": 1,
+      "power": 0,
+      "accuracy": 100,
+      "effect": 4,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 64,
+      "slug": "shadow-ball",
+      "names": {
+        "en-US": "SHADOW BALL",
+        "zh-CN": "暗影球"
+      },
+      "descriptions": {
+        "en-US": "Ghost Special move; power 80, accuracy 100%.",
+        "zh-CN": "幽灵属性特殊招式；威力80，命中100%。"
+      },
+      "type": "ghost",
+      "category": 1,
+      "power": 80,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "ballistic"
+      ]
+    },
+    {
+      "id": 65,
+      "slug": "dragon-rage",
+      "names": {
+        "en-US": "DRAGON RAGE",
+        "zh-CN": "龙之怒"
+      },
+      "descriptions": {
+        "en-US": "Dragon Special move; power 0, accuracy 100%. Deals exactly 40 damage.",
+        "zh-CN": "龙属性特殊招式；威力0，命中100%。 造成40点伤害。"
+      },
+      "type": "dragon",
+      "category": 1,
+      "power": 0,
+      "accuracy": 100,
+      "effect": 5,
+      "param": 40,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 66,
+      "slug": "dragon-claw",
+      "names": {
+        "en-US": "DRAGON CLAW",
+        "zh-CN": "龙爪"
+      },
+      "descriptions": {
+        "en-US": "Dragon Physical move; power 80, accuracy 100%.",
+        "zh-CN": "龙属性物理招式；威力80，命中100%。"
+      },
+      "type": "dragon",
+      "category": 0,
+      "power": 80,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 67,
+      "slug": "outrage",
+      "names": {
+        "en-US": "OUTRAGE",
+        "zh-CN": "逆鳞"
+      },
+      "descriptions": {
+        "en-US": "Dragon Physical move; power 120, accuracy 100%.",
+        "zh-CN": "龙属性物理招式；威力120，命中100%。"
+      },
+      "type": "dragon",
+      "category": 0,
+      "power": 120,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 68,
+      "slug": "bite",
+      "names": {
+        "en-US": "BITE",
+        "zh-CN": "咬住"
+      },
+      "descriptions": {
+        "en-US": "Dark Physical move; power 60, accuracy 100%.",
+        "zh-CN": "恶属性物理招式；威力60，命中100%。"
+      },
+      "type": "dark",
+      "category": 0,
+      "power": 60,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact",
+        "bite"
+      ]
+    },
+    {
+      "id": 69,
+      "slug": "crunch",
+      "names": {
+        "en-US": "CRUNCH",
+        "zh-CN": "咬碎"
+      },
+      "descriptions": {
+        "en-US": "Dark Physical move; power 80, accuracy 100%.",
+        "zh-CN": "恶属性物理招式；威力80，命中100%。"
+      },
+      "type": "dark",
+      "category": 0,
+      "power": 80,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact",
+        "bite"
+      ]
+    },
+    {
+      "id": 70,
+      "slug": "iron-head",
+      "names": {
+        "en-US": "IRON HEAD",
+        "zh-CN": "铁头"
+      },
+      "descriptions": {
+        "en-US": "Steel Physical move; power 80, accuracy 100%.",
+        "zh-CN": "钢属性物理招式；威力80，命中100%。"
+      },
+      "type": "steel",
+      "category": 0,
+      "power": 80,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 71,
+      "slug": "flash-cannon",
+      "names": {
+        "en-US": "FLASH CANNON",
+        "zh-CN": "加农光炮"
+      },
+      "descriptions": {
+        "en-US": "Steel Special move; power 80, accuracy 100%.",
+        "zh-CN": "钢属性特殊招式；威力80，命中100%。"
+      },
+      "type": "steel",
+      "category": 1,
+      "power": 80,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 72,
+      "slug": "dazzling-gleam",
+      "names": {
+        "en-US": "DAZZLE GLEAM",
+        "zh-CN": "魔法闪耀"
+      },
+      "descriptions": {
+        "en-US": "Fairy Special move; power 80, accuracy 100%.",
+        "zh-CN": "妖精属性特殊招式；威力80，命中100%。"
+      },
+      "type": "fairy",
+      "category": 1,
+      "power": 80,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 73,
+      "slug": "play-rough",
+      "names": {
+        "en-US": "PLAY ROUGH",
+        "zh-CN": "嬉闹"
+      },
+      "descriptions": {
+        "en-US": "Fairy Physical move; power 90, accuracy 90%.",
+        "zh-CN": "妖精属性物理招式；威力90，命中90%。"
+      },
+      "type": "fairy",
+      "category": 0,
+      "power": 90,
+      "accuracy": 90,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 74,
+      "slug": "moonblast",
+      "names": {
+        "en-US": "MOONBLAST",
+        "zh-CN": "月亮之力"
+      },
+      "descriptions": {
+        "en-US": "Fairy Special move; power 95, accuracy 100%.",
+        "zh-CN": "妖精属性特殊招式；威力95，命中100%。"
+      },
+      "type": "fairy",
+      "category": 1,
+      "power": 95,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 75,
+      "slug": "swords-dance",
+      "names": {
+        "en-US": "SWORDS DANCE",
+        "zh-CN": "剑舞"
+      },
+      "descriptions": {
+        "en-US": "Normal status move; never misses. Raises user's Attack by 2 stages.",
+        "zh-CN": "一般属性变化招式；必中。 使自身攻击提高2级。"
+      },
+      "type": "normal",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 1,
+      "param": 0,
+      "statMask": 1,
+      "stages": 2,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "dance"
+      ]
+    },
+    {
+      "id": 76,
+      "slug": "agility",
+      "names": {
+        "en-US": "AGILITY",
+        "zh-CN": "高速移动"
+      },
+      "descriptions": {
+        "en-US": "Psychic status move; never misses. Raises user's Speed by 2 stages.",
+        "zh-CN": "超能力属性变化招式；必中。 使自身速度提高2级。"
+      },
+      "type": "psychic",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 1,
+      "param": 0,
+      "statMask": 16,
+      "stages": 2,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 77,
+      "slug": "barrier",
+      "names": {
+        "en-US": "BARRIER",
+        "zh-CN": "屏障"
+      },
+      "descriptions": {
+        "en-US": "Psychic status move; never misses. Raises user's Defense by 2 stages.",
+        "zh-CN": "超能力属性变化招式；必中。 使自身防御提高2级。"
+      },
+      "type": "psychic",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 1,
+      "param": 0,
+      "statMask": 2,
+      "stages": 2,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 78,
+      "slug": "amnesia",
+      "names": {
+        "en-US": "AMNESIA",
+        "zh-CN": "瞬间失忆"
+      },
+      "descriptions": {
+        "en-US": "Psychic status move; never misses. Raises user's Sp. Def by 2 stages.",
+        "zh-CN": "超能力属性变化招式；必中。 使自身特防提高2级。"
+      },
+      "type": "psychic",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 1,
+      "param": 0,
+      "statMask": 8,
+      "stages": 2,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 79,
+      "slug": "nasty-plot",
+      "names": {
+        "en-US": "NASTY PLOT",
+        "zh-CN": "诡计"
+      },
+      "descriptions": {
+        "en-US": "Dark status move; never misses. Raises user's Sp. Atk by 2 stages.",
+        "zh-CN": "恶属性变化招式；必中。 使自身特攻提高2级。"
+      },
+      "type": "dark",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 1,
+      "param": 0,
+      "statMask": 4,
+      "stages": 2,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 80,
+      "slug": "dragon-dance",
+      "names": {
+        "en-US": "DRAGON DANCE",
+        "zh-CN": "龙之舞"
+      },
+      "descriptions": {
+        "en-US": "Dragon status move; never misses. Raises user's Attack and Speed by 1 stage.",
+        "zh-CN": "龙属性变化招式；必中。 使自身攻击和速度提高1级。"
+      },
+      "type": "dragon",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 1,
+      "param": 0,
+      "statMask": 17,
+      "stages": 1,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "dance"
+      ]
+    },
+    {
+      "id": 81,
+      "slug": "bulk-up",
+      "names": {
+        "en-US": "BULK UP",
+        "zh-CN": "健美"
+      },
+      "descriptions": {
+        "en-US": "Fighting status move; never misses. Raises user's Attack and Defense by 1 stage.",
+        "zh-CN": "格斗属性变化招式；必中。 使自身攻击和防御提高1级。"
+      },
+      "type": "fighting",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 1,
+      "param": 0,
+      "statMask": 3,
+      "stages": 1,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 82,
+      "slug": "growl",
+      "names": {
+        "en-US": "GROWL",
+        "zh-CN": "叫声"
+      },
+      "descriptions": {
+        "en-US": "Normal status move; never misses. Lowers foe's Attack by 1 stage.",
+        "zh-CN": "一般属性变化招式；必中。 使对手的攻击-1级。"
+      },
+      "type": "normal",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 1,
+      "param": 0,
+      "statMask": 1,
+      "stages": -1,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "sound",
+        "reflectable"
+      ]
+    },
+    {
+      "id": 83,
+      "slug": "leer",
+      "names": {
+        "en-US": "LEER",
+        "zh-CN": "瞪眼"
+      },
+      "descriptions": {
+        "en-US": "Normal status move; never misses. Lowers foe's Defense by 1 stage.",
+        "zh-CN": "一般属性变化招式；必中。 使对手的防御-1级。"
+      },
+      "type": "normal",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 1,
+      "param": 0,
+      "statMask": 2,
+      "stages": -1,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "reflectable"
+      ]
+    },
+    {
+      "id": 84,
+      "slug": "screech",
+      "names": {
+        "en-US": "SCREECH",
+        "zh-CN": "刺耳声"
+      },
+      "descriptions": {
+        "en-US": "Normal status move; never misses. Lowers foe's Defense by 2 stages.",
+        "zh-CN": "一般属性变化招式；必中。 使对手的防御-2级。"
+      },
+      "type": "normal",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 1,
+      "param": 0,
+      "statMask": 2,
+      "stages": -2,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "sound",
+        "reflectable"
+      ]
+    },
+    {
+      "id": 85,
+      "slug": "string-shot",
+      "names": {
+        "en-US": "STRING SHOT",
+        "zh-CN": "吐丝"
+      },
+      "descriptions": {
+        "en-US": "Bug status move; never misses. Lowers foe's Speed by 1 stage.",
+        "zh-CN": "虫属性变化招式；必中。 使对手的速度-1级。"
+      },
+      "type": "bug",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 1,
+      "param": 0,
+      "statMask": 16,
+      "stages": -1,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "reflectable"
+      ]
+    },
+    {
+      "id": 86,
+      "slug": "recover",
+      "names": {
+        "en-US": "RECOVER",
+        "zh-CN": "自我再生"
+      },
+      "descriptions": {
+        "en-US": "Normal status move; never misses. Restores 50% of the user's maximum HP.",
+        "zh-CN": "一般属性变化招式；必中。 回复使用者最大生命的50%。"
+      },
+      "type": "normal",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 9,
+      "param": 50,
+      "statMask": 0,
+      "stages": 0,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 87,
+      "slug": "soft-boiled",
+      "names": {
+        "en-US": "SOFT-BOILED",
+        "zh-CN": "生蛋"
+      },
+      "descriptions": {
+        "en-US": "Normal status move; never misses. Restores 50% of the user's maximum HP.",
+        "zh-CN": "一般属性变化招式；必中。 回复使用者最大生命的50%。"
+      },
+      "type": "normal",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 9,
+      "param": 50,
+      "statMask": 0,
+      "stages": 0,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 88,
+      "slug": null,
+      "names": {
+        "en-US": "STRUGGLE",
+        "zh-CN": "挣扎"
+      },
+      "descriptions": {
+        "en-US": "Normal Physical move; power 50, never misses. User takes 1/4 of damage dealt as recoil.",
+        "zh-CN": "一般属性物理招式；威力50，必中。 使用者的生命也会变少，数值为伤害的1/4。"
+      },
+      "type": "normal",
+      "category": 0,
+      "power": 50,
+      "accuracy": 0,
+      "effect": 2,
+      "param": 4,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 89,
+      "slug": "dark-pulse",
+      "names": {
+        "en-US": "DARK PULSE",
+        "zh-CN": "恶之波动"
+      },
+      "descriptions": {
+        "en-US": "Dark Special move; power 80, accuracy 100%.",
+        "zh-CN": "恶属性特殊招式；威力80，命中100%。"
+      },
+      "type": "dark",
+      "category": 1,
+      "power": 80,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "pulse"
+      ]
+    },
+    {
+      "id": 90,
+      "slug": "struggle-bug",
+      "names": {
+        "en-US": "STRUGGLE BUG",
+        "zh-CN": "虫之抵抗"
+      },
+      "descriptions": {
+        "en-US": "Bug Special move; power 50, accuracy 100%. Also lowers foe's Sp. Atk by 1 stage.",
+        "zh-CN": "虫属性特殊招式；威力50，命中100%。 同时使对手的特攻-1级。"
+      },
+      "type": "bug",
+      "category": 1,
+      "power": 50,
+      "accuracy": 100,
+      "effect": 1,
+      "param": 0,
+      "statMask": 4,
+      "stages": -1,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 91,
+      "slug": "snarl",
+      "names": {
+        "en-US": "SNARL",
+        "zh-CN": "大声咆哮"
+      },
+      "descriptions": {
+        "en-US": "Dark Special move; power 55, accuracy 95%. Also lowers foe's Sp. Atk by 1 stage.",
+        "zh-CN": "恶属性特殊招式；威力55，命中95%。 同时使对手的特攻-1级。"
+      },
+      "type": "dark",
+      "category": 1,
+      "power": 55,
+      "accuracy": 95,
+      "effect": 1,
+      "param": 0,
+      "statMask": 4,
+      "stages": -1,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "sound"
+      ]
+    },
+    {
+      "id": 92,
+      "slug": "astonish",
+      "names": {
+        "en-US": "ASTONISH",
+        "zh-CN": "惊吓"
+      },
+      "descriptions": {
+        "en-US": "Ghost Physical move; power 30, accuracy 100%.",
+        "zh-CN": "幽灵属性物理招式；威力30，命中100%。"
+      },
+      "type": "ghost",
+      "category": 0,
+      "power": 30,
+      "accuracy": 100,
+      "effect": 0,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 93,
+      "slug": "close-combat",
+      "names": {
+        "en-US": "CLOSE COMBAT",
+        "zh-CN": "近身战"
+      },
+      "descriptions": {
+        "en-US": "Fighting Physical move; power 120, accuracy 100%. Also lowers user's Defense and Sp. Def by 1 stage.",
+        "zh-CN": "格斗属性物理招式；威力120，命中100%。 同时使自身防御和特防-1级。"
+      },
+      "type": "fighting",
+      "category": 0,
+      "power": 120,
+      "accuracy": 100,
+      "effect": 1,
+      "param": 0,
+      "statMask": 10,
+      "stages": -1,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 94,
+      "slug": "sunny-day",
+      "names": {
+        "en-US": "SUNNY DAY",
+        "zh-CN": "大晴天"
+      },
+      "descriptions": {
+        "en-US": "Fire status move; never misses. Creates sun for 5 turns.",
+        "zh-CN": "火属性变化招式；必中。 使天气变为晴天，持续5回合。"
+      },
+      "type": "fire",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 13,
+      "param": 1,
+      "statMask": 0,
+      "stages": 0,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 95,
+      "slug": "rain-dance",
+      "names": {
+        "en-US": "RAIN DANCE",
+        "zh-CN": "求雨"
+      },
+      "descriptions": {
+        "en-US": "Water status move; never misses. Creates rain for 5 turns.",
+        "zh-CN": "水属性变化招式；必中。 使天气变为雨天，持续5回合。"
+      },
+      "type": "water",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 13,
+      "param": 2,
+      "statMask": 0,
+      "stages": 0,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 96,
+      "slug": "sandstorm",
+      "names": {
+        "en-US": "SANDSTORM",
+        "zh-CN": "沙暴"
+      },
+      "descriptions": {
+        "en-US": "Rock status move; never misses. Creates a sandstorm for 5 turns.",
+        "zh-CN": "岩石属性变化招式；必中。 使天气变为沙暴，持续5回合。"
+      },
+      "type": "rock",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 13,
+      "param": 3,
+      "statMask": 0,
+      "stages": 0,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 97,
+      "slug": "snowscape",
+      "names": {
+        "en-US": "SNOWSCAPE",
+        "zh-CN": "雪景"
+      },
+      "descriptions": {
+        "en-US": "Ice status move; never misses. Creates snow for 5 turns.",
+        "zh-CN": "冰属性变化招式；必中。 使天气变为雪，持续5回合。"
+      },
+      "type": "ice",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 13,
+      "param": 4,
+      "statMask": 0,
+      "stages": 0,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 98,
+      "slug": "electric-terrain",
+      "names": {
+        "en-US": "ELECTRIC TERRAIN",
+        "zh-CN": "电气场地"
+      },
+      "descriptions": {
+        "en-US": "Electric status move; never misses. Creates Electric Terrain for 5 turns.",
+        "zh-CN": "电属性变化招式；必中。 形成电气场地，持续5回合。"
+      },
+      "type": "electric",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 14,
+      "param": 1,
+      "statMask": 0,
+      "stages": 0,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 99,
+      "slug": "grassy-terrain",
+      "names": {
+        "en-US": "GRASSY TERRAIN",
+        "zh-CN": "青草场地"
+      },
+      "descriptions": {
+        "en-US": "Grass status move; never misses. Creates Grassy Terrain for 5 turns.",
+        "zh-CN": "草属性变化招式；必中。 形成青草场地，持续5回合。"
+      },
+      "type": "grass",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 14,
+      "param": 2,
+      "statMask": 0,
+      "stages": 0,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 100,
+      "slug": "misty-terrain",
+      "names": {
+        "en-US": "MISTY TERRAIN",
+        "zh-CN": "薄雾场地"
+      },
+      "descriptions": {
+        "en-US": "Fairy status move; never misses. Creates Misty Terrain for 5 turns.",
+        "zh-CN": "妖精属性变化招式；必中。 形成薄雾场地，持续5回合。"
+      },
+      "type": "fairy",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 14,
+      "param": 3,
+      "statMask": 0,
+      "stages": 0,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 101,
+      "slug": "psychic-terrain",
+      "names": {
+        "en-US": "PSYCHIC TERRAIN",
+        "zh-CN": "精神场地"
+      },
+      "descriptions": {
+        "en-US": "Psychic status move; never misses. Creates Psychic Terrain for 5 turns.",
+        "zh-CN": "超能力属性变化招式；必中。 形成精神场地，持续5回合。"
+      },
+      "type": "psychic",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 14,
+      "param": 4,
+      "statMask": 0,
+      "stages": 0,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 102,
+      "slug": "sand-attack",
+      "names": {
+        "en-US": "SAND ATTACK",
+        "zh-CN": "扬沙"
+      },
+      "descriptions": {
+        "en-US": "Ground status move; accuracy 100%. Lowers foe's Accuracy by 1 stage.",
+        "zh-CN": "地面属性变化招式；命中100%。 使对手的命中率-1级。"
+      },
+      "type": "ground",
+      "category": 2,
+      "power": 0,
+      "accuracy": 100,
+      "effect": 1,
+      "param": 0,
+      "statMask": 32,
+      "stages": -1,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "reflectable"
+      ]
+    },
+    {
+      "id": 103,
+      "slug": "smokescreen",
+      "names": {
+        "en-US": "SMOKESCREEN",
+        "zh-CN": "烟幕"
+      },
+      "descriptions": {
+        "en-US": "Normal status move; accuracy 100%. Lowers foe's Accuracy by 1 stage.",
+        "zh-CN": "一般属性变化招式；命中100%。 使对手的命中率-1级。"
+      },
+      "type": "normal",
+      "category": 2,
+      "power": 0,
+      "accuracy": 100,
+      "effect": 1,
+      "param": 0,
+      "statMask": 32,
+      "stages": -1,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "reflectable"
+      ]
+    },
+    {
+      "id": 104,
+      "slug": "flash",
+      "names": {
+        "en-US": "FLASH",
+        "zh-CN": "闪光"
+      },
+      "descriptions": {
+        "en-US": "Normal status move; accuracy 100%. Lowers foe's Accuracy by 1 stage.",
+        "zh-CN": "一般属性变化招式；命中100%。 使对手的命中率-1级。"
+      },
+      "type": "normal",
+      "category": 2,
+      "power": 0,
+      "accuracy": 100,
+      "effect": 1,
+      "param": 0,
+      "statMask": 32,
+      "stages": -1,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "reflectable"
+      ]
+    },
+    {
+      "id": 105,
+      "slug": "double-team",
+      "names": {
+        "en-US": "DOUBLE TEAM",
+        "zh-CN": "影子分身"
+      },
+      "descriptions": {
+        "en-US": "Normal status move; never misses. Raises user's Evasion by 1 stage.",
+        "zh-CN": "一般属性变化招式；必中。 使自身闪避率提高1级。"
+      },
+      "type": "normal",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 1,
+      "param": 0,
+      "statMask": 64,
+      "stages": 1,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 106,
+      "slug": "reflect",
+      "names": {
+        "en-US": "REFLECT",
+        "zh-CN": "反射壁"
+      },
+      "descriptions": {
+        "en-US": "Psychic status move; never misses. Creates Reflect on the user's side for 5 turns.",
+        "zh-CN": "超能力属性变化招式；必中。 在己方形成反射壁，持续5回合。"
+      },
+      "type": "psychic",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 15,
+      "param": 1,
+      "statMask": 0,
+      "stages": 0,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 107,
+      "slug": "light-screen",
+      "names": {
+        "en-US": "LIGHT SCREEN",
+        "zh-CN": "光墙"
+      },
+      "descriptions": {
+        "en-US": "Psychic status move; never misses. Creates Light Screen on the user's side for 5 turns.",
+        "zh-CN": "超能力属性变化招式；必中。 在己方形成光墙，持续5回合。"
+      },
+      "type": "psychic",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 15,
+      "param": 2,
+      "statMask": 0,
+      "stages": 0,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 108,
+      "slug": "aurora-veil",
+      "names": {
+        "en-US": "AURORA VEIL",
+        "zh-CN": "极光幕"
+      },
+      "descriptions": {
+        "en-US": "Ice status move; never misses. Creates Aurora Veil on the user's side for 5 turns. Requires snow.",
+        "zh-CN": "冰属性变化招式；必中。 在己方形成极光幕，持续5回合。 仅在雪天下成功。"
+      },
+      "type": "ice",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 15,
+      "param": 3,
+      "statMask": 0,
+      "stages": 0,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 109,
+      "slug": "spikes",
+      "names": {
+        "en-US": "SPIKES",
+        "zh-CN": "撒刺"
+      },
+      "descriptions": {
+        "en-US": "Ground status move; never misses. Sets Spikes on the opposing side.",
+        "zh-CN": "地面属性变化招式；必中。 在对方场地设置撒刺。"
+      },
+      "type": "ground",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 16,
+      "param": 1,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "reflectable"
+      ]
+    },
+    {
+      "id": 110,
+      "slug": "toxic-spikes",
+      "names": {
+        "en-US": "TOXIC SPIKES",
+        "zh-CN": "毒刺"
+      },
+      "descriptions": {
+        "en-US": "Poison status move; never misses. Sets Toxic Spikes on the opposing side.",
+        "zh-CN": "毒属性变化招式；必中。 在对方场地设置毒刺。"
+      },
+      "type": "poison",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 16,
+      "param": 2,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "reflectable"
+      ]
+    },
+    {
+      "id": 111,
+      "slug": "stealth-rock",
+      "names": {
+        "en-US": "STEALTH ROCK",
+        "zh-CN": "隐形岩"
+      },
+      "descriptions": {
+        "en-US": "Rock status move; never misses. Sets Stealth Rock on the opposing side.",
+        "zh-CN": "岩石属性变化招式；必中。 在对方场地设置隐形岩。"
+      },
+      "type": "rock",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 16,
+      "param": 3,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "reflectable"
+      ]
+    },
+    {
+      "id": 112,
+      "slug": "sticky-web",
+      "names": {
+        "en-US": "STICKY WEB",
+        "zh-CN": "黏黏网"
+      },
+      "descriptions": {
+        "en-US": "Bug status move; never misses. Sets Sticky Web on the opposing side.",
+        "zh-CN": "虫属性变化招式；必中。 在对方场地设置黏黏网。"
+      },
+      "type": "bug",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 16,
+      "param": 4,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "reflectable"
+      ]
+    },
+    {
+      "id": 113,
+      "slug": "rapid-spin",
+      "names": {
+        "en-US": "RAPID SPIN",
+        "zh-CN": "高速旋转"
+      },
+      "descriptions": {
+        "en-US": "Normal Physical move; power 50, accuracy 100%. Clears hazards from the user's side and raises Speed by 1 stage.",
+        "zh-CN": "一般属性物理招式；威力50，命中100%。 清除己方场地陷阱，并使自身速度提高1级。"
+      },
+      "type": "normal",
+      "category": 0,
+      "power": 50,
+      "accuracy": 100,
+      "effect": 17,
+      "param": 1,
+      "statMask": 16,
+      "stages": 1,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 114,
+      "slug": "defog",
+      "names": {
+        "en-US": "DEFOG",
+        "zh-CN": "清除浓雾"
+      },
+      "descriptions": {
+        "en-US": "Flying status move; never misses. Clears hazards and screens from both sides and lowers the foe's Evasion by 1 stage.",
+        "zh-CN": "飞行属性变化招式；必中。 清除双方墙与场地陷阱，并使对手闪避率降低1级。"
+      },
+      "type": "flying",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 17,
+      "param": 2,
+      "statMask": 64,
+      "stages": -1,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "reflectable"
+      ]
+    },
+    {
+      "id": 115,
+      "slug": "roar",
+      "names": {
+        "en-US": "ROAR",
+        "zh-CN": "吼叫"
+      },
+      "descriptions": {
+        "en-US": "Normal status move; never misses. Forces the target to switch out.",
+        "zh-CN": "一般属性变化招式；必中。 强制目标换下。"
+      },
+      "type": "normal",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 18,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "sound",
+        "reflectable"
+      ]
+    },
+    {
+      "id": 116,
+      "slug": "whirlwind",
+      "names": {
+        "en-US": "WHIRLWIND",
+        "zh-CN": "吹飞"
+      },
+      "descriptions": {
+        "en-US": "Normal status move; never misses. Forces the target to switch out.",
+        "zh-CN": "一般属性变化招式；必中。 强制目标换下。"
+      },
+      "type": "normal",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 18,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "reflectable"
+      ]
+    },
+    {
+      "id": 117,
+      "slug": "dragon-tail",
+      "names": {
+        "en-US": "DRAGON TAIL",
+        "zh-CN": "龙尾"
+      },
+      "descriptions": {
+        "en-US": "Dragon Physical move; power 60, accuracy 90%. Forces the target to switch out.",
+        "zh-CN": "龙属性物理招式；威力60，命中90%。 强制目标换下。"
+      },
+      "type": "dragon",
+      "category": 0,
+      "power": 60,
+      "accuracy": 90,
+      "effect": 18,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 118,
+      "slug": "circle-throw",
+      "names": {
+        "en-US": "CIRCLE THROW",
+        "zh-CN": "巴投"
+      },
+      "descriptions": {
+        "en-US": "Fighting Physical move; power 60, accuracy 90%. Forces the target to switch out.",
+        "zh-CN": "格斗属性物理招式；威力60，命中90%。 强制目标换下。"
+      },
+      "type": "fighting",
+      "category": 0,
+      "power": 60,
+      "accuracy": 90,
+      "effect": 18,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 119,
+      "slug": "u-turn",
+      "names": {
+        "en-US": "U-TURN",
+        "zh-CN": "急速折返"
+      },
+      "descriptions": {
+        "en-US": "Bug Physical move; power 70, accuracy 100%. The user switches out after dealing damage.",
+        "zh-CN": "虫属性物理招式；威力70，命中100%。 造成伤害后使用者换下。"
+      },
+      "type": "bug",
+      "category": 0,
+      "power": 70,
+      "accuracy": 100,
+      "effect": 19,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": [
+        "contact"
+      ]
+    },
+    {
+      "id": 120,
+      "slug": "volt-switch",
+      "names": {
+        "en-US": "VOLT SWITCH",
+        "zh-CN": "伏特替换"
+      },
+      "descriptions": {
+        "en-US": "Electric Special move; power 70, accuracy 100%. The user switches out after dealing damage.",
+        "zh-CN": "电属性特殊招式；威力70，命中100%。 造成伤害后使用者换下。"
+      },
+      "type": "electric",
+      "category": 1,
+      "power": 70,
+      "accuracy": 100,
+      "effect": 19,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 1,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 0,
+      "tags": []
+    },
+    {
+      "id": 121,
+      "slug": "kings-shield",
+      "names": {
+        "en-US": "KING'S SHIELD",
+        "zh-CN": "王者盾牌"
+      },
+      "descriptions": {
+        "en-US": "Steel status move; never misses. Protects the user for this turn. Returns Stance Change users to Shield Form.",
+        "zh-CN": "钢属性变化招式；必中。 本回合保护使用者。 使战斗切换形态的使用者恢复盾牌形态。"
+      },
+      "type": "steel",
+      "category": 2,
+      "power": 0,
+      "accuracy": 0,
+      "effect": 12,
+      "param": 0,
+      "statMask": 0,
+      "stages": 0,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 16,
+      "tags": []
+    },
+    {
+      "id": 122,
+      "slug": "aura-wheel",
+      "names": {
+        "en-US": "AURA WHEEL",
+        "zh-CN": "气场轮"
+      },
+      "descriptions": {
+        "en-US": "Electric Physical move; power 110, accuracy 100%. Also raises user's Speed by 1 stage. Becomes Dark-type in Hangry Mode.",
+        "zh-CN": "电属性物理招式；威力110，命中100%。 同时使自身速度提高1级。 在空腹花纹时变为恶属性。"
+      },
+      "type": "electric",
+      "category": 0,
+      "power": 110,
+      "accuracy": 100,
+      "effect": 1,
+      "param": 0,
+      "statMask": 16,
+      "stages": 1,
+      "target": 0,
+      "ailment": 0,
+      "ailmentChance": 0,
+      "fieldFlags": 32,
+      "tags": []
+    }
+  ]
+}

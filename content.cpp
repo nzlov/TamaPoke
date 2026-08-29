@@ -23,7 +23,7 @@
 namespace {
 
 constexpr uint8_t MAX_PACKS = 32;
-constexpr uint8_t MAX_SECTIONS = 30;
+constexpr uint8_t MAX_SECTIONS = 24;
 constexpr uint16_t COMMON_SIZE = 48;
 constexpr uint16_t SECTION_SIZE = 16;
 constexpr uint8_t MAX_PET_PACKS = CONTENT_MAX_REGIONS;
@@ -59,6 +59,18 @@ struct SpriteRef {
   uint32_t femaleShinyAt = 0, femaleShinySize = 0;
 };
 
+struct BreedingRuntime {
+  uint16_t groups = 0;
+  SpeciesId offspring[2] = { SPECIES_NONE, SPECIES_NONE };
+  uint32_t eggMoveOffset = 0;
+  uint16_t eggMoveCount = 0;
+};
+
+struct GigantamaxRuntime {
+  SpeciesId species = SPECIES_NONE;
+  GmaxMoveId moves[2] = { GMAX_MOVE_NONE, GMAX_MOVE_NONE };
+};
+
 struct RegionPackRuntime {
   uint8_t packRef = 0xFF;
   uint8_t *locales = nullptr;
@@ -67,6 +79,12 @@ struct RegionPackRuntime {
   uint32_t localizedNamesSize = 0;
   uint16_t firstSpecies = 0;
   uint16_t speciesCount = 0;
+  uint32_t *learnOffsets = nullptr;
+  uint32_t learnOffsetCount = 0;
+  LearnEntry *learnEntries = nullptr;
+  uint32_t learnEntryCount = 0;
+  MoveId *eggMoves = nullptr;
+  uint32_t eggMoveCount = 0;
 };
 
 struct UiRuntime {
@@ -91,15 +109,8 @@ struct AbilityRuntime {
   const char *name = nullptr;
 };
 
-struct BreedingRuntime {
-  uint16_t groups = 0;
-  SpeciesId offspring[2] = { SPECIES_NONE, SPECIES_NONE };
-  uint32_t eggMoveOffset = 0;
-  uint16_t eggMoveCount = 0;
-};
-
 static bool gAttempted = false;
-static bool gRegionsReady = false, gMoves = false;
+static bool gRegionsReady = false, gMoves = false, gItemsReady = false, gBattle = false;
 static PackRef *gPacks = nullptr;
 static uint8_t gPackCount = 0;
 static RegionPackRuntime gRegionPacks[MAX_PET_PACKS];
@@ -107,6 +118,7 @@ static uint8_t gRegionPackCount = 0;
 
 static DexEntry *gDex = nullptr;
 static SpriteRef *gSprites = nullptr;
+static BreedingRuntime *gBreeding = nullptr;
 static uint16_t gDexCapacity = 0;
 static uint16_t gDexCount = 0;
 static char *gSpeciesNames[MAX_PET_PACKS] = {};
@@ -135,13 +147,6 @@ static uint8_t *gAbilityLocalizedNames = nullptr;
 static uint32_t gAbilityLocalizedNamesSize = 0;
 static uint8_t *gAbilityLocales = nullptr;
 static uint32_t gAbilityLocalesSize = 0;
-static BreedingRuntime *gBreeding = nullptr;
-static uint16_t gBreedingCount = 0;
-static MoveId *gEggMoves = nullptr;
-static uint32_t *gLearnOffsets = nullptr;
-static uint32_t gLearnOffsetCount = 0;
-static LearnEntry *gLearnEntries = nullptr;
-static uint32_t gLearnEntryCount = 0;
 static uint8_t *gMoveLocales = nullptr;
 static uint32_t gMoveLocalesSize = 0;
 static uint8_t *gMoveLocalizedNames = nullptr;
@@ -157,8 +162,10 @@ static uint8_t *gItemIcons = nullptr;
 static uint32_t gItemIconsSize = 0;
 static MegaFormEntry *gMegaForms = nullptr;
 static uint16_t gMegaFormCount = 0;
-static SpeciesId *gGigantamaxSpecies = nullptr;
+static uint16_t gMegaFormCapacity = 0;
+static GigantamaxRuntime *gGigantamaxSpecies = nullptr;
 static uint16_t gGigantamaxCount = 0;
+static uint16_t gGigantamaxCapacity = 0;
 static GmaxMoveEntry *gGmaxMoves = nullptr;
 static uint8_t gGmaxMoveCount = 0;
 static char *gGmaxMoveNames = nullptr;
@@ -187,7 +194,7 @@ static uint8_t gQuizPackCount = 0;
 
 static const DexEntry MISSING_SPECIES = {
   "?", 0, 0, 0x2946, 50, 50, 50, 50, 50, 50, 0, T_NORMAL, T_NONE,
-  GENDER_RATE_NONE, {}, {}, 0,
+  GENDER_RATE_NONE, ENCOUNTER_BOTH, {}, {}, 0,
 };
 static const MoveEntry MISSING_MOVE = {
   "-", T_NORMAL, MC_STATUS, 0, 0, EF_NONE, 0, 0, 0, TG_SELF, AIL_NONE, 0,
@@ -298,10 +305,15 @@ static bool allocateSpeciesCatalog(uint16_t maxSpecies) {
   if (gDex || gSprites || gDexCapacity) return false;
   DexEntry *dex = (DexEntry *)contentAlloc(sizeof(DexEntry) * required);
   SpriteRef *sprites = (SpriteRef *)contentAlloc(sizeof(SpriteRef) * required);
-  if (!dex || !sprites) { free(dex); free(sprites); return false; }
+  BreedingRuntime *breeding = (BreedingRuntime *)contentAlloc(
+      sizeof(BreedingRuntime) * required);
+  if (!dex || !sprites || !breeding) {
+    free(dex); free(sprites); free(breeding); return false;
+  }
   for (uint16_t i = 0; i < required; i++) sprites[i].pack = 0xFF;
   gDex = dex;
   gSprites = sprites;
+  gBreeding = breeding;
   gDexCapacity = required;
   return true;
 }
@@ -316,8 +328,8 @@ static uint8_t *readSection(const PackRef &pack, const char *tag, uint32_t *size
   for (uint8_t i = 0; i < pack.sectionCount; i++) {
     const SectionRef &section = pack.sections[i];
     if (strcmp(section.tag, tag) != 0) continue;
-    uint8_t *data = (uint8_t *)contentAlloc(section.size);
-    if (!data || !readRange(pack, section.offset, data, section.size)) {
+    uint8_t *data = (uint8_t *)contentAlloc(section.size ? section.size : 1u);
+    if (!data || (section.size && !readRange(pack, section.offset, data, section.size))) {
       free(data);
       return nullptr;
     }
@@ -355,7 +367,7 @@ static ContentPackValidation validatePackHeader(const char *path, Reader &reader
   if (!reader.readAt(0, common, COMMON_SIZE)) return CONTENT_PACK_READ_FAILED;
   uint8_t kind = common[6];
   uint16_t headerSize = rd16(common + 24), sectionCount = rd16(common + 26);
-  if (memcmp(common, "TPPK", 4) != 0 || kind < CONTENT_PACK_UI || kind > CONTENT_PACK_QUIZ ||
+  if (memcmp(common, "TPPK", 4) != 0 || kind < CONTENT_PACK_UI || kind > CONTENT_PACK_BATTLE ||
       sectionCount == 0 || sectionCount > MAX_SECTIONS ||
       headerSize != COMMON_SIZE + sectionCount * SECTION_SIZE || headerSize > reader.size)
     return CONTENT_PACK_HEADER_INVALID;
@@ -429,7 +441,9 @@ static bool parsePack(const char *path, PackRef &out,
 static bool hasPackExtension(const char *path) {
   if (!path) return false;
   size_t length = strlen(path);
-  const char *extensions[] = { ".tui", ".tmove", ".tregion", ".tquiz" };
+  const char *extensions[] = {
+    ".tui", ".tmove", ".tregion", ".tquiz", ".titem", ".tbattle"
+  };
   for (const char *extension : extensions) {
     size_t extensionLength = strlen(extension);
     if (length >= extensionLength &&
@@ -486,6 +500,19 @@ static uint16_t installedSpeciesMaximum() {
     if (hi > maximum) maximum = hi;
   }
   return maximum;
+}
+
+static void installedFormCounts(uint16_t &mega, uint16_t &gigantamax) {
+  mega = gigantamax = 0;
+  for (uint8_t i = 0; i < gPackCount; i++) {
+    if (gPacks[i].kind != CONTENT_PACK_REGION) continue;
+    const SectionRef *megaSection = findSection(gPacks[i], "MEGA");
+    const SectionRef *gmaxSection = findSection(gPacks[i], "GMAX");
+    if (megaSection && megaSection->count <= UINT16_MAX - mega)
+      mega = (uint16_t)(mega + megaSection->count);
+    if (gmaxSection && gmaxSection->count <= UINT16_MAX - gigantamax)
+      gigantamax = (uint16_t)(gigantamax + gmaxSection->count);
+  }
 }
 
 static bool validString(const uint8_t *blob, uint32_t size, uint32_t offset) {
@@ -672,446 +699,225 @@ static bool loadMovePack(uint8_t packIndex) {
   free(flags);
   free(tags);
 
-  uint32_t offsetSize = 0, offsetCount = 0, learnSize = 0, learnCountValue = 0;
-  uint8_t *offsetRaw = readSection(pack, "LOFS", &offsetSize, &offsetCount);
-  uint8_t *learnRaw = readSection(pack, "LERN", &learnSize, &learnCountValue);
-  if (!offsetRaw || !learnRaw || offsetSize != offsetCount * 4u ||
-      learnSize != learnCountValue * 4u || offsetCount < 2) {
-    free(offsetRaw); free(learnRaw); free(names); free(table); return false;
-  }
-  uint32_t *offsets = (uint32_t *)contentAlloc(offsetSize);
-  LearnEntry *entries = (LearnEntry *)contentAlloc(sizeof(LearnEntry) * learnCountValue);
-  if (!offsets || !entries) {
-    free(offsetRaw); free(learnRaw); free(offsets); free(entries); free(names); free(table);
-    return false;
-  }
-  for (uint32_t i = 0; i < offsetCount; i++) {
-    offsets[i] = rd32(offsetRaw + i * 4);
-    if ((i && offsets[i] < offsets[i - 1]) || offsets[i] > learnCountValue) {
-      free(offsetRaw); free(learnRaw); free(offsets); free(entries); free(names); free(table);
-      return false;
-    }
-  }
-  if (offsets[offsetCount - 1] != learnCountValue) {
-    free(offsetRaw); free(learnRaw); free(offsets); free(entries); free(names); free(table);
-    return false;
-  }
-  for (uint32_t i = 0; i < learnCountValue; i++) {
-    entries[i].move = rd16(learnRaw + i * 4);
-    entries[i].level = learnRaw[i * 4 + 2];
-    entries[i].method = learnRaw[i * 4 + 3];
-    if (entries[i].move >= moveRecords || entries[i].method > LM_EGG) {
-      free(offsetRaw); free(learnRaw); free(offsets); free(entries); free(names); free(table);
-      return false;
-    }
-  }
-  free(offsetRaw); free(learnRaw);
-
-  uint32_t chartSize = 0, typeSize = 0, typeCountValue = 0, typeNamesSize = 0;
-  uint8_t *chart = readSection(pack, "CHRT", &chartSize);
-  uint8_t *types = readSection(pack, "TYPS", &typeSize, &typeCountValue);
-  uint8_t *typeNames = readSection(pack, "TSTR", &typeNamesSize);
-  if (!chart || chartSize != sizeof(gTypeChart) || !types || typeCountValue != TYPE_COUNT ||
-      typeSize != TYPE_COUNT * 8u || !typeNames) {
-    free(chart); free(types); free(typeNames); free(offsets); free(entries); free(names); free(table);
-    return false;
-  }
-  memcpy(gTypeChart, chart, sizeof(gTypeChart));
-  for (uint8_t i = 0; i < TYPE_COUNT; i++) {
-    uint32_t nameOffset = rd32(types + i * 8);
-    if (!validString(typeNames, typeNamesSize, nameOffset)) {
-      free(chart); free(types); free(typeNames); free(offsets); free(entries); free(names); free(table);
-      return false;
-    }
-    gTypeNameOffsets[i] = nameOffset;
-    gTypeColors[i] = rd16(types + i * 8 + 4);
-    gTypeLight[i] = types[i * 8 + 6];
-  }
-  free(chart); free(types);
-
   uint32_t localesSize = 0;
   uint8_t *locales = readSection(pack, "LOCL", &localesSize);
   uint32_t localizedNamesSize = 0;
   uint8_t *localizedNames = readSection(pack, "LNAM", &localizedNamesSize);
-  uint32_t localizedTypeNamesSize = 0;
-  uint8_t *localizedTypeNames = readSection(pack, "TLNM", &localizedTypeNamesSize);
+  if (!locales || !localizedNames) {
+    free(locales); free(localizedNames); free(names); free(table); return false;
+  }
 
-  uint32_t itemSize = 0, itemRecords = 0, itemNamesSize = 0;
-  uint8_t *rawItems = readSection(pack, "ITEM", &itemSize, &itemRecords);
-  uint8_t *itemNames = readSection(pack, "INAM", &itemNamesSize);
-  uint32_t itemLocalizedNamesSize = 0, itemLocalesSize = 0;
-  uint32_t itemLocalizedNameCount = 0, itemLocaleCount = 0;
-  uint8_t *itemLocalizedNames = readSection(
-      pack, "ILNM", &itemLocalizedNamesSize, &itemLocalizedNameCount);
-  uint8_t *itemLocales = readSection(pack, "ILOC", &itemLocalesSize, &itemLocaleCount);
-  if (!rawItems || !itemNames || !itemLocalizedNames || !itemLocales || !itemRecords ||
-      itemRecords > CONTENT_MAX_ITEMS || itemSize != itemRecords * 16u ||
-      itemLocalizedNameCount != itemRecords || itemLocaleCount != itemRecords) {
-    free(rawItems); free(itemNames); free(itemLocalizedNames); free(itemLocales);
-    free(locales); free(localizedNames); free(localizedTypeNames);
-    free(typeNames); free(offsets); free(entries); free(names); free(table);
+  uint32_t gmaxMoveSize = 0, gmaxMoveCount = 0, gmaxNameSize = 0, gmaxNameCount = 0;
+  uint32_t gmaxLocalizedSize = 0, gmaxLocalizedCount = 0;
+  uint8_t *rawGmaxMoves = readSection(pack, "GMOV", &gmaxMoveSize, &gmaxMoveCount);
+  uint8_t *gmaxNames = readSection(pack, "GMNM", &gmaxNameSize, &gmaxNameCount);
+  uint8_t *gmaxLocalizedNames = readSection(
+      pack, "GMLN", &gmaxLocalizedSize, &gmaxLocalizedCount);
+  GmaxMoveEntry *gmaxMoves = gmaxMoveCount
+      ? (GmaxMoveEntry *)contentAlloc(sizeof(GmaxMoveEntry) * gmaxMoveCount) : nullptr;
+  bool validGmax = rawGmaxMoves && gmaxNames && gmaxLocalizedNames && gmaxMoves &&
+      gmaxMoveCount <= UINT8_MAX && gmaxMoveSize == gmaxMoveCount * 8u &&
+      gmaxNameCount == gmaxMoveCount && gmaxLocalizedCount == gmaxMoveCount;
+  for (uint32_t i = 0; validGmax && i < gmaxMoveCount; i++) {
+    const uint8_t *row = rawGmaxMoves + i * 8u;
+    uint32_t nameOffset = rd32(row + 4);
+    GmaxMoveEntry &move = gmaxMoves[i];
+    move.id = row[0]; move.sourceType = row[1];
+    move.effect = (GmaxEffect)row[2]; move.power = row[3];
+    move.name = validString(gmaxNames, gmaxNameSize, nameOffset)
+        ? (const char *)(gmaxNames + nameOffset) : nullptr;
+    validGmax = move.id == i + 1u && move.sourceType < TYPE_COUNT &&
+        move.effect > GMAX_EFFECT_NONE && move.effect < GMAX_EFFECT_COUNT && move.name;
+  }
+  free(rawGmaxMoves);
+
+  uint32_t maxNameSize = 0, maxNameCount = 0;
+  uint32_t maxLocalizedSize = 0, maxLocalizedCount = 0;
+  uint8_t *maxNames = readSection(pack, "MXNM", &maxNameSize, &maxNameCount);
+  uint8_t *maxLocalizedNames = readSection(
+      pack, "MXLN", &maxLocalizedSize, &maxLocalizedCount);
+  uint32_t maxNameOffsets[TYPE_COUNT + 1] = {};
+  bool validMax = maxNames && maxLocalizedNames && maxNameCount == TYPE_COUNT + 1u &&
+      maxLocalizedCount == maxNameCount;
+  uint32_t maxNameAt = 0;
+  for (uint8_t i = 0; validMax && i < TYPE_COUNT + 1u; i++) {
+    if (!validString(maxNames, maxNameSize, maxNameAt)) {
+      validMax = false;
+      break;
+    }
+    maxNameOffsets[i] = maxNameAt;
+    maxNameAt += strlen((const char *)(maxNames + maxNameAt)) + 1u;
+  }
+  if (maxNameAt != maxNameSize) validMax = false;
+  if (!validGmax || !validMax) {
+    free(maxNames); free(maxLocalizedNames); free(gmaxMoves); free(gmaxNames);
+    free(gmaxLocalizedNames); free(locales); free(localizedNames); free(names); free(table);
     return false;
+  }
+
+  gMovesTable = table;
+  gMoveCount = (uint16_t)moveRecords;
+  gMoveNames = (char *)names;
+  gMoveLocales = locales;
+  gMoveLocalesSize = localesSize;
+  gMoveLocalizedNames = localizedNames;
+  gMoveLocalizedNamesSize = localizedNamesSize;
+  gGmaxMoves = gmaxMoves;
+  gGmaxMoveCount = (uint8_t)gmaxMoveCount;
+  gGmaxMoveNames = (char *)gmaxNames;
+  gGmaxMoveLocalizedNames = gmaxLocalizedNames;
+  gGmaxMoveLocalizedNamesSize = gmaxLocalizedSize;
+  gMaxMoveNames = (char *)maxNames;
+  memcpy(gMaxMoveNameOffsets, maxNameOffsets, sizeof(maxNameOffsets));
+  gMaxMoveLocalizedNames = maxLocalizedNames;
+  gMaxMoveLocalizedNamesSize = maxLocalizedSize;
+  gMoves = true;
+  gPacks[packIndex].loaded = true;
+  return true;
+}
+
+static bool loadItemPack(uint8_t packIndex) {
+  const PackRef &pack = gPacks[packIndex];
+  uint32_t itemSize = 0, itemRecords = 0, itemNamesSize = 0;
+  uint32_t localizedNamesSize = 0, localizedNameCount = 0;
+  uint32_t localesSize = 0, localeCount = 0;
+  uint8_t *rawItems = readSection(pack, "ITEM", &itemSize, &itemRecords);
+  uint8_t *names = readSection(pack, "INAM", &itemNamesSize);
+  uint8_t *localizedNames = readSection(
+      pack, "ILNM", &localizedNamesSize, &localizedNameCount);
+  uint8_t *locales = readSection(pack, "ILOC", &localesSize, &localeCount);
+  if (!rawItems || !names || !localizedNames || !locales || !itemRecords ||
+      itemRecords > CONTENT_MAX_ITEMS || itemSize != itemRecords * 16u ||
+      localizedNameCount != itemRecords || localeCount != itemRecords) {
+    free(rawItems); free(names); free(localizedNames); free(locales); return false;
   }
   ItemEntry *items = (ItemEntry *)contentAlloc(sizeof(ItemEntry) * itemRecords);
   if (!items) {
-    free(rawItems); free(itemNames); free(itemLocalizedNames); free(itemLocales);
-    free(locales); free(localizedNames); free(localizedTypeNames);
-    free(typeNames); free(offsets); free(entries); free(names); free(table);
-    return false;
+    free(rawItems); free(names); free(localizedNames); free(locales); return false;
   }
-  for (uint32_t i = 0; i < itemRecords; i++) {
-    const uint8_t *row = rawItems + i * 16;
+  bool valid = true;
+  for (uint32_t i = 0; valid && i < itemRecords; i++) {
+    const uint8_t *row = rawItems + i * 16u;
     ItemKey key = rd16(row);
-    int16_t itemParam = (int16_t)rd16(row + 6);
+    int16_t param = (int16_t)rd16(row + 6);
     uint32_t nameOffset = rd32(row + 12);
-    bool trainingItem = row[3] == ITEM_EFFECT_TRAINING_FLOOR;
-    bool battleBoost = row[3] == ITEM_EFFECT_BATTLE_STAGE;
-    bool mechanicItem = row[3] == ITEM_EFFECT_BATTLE_MECHANIC;
+    bool training = row[3] == ITEM_EFFECT_TRAINING_FLOOR;
+    bool boost = row[3] == ITEM_EFFECT_BATTLE_STAGE;
+    bool mechanic = row[3] == ITEM_EFFECT_BATTLE_MECHANIC;
     bool catchItem = row[3] == ITEM_EFFECT_CATCH;
     bool moveStone = row[3] == ITEM_EFFECT_TEACH_MOVE;
-    if (!key || row[2] < ITEM_CATEGORY_BALL || row[2] > ITEM_CATEGORY_MOVE_STONE ||
-        row[3] < ITEM_EFFECT_CATCH || row[3] > ITEM_EFFECT_TEACH_MOVE ||
-        !row[4] || row[4] > 4 || row[10] > ITEM_STACK_LIMIT ||
-        (catchItem && (row[2] != ITEM_CATEGORY_BALL ||
-                       (itemParam <= 0 && itemParam != ITEM_CATCH_GUARANTEED))) ||
-        (trainingItem && (row[2] != ITEM_CATEGORY_TRAINING ||
-                          (row[5] != ITEM_STAT_ATK && row[5] != ITEM_STAT_DEF &&
-                           row[5] != ITEM_STAT_SPE) || itemParam <= 0)) ||
-        (battleBoost && (row[2] != ITEM_CATEGORY_BATTLE_BOOST ||
-                         (row[5] != ITEM_STAT_ATK && row[5] != ITEM_STAT_DEF &&
-                          row[5] != ITEM_STAT_SPA && row[5] != ITEM_STAT_SPD &&
-                          row[5] != ITEM_STAT_SPE) || itemParam <= 0 ||
-                         itemParam > 6)) ||
-        (mechanicItem && (row[2] != ITEM_CATEGORY_MECHANIC ||
-                          row[5] < ITEM_MECHANIC_Z_MOVE || row[5] > ITEM_MECHANIC_MEGA ||
-                          (row[5] != ITEM_MECHANIC_MEGA && itemParam != 0) ||
-                          (row[5] == ITEM_MECHANIC_MEGA &&
-                           (itemParam < MEGA_FORM_STANDARD || itemParam > MEGA_FORM_Z)) ||
-                          row[8] || row[9] || row[10])) ||
-        (row[3] == ITEM_EFFECT_GIGANTAMAX_FACTOR &&
-         (row[2] != ITEM_CATEGORY_EVOLUTION || row[5] || itemParam || row[10])) ||
-        (moveStone && (row[2] != ITEM_CATEGORY_MOVE_STONE || row[5] ||
-                       itemParam || row[10])) ||
-        !validString(itemNames, itemNamesSize, nameOffset)) {
-      free(rawItems); free(itemNames); free(itemLocalizedNames); free(itemLocales); free(items);
-      free(locales); free(localizedNames); free(localizedTypeNames);
-      free(typeNames); free(offsets); free(entries); free(names); free(table);
-      return false;
-    }
-    for (uint32_t previous = 0; previous < i; previous++)
-      if (items[previous].key == key) {
-        free(rawItems); free(itemNames); free(itemLocalizedNames); free(itemLocales); free(items);
-        free(locales); free(localizedNames); free(localizedTypeNames);
-        free(typeNames); free(offsets); free(entries); free(names); free(table);
-        return false;
-      }
+    valid = key && row[2] >= ITEM_CATEGORY_BALL && row[2] <= ITEM_CATEGORY_MOVE_STONE &&
+        row[3] >= ITEM_EFFECT_CATCH && row[3] <= ITEM_EFFECT_TEACH_MOVE &&
+        row[4] && row[4] <= 4 && row[10] <= ITEM_STACK_LIMIT &&
+        (!catchItem || (row[2] == ITEM_CATEGORY_BALL &&
+                        (param > 0 || param == ITEM_CATCH_GUARANTEED))) &&
+        (!training || (row[2] == ITEM_CATEGORY_TRAINING &&
+                       (row[5] == ITEM_STAT_ATK || row[5] == ITEM_STAT_DEF ||
+                        row[5] == ITEM_STAT_SPE) && param > 0)) &&
+        (!boost || (row[2] == ITEM_CATEGORY_BATTLE_BOOST &&
+                    (row[5] == ITEM_STAT_ATK || row[5] == ITEM_STAT_DEF ||
+                     row[5] == ITEM_STAT_SPA || row[5] == ITEM_STAT_SPD ||
+                     row[5] == ITEM_STAT_SPE) && param > 0 && param <= 6)) &&
+        (!mechanic || (row[2] == ITEM_CATEGORY_MECHANIC &&
+                       row[5] >= ITEM_MECHANIC_Z_MOVE && row[5] <= ITEM_MECHANIC_MEGA &&
+                       (row[5] == ITEM_MECHANIC_MEGA || param == 0) &&
+                       (row[5] != ITEM_MECHANIC_MEGA ||
+                        (param >= MEGA_FORM_STANDARD && param <= MEGA_FORM_Z)) &&
+                       !row[8] && !row[9] && !row[10])) &&
+        (row[3] != ITEM_EFFECT_GIGANTAMAX_FACTOR ||
+         (row[2] == ITEM_CATEGORY_EVOLUTION && !row[5] && !param && !row[10])) &&
+        (!moveStone || (row[2] == ITEM_CATEGORY_MOVE_STONE && !row[5] && !param && !row[10])) &&
+        validString(names, itemNamesSize, nameOffset);
+    for (uint32_t previous = 0; valid && previous < i; previous++)
+      if (items[previous].key == key) valid = false;
+    if (!valid) break;
     ItemEntry &item = items[i];
-    item.key = key; item.name = (const char *)(itemNames + nameOffset);
+    item.key = key; item.name = (const char *)(names + nameOffset);
     item.category = row[2]; item.effect = row[3]; item.rarity = row[4];
-    item.flags = row[5]; item.param = itemParam;
+    item.flags = row[5]; item.param = param;
     item.dropWeight = rd16(row + 8); item.dailyMin = row[10];
   }
   free(rawItems);
+  uint32_t iconSize = 0, iconCount = 0;
+  uint8_t *icons = nullptr;
+  if (valid && findSection(pack, "IICO")) {
+    icons = readSection(pack, "IICO", &iconSize, &iconCount);
+    valid = icons && iconCount == itemRecords && validItemIcons(icons, iconSize, itemRecords);
+  }
+  if (!valid) {
+    free(icons); free(items); free(names); free(localizedNames); free(locales); return false;
+  }
+  gItems = items; gItemCount = (uint16_t)itemRecords; gItemNames = (char *)names;
+  gItemLocalizedNames = localizedNames; gItemLocalizedNamesSize = localizedNamesSize;
+  gItemLocales = locales; gItemLocalesSize = localesSize;
+  gItemIcons = icons; gItemIconsSize = iconSize;
+  gItemsReady = true; gPacks[packIndex].loaded = true;
+  return true;
+}
 
-  uint32_t megaSize = 0, megaRecords = 0;
-  uint8_t *rawMega = readSection(pack, "MEGA", &megaSize, &megaRecords);
-  if (!rawMega || !megaRecords || megaSize != megaRecords * 12u) {
-    free(rawMega); free(itemNames); free(itemLocalizedNames); free(itemLocales); free(items);
-    free(locales); free(localizedNames); free(localizedTypeNames);
-    free(typeNames); free(offsets); free(entries); free(names); free(table);
-    return false;
-  }
-  MegaFormEntry *megaForms = (MegaFormEntry *)contentAlloc(
-      sizeof(MegaFormEntry) * megaRecords);
-  if (!megaForms) {
-    free(rawMega); free(itemNames); free(itemLocalizedNames); free(itemLocales); free(items);
-    free(locales); free(localizedNames); free(localizedTypeNames);
-    free(typeNames); free(offsets); free(entries); free(names); free(table);
-    return false;
-  }
-  SpeciesId previousSpecies = SPECIES_NONE;
-  MegaFormKind previousForm = MEGA_FORM_NONE;
-  for (uint32_t i = 0; i < megaRecords; i++) {
-    const uint8_t *row = rawMega + i * 12u;
-    MegaFormEntry &form = megaForms[i];
-    form.species = rd16(row);
-    form.form = (MegaFormKind)row[2];
-    form.type1 = row[3]; form.type2 = row[4];
-    form.bAtk = row[5]; form.bDef = row[6]; form.bSpA = row[7];
-    form.bSpD = row[8]; form.bSpe = row[9];
-    form.ability = rd16(row + 10);
-    form.spriteScale = 0;
-    form.spritePack = 0xFF;
-    form.spriteAt = form.spriteSize = 0;
-    form.shinySpriteAt = form.shinySpriteSize = 0;
-    if (!form.species || form.species > CONTENT_MAX_SPECIES ||
-        form.form > MEGA_FORM_Z ||
-        (i && (form.species < previousSpecies ||
-               (form.species == previousSpecies && form.form <= previousForm))) ||
-        form.type1 >= TYPE_COUNT ||
-        (form.type2 != T_NONE && form.type2 >= TYPE_COUNT) ||
-        !form.bAtk || !form.bDef || !form.bSpA || !form.bSpD || !form.bSpe) {
-      free(rawMega); free(megaForms); free(itemNames); free(itemLocalizedNames);
-      free(itemLocales); free(items); free(locales); free(localizedNames);
-      free(localizedTypeNames); free(typeNames); free(offsets); free(entries);
-      free(names); free(table);
-      return false;
+static bool loadBattlePack(uint8_t packIndex) {
+  const PackRef &pack = gPacks[packIndex];
+  uint32_t chartSize = 0, typeSize = 0, typeRecords = 0, typeNamesSize = 0;
+  uint8_t *chart = readSection(pack, "CHRT", &chartSize);
+  uint8_t *types = readSection(pack, "TYPS", &typeSize, &typeRecords);
+  uint8_t *typeNames = readSection(pack, "TSTR", &typeNamesSize);
+  uint32_t localizedTypeNamesSize = 0, localizedTypeCount = 0;
+  uint8_t *localizedTypeNames = readSection(
+      pack, "TLNM", &localizedTypeNamesSize, &localizedTypeCount);
+  bool valid = chart && chartSize == sizeof(gTypeChart) && types &&
+      typeRecords == TYPE_COUNT && typeSize == TYPE_COUNT * 8u && typeNames &&
+      localizedTypeNames && localizedTypeCount == TYPE_COUNT;
+  for (uint8_t i = 0; valid && i < TYPE_COUNT; i++) {
+    uint32_t nameOffset = rd32(types + i * 8u);
+    if (!validString(typeNames, typeNamesSize, nameOffset) || types[i * 8u + 7]) {
+      valid = false; break;
     }
-    previousSpecies = form.species;
-    previousForm = form.form;
-  }
-  free(rawMega);
-
-  uint32_t gmaxSize = 0, gmaxRecords = 0;
-  uint8_t *rawGmax = readSection(pack, "GMAX", &gmaxSize, &gmaxRecords);
-  SpeciesId *gmaxSpecies = (SpeciesId *)contentAlloc(sizeof(SpeciesId) * gmaxRecords);
-  if (!rawGmax || !gmaxRecords || gmaxSize != gmaxRecords * 2u || !gmaxSpecies) {
-    free(rawGmax); free(gmaxSpecies); free(megaForms); free(itemNames);
-    free(itemLocalizedNames); free(itemLocales); free(items); free(locales);
-    free(localizedNames); free(localizedTypeNames); free(typeNames); free(offsets);
-    free(entries); free(names); free(table); return false;
-  }
-  for (uint32_t i = 0; i < gmaxRecords; i++) {
-    gmaxSpecies[i] = rd16(rawGmax + i * 2u);
-    if (!gmaxSpecies[i] || gmaxSpecies[i] > CONTENT_MAX_SPECIES ||
-        (i && gmaxSpecies[i] <= gmaxSpecies[i - 1])) {
-      free(rawGmax); free(gmaxSpecies); free(megaForms); free(itemNames);
-      free(itemLocalizedNames); free(itemLocales); free(items); free(locales);
-      free(localizedNames); free(localizedTypeNames); free(typeNames); free(offsets);
-      free(entries); free(names); free(table); return false;
-    }
-  }
-  free(rawGmax);
-
-  uint32_t gmaxMoveSize = 0, gmaxMoveRecords = 0, gmaxNameSize = 0;
-  uint32_t gmaxLocalizedNameSize = 0, gmaxLocalizedNameCount = 0;
-  uint8_t *rawGmaxMoves = nullptr;
-  uint8_t *gmaxNames = nullptr;
-  uint8_t *gmaxLocalizedNames = nullptr;
-  GmaxMoveEntry *gmaxMoves = nullptr;
-  bool hasGmaxMoves = findSection(pack, "GMOV") || findSection(pack, "GMNM") ||
-                      findSection(pack, "GMLN");
-  if (hasGmaxMoves) {
-    rawGmaxMoves = readSection(pack, "GMOV", &gmaxMoveSize, &gmaxMoveRecords);
-    gmaxNames = readSection(pack, "GMNM", &gmaxNameSize);
-    gmaxLocalizedNames = readSection(
-        pack, "GMLN", &gmaxLocalizedNameSize, &gmaxLocalizedNameCount);
-    gmaxMoves = (GmaxMoveEntry *)contentAlloc(
-        sizeof(GmaxMoveEntry) * gmaxMoveRecords);
-    bool validGmaxMoves = rawGmaxMoves && gmaxNames && gmaxLocalizedNames &&
-        gmaxMoves && gmaxMoveRecords && gmaxMoveRecords <= UINT8_MAX &&
-        gmaxMoveSize == gmaxMoveRecords * 10u &&
-        gmaxLocalizedNameCount == gmaxMoveRecords;
-    SpeciesId previousMoveSpecies = SPECIES_NONE;
-    uint8_t previousMoveType = 0;
-    for (uint32_t i = 0; validGmaxMoves && i < gmaxMoveRecords; i++) {
-      const uint8_t *row = rawGmaxMoves + i * 10u;
-      GmaxMoveEntry &move = gmaxMoves[i];
-      move.species = rd16(row);
-      move.id = (GmaxMoveId)(i + 1u);
-      move.sourceType = row[2];
-      move.effect = (GmaxEffect)row[3];
-      move.power = row[4];
-      uint32_t nameOffset = rd32(row + 6);
-      bool speciesEligible = false;
-      for (uint32_t j = 0; j < gmaxRecords; j++)
-        if (gmaxSpecies[j] == move.species) { speciesEligible = true; break; }
-      if (!speciesEligible || move.sourceType >= TYPE_COUNT ||
-          move.effect <= GMAX_EFFECT_NONE || move.effect >= GMAX_EFFECT_COUNT ||
-          row[5] || !validString(gmaxNames, gmaxNameSize, nameOffset) ||
-          (i && (move.species < previousMoveSpecies ||
-                 (move.species == previousMoveSpecies &&
-                  move.sourceType <= previousMoveType)))) {
-        validGmaxMoves = false;
-        break;
-      }
-      move.name = (const char *)(gmaxNames + nameOffset);
-      previousMoveSpecies = move.species;
-      previousMoveType = move.sourceType;
-    }
-    free(rawGmaxMoves);
-    if (!validGmaxMoves) {
-      free(gmaxMoves); free(gmaxNames); free(gmaxLocalizedNames);
-      free(gmaxSpecies); free(megaForms); free(itemNames); free(itemLocalizedNames);
-      free(itemLocales); free(items); free(locales); free(localizedNames);
-      free(localizedTypeNames); free(typeNames); free(offsets); free(entries);
-      free(names); free(table); return false;
-    }
-  }
-
-  uint32_t maxNameSize = 0, maxNameCount = 0;
-  uint32_t maxLocalizedNameSize = 0, maxLocalizedNameCount = 0;
-  uint8_t *maxNames = readSection(pack, "MXNM", &maxNameSize, &maxNameCount);
-  uint8_t *maxLocalizedNames = readSection(
-      pack, "MXLN", &maxLocalizedNameSize, &maxLocalizedNameCount);
-  bool validMaxNames = maxNames && maxLocalizedNames &&
-      maxNameCount == TYPE_COUNT + 1u && maxLocalizedNameCount == maxNameCount;
-  uint32_t maxNameAt = 0;
-  for (uint8_t i = 0; validMaxNames && i < TYPE_COUNT + 1u; i++) {
-    if (!validString(maxNames, maxNameSize, maxNameAt)) {
-      validMaxNames = false;
-      break;
-    }
-    gMaxMoveNameOffsets[i] = maxNameAt;
-    maxNameAt += strlen((const char *)(maxNames + maxNameAt)) + 1u;
-  }
-  if (!validMaxNames || maxNameAt != maxNameSize) {
-    free(maxNames); free(maxLocalizedNames);
-    free(gmaxMoves); free(gmaxNames); free(gmaxLocalizedNames);
-    free(gmaxSpecies); free(megaForms); free(itemNames); free(itemLocalizedNames);
-    free(itemLocales); free(items); free(locales); free(localizedNames);
-    free(localizedTypeNames); free(typeNames); free(offsets); free(entries);
-    free(names); free(table); return false;
-  }
-
-  uint32_t itemIconsSize = 0, itemIconCount = 0;
-  uint8_t *itemIcons = nullptr;
-  if (findSection(pack, "IICO")) {
-    itemIcons = readSection(pack, "IICO", &itemIconsSize, &itemIconCount);
-    if (!itemIcons || itemIconCount != itemRecords ||
-        !validItemIcons(itemIcons, itemIconsSize, itemRecords)) {
-      free(itemIcons); free(maxNames); free(maxLocalizedNames);
-      free(gmaxMoves); free(gmaxNames); free(gmaxLocalizedNames);
-      free(gmaxSpecies); free(megaForms); free(itemNames);
-      free(itemLocalizedNames);
-      free(itemLocales); free(items); free(locales); free(localizedNames);
-      free(localizedTypeNames); free(typeNames); free(offsets); free(entries);
-      free(names); free(table); return false;
-    }
+    gTypeNameOffsets[i] = nameOffset;
+    gTypeColors[i] = rd16(types + i * 8u + 4u);
+    gTypeLight[i] = types[i * 8u + 6u];
   }
 
   uint32_t abilitySize = 0, abilityRecords = 0, abilityNamesSize = 0;
-  uint32_t abilityLocalizedNameCount = 0, abilityLocaleCount = 0;
-  uint32_t abilityLocalizedNamesSize = 0, abilityLocalesSize = 0;
+  uint32_t localizedAbilityNamesSize = 0, localizedAbilityNameCount = 0;
+  uint32_t abilityLocalesSize = 0, abilityLocaleCount = 0;
   uint8_t *rawAbilities = readSection(pack, "ABIL", &abilitySize, &abilityRecords);
   uint8_t *abilityNames = readSection(pack, "ANAM", &abilityNamesSize);
-  uint8_t *abilityLocalizedNames = readSection(
-      pack, "ALNM", &abilityLocalizedNamesSize, &abilityLocalizedNameCount);
+  uint8_t *localizedAbilityNames = readSection(
+      pack, "ALNM", &localizedAbilityNamesSize, &localizedAbilityNameCount);
   uint8_t *abilityLocales = readSection(
       pack, "ALOC", &abilityLocalesSize, &abilityLocaleCount);
   AbilityRuntime *abilities = (AbilityRuntime *)contentAlloc(
       sizeof(AbilityRuntime) * abilityRecords);
-  bool validAbilities = rawAbilities && abilityNames && abilityLocalizedNames &&
+  valid = valid && rawAbilities && abilityNames && localizedAbilityNames &&
       abilityLocales && abilities && abilityRecords &&
       abilityRecords <= CONTENT_MAX_ABILITIES && abilitySize == abilityRecords * 6u &&
-      abilityLocalizedNameCount == abilityRecords && abilityLocaleCount == abilityRecords;
-  for (uint32_t i = 0; validAbilities && i < abilityRecords; i++) {
+      localizedAbilityNameCount == abilityRecords && abilityLocaleCount == abilityRecords;
+  for (uint32_t i = 0; valid && i < abilityRecords; i++) {
     const uint8_t *row = rawAbilities + i * 6u;
     AbilityKey key = rd16(row);
-    uint32_t nameOffset = rd32(row + 2);
+    uint32_t nameOffset = rd32(row + 2u);
     if (!key || (i && key <= abilities[i - 1].key) ||
         !validString(abilityNames, abilityNamesSize, nameOffset)) {
-      validAbilities = false;
-      break;
+      valid = false; break;
     }
     abilities[i].key = key;
     abilities[i].name = (const char *)(abilityNames + nameOffset);
   }
-  auto abilityKnown = [&](AbilityKey key) {
-    if (!key) return true;
-    uint32_t lo = 0, hi = abilityRecords;
-    while (lo < hi) {
-      uint32_t mid = lo + (hi - lo) / 2u;
-      if (abilities[mid].key < key) lo = mid + 1u; else hi = mid;
-    }
-    return lo < abilityRecords && abilities[lo].key == key;
-  };
-  for (uint32_t i = 0; validAbilities && i < megaRecords; i++)
-    if (!abilityKnown(megaForms[i].ability)) validAbilities = false;
-  free(rawAbilities);
-  if (!validAbilities) {
-    free(abilities); free(abilityNames); free(abilityLocalizedNames); free(abilityLocales);
-    free(itemIcons); free(maxNames); free(maxLocalizedNames);
-    free(gmaxMoves); free(gmaxNames); free(gmaxLocalizedNames);
-    free(gmaxSpecies); free(megaForms); free(itemNames);
-    free(itemLocalizedNames); free(itemLocales); free(items); free(locales);
-    free(localizedNames); free(localizedTypeNames); free(typeNames); free(offsets);
-    free(entries); free(names); free(table); return false;
+  if (valid) memcpy(gTypeChart, chart, sizeof(gTypeChart));
+  free(chart); free(types); free(rawAbilities);
+  if (!valid) {
+    free(typeNames); free(localizedTypeNames); free(abilities); free(abilityNames);
+    free(localizedAbilityNames); free(abilityLocales); return false;
   }
-
-  uint32_t breedingSize = 0, breedingRecords = 0;
-  uint32_t eggMoveSize = 0, eggMoveRecords = 0;
-  uint8_t *rawBreeding = readSection(
-      pack, "BRSP", &breedingSize, &breedingRecords);
-  uint8_t *rawEggMoves = readSection(
-      pack, "BEMV", &eggMoveSize, &eggMoveRecords);
-  BreedingRuntime *breeding = (BreedingRuntime *)contentAlloc(
-      sizeof(BreedingRuntime) * (breedingRecords + 1u));
-  MoveId *eggMoves = (MoveId *)contentAlloc(sizeof(MoveId) * eggMoveRecords);
-  bool validBreeding = rawBreeding && rawEggMoves && breeding &&
-      breedingRecords && breedingRecords <= CONTENT_MAX_SPECIES &&
-      breedingSize == breedingRecords * 14u &&
-      eggMoveSize == eggMoveRecords * 2u &&
-      (!eggMoveRecords || eggMoves);
-  for (uint32_t i = 0; validBreeding && i < breedingRecords; i++) {
-    const uint8_t *row = rawBreeding + i * 14u;
-    SpeciesId species = rd16(row);
-    BreedingRuntime &entry = breeding[species];
-    entry.groups = rd16(row + 2);
-    entry.offspring[0] = rd16(row + 4);
-    entry.offspring[1] = rd16(row + 6);
-    entry.eggMoveOffset = rd32(row + 8);
-    entry.eggMoveCount = rd16(row + 12);
-    if (species != i + 1u || !entry.groups || entry.groups & 0x8000u ||
-        !entry.offspring[0] || entry.offspring[0] > breedingRecords ||
-        !entry.offspring[1] || entry.offspring[1] > breedingRecords ||
-        entry.eggMoveOffset > eggMoveRecords ||
-        entry.eggMoveCount > eggMoveRecords - entry.eggMoveOffset) {
-      validBreeding = false;
-      break;
-    }
-    MoveId previous = MOVE_NONE;
-    for (uint16_t j = 0; j < entry.eggMoveCount; j++) {
-      MoveId move = rd16(rawEggMoves + (entry.eggMoveOffset + j) * 2u);
-      eggMoves[entry.eggMoveOffset + j] = move;
-      if (!move || move >= moveRecords || move <= previous) {
-        validBreeding = false;
-        break;
-      }
-      previous = move;
-    }
-  }
-  free(rawBreeding); free(rawEggMoves);
-  if (!validBreeding) {
-    free(breeding); free(eggMoves); free(abilities); free(abilityNames);
-    free(abilityLocalizedNames); free(abilityLocales); free(itemIcons);
-    free(gmaxSpecies); free(megaForms); free(itemNames); free(itemLocalizedNames);
-    free(itemLocales); free(items); free(locales); free(localizedNames);
-    free(localizedTypeNames); free(typeNames); free(offsets); free(entries);
-    free(names); free(table); return false;
-  }
-
-  gMovesTable = table; gMoveCount = (uint16_t)moveRecords; gMoveNames = (char *)names;
-  gAbilities = abilities; gAbilityCount = (uint16_t)abilityRecords;
-  gAbilityNames = (char *)abilityNames;
-  gAbilityLocalizedNames = abilityLocalizedNames;
-  gAbilityLocalizedNamesSize = abilityLocalizedNamesSize;
-  gAbilityLocales = abilityLocales; gAbilityLocalesSize = abilityLocalesSize;
-  gBreeding = breeding; gBreedingCount = (uint16_t)breedingRecords;
-  gEggMoves = eggMoves;
-  gLearnOffsets = offsets; gLearnOffsetCount = offsetCount;
-  gLearnEntries = entries; gLearnEntryCount = learnCountValue;
-  gMoveLocales = locales; gMoveLocalesSize = localesSize;
-  gMoveLocalizedNames = localizedNames; gMoveLocalizedNamesSize = localizedNamesSize;
-  gItems = items; gItemCount = (uint16_t)itemRecords; gItemNames = (char *)itemNames;
-  gItemLocalizedNames = itemLocalizedNames;
-  gItemLocalizedNamesSize = itemLocalizedNamesSize;
-  gItemLocales = itemLocales; gItemLocalesSize = itemLocalesSize;
-  gItemIcons = itemIcons; gItemIconsSize = itemIconsSize;
-  gMegaForms = megaForms; gMegaFormCount = (uint16_t)megaRecords;
-  gGigantamaxSpecies = gmaxSpecies; gGigantamaxCount = (uint16_t)gmaxRecords;
-  gGmaxMoves = gmaxMoves; gGmaxMoveCount = (uint8_t)gmaxMoveRecords;
-  gGmaxMoveNames = (char *)gmaxNames;
-  gGmaxMoveLocalizedNames = gmaxLocalizedNames;
-  gGmaxMoveLocalizedNamesSize = gmaxLocalizedNameSize;
-  gMaxMoveNames = (char *)maxNames;
-  gMaxMoveLocalizedNames = maxLocalizedNames;
-  gMaxMoveLocalizedNamesSize = maxLocalizedNameSize;
+  gTypeNames = (char *)typeNames;
   gTypeLocalizedNames = localizedTypeNames;
   gTypeLocalizedNamesSize = localizedTypeNamesSize;
-  gTypeNames = (char *)typeNames;
-  gMoves = true;
-  gPacks[packIndex].loaded = true;
+  gAbilities = abilities; gAbilityCount = (uint16_t)abilityRecords;
+  gAbilityNames = (char *)abilityNames;
+  gAbilityLocalizedNames = localizedAbilityNames;
+  gAbilityLocalizedNamesSize = localizedAbilityNamesSize;
+  gAbilityLocales = abilityLocales; gAbilityLocalesSize = abilityLocalesSize;
+  gBattle = true; gPacks[packIndex].loaded = true;
   return true;
 }
 
@@ -1236,14 +1042,28 @@ static bool loadRegionPack(uint8_t packIndex) {
   uint32_t regionSize = 0, regionRecords = 0;
   uint8_t *regions = readSection(pack, "REGN", &regionSize, &regionRecords);
   const SectionRef *evolutionSection = findSection(pack, "EVOS");
+  const SectionRef *learnOffsetSection = findSection(pack, "LOFS");
+  const SectionRef *learnSection = findSection(pack, "LERN");
+  const SectionRef *breedingSection = findSection(pack, "BRSP");
+  const SectionRef *eggMoveSection = findSection(pack, "BEMV");
+  const SectionRef *megaSection = findSection(pack, "MEGA");
+  const SectionRef *gmaxSection = findSection(pack, "GMAX");
   if (!specs || !names || !regions || specCount == 0 || specCount > CONTENT_MAX_SPECIES ||
-      specSize != specCount * 21u || !evolutionSection ||
-      evolutionSection->size != evolutionSection->count * 4u) {
+      specSize != specCount * 22u || !evolutionSection ||
+      evolutionSection->size != evolutionSection->count * 4u ||
+      !learnOffsetSection || learnOffsetSection->count != specCount + 1u ||
+      learnOffsetSection->size != learnOffsetSection->count * 4u ||
+      !learnSection || learnSection->size != learnSection->count * 4u ||
+      !breedingSection || breedingSection->count != specCount ||
+      breedingSection->size != breedingSection->count * 14u ||
+      !eggMoveSection || eggMoveSection->size != eggMoveSection->count * 2u ||
+      !megaSection || megaSection->size != megaSection->count * 14u ||
+      !gmaxSection || gmaxSection->size != gmaxSection->count * 4u) {
     free(specs); free(names); free(regions); return false;
   }
   uint16_t maxSpecies = 0;
   for (uint32_t i = 0; i < specCount; i++) {
-    SpeciesId id = rd16(specs + i * 21u);
+    SpeciesId id = rd16(specs + i * 22u);
     if (id > maxSpecies) maxSpecies = id;
   }
   if (!maxSpecies || maxSpecies > CONTENT_MAX_SPECIES ||
@@ -1261,10 +1081,16 @@ static bool loadRegionPack(uint8_t packIndex) {
   memcpy(oldRegionStarters, gRegionStarters, sizeof(oldRegionStarters));
   uint8_t oldRealRegionCount = gRealRegionCount;
   uint16_t oldDexCount = gDexCount, oldRegionMask = gRegionMask;
+  uint16_t oldMegaFormCount = gMegaFormCount, oldGigantamaxCount = gGigantamaxCount;
+  uint32_t *learnOffsets = nullptr;
+  LearnEntry *learnEntries = nullptr;
+  MoveId *eggMoves = nullptr;
+  uint32_t learnOffsetCount = 0, learnEntryCount = 0;
   auto rollback = [&]() {
     for (uint32_t i = 0; i < touchedCount; i++) {
       gDex[touched[i]] = DexEntry{};
       gSprites[touched[i]] = SpriteRef{};
+      gBreeding[touched[i]] = BreedingRuntime{};
     }
     memcpy(gRegions, oldRegions, sizeof(oldRegions));
     memcpy(gRegionNames, oldRegionNames, sizeof(oldRegionNames));
@@ -1272,6 +1098,11 @@ static bool loadRegionPack(uint8_t packIndex) {
     gRealRegionCount = oldRealRegionCount;
     gDexCount = oldDexCount;
     gRegionMask = oldRegionMask;
+    gMegaFormCount = oldMegaFormCount;
+    gGigantamaxCount = oldGigantamaxCount;
+    free(learnOffsets);
+    free(learnEntries);
+    free(eggMoves);
   };
   uint8_t metadataRegion = regions[0];
   if (!loadRegionMetadata(regions, regionSize, regionRecords)) {
@@ -1283,9 +1114,9 @@ static bool loadRegionPack(uint8_t packIndex) {
   uint16_t firstSpecies = 0;
   uint8_t packRegion = 0xFF;
   for (uint32_t i = 0; i < specCount; i++) {
-    const uint8_t *row = specs + i * 21;
+    const uint8_t *row = specs + i * 22;
     SpeciesId id = rd16(row);
-    uint32_t nameOffset = rd32(row + 16);
+    uint32_t nameOffset = rd32(row + 17);
     if (!id || id > CONTENT_MAX_SPECIES || gDex[id].name ||
         !validString(names, namesSize, nameOffset)) {
       rollback(); free(touched); free(specs); free(names); return false;
@@ -1298,13 +1129,15 @@ static bool loadRegionPack(uint8_t packIndex) {
     species.bHp = row[6]; species.bAtk = row[7]; species.bDef = row[8]; species.bSpe = row[9];
     species.bSpA = row[10]; species.bSpD = row[11]; species.biome = row[12];
     species.type1 = row[13]; species.type2 = row[14];
-    species.femaleRate = row[20];
+    species.femaleRate = row[21];
+    species.encounterPeriods = row[16];
     uint8_t region = row[15];
     if (region >= CONTENT_MAX_REGIONS || species.type1 >= TYPE_COUNT ||
         (species.type2 != T_NONE && species.type2 >= TYPE_COUNT) ||
         !species.bHp || !species.bAtk || !species.bDef || !species.bSpe ||
         !species.bSpA || !species.bSpD ||
-        (species.femaleRate > 8 && species.femaleRate != GENDER_RATE_NONE)) {
+        (species.femaleRate > 8 && species.femaleRate != GENDER_RATE_NONE) ||
+        !species.encounterPeriods || (species.encounterPeriods & ~ENCOUNTER_BOTH)) {
       rollback(); free(touched); free(specs); free(names); return false;
     }
     gRegionMask |= (uint16_t)(1u << region);
@@ -1337,6 +1170,49 @@ static bool loadRegionPack(uint8_t packIndex) {
   }
   free(abilitySlots);
 
+  uint32_t breedingSize = 0, breedingCount = 0;
+  uint32_t eggMoveSize = 0, eggMoveCount = 0;
+  uint8_t *breedingRows = readSection(
+      pack, "BRSP", &breedingSize, &breedingCount);
+  uint8_t *rawEggMoves = readSection(
+      pack, "BEMV", &eggMoveSize, &eggMoveCount);
+  eggMoves = eggMoveCount
+      ? (MoveId *)contentAlloc(sizeof(MoveId) * eggMoveCount) : nullptr;
+  bool breedingValid = breedingRows && rawEggMoves &&
+      breedingCount == specCount && breedingSize == specCount * 14u &&
+      eggMoveSize == eggMoveCount * 2u && (!eggMoveCount || eggMoves);
+  for (uint32_t i = 0; breedingValid && i < breedingCount; i++) {
+    const uint8_t *row = breedingRows + i * 14u;
+    SpeciesId species = rd16(row);
+    if (species != touched[i] || species >= gDexCapacity) {
+      breedingValid = false;
+      break;
+    }
+    BreedingRuntime &entry = gBreeding[species];
+    entry.groups = rd16(row + 2);
+    entry.offspring[0] = rd16(row + 4);
+    entry.offspring[1] = rd16(row + 6);
+    entry.eggMoveOffset = rd32(row + 8);
+    entry.eggMoveCount = rd16(row + 12);
+    breedingValid = entry.groups && !(entry.groups & 0x8000u) && entry.offspring[0] &&
+        entry.offspring[0] <= CONTENT_MAX_SPECIES && entry.offspring[1] &&
+        entry.offspring[1] <= CONTENT_MAX_SPECIES &&
+        entry.eggMoveOffset <= eggMoveCount &&
+        entry.eggMoveCount <= eggMoveCount - entry.eggMoveOffset;
+    MoveId previous = MOVE_NONE;
+    for (uint16_t j = 0; breedingValid && j < entry.eggMoveCount; j++) {
+      MoveId move = rd16(rawEggMoves + (entry.eggMoveOffset + j) * 2u);
+      eggMoves[entry.eggMoveOffset + j] = move;
+      breedingValid = moveValid(move) && move > previous;
+      previous = move;
+    }
+  }
+  free(breedingRows);
+  free(rawEggMoves);
+  if (!breedingValid) {
+    rollback(); free(touched); free(names); return false;
+  }
+
   uint8_t *evolutions = nullptr;
   if (evolutionSection->count) {
     uint32_t evolutionSize = 0, evolutionCountValue = 0;
@@ -1362,6 +1238,100 @@ static bool loadRegionPack(uint8_t packIndex) {
     }
     free(evolutions);
   }
+
+  uint32_t learnOffsetSize = 0, learnSize = 0;
+  uint8_t *rawLearnOffsets = readSection(
+      pack, "LOFS", &learnOffsetSize, &learnOffsetCount);
+  uint8_t *rawLearnEntries = readSection(
+      pack, "LERN", &learnSize, &learnEntryCount);
+  learnOffsets = (uint32_t *)contentAlloc(sizeof(uint32_t) * learnOffsetCount);
+  learnEntries = learnEntryCount
+      ? (LearnEntry *)contentAlloc(sizeof(LearnEntry) * learnEntryCount) : nullptr;
+  if (!rawLearnOffsets || !rawLearnEntries || !learnOffsets ||
+      (learnEntryCount && !learnEntries)) {
+    rollback(); free(touched); free(rawLearnOffsets); free(rawLearnEntries); free(names);
+    return false;
+  }
+  for (uint32_t i = 0; i < learnOffsetCount; i++) {
+    learnOffsets[i] = rd32(rawLearnOffsets + i * 4u);
+    if ((i && learnOffsets[i] < learnOffsets[i - 1]) ||
+        learnOffsets[i] > learnEntryCount) {
+      rollback(); free(touched); free(rawLearnOffsets); free(rawLearnEntries); free(names);
+      return false;
+    }
+  }
+  if (learnOffsets[0] || learnOffsets[learnOffsetCount - 1] != learnEntryCount) {
+    rollback(); free(touched); free(rawLearnOffsets); free(rawLearnEntries); free(names);
+    return false;
+  }
+  for (uint32_t i = 0; i < learnEntryCount; i++) {
+    LearnEntry &entry = learnEntries[i];
+    entry.move = rd16(rawLearnEntries + i * 4u);
+    entry.level = rawLearnEntries[i * 4u + 2u];
+    entry.method = rawLearnEntries[i * 4u + 3u];
+    if (!moveValid(entry.move) || entry.method > LM_EGG) {
+      rollback(); free(touched); free(rawLearnOffsets); free(rawLearnEntries); free(names);
+      return false;
+    }
+  }
+  free(rawLearnOffsets); free(rawLearnEntries);
+
+  uint32_t megaSize = 0, megaCount = 0;
+  uint8_t *rawMega = readSection(pack, "MEGA", &megaSize, &megaCount);
+  if (!rawMega || megaCount > gMegaFormCapacity - gMegaFormCount) {
+    rollback(); free(touched); free(rawMega); free(names); return false;
+  }
+  SpeciesId previousMegaSpecies = SPECIES_NONE;
+  MegaFormKind previousMegaForm = MEGA_FORM_NONE;
+  for (uint32_t i = 0; i < megaCount; i++) {
+    const uint8_t *row = rawMega + i * 14u;
+    MegaFormEntry &form = gMegaForms[gMegaFormCount++];
+    form.species = rd16(row);
+    form.form = (MegaFormKind)row[2];
+    form.type1 = row[3]; form.type2 = row[4];
+    form.bAtk = row[5]; form.bDef = row[6]; form.bSpA = row[7];
+    form.bSpD = row[8]; form.bSpe = row[9];
+    form.ability = rd16(row + 10);
+    form.learnsetSpecies = rd16(row + 12);
+    if (!form.species || form.species >= gDexCapacity || form.form > MEGA_FORM_Z ||
+        gSprites[form.species].pack != runtimePack ||
+        (i && (form.species < previousMegaSpecies ||
+               (form.species == previousMegaSpecies && form.form <= previousMegaForm))) ||
+        form.type1 >= TYPE_COUNT || (form.type2 != T_NONE && form.type2 >= TYPE_COUNT) ||
+        !form.bAtk || !form.bDef || !form.bSpA || !form.bSpD || !form.bSpe ||
+        (form.ability && !abilityValid(form.ability)) || !dexValid(form.learnsetSpecies)) {
+      rollback(); free(touched); free(rawMega); free(names); return false;
+    }
+    previousMegaSpecies = form.species;
+    previousMegaForm = form.form;
+  }
+  free(rawMega);
+
+  uint32_t gmaxSize = 0, gmaxCount = 0;
+  uint8_t *rawGmax = readSection(pack, "GMAX", &gmaxSize, &gmaxCount);
+  if (!rawGmax || gmaxCount > gGigantamaxCapacity - gGigantamaxCount) {
+    rollback(); free(touched); free(rawGmax); free(names); return false;
+  }
+  SpeciesId previousGmax = SPECIES_NONE;
+  for (uint32_t i = 0; i < gmaxCount; i++) {
+    const uint8_t *row = rawGmax + i * 4u;
+    SpeciesId species = rd16(row);
+    GmaxMoveId firstMove = row[2], secondMove = row[3];
+    if (!species || species >= gDexCapacity || gSprites[species].pack != runtimePack ||
+        (i && species <= previousGmax) || !firstMove || firstMove > gGmaxMoveCount ||
+        secondMove > gGmaxMoveCount ||
+        (secondMove && (secondMove == firstMove ||
+                        gGmaxMoves[secondMove - 1u].sourceType ==
+                            gGmaxMoves[firstMove - 1u].sourceType))) {
+      rollback(); free(touched); free(rawGmax); free(names); return false;
+    }
+    GigantamaxRuntime &entry = gGigantamaxSpecies[gGigantamaxCount++];
+    entry.species = species;
+    entry.moves[0] = firstMove;
+    entry.moves[1] = secondMove;
+    previousGmax = species;
+  }
+  free(rawGmax);
 
   const SectionRef *spriteBlob = findSection(pack, "SBLB");
   uint32_t spriteSize = 0, spriteCount = 0;
@@ -1453,6 +1423,12 @@ static bool loadRegionPack(uint8_t packIndex) {
   RegionPackRuntime &runtime = gRegionPacks[gRegionPackCount++];
   runtime.packRef = packIndex; runtime.firstSpecies = firstSpecies;
   runtime.speciesCount = (uint16_t)specCount;
+  runtime.learnOffsets = learnOffsets;
+  runtime.learnOffsetCount = learnOffsetCount;
+  runtime.learnEntries = learnEntries;
+  runtime.learnEntryCount = learnEntryCount;
+  runtime.eggMoves = eggMoves;
+  runtime.eggMoveCount = eggMoveCount;
   runtime.locales = readSection(pack, "LOCL", &runtime.localesSize);
   runtime.localizedNames = readSection(pack, "LNAM", &runtime.localizedNamesSize);
   uint32_t regionalNameCount = 0;
@@ -1575,6 +1551,17 @@ bool contentBegin() {
   scanPacks();
   uint16_t installedMaximum = installedSpeciesMaximum();
   if (installedMaximum && !allocateSpeciesCatalog(installedMaximum)) return false;
+  installedFormCounts(gMegaFormCapacity, gGigantamaxCapacity);
+  if (gMegaFormCapacity) {
+    gMegaForms = (MegaFormEntry *)contentAlloc(
+        sizeof(MegaFormEntry) * gMegaFormCapacity);
+    if (!gMegaForms) return false;
+  }
+  if (gGigantamaxCapacity) {
+    gGigantamaxSpecies = (GigantamaxRuntime *)contentAlloc(
+        sizeof(GigantamaxRuntime) * gGigantamaxCapacity);
+    if (!gGigantamaxSpecies) return false;
+  }
   for (uint8_t i = 0; i < gPackCount; i++)
     if (gPacks[i].kind == CONTENT_PACK_QUIZ) gQuizPackCapacity++;
   if (gQuizPackCapacity) {
@@ -1583,7 +1570,11 @@ bool contentBegin() {
     if (!gQuizPacks) return false;
   }
   for (uint8_t i = 0; i < gPackCount; i++)
+    if (gPacks[i].kind == CONTENT_PACK_BATTLE && !gBattle) loadBattlePack(i);
+  for (uint8_t i = 0; i < gPackCount; i++)
     if (gPacks[i].kind == CONTENT_PACK_MOVE && !gMoves) loadMovePack(i);
+  for (uint8_t i = 0; i < gPackCount; i++)
+    if (gPacks[i].kind == CONTENT_PACK_ITEM && !gItemsReady) loadItemPack(i);
   for (uint8_t i = 0; i < gPackCount; i++)
     if (gPacks[i].kind == CONTENT_PACK_REGION) loadRegionPack(i);
   for (uint8_t i = 0; i < gPackCount; i++)
@@ -1604,8 +1595,9 @@ bool contentBegin() {
   if (initial >= 0 && !uiActivateLocale((uint8_t)initial)) initial = -1;
   if (initial < 0)
     for (uint8_t i = 0; i < gUiCount && gUiActive >= gUiCount; i++) uiActivateLocale(i);
-  Serial.printf("packs: %u ui=%u region=%u moves=%u dex=%u\n", gPackCount, gUiCount,
-                gRegionPackCount, gMoves ? 1 : 0, gDexCount);
+  Serial.printf("packs: %u ui=%u region=%u battle=%u moves=%u items=%u dex=%u\n",
+                gPackCount, gUiCount, gRegionPackCount, gBattle ? 1 : 0,
+                gMoves ? 1 : 0, gItemsReady ? 1 : 0, gDexCount);
   return contentReady();
 }
 
@@ -1641,15 +1633,12 @@ bool contentReadPackInfo(const char *path, ContentPackInfo &out) {
 
 bool contentReady() {
   return contentHasUi() && contentHasPets() && contentHasMoves() &&
-         contentHasBreeding() &&
-         (uint32_t)gDexCount + 2u <= gLearnOffsetCount;
+         contentHasBreeding() && gItemsReady && gBattle;
 }
 bool contentHasUi() { ensureContent(); return gUiActive < gUiCount; }
 bool contentHasPets() { ensureContent(); return gRegionsReady; }
 bool contentHasMoves() { ensureContent(); return gMoves; }
-bool contentHasBreeding() {
-  ensureContent(); return gBreeding && gBreedingCount && gEggMoves;
-}
+bool contentHasBreeding() { ensureContent(); return gRegionsReady && gBreeding; }
 uint32_t contentMechanicsHash() { ensureContent(); return gMechanicsHash; }
 
 uint32_t contentChoiceQuestionCount(const char *locale) {
@@ -1757,12 +1746,11 @@ bool evolutionAvailable(SpeciesId id) {
 
 uint16_t speciesEggGroups(SpeciesId species) {
   ensureContent();
-  return species && species <= gBreedingCount && gBreeding
-      ? gBreeding[species].groups : 0;
+  return dexValid(species) && gBreeding ? gBreeding[species].groups : 0;
 }
 uint8_t speciesOffspringCount(SpeciesId species) {
   ensureContent();
-  if (!species || species > gBreedingCount || !gBreeding) return 0;
+  if (!dexValid(species) || !gBreeding || !gBreeding[species].offspring[0]) return 0;
   return gBreeding[species].offspring[0] == gBreeding[species].offspring[1] ? 1 : 2;
 }
 SpeciesId speciesOffspring(SpeciesId species, uint8_t index) {
@@ -1771,16 +1759,20 @@ SpeciesId speciesOffspring(SpeciesId species, uint8_t index) {
 }
 bool speciesHasEggMove(SpeciesId species, MoveId move) {
   ensureContent();
-  if (!move || !species || species > gBreedingCount || !gBreeding || !gEggMoves)
-    return false;
+  if (!moveValid(move) || !dexValid(species) || !gBreeding) return false;
+  const SpriteRef &sprite = gSprites[species];
+  if (sprite.pack >= gRegionPackCount) return false;
+  const RegionPackRuntime &runtime = gRegionPacks[sprite.pack];
   const BreedingRuntime &entry = gBreeding[species];
   uint32_t lo = entry.eggMoveOffset;
   uint32_t hi = lo + entry.eggMoveCount;
+  if (hi > runtime.eggMoveCount || (!runtime.eggMoves && lo != hi)) return false;
   while (lo < hi) {
     uint32_t mid = lo + (hi - lo) / 2u;
-    if (gEggMoves[mid] < move) lo = mid + 1u; else hi = mid;
+    if (runtime.eggMoves[mid] < move) lo = mid + 1u; else hi = mid;
   }
-  return lo < entry.eggMoveOffset + entry.eggMoveCount && gEggMoves[lo] == move;
+  return lo < entry.eggMoveOffset + entry.eggMoveCount &&
+         runtime.eggMoves[lo] == move;
 }
 
 uint8_t regionCount() { ensureContent(); return gRealRegionCount ? gRealRegionCount + 1 : 0; }
@@ -1891,49 +1883,40 @@ bool contentItemIcon(ItemKey key, ItemIconView &out) {
 
 const MegaFormEntry *megaFormFor(SpeciesId species, MegaFormKind form) {
   ensureContent();
-  uint16_t lo = 0, hi = gMegaFormCount;
-  while (lo < hi) {
-    uint16_t mid = (uint16_t)(lo + (hi - lo) / 2);
-    if (gMegaForms[mid].species < species) lo = (uint16_t)(mid + 1);
-    else hi = mid;
-  }
-  if (lo >= gMegaFormCount || gMegaForms[lo].species != species) return nullptr;
   if (form == MEGA_FORM_NONE) {
-    for (uint16_t i = lo; i < gMegaFormCount && gMegaForms[i].species == species; i++)
+    const MegaFormEntry *fallback = nullptr;
+    for (uint16_t i = 0; i < gMegaFormCount; i++) {
+      if (gMegaForms[i].species != species) continue;
       if (gMegaForms[i].form == MEGA_FORM_STANDARD) return &gMegaForms[i];
-    return &gMegaForms[lo];
+      if (!fallback) fallback = &gMegaForms[i];
+    }
+    return fallback;
   }
-  for (uint16_t i = lo; i < gMegaFormCount && gMegaForms[i].species == species; i++)
-    if (gMegaForms[i].form == form) return &gMegaForms[i];
+  for (uint16_t i = 0; i < gMegaFormCount; i++)
+    if (gMegaForms[i].species == species && gMegaForms[i].form == form)
+      return &gMegaForms[i];
   return nullptr;
 }
 
 bool contentGigantamaxEligible(SpeciesId species) {
   ensureContent();
-  uint16_t lo = 0, hi = gGigantamaxCount;
-  while (lo < hi) {
-    uint16_t mid = (uint16_t)(lo + (hi - lo) / 2);
-    if (gGigantamaxSpecies[mid] < species) lo = (uint16_t)(mid + 1);
-    else hi = mid;
-  }
-  return lo < gGigantamaxCount && gGigantamaxSpecies[lo] == species;
+  for (uint16_t i = 0; i < gGigantamaxCount; i++)
+    if (gGigantamaxSpecies[i].species == species) return true;
+  return false;
 }
 
 const GmaxMoveEntry *gmaxMoveFor(SpeciesId species, uint8_t sourceType) {
   ensureContent();
-  uint8_t lo = 0, hi = gGmaxMoveCount;
-  while (lo < hi) {
-    uint8_t mid = (uint8_t)(lo + (hi - lo) / 2u);
-    const GmaxMoveEntry &candidate = gGmaxMoves[mid];
-    if (candidate.species < species ||
-        (candidate.species == species && candidate.sourceType < sourceType))
-      lo = (uint8_t)(mid + 1u);
-    else
-      hi = mid;
+  for (uint16_t i = 0; i < gGigantamaxCount; i++) {
+    const GigantamaxRuntime &entry = gGigantamaxSpecies[i];
+    if (entry.species != species) continue;
+    for (GmaxMoveId move : entry.moves)
+      if (move && move <= gGmaxMoveCount &&
+          gGmaxMoves[move - 1u].sourceType == sourceType)
+        return &gGmaxMoves[move - 1u];
+    return nullptr;
   }
-  if (lo >= gGmaxMoveCount || gGmaxMoves[lo].species != species ||
-      gGmaxMoves[lo].sourceType != sourceType) return nullptr;
-  return &gGmaxMoves[lo];
+  return nullptr;
 }
 
 const char *gmaxMoveName(GmaxMoveId move) {
@@ -1960,21 +1943,33 @@ const char *maxMoveName(uint8_t sourceType, bool status) {
 }
 uint16_t learnCount(SpeciesId species) {
   ensureContent();
-  if (!species || (uint32_t)species + 1u >= gLearnOffsetCount) return 0;
-  uint32_t first = gLearnOffsets[species], last = gLearnOffsets[species + 1];
-  return last >= first && last <= gLearnEntryCount ? (uint16_t)(last - first) : 0;
+  if (!dexValid(species)) return 0;
+  const SpriteRef &sprite = gSprites[species];
+  if (sprite.pack >= gRegionPackCount) return 0;
+  const RegionPackRuntime &runtime = gRegionPacks[sprite.pack];
+  uint32_t local = sprite.localIndex;
+  if (local + 1u >= runtime.learnOffsetCount) return 0;
+  uint32_t first = runtime.learnOffsets[local], last = runtime.learnOffsets[local + 1u];
+  return last >= first && last <= runtime.learnEntryCount ? (uint16_t)(last - first) : 0;
 }
 MoveId learnMove(SpeciesId species, uint16_t index) {
   if (index >= learnCount(species)) return MOVE_NONE;
-  return gLearnEntries[gLearnOffsets[species] + index].move;
+  const SpriteRef &sprite = gSprites[species];
+  const RegionPackRuntime &runtime = gRegionPacks[sprite.pack];
+  return runtime.learnEntries[runtime.learnOffsets[sprite.localIndex] + index].move;
 }
 uint8_t learnLevel(SpeciesId species, uint16_t index) {
   if (index >= learnCount(species)) return 0;
-  return gLearnEntries[gLearnOffsets[species] + index].level;
+  const SpriteRef &sprite = gSprites[species];
+  const RegionPackRuntime &runtime = gRegionPacks[sprite.pack];
+  return runtime.learnEntries[runtime.learnOffsets[sprite.localIndex] + index].level;
 }
 LearnMethod learnMethod(SpeciesId species, uint16_t index) {
   if (index >= learnCount(species)) return LM_LEVEL_UP;
-  return (LearnMethod)gLearnEntries[gLearnOffsets[species] + index].method;
+  const SpriteRef &sprite = gSprites[species];
+  const RegionPackRuntime &runtime = gRegionPacks[sprite.pack];
+  return (LearnMethod)runtime.learnEntries[
+      runtime.learnOffsets[sprite.localIndex] + index].method;
 }
 
 bool speciesCanLearnMove(SpeciesId species, MoveId move) {

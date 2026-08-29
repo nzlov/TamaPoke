@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the committed ability catalogue from a pinned PokeAPI revision.
+"""Refresh abilities in the committed battle and Pokemon catalogues.
 
 The generated JSON is the single authoring source consumed by the pack builder.
 Raw CSV files are cached locally and are not committed.
@@ -18,7 +18,8 @@ from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
-OUTPUT = HERE / "ability_data.json"
+OUTPUT = HERE / "battle_data.json"
+POKEMON_OUTPUT = HERE / "pokemon_data.json"
 CACHE = HERE / "pokeapi_cache" / "abilities"
 POKEAPI_REVISION = "c40a25c6544b97334a1ae8b1965a378fa3317c28"
 CSV_NAMES = (
@@ -80,10 +81,12 @@ def clean_text(value: str) -> str:
     return value
 
 
-def build(source_dir: Path | None) -> dict:
-    from dex_data import DEX
-
-    dex_count = max(row[0] for row in DEX)
+def build(source_dir: Path | None) -> tuple[dict, dict]:
+    pokemon_catalogue = json.loads(POKEMON_OUTPUT.read_text(encoding="utf-8"))
+    battle_catalogue = json.loads(OUTPUT.read_text(encoding="utf-8"))
+    if pokemon_catalogue.get("schema") != 1 or battle_catalogue.get("schema") != 1:
+        raise ValueError("Pokemon and battle catalogues must use schema 1")
+    dex_count = len(pokemon_catalogue["species"])
     translation_data = json.loads(
         (HERE / "ability_description_zh.json").read_text(encoding="utf-8")
     )
@@ -150,33 +153,42 @@ def build(source_dir: Path | None) -> dict:
         if row["is_default"] == "1" and int(row["species_id"]) <= dex_count
     }
     mega_rows = []
-    for form in json.loads((HERE / "mega_data.json").read_text(encoding="utf-8")):
-        species = int(form["species"])
-        form_name = form.get("form", "standard")
-        identifier = defaults[species]["identifier"] + "-mega"
-        if form_name != "standard":
-            identifier += f"-{form_name}"
-        candidates = [
-            row for row in pokemon.values()
-            if int(row["species_id"]) == species and row["identifier"] == identifier
-        ]
-        if not candidates and form_name == "standard":
+    for species_row in pokemon_catalogue["species"]:
+        for form in species_row["megaForms"]:
+            species = species_row["id"]
+            form_name = form.get("form", "standard")
+            if form_name == "z":
+                mega_rows.append({
+                    "dex": species,
+                    "form": form_name,
+                    "ability": form["abilityId"],
+                    "status": "project-defined-form",
+                })
+                continue
+            identifier = defaults[species]["identifier"] + "-mega"
+            if form_name != "standard":
+                identifier += f"-{form_name}"
             candidates = [
                 row for row in pokemon.values()
-                if int(row["species_id"]) == species and
-                row["identifier"] == defaults[species]["identifier"].split("-")[0] + "-mega"
+                if int(row["species_id"]) == species and row["identifier"] == identifier
             ]
-        if len(candidates) != 1:
-            raise ValueError(f"Mega {species}/{form_name}: expected PokeAPI form {identifier}")
-        abilities = pokemon_abilities[int(candidates[0]["id"])]
-        if len(abilities) > 1 or (abilities and abilities[0]["is_hidden"] != "0"):
-            raise ValueError(f"Mega {species}/{form_name}: expected one normal ability")
-        mega_rows.append({
-            "dex": species,
-            "form": form_name,
-            "ability": int(abilities[0]["ability_id"]) if abilities else 0,
-            "status": "canonical" if abilities else "not-published-in-source",
-        })
+            if not candidates and form_name == "standard":
+                candidates = [
+                    row for row in pokemon.values()
+                    if int(row["species_id"]) == species and
+                    row["identifier"] == defaults[species]["identifier"].split("-")[0] + "-mega"
+                ]
+            if len(candidates) != 1:
+                raise ValueError(f"Mega {species}/{form_name}: expected PokeAPI form {identifier}")
+            abilities = pokemon_abilities[int(candidates[0]["id"])]
+            if len(abilities) > 1 or (abilities and abilities[0]["is_hidden"] != "0"):
+                raise ValueError(f"Mega {species}/{form_name}: expected one normal ability")
+            mega_rows.append({
+                "dex": species,
+                "form": form_name,
+                "ability": int(abilities[0]["ability_id"]) if abilities else 0,
+                "status": "canonical" if abilities else "not-published-in-source",
+            })
 
     used = sorted(
         {ability for slots in species_slots.values() for ability in slots.values()} |
@@ -202,27 +214,24 @@ def build(source_dir: Path | None) -> dict:
             },
         })
 
-    return {
-        "schema": 1,
-        "source": {
-            "repository": "https://github.com/PokeAPI/pokeapi",
-            "revision": POKEAPI_REVISION,
-            "path": "data/v2/csv",
-        },
-        "abilities": catalogue,
-        "mega": mega_rows,
-        "species": [
-            {
-                "dex": species,
-                "slots": [
-                    species_slots[species].get(1, 0),
-                    species_slots[species].get(2, 0),
-                    species_slots[species].get(3, 0),
-                ],
-            }
-            for species in range(1, dex_count + 1)
-        ],
+    source = {
+        "repository": "https://github.com/PokeAPI/pokeapi",
+        "revision": POKEAPI_REVISION,
+        "path": "data/v2/csv",
     }
+    battle_catalogue["abilitySource"] = source
+    battle_catalogue["abilities"] = catalogue
+    for species in pokemon_catalogue["species"]:
+        species["abilitySlots"] = [
+            species_slots[species["id"]].get(1, 0),
+            species_slots[species["id"]].get(2, 0),
+            species_slots[species["id"]].get(3, 0),
+        ]
+    mega_lookup = {(row["dex"], row["form"]): row["ability"] for row in mega_rows}
+    for species in pokemon_catalogue["species"]:
+        for form in species["megaForms"]:
+            form["abilityId"] = mega_lookup[(species["id"], form["form"])]
+    return battle_catalogue, pokemon_catalogue
 
 
 def main() -> int:
@@ -233,14 +242,18 @@ def main() -> int:
     )
     parser.add_argument("--check", action="store_true", help="verify committed output")
     args = parser.parse_args()
-    encoded = json.dumps(build(args.csv_dir), ensure_ascii=False, indent=2) + "\n"
+    battle, pokemon = build(args.csv_dir)
+    encoded_battle = json.dumps(battle, ensure_ascii=False, indent=2) + "\n"
+    encoded_pokemon = json.dumps(pokemon, ensure_ascii=False, indent=2) + "\n"
     if args.check:
-        if not OUTPUT.exists() or OUTPUT.read_text(encoding="utf-8") != encoded:
-            raise SystemExit("ability_data.json is stale; run tools/fetch_ability_data.py")
-        print("PASS ability_data.json matches the pinned PokeAPI data")
+        if OUTPUT.read_text(encoding="utf-8") != encoded_battle or \
+                POKEMON_OUTPUT.read_text(encoding="utf-8") != encoded_pokemon:
+            raise SystemExit("ability data is stale; run tools/fetch_ability_data.py")
+        print("PASS battle_data.json and pokemon_data.json match pinned abilities")
         return 0
-    OUTPUT.write_text(encoded, encoding="utf-8")
-    print(f"wrote {OUTPUT}")
+    OUTPUT.write_text(encoded_battle, encoding="utf-8")
+    POKEMON_OUTPUT.write_text(encoded_pokemon, encoding="utf-8")
+    print(f"wrote {OUTPUT} and {POKEMON_OUTPUT}")
     return 0
 
 

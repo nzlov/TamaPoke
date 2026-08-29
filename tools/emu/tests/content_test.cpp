@@ -61,9 +61,12 @@ static bool fontHasGray(const RuntimeFontGlyph *glyph) {
 
 int main() {
   ck(contentBegin() && contentReady(), "the installed pack set is bootable");
-  ck(contentPackCount() >= 3, "UI, move and region packs were discovered");
+  ck(contentPackCount() >= 5, "UI, battle, move, item and region packs were discovered");
   ck(contentMechanicsHash() != 0, "loaded mechanics have a stable link hash");
   ck(!moveValid(MOVE_NONE), "the empty move slot is not a usable move");
+  const MegaFormEntry *charizardX = megaFormFor(6, MEGA_FORM_X);
+  ck(charizardX && charizardX->learnsetSpecies == 6 && learnCount(6) > 0,
+     "Mega forms reference their base species learnset from the region pack");
 
   int8_t english = uiFindLocale("en-US"), chinese = uiFindLocale("zh-CN");
   ck(english >= 0 && chinese >= 0, "languages come from installed UI packs");

@@ -173,7 +173,8 @@ static bool isPackPath(String path) {
   if (!path.startsWith("/")) path = "/" + path;
   if (!path.startsWith("/packs/") || path.substring(7).indexOf('/') >= 0 ||
       path.indexOf("..") >= 0) return false;
-  return path.endsWith(".tui") || path.endsWith(".tmove") ||
+  return path.endsWith(".tui") || path.endsWith(".tbattle") ||
+         path.endsWith(".tmove") || path.endsWith(".titem") ||
          path.endsWith(".tregion") || path.endsWith(".tquiz");
 }
 

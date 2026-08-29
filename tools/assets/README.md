@@ -17,7 +17,7 @@ regional `.tregion` correspondiente.
 |---|---|---|---|
 | **TPK2** `pNNN.bin` / `psNNN.bin` / `pmNNN-form[-shiny].bin` | `pack_pmd.py` | [PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab) (CC BY-NC) | Animaciones multi-acción, incluidas las vistas traseras de batalla cuando existen — usadas en **todo**: pantalla principal, combate y **Pokédex / galería** |
 | **TPTH** `thumbs.bin` | `make_thumbs.py` | (deriva de los TPK2) | Miniaturas 40×40 de la galería |
-| **TIC1** `*.ticon` | `fetch_item_icons.py` | [PokeAPI/sprites](https://github.com/PokeAPI/sprites/tree/master/sprites/items) | Iconos de objetos 24×24/30×30; caché local opcional incluida en `moves-core.tmove` |
+| **TIC1** `*.ticon` | `fetch_item_icons.py` | [PokeAPI/sprites](https://github.com/PokeAPI/sprites/tree/master/sprites/items) | Iconos de objetos 24×24/30×30; caché local opcional incluida en `items-core.titem` |
 
 ```bash
 python3 tools/pack_pmd.py --report base-sprite-coverage.json
@@ -51,12 +51,12 @@ las secciones del paquete regional:
 El firmware valida tamaños al cargar, así que un `.bin` truncado se rechaza sin
 romper nada.
 
-## Caché de descargas
+## Fuentes locales
 
-`pack_pmd.py` cachea los PNG originales de SpriteCollab en `tools/pmd_cache/`
-(ignorado por git, regenerable). Los `.bin` intermedios quedan en
-`tools/sdcard/mons/`; los artefactos desplegables son los paquetes de
-`web/packs/`.
+`pokemon_data.json` referencia los PNG/XML de SpriteCollab fijados en
+`tools/pokemon_art/pmd/`. `pack_pmd.py` los convierte sin red a los `.bin`
+intermedios de `tools/sdcard/mons/`; los artefactos desplegables son los
+paquetes de `web/packs/`.
 
 `fetch_item_icons.py` guarda los PNG y TIC1 derivados en `tools/item_icon_cache/`,
 también ignorado por Git. Si no existe esa caché, el paquete de movimientos se

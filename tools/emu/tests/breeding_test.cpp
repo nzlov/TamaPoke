@@ -91,6 +91,14 @@ int main() {
         breedingAbilityForRoll(65, ABILITY_SLOT_HIDDEN, 60) != ABILITY_SLOT_HIDDEN,
         "Gen-IX normal and hidden ability inheritance thresholds are exact");
 
+  check(breedingGigantamaxFactorForRoll(0, 4) &&
+        !breedingGigantamaxFactorForRoll(0, 5) &&
+        breedingGigantamaxFactorForRoll(1, 14) &&
+        !breedingGigantamaxFactorForRoll(1, 15) &&
+        breedingGigantamaxFactorForRoll(2, 24) &&
+        !breedingGigantamaxFactorForRoll(2, 25),
+        "Gigantamax Factor chance is 5 percent plus 10 per factor parent");
+
   MoveId eggMove = firstEggMove(4);
   check(moveValid(eggMove) && speciesHasEggMove(4, eggMove),
         "the generated catalogue identifies a canonical Egg Move");
@@ -107,6 +115,16 @@ int main() {
   check(child.dex == 4 && child.level == 1 && inherited == 3,
         "a level-one offspring inherits exactly three of TamaPoke's four IV stats");
   check(knows(child, eggMove), "Egg Moves can be inherited from either parent");
+  female.setGigantamaxFactor(true);
+  male.setGigantamaxFactor(true);
+  randomSeed(211);
+  PartyMon factorChild;
+  for (uint8_t attempt = 0; attempt < 100 && !factorChild.gigantamaxFactor(); attempt++)
+    factorChild = breedingCreateOffspring(female, male, 0);
+  check(factorChild.gigantamaxFactor(),
+        "the breeding path persists a rolled Gigantamax Factor on the offspring");
+  female.setGigantamaxFactor(false);
+  male.setGigantamaxFactor(false);
   female.shiny = male.shiny = 1;
   randomSeed(103);
   PartyMon shinyChild;

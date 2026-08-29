@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download selected PokeAPI item sprites and convert them for moves-core.
+"""Download selected PokeAPI item sprites and convert them for items-core.
 
 The downloaded PNGs and converted TIC1 files stay in the ignored local cache.
 They are official Pokemon artwork; see CREDITS.md before redistributing them.
@@ -22,7 +22,7 @@ except ImportError:
 
 HERE = Path(__file__).resolve().parent
 CACHE = HERE / "item_icon_cache"
-ITEMS = json.loads((HERE / "item_data.json").read_text(encoding="utf-8"))
+ITEMS = json.loads((HERE / "item_data.json").read_text(encoding="utf-8"))["items"]
 POKEAPI_SPRITES_REVISION = "c10459b9b0129eaca5c5d9b1cac65336debb1d08"
 RAW_BASE = (
     "https://raw.githubusercontent.com/PokeAPI/sprites/"

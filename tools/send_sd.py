@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Envia los paquetes generados a la SD de la placa por USB.
 
-  python3 tools/send_sd.py                  # envia web/packs/*.tui|*.tmove|*.tregion
+  python3 tools/send_sd.py                  # envia todos los paquetes de web/packs
   python3 tools/send_sd.py --port /dev/cu.usbmodem101
   python3 tools/send_sd.py --ls             # lista lo que hay en la SD
   python3 tools/send_sd.py --only zh-cn      # envia solo nombres coincidentes
@@ -66,7 +66,9 @@ def main():
     pack_dir = os.path.join(os.path.dirname(__file__), '..', 'web', 'packs')
     files = sorted(
         path for path in glob.glob(os.path.join(pack_dir, '*'))
-        if os.path.splitext(path)[1] in ('.tui', '.tmove', '.tregion')
+        if os.path.splitext(path)[1] in (
+            '.tui', '.tbattle', '.tmove', '.titem', '.tregion', '.tquiz'
+        )
     )
     if not files:
         sys.exit("no hay paquetes; ejecuta antes tools/gen_data_packs.py")

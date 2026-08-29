@@ -223,14 +223,7 @@ const char *PlayerProgress::regionName() const {
 
 bool PlayerProgress::refreshDailyTasks(uint32_t day) {
   if (!day || dailyTasks.day == day) return false;
-  uint16_t legendaryRegionMask = 0;
-  for (uint8_t region = 0; region < regionAll() && region < 16; region++) {
-    const RegionBattleInfo &battle = regionBattleInfo(region);
-    if (battle.trainerCount &&
-        hasBadge(region, battle.trainerCount - 1, true))
-      legendaryRegionMask |= (uint16_t)1 << region;
-  }
-  if (!dailyTasksRefresh(dailyTasks, day, legendaryRegionMask,
+  if (!dailyTasksRefresh(dailyTasks, day, dexReg,
                          (uint32_t)random(0x7FFFFFFF)))
     return false;
   save();

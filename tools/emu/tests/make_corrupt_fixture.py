@@ -10,7 +10,7 @@ from pathlib import Path
 source, destination = map(Path, sys.argv[1:3])
 destination.mkdir(parents=True, exist_ok=True)
 for path in source.iterdir():
-    if path.suffix in {".tui", ".tmove", ".tregion"}:
+    if path.suffix in {".tui", ".tmove", ".titem", ".tbattle", ".tregion"}:
         (destination / path.name).symlink_to(path.resolve())
 
 # Interrupted uploads and rollback files are not deployable packs. Keeping

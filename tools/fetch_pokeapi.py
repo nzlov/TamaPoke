@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
-"""Pull the full authored dex from PokeAPI: base stats and compact learnsets.
+"""Refresh base stats and compact learnsets in pokemon_data.json from PokeAPI.
 
   python3 tools/fetch_pokeapi.py
-
-Writes two generated files, both committed:
-  tools/dex_stats.py      num -> (hp, atk, def, spe, spa, spd)
-  tools/dex_learnsets.py  num -> [(move slug, level), ...] for MOVES only
 
 Responses are cached under tools/pokeapi_cache/ (gitignored), so a second run
 costs nothing. Delete the directory to force a refetch.
@@ -14,19 +10,15 @@ Why 6 stats when the pet only rolls 4 IVs: the special split lives on the
 SPECIES, not the individual. Alakazam has 50 Attack and 135 Special Attack --
 without bSpA it would be a terrible attacker, which is wrong. Special moves
 run off ivAtk/trAtk against bSpA, special defence off ivDef/trDef against
-bSpD, so no new IVs and no save migration. See dex_moves.py.
+bSpD, so no new IVs and no save migration.
 """
 import json
 import argparse
 import csv
 import os
 import ssl
-import sys
 import time
 import urllib.request
-
-sys.path.insert(0, os.path.dirname(__file__))
-from dex_moves import MOVES
 
 # The python.org macOS builds ship no CA bundle, so a plain urlopen against
 # HTTPS dies with CERTIFICATE_VERIFY_FAILED. certifi comes with those same
@@ -39,26 +31,19 @@ except ImportError:
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, 'pokeapi_cache')
+POKEMON_PATH = os.path.join(HERE, 'pokemon_data.json')
+MOVE_PATH = os.path.join(HERE, 'move_data.json')
+with open(POKEMON_PATH, encoding='utf-8') as source:
+    POKEMON_DATA = json.load(source)
+with open(MOVE_PATH, encoding='utf-8') as source:
+    MOVES = json.load(source)['moves']
 API = 'https://pokeapi.co/api/v2/pokemon/%d'
 POKEAPI_REVISION = 'c40a25c6544b97334a1ae8b1965a378fa3317c28'
-# Derived from dex_data.py rather than written here, so a hardcoded number
-# cannot fall behind the table again. The old header generator had its own 151
-# once and emitted a Kanto-sized LEARN_OFS against a dex that had grown, which
-# would have read off the end of the array for every species past 151.
-def _dex_count():
-    import sys, os
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from dex_data import DEX
-    return max(d[0] for d in DEX)
-
-
-DEX_COUNT = _dex_count()
+DEX_COUNT = len(POKEMON_DATA['species'])
 
 # Which ways of learning a move count as "this species can use it". Level-up
 # plus TM: that is how you would actually build a set, and level-up alone
 # leaves several species without even a same-type attack.
-METHODS = ('level-up', 'machine')
-
 # Version group the level-up levels are read from, PER GENERATION -- a Johto or
 # Hoenn species has no FireRed/LeafGreen learnset at all, so reading them all
 # from Kanto would silently drop every gate for two thirds of the dex.
@@ -90,21 +75,12 @@ def fetch(num):
         with open(path) as f:
             return json.load(f)
     os.makedirs(CACHE, exist_ok=True)
-    # GLUE: gen_dex_data keeps the full response under a URL-derived name,
-    # while this older generator keeps a compact numeric cache. Remove this
-    # bridge when both generators share one cache implementation.
-    full_path = os.path.join(CACHE, 'pokemon_%d.json' % num)
-    downloaded = not os.path.exists(full_path)
-    if downloaded:
-        # PokeAPI 403s the default python-urllib agent, same as SpriteCollab
-        # does in pack_pmd.py.
-        req = urllib.request.Request(API % num,
-                                     headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=30, context=SSL_CTX) as r:
-            data = json.load(r)
-    else:
-        with open(full_path) as f:
-            data = json.load(f)
+    # PokeAPI 403s the default python-urllib agent, same as SpriteCollab
+    # does in pack_pmd.py.
+    req = urllib.request.Request(API % num,
+                                 headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(req, timeout=30, context=SSL_CTX) as r:
+        data = json.load(r)
     # keep only what we need; the raw payloads are ~200 KB each
     slim = {
         'name': data['name'],
@@ -123,8 +99,7 @@ def fetch(num):
     }
     with open(path, 'w') as f:
         json.dump(slim, f)
-    if downloaded:
-        time.sleep(0.15)  # be polite to a free API
+    time.sleep(0.15)  # be polite to a free API
     return slim
 
 
@@ -188,13 +163,14 @@ def load_bulk_learnsets(csv_dir, wanted):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--learnsets-only", action="store_true",
-                        help="leave dex_stats.py unchanged")
+                        help="leave pokemon_data.json base stats unchanged")
     parser.add_argument("--csv-dir",
                         help="read pinned PokeAPI CSVs instead of per-Pokemon API calls")
     args = parser.parse_args()
     if args.csv_dir and not args.learnsets_only:
         parser.error('--csv-dir currently requires --learnsets-only')
-    wanted = {slug for _name, slug, *_ in MOVES if slug}  # None = not learnable
+    move_ids = {move['slug']: move['id'] for move in MOVES}
+    wanted = set(move_ids)
     stats, learn = {}, {}
     missing = set(wanted)
 
@@ -245,29 +221,29 @@ def main():
             if num % 25 == 0:
                 print('  ...%d/%d' % (num, DEX_COUNT))
 
-    hdr = '# GENERADO por tools/fetch_pokeapi.py desde PokeAPI - no editar\n'
-
-    if not args.learnsets_only:
-        with open(os.path.join(HERE, 'dex_stats.py'), 'w') as f:
-            f.write(hdr)
-            f.write('# num -> (hp, atk, def, vel, spa, spd). Los dos ultimos son\n'
-                    '# nuevos: el reparto fisico/especial vive en la especie, no en\n'
-                    '# el individuo (ver fetch_pokeapi.py y dex_moves.py).\n')
-            f.write('BASE_STATS = {\n')
-            for num in range(1, DEX_COUNT + 1):
-                f.write('    %d: %r,\n' % (num, stats[num]))
-            f.write('}\n')
-
-    with open(os.path.join(HERE, 'dex_learnsets.py'), 'w') as f:
-        f.write(hdr)
-        f.write('# num -> [(slug del movimiento, nivel)], solo los de dex_moves.py.\n'
-                '# nivel 0 = MT, sin requisito de nivel. El nivel se guarda pero\n'
-                '# todavia no se usa para nada: si la seleccion de movimientos lo\n'
-                '# aprovecha o no se decide en la fase de UI.\n')
-        f.write('LEARNSETS = {\n')
-        for num in range(1, DEX_COUNT + 1):
-            f.write('    %d: %r,\n' % (num, learn[num]))
-        f.write('}\n')
+    for species in POKEMON_DATA['species']:
+        num = species['id']
+        if not args.learnsets_only:
+            hp, attack, defense, speed, special_attack, special_defense = stats[num]
+            species['stats'] = {
+                'hp': hp,
+                'attack': attack,
+                'defense': defense,
+                'specialAttack': special_attack,
+                'specialDefense': special_defense,
+                'speed': speed,
+            }
+        species['learnset'] = [
+            {
+                'moveId': move_ids[slug],
+                'level': level,
+                'method': 'machine' if level == 0 else 'level-up',
+            }
+            for slug, level in learn[num]
+        ]
+    with open(POKEMON_PATH, 'w', encoding='utf-8') as target:
+        json.dump(POKEMON_DATA, target, ensure_ascii=False, indent=2)
+        target.write('\n')
 
     total = sum(len(v) for v in learn.values())
     thin = [n for n in learn if len(learn[n]) < 4]

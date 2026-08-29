@@ -42,6 +42,8 @@ enum ContentPackKind : uint8_t {
   CONTENT_PACK_REGION = 2,
   CONTENT_PACK_MOVE = 3,
   CONTENT_PACK_QUIZ = 4,
+  CONTENT_PACK_ITEM = 5,
+  CONTENT_PACK_BATTLE = 6,
 };
 
 enum ContentPackValidation : uint8_t {
@@ -67,6 +69,7 @@ struct MegaFormEntry {
   AbilityKey ability = ABILITY_NONE;
   uint8_t type1 = T_NORMAL, type2 = T_NONE;
   uint8_t bAtk = 1, bDef = 1, bSpA = 1, bSpD = 1, bSpe = 1;
+  SpeciesId learnsetSpecies = SPECIES_NONE;
   uint8_t spriteScale = 0;
   uint8_t spritePack = 0xFF;
   uint32_t spriteAt = 0, spriteSize = 0;
@@ -115,11 +118,10 @@ enum GmaxEffect : uint8_t {
 };
 
 struct GmaxMoveEntry {
-  SpeciesId species = SPECIES_NONE;
   GmaxMoveId id = GMAX_MOVE_NONE;
   uint8_t sourceType = T_NORMAL;
   GmaxEffect effect = GMAX_EFFECT_NONE;
-  uint8_t power = 0;  // zero derives power from the source move
+  uint8_t power = 0;
   const char *name = nullptr;
 };
 
@@ -204,8 +206,8 @@ const char *speciesName(SpeciesId species);
 const char *moveName(MoveId move);
 const char *itemName(ItemKey key);
 
-// Gen-IX breeding metadata lives in the core move pack because egg moves use
-// that pack's stable MoveId values. Group bits follow PokeAPI IDs 1..15.
+// Breeding metadata belongs to each species' region pack. Egg moves reference
+// the stable MoveId catalogue without duplicating move definitions.
 uint16_t speciesEggGroups(SpeciesId species);
 uint8_t speciesOffspringCount(SpeciesId species);
 SpeciesId speciesOffspring(SpeciesId species, uint8_t index);

@@ -14,9 +14,11 @@ installed package IDs and the current selection. It names missing dependencies
 and lets the user cancel or explicitly force deployment without them.
 
 - `.tui` — language strings, layout metrics and its bitmap/OpenType font payload.
-- `.tmove` — moves, localized names/descriptions, learnsets/TMs and type chart.
-- `.tregion` — species, localized names/descriptions, sprites, region metadata, trainers,
-  regional battle data and badges.
+- `.tbattle` — shared abilities, type catalogue and effectiveness chart.
+- `.tmove` — stable move definitions and localized names/descriptions.
+- `.titem` — item definitions, localized text and optional icons.
+- `.tregion` — species, learnsets, Mega/Gigantamax metadata, localized names/descriptions,
+  sprites, region metadata, trainers, regional battle data and badges.
 - `.tquiz` — locale spans, fixed-width random indexes and variable-size multiple-choice records.
 
 `question-bank.html` imports authoring JSON, compiled `.tquiz` files or an installed
@@ -56,7 +58,8 @@ listing.
 - `manifest.json` — ESP Web Tools firmware manifest.
 - `firmware/` — bootloader, partition table, app and merged blank-board image.
 - `packs/index.json` — generated package catalogue.
-- `packs/*.tui`, `packs/*.tmove`, `packs/*.tregion`, `packs/*.tquiz` — generated deployable data.
+- `packs/*.tui`, `packs/*.tbattle`, `packs/*.tmove`, `packs/*.titem`,
+  `packs/*.tregion`, `packs/*.tquiz` — generated deployable data.
 
 The files under `firmware/` and `packs/` are generated outputs and are not
 tracked by Git. The GitHub Pages workflow rebuilds them from the pinned Arduino
@@ -101,7 +104,7 @@ End-user flow:
 3. Connect the running board and deploy the selected packs.
 4. Restart the board.
 
-Custom `.tui`, `.tmove`, `.tregion` and `.tquiz` files can be selected manually. Other
+Custom `.tui`, `.tbattle`, `.tmove`, `.titem`, `.tregion` and `.tquiz` files can be selected manually. Other
 paths and extensions are rejected by the firmware.
 
 ## GitHub Pages

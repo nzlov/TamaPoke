@@ -85,6 +85,12 @@ AbilitySlot wildAbilitySlotForRoll(SpeciesId species, bool hard, uint8_t roll,
   return speciesNormalAbilitySlot(species, normalRoll);
 }
 
+bool wildEncounterAllowed(SpeciesId species, bool night) {
+  if (!dexValid(species)) return false;
+  uint8_t required = night ? ENCOUNTER_NIGHT : ENCOUNTER_DAY;
+  return (dexEntry(species).encounterPeriods & required) != 0;
+}
+
 bool wildRareForRoll(uint32_t roll, uint8_t bonus) {
   return roll < wildRareThreshold(bonus);
 }

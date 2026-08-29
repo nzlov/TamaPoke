@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from fetch_species_descriptions import LOCALE_LANGUAGES, newest_entry, select_locales
-from gen_data_packs import DEX, species_descriptions
+from gen_data_packs import SPECIES, species_descriptions
 
 
 HERE = Path(__file__).resolve().parent
@@ -49,15 +49,10 @@ def main() -> int:
         "source": "pokemon-cn",
     }
 
-    catalogue = json.loads((HERE / "species_descriptions.json").read_text(encoding="utf-8"))
-    assert catalogue["schema"] == 2
-    assert catalogue["updatePolicy"] == \
-        "append new dex numbers only; preserve existing entries"
-    species = catalogue["species"]
-    assert [entry["dex"] for entry in species] == list(range(1, 1026))
+    assert [entry["id"] for entry in SPECIES] == list(range(1, 1026))
     assert all(set(entry["descriptions"]) == set(LOCALE_LANGUAGES)
-               for entry in species)
-    descriptions = [value for entry in species
+               for entry in SPECIES)
+    descriptions = [value for entry in SPECIES
                     for value in entry["descriptions"].values()]
     assert all(value["text"] and "\0" not in value["text"] and
                "\n" not in value["text"] and "\f" not in value["text"]
@@ -66,9 +61,9 @@ def main() -> int:
                for value in descriptions)
     assert all(value["language"] == "zh-hans" and
                any("\u3400" <= char <= "\u9fff" for char in value["text"])
-               for entry in species for value in [entry["descriptions"]["zh-CN"]])
-    assert "尾巴" in species[24]["descriptions"]["zh-CN"]["text"]
-    packed = species_descriptions(DEX)
+               for entry in SPECIES for value in [entry["descriptions"]["zh-CN"]])
+    assert "尾巴" in SPECIES[24]["descriptions"]["zh-CN"]["text"]
+    packed = species_descriptions(SPECIES)
     assert set(packed) == set(LOCALE_LANGUAGES)
     assert all(text.isascii() for locale, values in packed.items() if locale != "zh-CN"
                for text in values)

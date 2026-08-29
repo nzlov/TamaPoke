@@ -7,6 +7,8 @@ constexpr uint16_t EGG_GROUP_UNDISCOVERED = 1u << 14;
 constexpr uint32_t BREEDING_MIN_SECONDS = 60UL * 60UL;
 constexpr uint32_t BREEDING_MAX_SECONDS = 2UL * 60UL * 60UL;
 constexpr uint8_t BREEDING_SHINY_PARENT_BONUS = 5;
+constexpr uint8_t BREEDING_GIGANTAMAX_BASE_CHANCE = 5;
+constexpr uint8_t BREEDING_GIGANTAMAX_PARENT_BONUS = 10;
 
 bool breedingEligible(const PartyMon &mon);
 bool breedingCompatible(const PartyMon &first, const PartyMon &second);
@@ -16,5 +18,6 @@ uint32_t breedingRareThreshold(uint8_t wildBonus, uint8_t shinyParents);
 bool breedingRareForRoll(uint32_t roll, uint8_t wildBonus, uint8_t shinyParents);
 AbilitySlot breedingAbilityForRoll(SpeciesId child, AbilitySlot inherited,
                                    uint8_t roll);
+bool breedingGigantamaxFactorForRoll(uint8_t factorParents, uint8_t roll);
 PartyMon breedingCreateOffspring(const PartyMon &first, const PartyMon &second,
                                  uint8_t wildBonus);

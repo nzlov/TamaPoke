@@ -4,6 +4,7 @@
 
 constexpr uint8_t DAILY_TASK_COUNT = 3;
 constexpr uint8_t DAILY_TASK_ENCOUNTER_CHANCE = 30;
+constexpr uint8_t DAILY_TASK_REGISTERED_CHANCE = 70;
 
 struct DailyTask {
   SpeciesId species = SPECIES_NONE;
@@ -18,10 +19,10 @@ struct DailyTaskState {
 static_assert(sizeof(DailyTaskState) == 16,
               "daily task state is part of the persistent player snapshot");
 
-// One bit per real region says its hard champion has been defeated, which is
-// the same gate used by ordinary wild encounters for legendary species.
-bool dailyTasksRefresh(DailyTaskState &state, uint32_t day,
-                       uint16_t legendaryRegionMask, uint32_t seed);
+bool dailyTasksRefresh(
+    DailyTaskState &state, uint32_t day,
+    const uint8_t registered[(CONTENT_MAX_SPECIES + 7) / 8], uint32_t seed);
 SpeciesId dailyTaskEncounter(const DailyTaskState &state, uint8_t region,
-                             uint8_t chanceRoll, uint32_t pickRoll);
+                             bool night, uint8_t chanceRoll,
+                             uint32_t pickRoll);
 bool dailyTaskHardReward(uint16_t submittedLevel, uint16_t partyAverageLevel);

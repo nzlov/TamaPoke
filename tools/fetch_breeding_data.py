@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the committed breeding catalogue from a pinned PokeAPI revision.
+"""Refresh breeding fields in the committed Pokemon catalogue.
 
 The runtime needs only egg-group masks, possible offspring species, and the
 subset of canonical Egg Moves that exists in TamaPoke's compact move table.
@@ -17,7 +17,8 @@ from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
-OUTPUT = HERE / "breeding_data.json"
+OUTPUT = HERE / "pokemon_data.json"
+MOVE_DATA = HERE / "move_data.json"
 CACHE = HERE / "pokeapi_cache" / "breeding"
 POKEAPI_REVISION = "c40a25c6544b97334a1ae8b1965a378fa3317c28"
 CSV_NAMES = (
@@ -63,11 +64,10 @@ def rows(name: str, source_dir: Path | None) -> list[dict[str, str]]:
 
 
 def build(source_dir: Path | None) -> dict:
-    from dex_data import DEX
-    from dex_moves import MOVES
-
-    dex_count = max(row[0] for row in DEX)
-    move_slugs = {slug for _name, slug, *_rest in MOVES if slug}
+    pokemon = json.loads(OUTPUT.read_text(encoding="utf-8"))
+    moves = json.loads(MOVE_DATA.read_text(encoding="utf-8"))["moves"]
+    dex_count = len(pokemon["species"])
+    move_slugs = {row["slug"] for row in moves}
     all_moves_by_id = {
         int(row["id"]): row["identifier"] for row in rows("moves", source_dir)
     }
@@ -165,19 +165,46 @@ def build(source_dir: Path | None) -> dict:
     }
 
 
+def apply_catalogue(document: dict, catalogue: dict) -> dict:
+    moves = json.loads(MOVE_DATA.read_text(encoding="utf-8"))["moves"]
+    move_ids = {row["slug"]: int(row["id"]) for row in moves}
+    rows = catalogue["species"]
+    species = document["species"]
+    if len(rows) != len(species):
+        raise ValueError("breeding catalogue does not cover pokemon_data.json")
+    document["breedingSource"] = catalogue["source"]
+    document["eggGroups"] = catalogue["eggGroups"]
+    for expected, (target, source) in enumerate(zip(species, rows), 1):
+        if target["id"] != expected or source["dex"] != expected:
+            raise ValueError(f"species {expected}: breeding catalogue is out of order")
+        groups = int(source["groups"])
+        target["breeding"] = {
+            "eggGroupIds": [
+                group for group in range(1, len(catalogue["eggGroups"]) + 1)
+                if groups & (1 << (group - 1))
+            ],
+            "offspringSpecies": [int(value) for value in source["offspring"]],
+            "eggMoveIds": sorted(move_ids[slug] for slug in source["eggMoves"]),
+        }
+    return document
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--csv-dir", type=Path)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    encoded = json.dumps(build(args.csv_dir), ensure_ascii=False, indent=2) + "\n"
+    document = json.loads(OUTPUT.read_text(encoding="utf-8"))
+    encoded = json.dumps(
+        apply_catalogue(document, build(args.csv_dir)), ensure_ascii=False, indent=2,
+    ) + "\n"
     if args.check:
         if not OUTPUT.exists() or OUTPUT.read_text(encoding="utf-8") != encoded:
-            raise SystemExit("breeding_data.json is stale; run tools/fetch_breeding_data.py")
-        print("PASS breeding_data.json matches the pinned breeding data")
+            raise SystemExit("pokemon_data.json breeding fields are stale; run tools/fetch_breeding_data.py")
+        print("PASS pokemon_data.json breeding fields match the pinned data")
         return 0
     OUTPUT.write_text(encoded, encoding="utf-8")
-    print(f"wrote {OUTPUT}")
+    print(f"updated {OUTPUT}")
     return 0
 
 

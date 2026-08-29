@@ -17,7 +17,7 @@ void sfxPlay(uint8_t) {}
 
 int main() {
   bool ok = contentBegin() && contentReady() &&
-            contentPackCount() == uiLocaleCount() + regionAll() + 2 &&
+            contentPackCount() == uiLocaleCount() + regionAll() + 4 &&
             regionCount() == regionAll() + 1 &&
             dexCount() == regionInfo(regionAll()).hi && dexValid(1) &&
             regionBattleAvailable(0);

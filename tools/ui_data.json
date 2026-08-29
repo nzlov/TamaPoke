@@ -287,7 +287,8 @@
         "NO HAY POKEMON VALIDOS",
         "Dificil desde Nv.%u",
         "TAREA COMPLETADA",
-        "La recompensa dificil es mejor. Entregar igualmente?"
+        "La recompensa dificil es mejor. Entregar igualmente?",
+        "ADIVINA QUIEN SOY"
       ],
       "medalNames": [
         "Nv.10",
@@ -637,7 +638,8 @@
         "NO ELIGIBLE POKEMON",
         "Hard from Lv.%u",
         "TASK COMPLETED",
-        "Hard rewards are better. Submit anyway?"
+        "Hard rewards are better. Submit anyway?",
+        "GUESS WHO I AM"
       ],
       "medalNames": [
         "Lv.10",
@@ -987,7 +989,8 @@
         "AUCUN POKEMON VALIDE",
         "Difficile des Niv.%u",
         "MISSION TERMINEE",
-        "La recompense difficile est meilleure. Confier quand meme ?"
+        "La recompense difficile est meilleure. Confier quand meme ?",
+        "DEVINE QUI JE SUIS"
       ],
       "medalNames": [
         "Niv.10",
@@ -1337,7 +1340,8 @@
         "KEIN GULTIGES POKEMON",
         "Schwer ab Lv.%u",
         "AUFGABE ERLEDIGT",
-        "Die schwere Belohnung ist besser. Trotzdem abgeben?"
+        "Die schwere Belohnung ist besser. Trotzdem abgeben?",
+        "RATE, WER ICH BIN"
       ],
       "medalNames": [
         "Lv.10",
@@ -1687,7 +1691,8 @@
         "NESSUN POKEMON VALIDO",
         "Difficile da Lv.%u",
         "INCARICO COMPLETATO",
-        "La ricompensa difficile e migliore. Consegnare comunque?"
+        "La ricompensa difficile e migliore. Consegnare comunque?",
+        "INDOVINA CHI SONO"
       ],
       "medalNames": [
         "Lv.10",
@@ -2037,7 +2042,8 @@
         "SEM POKEMON VALIDOS",
         "Dificil desde Niv.%u",
         "TAREFA CONCLUIDA",
-        "A recompensa dificil e melhor. Entregar mesmo assim?"
+        "A recompensa dificil e melhor. Entregar mesmo assim?",
+        "ADIVINHA QUEM SOU"
       ],
       "medalNames": [
         "Niv.10",
@@ -2393,7 +2399,8 @@
         "没有符合条件的宝可梦",
         "%u级起为困难战利品",
         "目标完成",
-        "困难战利品更好，仍要提交？"
+        "困难战利品更好，仍要提交？",
+        "猜猜我是谁"
       ],
       "medalNames": [
         "10级",

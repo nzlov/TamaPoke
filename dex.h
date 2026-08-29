@@ -12,6 +12,16 @@ enum PkType : uint8_t {
 constexpr uint8_t TYPE_COUNT = 18;
 
 enum : uint8_t { R_EVO = 0, R_COMUN, R_RARO, R_LEGENDARIO };
+enum EncounterPeriod : uint8_t {
+  ENCOUNTER_DAY = 1 << 0,
+  ENCOUNTER_NIGHT = 1 << 1,
+  ENCOUNTER_BOTH = ENCOUNTER_DAY | ENCOUNTER_NIGHT,
+};
+constexpr uint8_t ENCOUNTER_NIGHT_START_HOUR = 19;
+constexpr uint8_t ENCOUNTER_DAY_START_HOUR = 6;
+inline bool encounterIsNightHour(uint8_t hour) {
+  return hour < ENCOUNTER_DAY_START_HOUR || hour >= ENCOUNTER_NIGHT_START_HOUR;
+}
 
 using SpeciesId = uint16_t;
 constexpr SpeciesId SPECIES_NONE = 0;
@@ -31,6 +41,7 @@ struct DexEntry {
   uint8_t type1, type2;
   // PokeAPI's canonical female eighths: 0..8, or 0xFF for genderless.
   uint8_t femaleRate;
+  uint8_t encounterPeriods;
   // Normal slot 1, normal slot 2 and hidden slot. Zero means unavailable.
   uint16_t abilities[3];
   SpeciesId evolutions[CONTENT_MAX_EVOLUTIONS];

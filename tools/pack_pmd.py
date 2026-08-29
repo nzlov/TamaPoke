@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Genera entradas TPK2 para los paquetes regionales desde PMD SpriteCollab.
+"""Genera entradas TPK2 desde las fuentes PMD locales de pokemon_data.json.
 
 Genera tools/sdcard/mons/pNNN.bin, psNNN.bin shiny y, cuando SpriteCollab
 ofrece una diferencia visual, pfNNN.bin / pfsNNN.bin para hembras:
@@ -30,20 +30,20 @@ import json
 import os
 import struct
 import sys
-import subprocess
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
 
-# Build inputs follow the authoring catalogue; dex.h is now only a stable ABI.
-sys.path.insert(0, os.path.dirname(__file__))
-from dex_data import DEX
-DEX_COUNT = max(row[0] for row in DEX)
+HERE = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(HERE, 'pokemon_data.json'), encoding='utf-8') as source:
+    POKEMON_DATA = json.load(source)
+DEX_COUNT = len(POKEMON_DATA['species'])
+SPECIES_BY_ID = {row['id']: row for row in POKEMON_DATA['species']}
 
 OUT = os.path.join(os.path.dirname(__file__), 'sdcard', 'mons')
-CACHE = os.path.join(os.path.dirname(__file__), 'pmd_cache')
-PMD_REVISION = '1408504143965ec1ea9c5adc78e39db5a5f43360'
-BASE = f'https://raw.githubusercontent.com/PMDCollab/SpriteCollab/{PMD_REVISION}/sprite'
+ART_SOURCE = POKEMON_DATA['artSource']
+ART_ROOT = os.path.join(HERE, ART_SOURCE['root'])
+PMD_REVISION = ART_SOURCE['revision']
 SLOW = 1.4          # el ritmo original de PMD se siente rapido en el tamagotchi
 MIN_MS = 70
 ALPHA_T = 128
@@ -72,26 +72,6 @@ PACK_ACTIONS += [
 ]
 
 
-def fetch(url, dest):
-    """curl, not urllib. The python.org macOS build ships without a usable CA
-    bundle, so urlopen dies with CERTIFICATE_VERIFY_FAILED on every request --
-    which this reported as 'sin AnimData.xml', i.e. as if the sprite did not
-    exist. gen_avatars.py and gen_dex_data.py hit the same wall."""
-    if os.path.exists(dest):
-        return True
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
-    r = subprocess.run([
-        'curl', '-fsSL', '--connect-timeout', '10', '--max-time', '45',
-        '--retry', '3', '--retry-connrefused', '--retry-delay', '1',
-        '-A', 'Mozilla/5.0', '-o', dest, url,
-    ], capture_output=True)
-    if r.returncode != 0:
-        if os.path.exists(dest):
-            os.remove(dest)
-        return False
-    return True
-
-
 def rgb565(r, g, b):
     return (r >> 3) << 11 | (g >> 2) << 5 | (b >> 3)
 
@@ -110,27 +90,35 @@ def load_animdata(folder):
             continue
         anims[name] = (int(a.find('FrameWidth').text), int(a.find('FrameHeight').text),
                        [int(d.text) for d in a.find('Durations')], name)
-    # resuelve alias (el PNG es el de la animacion original)
-    for k, v in list(anims.items()):
-        if isinstance(v, tuple) and v[0] == 'copy':
-            anims[k] = anims.get(v[1])
-    return anims
+    def resolve(name, seen=None):
+        seen = set() if seen is None else seen
+        if name in seen:
+            return None
+        seen.add(name)
+        value = anims.get(name)
+        if isinstance(value, tuple) and value and value[0] == 'copy':
+            return resolve(value[1], seen)
+        return value
+
+    return {name: resolve(name) for name in anims}
 
 
-def pack(dexnum, shiny=False, female=False, form_path=None, form_name='standard'):
-    if form_path:
-        sub = f'/{form_path}/0001' if shiny else f'/{form_path}'
+def pack(dexnum, shiny=False, female=False, form_art=None, form_name='standard'):
+    species_art = SPECIES_BY_ID[dexnum].get('art', {})
+    if form_art:
+        source_ref = form_art.get('shiny' if shiny else 'normal')
         suffix = f'm-{form_name}' + ('-shiny' if shiny else '')
     elif female:
-        sub = f'/0000/{"0001" if shiny else "0000"}/0002'
+        source_ref = species_art.get('femaleShiny' if shiny else 'female')
         suffix = ('f' if female else '') + ('s' if shiny else '')
     else:
-        sub = '/0000/0001' if shiny else ''
+        source_ref = species_art.get('shiny' if shiny else 'normal')
         suffix = 's' if shiny else ''
-    folder = os.path.join(CACHE, f'{dexnum:04d}-{suffix or "normal"}')
-    base = f'{BASE}/{dexnum:04d}{sub}'
-    if not fetch(f'{base}/AnimData.xml', os.path.join(folder, 'AnimData.xml')):
-        raise RuntimeError('sin AnimData.xml')
+    if not source_ref:
+        raise RuntimeError('sin fuente local')
+    folder = os.path.join(ART_ROOT, source_ref)
+    if not os.path.isfile(os.path.join(folder, 'AnimData.xml')):
+        raise RuntimeError('sin AnimData.xml local')
     anims = load_animdata(folder)
 
     colmap, pal = {}, []
@@ -140,7 +128,7 @@ def pack(dexnum, shiny=False, female=False, form_path=None, form_name='standard'
             continue
         fw, fh, durs, srcname = anims[name]
         png = os.path.join(folder, f'{srcname}-Anim.png')
-        if not fetch(f'{base}/{srcname}-Anim.png', png):
+        if not os.path.isfile(png):
             continue
         im = Image.open(png).convert('RGBA')
         rows = im.size[1] // fh
@@ -174,7 +162,7 @@ def pack(dexnum, shiny=False, female=False, form_path=None, form_name='standard'
         raise RuntimeError('sin Idle')
 
     os.makedirs(OUT, exist_ok=True)
-    path = os.path.join(OUT, f'p{suffix}{dexnum:03d}.bin') if not form_path else \
+    path = os.path.join(OUT, f'p{suffix}{dexnum:03d}.bin') if not form_art else \
         os.path.join(OUT, f'pm{dexnum:03d}-{form_name}' + ('-shiny' if shiny else '') + '.bin')
     with open(path, 'wb') as f:
         f.write(b'TPK2')
@@ -193,9 +181,9 @@ def pack(dexnum, shiny=False, female=False, form_path=None, form_name='standard'
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Empaqueta sprites PMD en formato TPK2')
     parser.add_argument('--workers', type=int, default=10,
-                        help='tareas concurrentes de descarga/empaquetado (predeterminado: 10)')
+                        help='tareas concurrentes de conversion (predeterminado: 10)')
     parser.add_argument('--mega', action='store_true',
-                        help='download configured Mega forms')
+                        help='pack configured local Mega forms')
     parser.add_argument('--mega-report', metavar='PATH',
                         help='write configured Mega sprite coverage as JSON')
     parser.add_argument('--report', metavar='PATH',
@@ -212,13 +200,10 @@ if __name__ == '__main__':
     # The whole dex by default, not the old hardcoded 151. A region is easy to
     # ask for on its own, since the fetch is long and most people want Kanto:
     #   python3 tools/pack_pmd.py kanto
-    # Derived from dex_data.py rather than written out again -- this dict
-    # stopped at Hoenn while dex.h was already 493, so `pack_pmd.py sinnoh`
-    # was not a command that existed.
-    import sys as _s
-    _s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from dex_data import REGIONS as _DR
-    span = {name.lower(): (lo, hi) for name, lo, hi, _st in _DR}
+    span = {
+        region['name'].lower(): tuple(region['range'])
+        for region in POKEMON_DATA['regions']
+    }
     picked = [span[a] for a in args if a in span]
     nums = [int(a) for a in args if a.isdigit()]
     if not nums:
@@ -227,57 +212,66 @@ if __name__ == '__main__':
         else:
             nums = list(range(1, DEX_COUNT + 1))
     if options.mega:
-        with open(os.path.join(os.path.dirname(__file__), 'mega_data.json'),
-                  encoding='utf-8') as mega_file:
-            mega_data = json.load(mega_file)
-        with open(os.path.join(os.path.dirname(__file__), 'gigantamax_data.json'),
-                  encoding='utf-8') as gigantamax_file:
-            gigantamax_data = json.load(gigantamax_file)
+        mega_data = [
+            dict(form, species=species['id'])
+            for species in POKEMON_DATA['species']
+            for form in species['megaForms']
+        ]
+        gigantamax_data = [
+            species['id'] for species in POKEMON_DATA['species']
+            if species['gigantamax']
+        ]
         selected = [row for row in mega_data if int(row['species']) in nums]
         jobs = []
         for row in selected:
-            path = row.get('spritePath')
-            if not path:
+            art = row.get('art')
+            if not art or not art.get('normal'):
                 continue
             form_name = row.get('form', 'standard')
-            jobs.append((int(row['species']), False, False, path, form_name))
-            if row.get('shiny'):
-                jobs.append((int(row['species']), True, False, path, form_name))
+            jobs.append((int(row['species']), False, False, art, form_name))
+            if art.get('shiny'):
+                jobs.append((int(row['species']), True, False, art, form_name))
         if options.mega_report:
             report = {
                 'sourceRevision': PMD_REVISION,
                 'forms': len(selected),
-                'normalAvailable': sum(bool(row.get('spritePath')) for row in selected),
-                'shinyAvailable': sum(bool(row.get('shiny')) for row in selected),
+                'normalAvailable': sum(bool(row.get('art', {}).get('normal')) for row in selected),
+                'shinyAvailable': sum(bool(row.get('art', {}).get('shiny')) for row in selected),
                 'missingNormal': [
                     {'species': int(row['species']), 'form': row.get('form', 'standard')}
-                    for row in selected if not row.get('spritePath')
+                    for row in selected if not row.get('art', {}).get('normal')
                 ],
                 'missingShiny': [
                     {'species': int(row['species']), 'form': row.get('form', 'standard')}
-                    for row in selected if not row.get('shiny')
+                    for row in selected if not row.get('art', {}).get('shiny')
                 ],
                 'gigantamaxForms': len(gigantamax_data),
                 'gigantamaxNormalAvailable': 0,
                 'gigantamaxShinyAvailable': 0,
-                'missingGigantamaxNormal': [int(row['species']) for row in gigantamax_data],
-                'missingGigantamaxShiny': [int(row['species']) for row in gigantamax_data],
+                'missingGigantamaxNormal': gigantamax_data,
+                'missingGigantamaxShiny': gigantamax_data,
             }
             with open(options.mega_report, 'w', encoding='utf-8') as report_file:
                 json.dump(report, report_file, ensure_ascii=False, indent=2)
                 report_file.write('\n')
     else:
-        jobs = [(n, sh, female, None, 'standard') for n in nums
-                for female in [False, True]
-                for sh in ([False] if solo_normal else [False, True])]
+        jobs = []
+        for n in nums:
+            art = SPECIES_BY_ID[n].get('art', {})
+            jobs.extend((n, shiny, False, None, 'standard')
+                        for shiny in ([False] if solo_normal else [False, True]))
+            if art.get('female'):
+                jobs.append((n, False, True, None, 'standard'))
+            if not solo_normal and art.get('femaleShiny'):
+                jobs.append((n, True, True, None, 'standard'))
 
     def run_job(job):
-        n, sh, female, form_path, form_name = job
+        n, sh, female, form_art, form_name = job
         try:
-            label = (' Mega' if form_path else '') + \
+            label = (' Mega' if form_art else '') + \
                     (' female' if female else '') + (' shiny' if sh else '')
             print(f"#{n:03d}{label}", flush=True)
-            pack(n, sh, female, form_path, form_name)
+            pack(n, sh, female, form_art, form_name)
             return None
         except Exception as e:
             # Female art only exists for species with an authored visual
@@ -292,8 +286,8 @@ if __name__ == '__main__':
         fallos = [failed for failed in executor.map(run_job, jobs) if failed]
     if options.report:
         failed_set = set(fallos)
-        base_jobs = [(number, shiny) for number, shiny, female, path, _form in jobs
-                     if not female and not path]
+        base_jobs = [(number, shiny) for number, shiny, female, art, _form in jobs
+                     if not female and not art]
         report = {
             'sourceRevision': PMD_REVISION,
             'jobs': len(base_jobs),

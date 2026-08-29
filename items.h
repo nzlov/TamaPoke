@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include "moves.h"
 
-// Item identities belong to the move pack. The firmware only carries an
+// Item identities belong to the item pack. The firmware only carries an
 // opaque key while executing one of these generic effect opcodes.
 using ItemKey = uint16_t;
 constexpr ItemKey ITEM_KEY_NONE = 0;

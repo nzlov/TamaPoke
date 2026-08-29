@@ -55,16 +55,18 @@ The available species count is **determined by the region packs installed on
 the device**; the Pokédex, eggs, battles and region selectors expose only that
 available content.
 
-Language, move, regional and question-bank content now lives in independently deployable
+Language, battle, move, item, regional and question-bank content now lives in independently deployable
 runtime packages. Install only the languages and regions you need, and update
 content without recompiling the firmware:
 
 | Package | Contents | Required |
 |---|---|---|
 | UI (`.tui`) | UI strings, layout metrics and fonts; Simplified Chinese is `ui-zh-CN.tui` | At least one |
-| Moves (`.tmove`) | Move mechanics, learnsets, type chart, names and descriptions | Yes |
-| Region (`.tregion`) | Species data, names and descriptions, animated/alternate-color sprites, thumbnails, trainers, gyms and badges | At least one |
-| Questions (`.tquiz`) | Locale-indexed multiple-choice questions; records are read directly by random index | Optional |
+| Battle (`.tbattle`) | Shared abilities, type catalogue and effectiveness chart | Yes |
+| Moves (`.tmove`) | Stable move IDs, mechanics, G-Max Move definitions, names and descriptions | Yes |
+| Items (`.titem`) | Stable item keys, effects, names, descriptions and optional icons | Yes |
+| Region (`.tregion`) | Species data, learnsets, breeding references, Mega/Gigantamax forms and G-Max Move references, names and descriptions, animated/alternate-color sprites, thumbnails, trainers, gyms and badges | At least one |
+| Questions (`.tquiz`) | Locale-indexed multiple-choice questions; records are read directly by random index | No; arithmetic is the fallback only when enabled |
 
 The installer reads `web/packs/index.json` and checks each selection's
 dependencies against both the packages already on the device and those selected
@@ -84,9 +86,10 @@ operations require confirmation; restart the device after changing the card.
 > **Upgrade note:** the first migration to runtime packages clears saves made by
 > older firmware. For later same-schema updates, leave **Erase device** unchecked
 > to preserve the current save; flashing does not delete packages on the microSD.
-> ABI 7 adds the required Egg Group, offspring-family and Egg Move catalogues
-> used by the Breeding Centre. Redeploy every UI, move and region pack with this
-> firmware; older package ABIs are rejected.
+> ABI 7 separates shared battle rules, moves and items from regional species
+> content and adds the Breeding Centre's Egg Group, offspring-family and Egg Move
+> references to region packs. Redeploy `battle-core`, `moves-core`, `items-core`,
+> every region pack and the desired UI packs; older package ABIs are rejected.
 > Region packages are large (a 40 MB package normally takes 10–15 minutes over
 > USB serial). Restart the device after deployment.
 
@@ -299,6 +302,10 @@ the answering side keeps the link alive, and the host settles once both actions 
 - The shiny roll uses the exact wild base rate and shared farewell bonus. Each
   shiny parent adds **5 percentage points**, so two add 10 points. A shiny bred
   offspring follows the wild rule that floors every IV at 20.
+- Every offspring has a **5%** base chance to carry the persistent Gigantamax
+  Factor, plus **10 percentage points per parent** that carries it (5% / 15% /
+  25%). The factor stays dormant on an unsupported form and becomes effective
+  if that individual later evolves into an eligible Gigantamax species.
 - The centre shows the male parent on the left and female parent on the right,
   with the offspring area centred below. Tap an occupied parent for **Details /
   Remove**; tap an empty side to choose from the six cultivation slots or four
@@ -319,10 +326,9 @@ Poliwhirl, Slowpoke, Eevee, Tyrogue, Wurmple, Kirlia, Nincada, Snorunt,
 Clamperl and Burmy. Egg pools contain their base forms, and these targets are
 reached through evolution.
 
-`gen_dex_data.py --link` is the rule rather than a one-off edit: it fills in any
-evolution whose target has since joined the table, and only ever touches rows
-whose value is 0, so it cannot retune an evolution anybody already has. Sinnoh
-brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
+Evolution targets are stable species IDs in `pokemon_data.json`. Adding a
+cross-generation target is therefore an explicit catalogue edit reviewed with
+the same ID-integrity checks as learnsets and forms.
 
 - Triggers when **level ≥ its evolution level** (16 for most base forms; ~30 for
   stone-style, ~40 for trade-style) **and every stat ≥ 40** at that moment.
@@ -359,16 +365,22 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 ### Daily task centre
 
 - At device-clock midnight, all three tasks are replaced with three distinct
-  species drawn from the installed regions. A legendary species enters this pool
-  only after its region's hard champion has been defeated.
+  non-legendary species drawn from the installed regions. Targets may be daytime
+  or nighttime species, but legendary species never enter the task pool. Each
+  slot draws from registered Pokédex species with **70%** probability and from
+  unregistered species with **30%** probability, falling back only when its
+  selected pool is empty.
 - Before an ordinary wild species is rolled, a region with one or more unfinished
   matching tasks gets an exact **30%** task branch. That branch chooses uniformly
-  among the unfinished task species from the current region; completed tasks no
-  longer boost encounters.
+  among unfinished task species from the current region that are available in the
+  current day/night period; completed tasks no longer boost encounters.
 - Each task asks for one matching living, hatched creature from the six cultivation
-  slots or the Box. When more than one individual matches, tap the exact creature,
-  then choose **View** or **Submit**. Submitting permanently removes only that
+  slots or the Box. Tapping the task card directly starts the submission picker;
+  incomplete cards carry no separate Submit caption. When more than one individual
+  matches, tap the exact creature, then choose **View** or **Submit**. Submitting permanently removes only that
   individual, and the final remaining cultivation member cannot be submitted.
+- An unregistered target appears as a black silhouette labelled **Guess who I am**;
+  its species name and region remain hidden until that Pokédex entry is registered.
 - Capturing an unfinished task target offers immediate submission from the battle
   settlement before it occupies a cultivation or Box slot. Declining uses the
   normal storage flow; a normal-tier submission explicitly warns that the hard
@@ -541,11 +553,11 @@ one available special mechanic: a Z-Move, Dynamax, or Mega Evolution.
   G-Max Move; it is never added to the learned move slots. Urshifu selects
   G-Max One Blow from a Dark source move and G-Max Rapid Flow from a Water source
   move. Other damaging types remain generic Max Moves and status moves become
-  Max Guard. A matching learned attack activates the signature move. The battle
-  menu uses localized transformed move names and
+  Max Guard, so a species without a matching learned attack cannot use its
+  signature move. The battle menu uses localized transformed move names and
   marks generic and signature transformations with separate **MAX** and
   **G-MAX** tags.
-- Mega Evolution supports species with an official Mega form. The standard,
+- Mega Evolution is limited to species with an official Mega form. The standard,
   X, Y and Z stones are distinct and select that exact branch. The untransformed
   Pokemon has one shared normal/shiny appearance; the branch appears only after
   Mega Evolution.
@@ -591,6 +603,17 @@ Darmanitan, Aegislash, Wishiwashi, Minior, Mimikyu, Cramorant, Eiscue, Morpeko,
 and Palafin. Their weather, HP, move, hit, end-of-round, and re-entry triggers
 change types or battle stats as appropriate. King's Shield and Aura Wheel are
 append-only catalogue entries so saved move IDs remain stable.
+
+### Day and night encounters
+
+Wild encounter pools follow the device clock. Day runs from **06:00 through
+18:59** and night from **19:00 through 05:59**, using the same boundary as the
+scene lighting. Each species carries an explicit `day`, `night`, or `both`
+value in `pokemon_data.json`; that value is packed with the species into its
+region package. The initial catalogue marks 118 clearly diurnal species and
+134 clearly nocturnal species by their original-region ecology, while the
+remaining 773 stay available in both periods. Rarity weights and the post-league
+legendary gate still apply inside the selected period's pool.
 
 ### Battle weather and terrain
 
@@ -722,8 +745,8 @@ timing, DMA tearing, PSRAM or audio — those still need the board.
 
 ### Easiest install: the web installer
 
-`web/index.html` flashes the firmware (ESP Web Tools) and deploys UI, move,
-region and question packs to the SD over Web Serial, no Arduino needed. The linked
+`web/index.html` flashes the firmware (ESP Web Tools) and deploys UI, battle,
+move, item, region and question packs to the SD over Web Serial, no Arduino needed. The linked
 `web/question-bank.html` imports banks from files or a connected device, searches and
 paginates questions, edits, exports, builds and directly deploys indexed question banks.
 Package/question IDs and the internal revision are maintained automatically; the page also
@@ -737,9 +760,12 @@ catalogue layout.
 ### Generate and load the data packs yourself
 
 All sprites come from **[PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)**
-(CC BY-NC). `gen_data_packs.py` reads the generated per-species TPK2/TPTH files
-directly and combines them with UI, species, move, description, trainer, battle
-and badge data. No regional intermediate bundle is created. Newly packed sprites
+(CC BY-NC). The fixed-revision PNG/XML sources used by the game are stored under
+`tools/pokemon_art/pmd/`; each available normal, shiny, female and Mega source
+directory is referenced by `tools/pokemon_data.json`. `pack_pmd.py` converts those
+local sources without network access, and `gen_data_packs.py` combines the generated
+TPK2/TPTH files with UI, species, move, description, trainer, battle and badge data.
+No regional intermediate bundle is created. Newly packed sprites
 also carry rear Idle/Hurt/Attack actions, so the player's battle Pokemon faces
 away from the player. A missing rear action falls back to the matching front
 action. Missing Mega, shiny Mega, or Gigantamax community art falls back to that
@@ -751,8 +777,8 @@ python3 tools/pack_pmd.py --report base-sprite-coverage.json
 python3 tools/pack_pmd.py --mega --mega-report mega-sprite-coverage.json
 # Mega outputs are pmNNN-{standard,x,y,z}[-shiny].bin
 python3 tools/make_thumbs.py    # Pokédex thumbnails (from the PMD sprites) -> thumbs.bin
-python3 tools/fetch_species_descriptions.py # append descriptions for newly added dex numbers
-python3 tools/gen_data_packs.py # web/packs/*.tui, *.tmove, *.tregion, *.tquiz + index.json
+python3 tools/fetch_species_descriptions.py # fill missing descriptions in pokemon_data.json
+python3 tools/gen_data_packs.py # web/packs/*.{tui,tbattle,tmove,titem,tregion,tquiz} + index.json
 python3 tools/check_data_packs.py
 ```
 
@@ -792,10 +818,15 @@ Python pipeline.
 - **UI (`.tui`)** — one installed language per pack: strings, layout metrics
   and either a compact bitmap face or a hinted OpenType subset with package-defined
   pixel sizes. The language list is discovered at boot.
-- **Moves (`.tmove`)** — stable move IDs, mechanics, learnsets and Move Stone
-  compatibility, type chart,
+- **Battle (`.tbattle`)** — shared ability definitions, the type catalogue and
+  the 18×18 effectiveness chart.
+- **Moves (`.tmove`)** — stable move IDs, mechanics, G-Max Move definitions,
   names and localized descriptions.
-- **Regions (`.tregion`)** — species records, localized names and descriptions,
+- **Items (`.titem`)** — stable item keys, effects, names, localized descriptions
+  and optional icons.
+- **Regions (`.tregion`)** — species records, learnsets, Mega/Gigantamax metadata
+  and species-to-G-Max-Move references,
+  localized names and descriptions,
   PMD sprites, thumbnails, region metadata, trainers, regional battle configuration
   and badges.
 - **Questions (`.tquiz`)** — language spans, fixed-width random-access indexes and
@@ -807,11 +838,14 @@ installations to the built-in USB recovery screen.
 
 ## Pokédex and species data
 
-`tools/dex_data.py` is the source for name, slug, type (accent colour +
-background biome), evolution line with gen-1 levels, rarities and starters.
-`tools/dex_stats.py` has the base stats and `tools/dex_types.py` the typings and
-type chart (both from PokéAPI). These use **current** values; for example, Pidgeot
-has 101 Speed. The generator emits
+`tools/pokemon_data.json` is the committed source for species names, slugs,
+types, presentation metadata, evolution rules, rarity, base stats, abilities,
+learnsets and Mega/Gigantamax forms. `tools/move_data.json`,
+`tools/item_data.json` and `tools/battle_data.json` are the independent sources
+for moves, items, and shared abilities/type rules. Pack generation is fully
+offline; fetch scripts only refresh these committed catalogues when explicitly run.
+Base stats use **current** values, not Gen 1 ones —
+Pidgeot has 101 Speed here, not the 91 it had in Red/Blue. The generator emits
 these records into region packs; `dex.h` contains only the stable runtime ABI and
 limits. The pet's identity is its Pokédex number (persisted in NVS).
 
@@ -822,8 +856,8 @@ limits. The pet's identity is its Pokédex number (persisted in NVS).
 ## Types
 
 Every species carries its real **typing** (one or two of the 18 types) and the game
-ships the full **18×18 effectiveness chart** in the move pack, generated from
-`tools/dex_types.py`.
+ships the full **18×18 effectiveness chart** in the battle pack from
+`tools/battle_data.json`.
 
 The chart uses the **current Gen 6+ rules**, including Steel and Fairy typings and
 Fairy's immunity to Dragon.
@@ -949,12 +983,14 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
 - `dex.h` / `moves.h` — stable firmware ABI; catalogue records live on the SD
 - `ui_art.h` — generated core UI icons/colours; pet sprites only exist in region packs
 - `pin_config.h` — the board's official pins
-- `tools/` — pipeline: `dex_data.py` (data), `dex_stats.py`, `dex_types.py`,
-  `sprites.py` (workshop), `pack_pmd.py` / `make_thumbs.py`,
+- `tools/` — committed JSON catalogues plus `sprites.py` (workshop),
+  `pack_pmd.py` / `make_thumbs.py`,
   `gen_data_packs.py`, `quiz_pack.py`, validators and `touch_log.py`
+- `tools/pokemon_art/pmd/` — fixed-revision PMD PNG/XML sources, licence and
+  per-artist credit data referenced by `pokemon_data.json`
 - `tools/emu/` — desktop emulator (real firmware + stubbed hardware, SDL)
 - `tools/sdcard/mons/` — generated sprite inputs (animated, alternate-color, PMD, thumbnails)
-- `web/packs/` — deployable UI, move, region and question packs plus their dynamic catalogue
+- `web/packs/` — deployable UI, battle, move, item, region and question packs plus their dynamic catalogue
 - `web/` — the browser installer and question-bank editor (ESP Web Tools + Web Serial deployment/configuration)
 
 ## Serial console (115200, debug)

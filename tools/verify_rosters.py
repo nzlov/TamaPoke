@@ -15,13 +15,13 @@ Only the FIRST party of a name is taken. Crystal and Emerald both carry rematch
 teams for the same leaders, and the gym battle is the first one.
 """
 import os
+import json
 import re
 import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-from dex_data import DEX
+POKEMON_DATA = json.loads(open(os.path.join(HERE, 'pokemon_data.json'), encoding='utf-8').read())
 
 CRYSTAL = 'https://raw.githubusercontent.com/pret/pokecrystal/master/data/trainers/parties.asm'
 EMERALD = 'https://raw.githubusercontent.com/pret/pokeemerald/master/src/data/trainer_parties.h'
@@ -46,8 +46,8 @@ HOENN = ['Roxanne', 'Brawly', 'Wattson', 'Flannery', 'Norman', 'Winona',
          'TateAndLiza', 'Juan', 'Sidney', 'Phoebe', 'Glacia', 'Drake', 'Wallace']
 
 SLUG = {}
-for n, slug, *_ in DEX:
-    SLUG[slug] = n
+for species in POKEMON_DATA['species']:
+    SLUG[species['slug']] = species['id']
 
 
 def dex_of(raw):

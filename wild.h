@@ -21,6 +21,7 @@ void wildApplyRare(bool rare, uint8_t &ivAtk, uint8_t &ivDef,
 bool wildGigantamaxFactorForRoll(SpeciesId species, uint8_t roll);
 AbilitySlot wildAbilitySlotForRoll(SpeciesId species, bool hard, uint8_t roll,
                                    uint32_t normalRoll);
+bool wildEncounterAllowed(SpeciesId species, bool night);
 
 // Capture probability is derived from pack-owned rarity plus live battle
 // state. ballModifier is a percentage supplied by the selected item, or the

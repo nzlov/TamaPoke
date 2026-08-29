@@ -25,6 +25,15 @@ static void ck(bool ok, const char *what) {
 }
 
 int main() {
+  ck(!encounterIsNightHour(18) && encounterIsNightHour(19) &&
+     encounterIsNightHour(5) && !encounterIsNightHour(6),
+     "day and night split at 19:00 and 06:00 exactly");
+  ck(wildEncounterAllowed(16, false) && !wildEncounterAllowed(16, true),
+     "a day species is excluded from the night encounter pool");
+  ck(!wildEncounterAllowed(41, false) && wildEncounterAllowed(41, true),
+     "a night species is excluded from the day encounter pool");
+  ck(wildEncounterAllowed(1, false) && wildEncounterAllowed(1, true),
+     "an unrestrictive species remains available in both encounter pools");
   BattleField meadowClear = wildBattleField(0, 49);
   BattleField meadowSun = wildBattleField(0, 50);
   BattleField meadowRain = wildBattleField(0, 80);

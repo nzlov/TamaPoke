@@ -94,7 +94,7 @@ combined shiny effect), `bootsplash`, `egg`,
 Everything except `font.cpp` and `genproto.py` is a
 stub; the game itself is the real thing.
 
-UI, move, species and sprite data are read from `web/packs/`, the same generated
+UI, battle, move, item, species and sprite data are read from `web/packs/`, the same generated
 packages deployed to the board. Run `tools/gen_data_packs.py` first. Missing
 packages enter the same recovery path as a board with no usable data packs.
 

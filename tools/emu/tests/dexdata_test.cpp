@@ -100,7 +100,7 @@ int main(){
   };
 
   // --- THE ONE THAT BITES ON A NEW GENERATION: a species with no attack of
-  //     its own type. dex_moves.py is 77 hand-picked moves, so a typing that
+  //     its own type. move_data.json is a compact hand-picked catalogue, so a typing that
   //     arrives with a new region can leave creatures with no STAB at all.
   {
     int noStab = 0; int16_t first = 0;

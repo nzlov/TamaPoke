@@ -27,9 +27,9 @@ This project is not affiliated with or endorsed by any of those companies.
 | **All sprites** (idle, walk, sleep, eat, hurt, attack…) | [PMD Sprite Collaboration (PMDCollab/SpriteCollab)](https://github.com/PMDCollab/SpriteCollab) | Mystery-Dungeon-style animated sprites used everywhere: main screen, stat card, minigame, and the Pokédex grid + detail view |
 | **Base stats, learnsets and Pokédex flavor text** | [PokéAPI](https://pokeapi.co) | Real stats, level-up moves and the newest available main-series description per supported language for the current 1025-species catalogue |
 | **Simplified-Chinese Pokédex text** | [The official Pokémon Website in China](https://dex.pokemon.cn/play/pokedex) | Official Chinese descriptions used when PokéAPI has no `zh-hans` entry |
-| **Simplified-Chinese species and move names** | [42arch/pokemon-dataset-zh](https://github.com/42arch/pokemon-dataset-zh) | Pack authoring data in `tools/name_locales.json`, emitted as localized-name sections in region and move packs — © 2024 42arch, **MIT**; the source dataset credits 52Poké Wiki |
+| **Simplified-Chinese species and move names** | [42arch/pokemon-dataset-zh](https://github.com/42arch/pokemon-dataset-zh) | Committed authoring data in `tools/pokemon_data.json` and `tools/move_data.json`, emitted as localized-name sections in region and move packs — © 2024 42arch, **MIT**; the source dataset credits 52Poké Wiki |
 | **Gym badges** | [SteGriff/pokemon-badges](https://github.com/SteGriff/pokemon-badges) | Kanto through Unova pack data — Stephen Griffiths 2011, **CC BY 3.0**, traced from Bulbapedia |
-| **Optional item icons** | [PokeAPI/sprites](https://github.com/PokeAPI/sprites/tree/master/sprites/items) | 24×24/30×30 game item sprites fetched locally by `tools/fetch_item_icons.py` and packed into `moves-core.tmove` |
+| **Optional item icons** | [PokeAPI/sprites](https://github.com/PokeAPI/sprites/tree/master/sprites/items) | 24×24/30×30 game item sprites fetched locally by `tools/fetch_item_icons.py` and packed into `items-core.titem` |
 | **Gym leader teams** (Johto, Hoenn) | [pret/pokecrystal](https://github.com/pret/pokecrystal), [pret/pokeemerald](https://github.com/pret/pokeemerald) | Verified against the games' own trainer tables by `tools/verify_rosters.py` — no art is taken, only the team data |
 
 The **SpriteCollab** sprites are the work of its community of artists under their
@@ -38,12 +38,11 @@ credit is in the original repository's
 [tracker.json](https://github.com/PMDCollab/SpriteCollab/blob/master/tracker.json).
 Huge thanks to that whole community for an enormous amount of work.
 
-> **Important if you reuse this repo:** the packaged sprite files
-> (`tools/sdcard/mons/*.bin`) are derived from the sources above. Don't
-> redistribute them commercially. If you publish the project, the clean approach
-> is to distribute **only the code and scripts**, and have each user download and
-> package the sprites from the original sources with `tools/pack_*.py` (or the web
-> installer).
+The fixed-revision PNG/XML subset used by TamaPoke is kept in
+`tools/pokemon_art/pmd/`, together with the upstream licence and complete tracker
+used for per-artist attribution. `pokemon_data.json` records every source path;
+the generated `tools/sdcard/mons/*.bin` files remain ignored intermediates.
+Neither the source subset nor derived packs may be redistributed commercially.
 
 The optional PokeAPI item sprites follow the same local-generation rule. The
 PokeAPI/sprites licence file says that all image contents remain copyright The

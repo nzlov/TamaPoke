@@ -3551,6 +3551,10 @@ int sceneHour() {
   return e ? (int)((e / 3600) % 24) : 13;
 }
 
+bool sceneIsNight() {
+  return encounterIsNightHour((uint8_t)sceneHour());
+}
+
 // suelo de cada bioma de dia (de noche se mezcla hacia el azul nocturno)
 static const uint16_t BIOME_SOIL[6] = {
   C565(0x7e, 0xc0, 0x7f),  // 0 pradera
@@ -3883,7 +3887,7 @@ void render() {
     return;
   }
   int h = sceneHour();
-  gNight = pet.sleeping || h < 6 || h >= 20;
+  gNight = pet.sleeping || sceneIsNight();
   // drawScene covers the complete frame before it is submitted to the panel.
   drawScene(pet.isEgg() ? 0 : dexEntry(pet.speciesId).biome, millis(), gNight);
 
@@ -4224,7 +4228,7 @@ void drawGameScene();  // prototipo (definida mas abajo)
 void renderSack() {
   uint32_t now = millis();
   drawGameScene();  // fondo del habitat
-  bool night = sceneHour() < 6 || sceneHour() >= 20;
+  bool night = sceneIsNight();
   uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
 
   // pantalla de resultado
@@ -4301,7 +4305,7 @@ void renderSack() {
 // fondo del minijuego: hatibat del bicho (cielo por hora + suelo del bioma)
 void drawGameScene() {
   int hh = sceneHour();
-  bool night = hh < 6 || hh >= 20;
+  bool night = encounterIsNightHour((uint8_t)hh);
   uint16_t top, bot;
   if (night)       { top = C565(0x0c, 0x12, 0x24); bot = C565(0x1e, 0x26, 0x46); }
   else if (hh < 8) { top = C565(0xd1, 0x6a, 0x86); bot = C565(0xf3, 0xb8, 0x7c); }
@@ -4320,7 +4324,7 @@ void drawGameScene() {
 
 void renderGame() {
   // drawGameScene covers the complete frame before it is submitted.
-  bool night = sceneHour() < 6 || sceneHour() >= 20;
+  bool night = sceneIsNight();
   uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
 
   if (gameOverUntil) {
@@ -5037,7 +5041,7 @@ static void drawBattleBack(int y0, int scale, int coverHeight = 0) {
   if (dex < 1 || dex > dexCount()) { gfx->fillCircle(CX, CY, 231, UI_BG_DAY); return; }
   uint8_t bi = dexEntry(dex).biome;
   if (bi >= BACK_BIOMES) bi = 0;
-  bool night = sceneHour() < 6 || sceneHour() >= 20;
+  bool night = sceneIsNight();
   drawBack(BACKS[bi][night ? 1 : 0], y0, scale, coverHeight);
 }
 
@@ -5846,13 +5850,14 @@ void startBattle(int16_t dex, uint8_t lvl) {
   btlStartRoundIntro(millis());
 }
 
-static SpeciesId wildSpecies(uint8_t region) {
+static SpeciesId wildSpecies(uint8_t region, bool night) {
   if (region >= regionAll()) return SPECIES_NONE;
   const RegionInfo &info = regionInfo(region);
   bool legends = regionBattleInfo(region).trainerCount &&
       player.hasBadge(region, regionBattleInfo(region).trainerCount - 1, true);
   uint32_t total = 0;
   for (SpeciesId dex = info.lo; dex <= info.hi && dex <= dexCount(); dex++) {
+    if (!wildEncounterAllowed(dex, night)) continue;
     uint8_t rarity = dexEntry(dex).rarity;
     if (rarity == R_LEGENDARIO && !legends) continue;
     total += rarity == R_LEGENDARIO ? 1 : rarity == R_RARO ? 12 : rarity == R_EVO ? 22 : 60;
@@ -5860,6 +5865,7 @@ static SpeciesId wildSpecies(uint8_t region) {
   if (!total) return SPECIES_NONE;
   uint32_t pick = (uint32_t)random((long)total);
   for (SpeciesId dex = info.lo; dex <= info.hi && dex <= dexCount(); dex++) {
+    if (!wildEncounterAllowed(dex, night)) continue;
     uint8_t rarity = dexEntry(dex).rarity;
     if (rarity == R_LEGENDARIO && !legends) continue;
     uint16_t weight = rarity == R_LEGENDARIO ? 1 : rarity == R_RARO ? 12 : rarity == R_EVO ? 22 : 60;
@@ -5871,10 +5877,11 @@ static SpeciesId wildSpecies(uint8_t region) {
 
 void startWildBattle(uint8_t region, bool hard) {
   if (pet.isEgg() || pet.ceremony != CER_NONE || region >= regionAll()) return;
+  bool night = sceneIsNight();
   SpeciesId dex = dailyTaskEncounter(
-      player.dailyTasks, region, (uint8_t)random(100),
+      player.dailyTasks, region, night, (uint8_t)random(100),
       (uint32_t)random(0x7FFFFFFF));
-  if (!dex) dex = wildSpecies(region);
+  if (!dex) dex = wildSpecies(region, night);
   if (!dex) return;
   buildSquad(0, TRAINER_TEAM_MAX, 0xFFFF);
   if (!btlSquadN) return;
@@ -8611,7 +8618,7 @@ void spdTap(int16_t x, int16_t y) {
 void renderSpeed() {
   uint32_t now = millis();
   drawGameScene();
-  bool night = sceneHour() < 6 || sceneHour() >= 20;
+  bool night = sceneIsNight();
   uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
 
   if (spdOverUntil) {
@@ -10026,22 +10033,32 @@ static void drawTaskList() {
     const DailyTask &task = player.dailyTasks.entries[i];
     int y = 78 + i * 94;
     bool complete = task.completed;
+    bool registered = player.isRegistered(task.species);
     gfx->fillRoundRect(70, y, 326, 82, 12, complete ? UI_TRACK : UI_WHITE);
     gfx->drawRoundRect(70, y, 326, 82, 12, UI_INK);
     const uint8_t *thumb = task.species ? thumbs.get(task.species) : nullptr;
-    if (thumb) drawThumb(thumb, 78, y + 8, 2, complete);
-    gfx->setTextColor(complete ? UI_MUTED : dexEntry(task.species).accent);
-    gfx->setTextSize(2);
-    gfx->setCursor(154, y + 18);
-    gfx->print(task.species ? speciesName(task.species) : "?");
-    uint8_t region = taskSpeciesRegion(task.species);
-    gfx->setTextSize(1);
-    gfx->setCursor(154, y + 45);
-    gfx->print(region < regionAll() ? regionName(region) : "?");
-    const char *state = complete ? T(S_TASK_COMPLETED) : T(S_TASK_SUBMIT);
-    gfx->setTextColor(complete ? UI_BAR_OK : UI_BAR_WARN);
-    gfx->setCursor(380 - gfx->textWidth(state), y + 64);
-    gfx->print(state);
+    if (thumb) drawThumb(thumb, 78, y + 8, 2, complete || !registered);
+    if (registered) {
+      gfx->setTextColor(complete ? UI_MUTED : dexEntry(task.species).accent);
+      gfx->setTextSize(2);
+      gfx->setCursor(154, y + 18);
+      gfx->print(task.species ? speciesName(task.species) : "?");
+      uint8_t region = taskSpeciesRegion(task.species);
+      gfx->setTextSize(1);
+      gfx->setCursor(154, y + 45);
+      gfx->print(region < regionAll() ? regionName(region) : "?");
+    } else {
+      gfx->setTextColor(UI_INK);
+      gfx->setTextSize(2);
+      gfx->setCursor(154, y + 31);
+      gfx->print(T(S_TASK_MYSTERY));
+    }
+    if (complete) {
+      const char *state = T(S_TASK_COMPLETED);
+      gfx->setTextColor(UI_BAR_OK);
+      gfx->setCursor(380 - gfx->textWidth(state), y + 64);
+      gfx->print(state);
+    }
   }
   gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(2);

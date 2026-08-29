@@ -69,6 +69,12 @@ AbilitySlot breedingAbilityForRoll(SpeciesId child, AbilitySlot inherited,
   return (roll & 1u) ? second : first;
 }
 
+bool breedingGigantamaxFactorForRoll(uint8_t factorParents, uint8_t roll) {
+  if (factorParents > 2) factorParents = 2;
+  return roll < BREEDING_GIGANTAMAX_BASE_CHANCE +
+                    factorParents * BREEDING_GIGANTAMAX_PARENT_BONUS;
+}
+
 static bool addMove(PartyMon &child, MoveId move) {
   if (!moveValid(move)) return false;
   for (MoveId known : child.moves) if (known == move) return false;
@@ -102,6 +108,9 @@ PartyMon breedingCreateOffspring(const PartyMon &first, const PartyMon &second,
   child.nature = (NatureId)random(NATURE_COUNT);
   child.gender = genderFromRate(dexEntry(child.dex).femaleRate,
                                 (uint8_t)random(8));
+  child.setGigantamaxFactor(breedingGigantamaxFactorForRoll(
+      (uint8_t)(!!first.gigantamaxFactor() + !!second.gigantamaxFactor()),
+      (uint8_t)random(100)));
 
   const PartyMon &abilityParent = offspringParent(first, second);
   child.setAbilitySlot(breedingAbilityForRoll(

@@ -315,7 +315,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.trAtk = pet.trMaxAtk(); pet.trDef = pet.trMaxDef(); pet.trSpe = pet.trMaxSpe();
   }
   // The learn prompt is modal and would cover whatever screen was asked for.
-  // It started firing for every shot once dex_moves.py gained the cheap early
+  // It started firing for every shot once the move catalogue gained the cheap early
   // attacks, because a creature now genuinely has moves waiting.
   // First-boot shots advance through the same language and region taps as the
   // player. The language page itself is left untouched for its screenshot.

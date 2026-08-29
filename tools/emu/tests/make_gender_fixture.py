@@ -21,8 +21,11 @@ region_hi = int(sys.argv[2]) if len(sys.argv) > 2 else 1025
 # tests without requiring the release packs to be present in the worktree.
 gen_data_packs.WEB_PACKS = output
 gen_data_packs.build_ui_packs([])
-gen_data_packs.build_move_pack([], output)
+gen_data_packs.build_battle_pack([])
+gen_data_packs.build_move_pack([])
+gen_data_packs.build_item_pack([])
 
+species_ids = (1, 4, 6, 9, 65, 132, 144)
 names = [
     b"Bulbasaur", b"Charmander", b"Charizard", b"Blastoise", b"Alakazam",
     b"Ditto", b"Articuno",
@@ -33,30 +36,55 @@ offset = 0
 for value in names:
     name_offsets.append(offset)
     offset += len(value) + 1
-spec_record = struct.Struct("<HBBH10BIB")
+spec_record = struct.Struct("<HBBH11BIB")
 spec = b"".join([
     spec_record.pack(1, 0, 1, 0x2D7F, 50, 50, 50, 50, 50, 50,
-                     0, 0, 255, 0, name_offsets[0], 4),
+                     0, 0, 255, 0, 3, name_offsets[0], 4),
     spec_record.pack(4, 0, 1, 0xFFFF, 39, 52, 43, 65, 60, 50,
-                     0, 1, 9, 0, name_offsets[1], 1),
+                     0, 1, 9, 0, 3, name_offsets[1], 1),
     spec_record.pack(6, 0, 1, 0xFFFF, 78, 84, 78, 100, 109, 85,
-                     0, 1, 9, 0, name_offsets[2], 1),
+                     0, 1, 9, 0, 3, name_offsets[2], 1),
     spec_record.pack(9, 0, 1, 0xFFFF, 79, 83, 100, 78, 85, 105,
-                     0, 2, 255, 0, name_offsets[3], 1),
+                     0, 2, 255, 0, 3, name_offsets[3], 1),
     spec_record.pack(65, 0, 1, 0xFFFF, 55, 50, 45, 120, 135, 95,
-                     0, 10, 255, 0, name_offsets[4], 2),
+                     0, 10, 255, 0, 3, name_offsets[4], 2),
     spec_record.pack(132, 0, 1, 0xFFFF, 48, 48, 48, 48, 48, 48,
-                     0, 0, 255, 0, name_offsets[5], 255),
+                     0, 0, 255, 0, 3, name_offsets[5], 255),
     spec_record.pack(144, 0, 1, 0xFFFF, 90, 85, 100, 85, 95, 125,
-                     0, 0, 255, 0, name_offsets[6], 255),
+                     0, 0, 255, 0, 3, name_offsets[6], 255),
 ])
 ability_by_species = {
-    int(row["dex"]): row["slots"] for row in gen_data_packs.ABILITY_DATA["species"]
+    int(row["id"]): row["abilitySlots"] for row in gen_data_packs.SPECIES
+}
+catalogue_by_species = {
+    int(row["id"]): row for row in gen_data_packs.SPECIES
 }
 ability_slots = b"".join(
     struct.pack("<HHHH", dex, *(int(value) for value in ability_by_species[dex]))
-    for dex in (1, 4, 6, 9, 65, 132, 144)
+    for dex in species_ids
 )
+learn_offsets = [0]
+learn_entries = bytearray()
+for dex in species_ids:
+    for learned in catalogue_by_species[dex]["learnset"]:
+        learn_entries.extend(struct.pack(
+            "<HBB", learned["moveId"], learned["level"],
+            1 if learned["method"] == "machine" else 0,
+        ))
+    learn_offsets.append(len(learn_entries) // 4)
+breeding_entries = bytearray()
+egg_moves = bytearray()
+for dex in species_ids:
+    breeding = catalogue_by_species[dex]["breeding"]
+    groups = sum(1 << (group - 1) for group in breeding["eggGroupIds"])
+    offspring = breeding["offspringSpecies"]
+    first = len(egg_moves) // 2
+    for move in breeding["eggMoveIds"]:
+        egg_moves.extend(struct.pack("<H", move))
+    breeding_entries.extend(struct.pack(
+        "<HHHHIH", dex, groups, offspring[0], offspring[-1],
+        first, len(breeding["eggMoveIds"]),
+    ))
 region = struct.pack(
     "<B16sHHB16H",
     0, b"FIXTURE".ljust(16, b"\0"), 1, region_hi, 1,
@@ -97,7 +125,7 @@ sprite_index = struct.pack(
 )
 sprite_index += b"".join(
     struct.pack("<HIIIIIIIIB", dex, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-    for dex in (4, 6, 9, 65, 132, 144)
+    for dex in species_ids[1:]
 )
 
 gym_strings = b"A\0B\0"
@@ -117,12 +145,18 @@ thumb_blob = (bytes([16, 16, 1]) + struct.pack("<H", 0x2D7F) + thumb_pixels)
 thumbs = b"TPTH" + struct.pack("<HI", 1, 10) + thumb_blob
 
 blob = pack(2, "gender-fixture", 1, [
-    ("SPEC", spec, 7),
-    ("ASLT", ability_slots, 7),
+    ("SPEC", spec, len(species_ids)),
+    ("ASLT", ability_slots, len(species_ids)),
     ("EVOS", b"", 0),
+    ("LOFS", struct.pack(f"<{len(learn_offsets)}I", *learn_offsets), len(learn_offsets)),
+    ("LERN", bytes(learn_entries), len(learn_entries) // 4),
+    ("BRSP", bytes(breeding_entries), len(species_ids)),
+    ("BEMV", bytes(egg_moves), len(egg_moves) // 2),
+    ("MEGA", b"", 0),
+    ("GMAX", struct.pack("<HBB", 6, 2, 0), 1),
     ("NAME", name, 1),
     ("REGN", region, 1),
-    ("SPRI", sprite_index, 7),
+    ("SPRI", sprite_index, len(species_ids)),
     ("SBLB", sprites, 1),
     ("THMB", thumbs, 1),
     ("BTTL", battle, 1),

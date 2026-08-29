@@ -13,16 +13,15 @@ estilo que la pantalla principal. Formato TPTH (little-endian):
   python3 tools/make_thumbs.py
 """
 import os
+import json
 import struct
 
-# Build inputs follow the authoring catalogue; dex.h is now only a stable ABI.
-import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from dex_data import DEX
-DEX_COUNT = max(row[0] for row in DEX)
+HERE = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(HERE, 'pokemon_data.json'), encoding='utf-8') as source:
+    DEX_COUNT = len(json.load(source)['species'])
 
 
-DIR = os.path.join(os.path.dirname(__file__), 'sdcard', 'mons')
+DIR = os.path.join(HERE, 'sdcard', 'mons')
 CELL = 40
 
 

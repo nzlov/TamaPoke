@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Append new species descriptions to the committed offline catalogue.
+"""Fill missing descriptions in the committed Pokemon catalogue.
 
 Raw PokeAPI responses are cached under tools/pokeapi_cache/.  The compact,
-reviewable catalogue written to tools/species_descriptions.json is committed;
-existing catalogue entries are authoritative and are never regenerated.
+reviewable catalogue written to tools/pokemon_data.json is committed; existing
+species descriptions are authoritative and are never regenerated.
 """
 
 from __future__ import annotations
@@ -14,14 +14,13 @@ from html import unescape
 from pathlib import Path
 import re
 import ssl
-import sys
 import time
 import urllib.request
 
 
 HERE = Path(__file__).resolve().parent
 CACHE = HERE / "pokeapi_cache"
-OUTPUT = HERE / "species_descriptions.json"
+OUTPUT = HERE / "pokemon_data.json"
 API = "https://pokeapi.co/api/v2/pokemon-species/{}/"
 POKEMON_CN = "https://dex.pokemon.cn/play/pokedex/{:04d}"
 LOCALE_LANGUAGES = {
@@ -34,9 +33,6 @@ LOCALE_LANGUAGES = {
     "zh-CN": "zh-hans",
 }
 FALLBACK_LOCALE = "en-US"
-
-sys.path.insert(0, str(HERE))
-from dex_data import DEX  # noqa: E402
 
 try:
     import certifi
@@ -141,29 +137,20 @@ def fetch_chinese(number: int) -> str:
 
 
 def load_catalogue() -> dict:
-    if not OUTPUT.exists():
-        return {
-            "schema": 2,
-            "sources": {
-                "pokeapi": API.replace("{}", "{id}"),
-                "pokemon-cn": POKEMON_CN.replace("{:04d}", "{id:04d}"),
-            },
-            "selection": "highest numeric PokeAPI version id per language; "
-                         "official Pokemon China text when zh-hans is unavailable",
-            "updatePolicy": "append new dex numbers only; preserve existing entries",
-            "species": [],
-        }
     catalogue = json.loads(OUTPUT.read_text(encoding="utf-8"))
-    if catalogue.get("schema") != 2 or not isinstance(catalogue.get("species"), list):
-        raise ValueError("species description catalogue must use schema 2")
+    if catalogue.get("schema") != 1 or not isinstance(catalogue.get("species"), list):
+        raise ValueError("Pokemon catalogue must use schema 1")
     return catalogue
 
 
 def main() -> int:
     catalogue = load_catalogue()
-    count = max(row[0] for row in DEX)
-    existing = {entry["dex"] for entry in catalogue["species"]}
-    missing = [number for number in range(1, count + 1) if number not in existing]
+    species = catalogue["species"]
+    count = len(species)
+    missing = [
+        row["id"] for row in species
+        if set(row.get("descriptions", {})) != set(LOCALE_LANGUAGES)
+    ]
     if not missing:
         print(f"{OUTPUT}: already contains species 1-{count}; unchanged")
         return 0
@@ -182,11 +169,7 @@ def main() -> int:
         chinese = None
         if newest_entry(document, LOCALE_LANGUAGES["zh-CN"]) is None:
             chinese = fetch_chinese(number)
-        catalogue["species"].append({
-            "dex": number,
-            "descriptions": select_locales(document, chinese),
-        })
-    catalogue["species"].sort(key=lambda entry: entry["dex"])
+        species[number - 1]["descriptions"] = select_locales(document, chinese)
     OUTPUT.write_text(
         json.dumps(catalogue, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )

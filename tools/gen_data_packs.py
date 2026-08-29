@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Build the SD-card UI, regional content and move packs used by the firmware.
-
-Authoring data remains readable Python/JSON under tools/.  Firmware consumes
-only the indexed binary packs, and the web installer consumes index.json.
-"""
+"""Build SD-card packs from the committed local JSON catalogues."""
 
 from __future__ import annotations
 
@@ -25,99 +21,48 @@ ITEM_ICON_CACHE = HERE / "item_icon_cache"
 KIND_UI = 1
 KIND_REGION = 2
 KIND_MOVE = 3
+KIND_ITEM = 5
+KIND_BATTLE = 6
 
 sys.path.insert(0, str(HERE))
 from pack_format import PACK_ABI, PACK_REVISION, pack, pack_content_version  # noqa: E402
 from pmd_layout import pmd_display_scale, pmd_pair_display_scale  # noqa: E402
 from quiz_pack import build_quiz_pack  # noqa: E402
-from dex_data import (  # noqa: E402
-    DEX, TYPE_ACCENTS, RARE, LEGENDARY, REGIONS, EVOLUTION_BRANCHES,
-    GENDER_RATES,
-)
-from dex_stats import BASE_STATS  # noqa: E402
-from dex_types import TYPES, TYPE_ORDER, CHART  # noqa: E402
-from dex_learnsets import LEARNSETS  # noqa: E402
-from dex_moves import (  # noqa: E402
-    MOVES, AIL_NONE, AIL_PARA, AIL_BURN, AIL_POISON, AIL_SLEEP, AIL_FREEZE,
-    AIL_CONFUSE, EF_NONE, EF_STAGE, EF_RECOIL, EF_DRAIN, EF_FIXED_LVL,
-    EF_FIXED, EF_PRIORITY, EF_NEVER_MISS, EF_MULTI, EF_HEAL, EF_RECHARGE,
-    EF_CHARGE, EF_PROTECT, EF_SET_WEATHER, EF_SET_TERRAIN, BWEATHER_SUN, BWEATHER_RAIN,
-    EF_SET_SCREEN, EF_SET_HAZARD, EF_CLEAR_FIELD, EF_FORCE_SWITCH, EF_PIVOT,
-    BWEATHER_SAND, BWEATHER_SNOW, BTERRAIN_ELECTRIC, BTERRAIN_GRASSY,
-    BTERRAIN_MISTY, BTERRAIN_PSYCHIC, FIELD_MOVE_FLAGS, MF_RAIN_ACCURATE,
-    BSCREEN_REFLECT, BSCREEN_LIGHT_SCREEN, BSCREEN_AURORA_VEIL,
-    BHAZARD_SPIKES, BHAZARD_TOXIC_SPIKES, BHAZARD_STEALTH_ROCK,
-    BHAZARD_STICKY_WEB, BCLEAR_OWN_HAZARDS, BCLEAR_ALL,
-    MF_SNOW_ACCURATE, MF_SOLAR_CHARGE, MF_GRASSY_WEAKENED,
-    MF_STANCE_SHIELD, MF_AURA_WHEEL, MF_GULP_MISSILE, MC_PHYS, MC_SPEC,
-    MC_STATUS, ST_ATK, ST_DEF, ST_SPA, ST_SPD, ST_SPE, ST_ACC, ST_EVA, TG_SELF,
-)
-from dex_presentation import BIOME_OVERRIDE, TYPE_BIOME, rgb565  # noqa: E402
+from dex_presentation import rgb565  # noqa: E402
 
-NAME_LOCALES = json.loads((HERE / "name_locales.json").read_text(encoding="utf-8"))
-REGION_LOCALES = json.loads((HERE / "region_locales.json").read_text(encoding="utf-8"))
-ITEM_DATA = json.loads((HERE / "item_data.json").read_text(encoding="utf-8"))
-SPECIES_DESCRIPTION_DATA = json.loads(
-    (HERE / "species_descriptions.json").read_text(encoding="utf-8")
-)
-SPECIES_DESCRIPTION_LOCALES = sorted(
-    SPECIES_DESCRIPTION_DATA.get("species", [{}])[0].get("descriptions", {})
-)
-MEGA_DATA = json.loads((HERE / "mega_data.json").read_text(encoding="utf-8"))
-GIGANTAMAX_DATA = json.loads((HERE / "gigantamax_data.json").read_text(encoding="utf-8"))
-ABILITY_DATA = json.loads((HERE / "ability_data.json").read_text(encoding="utf-8"))
-MOVE_TAG_DATA = json.loads((HERE / "move_tag_data.json").read_text(encoding="utf-8"))
-BREEDING_DATA = json.loads((HERE / "breeding_data.json").read_text(encoding="utf-8"))
-
-MOVE_TAG_BITS = {
-    "contact": 1 << 0,
-    "sound": 1 << 1,
-    "punch": 1 << 2,
-    "bite": 1 << 3,
-    "pulse": 1 << 4,
-    "ballistic": 1 << 5,
-    "powder": 1 << 6,
-    "dance": 1 << 7,
-    "slicing": 1 << 8,
-    "wind": 1 << 9,
-    "reflectable": 1 << 10,
-}
-
-TYPE_COLORS = [
-    0xAD4F, 0xF406, 0x6C9E, 0xFE86, 0x7E4A, 0x9EDB,
-    0xC185, 0xA214, 0xE60D, 0xAC9E, 0xFAD1, 0xADC4,
-    0xBD07, 0x72D3, 0x71DF, 0x72C9, 0xBDDA, 0xECD5,
+POKEMON_DATA = json.loads((HERE / "pokemon_data.json").read_text(encoding="utf-8"))
+MOVE_DATA = json.loads((HERE / "move_data.json").read_text(encoding="utf-8"))
+ITEM_DOCUMENT = json.loads((HERE / "item_data.json").read_text(encoding="utf-8"))
+BATTLE_DATA = json.loads((HERE / "battle_data.json").read_text(encoding="utf-8"))
+SPECIES = POKEMON_DATA["species"]
+MOVES = MOVE_DATA["moves"]
+GIGANTAMAX_MOVES = MOVE_DATA["gigantamaxMoves"]
+GIGANTAMAX_REFS = POKEMON_DATA["gigantamaxMoveRefs"]
+ITEM_DATA = ITEM_DOCUMENT["items"]
+ABILITIES = BATTLE_DATA["abilities"]
+TYPES = BATTLE_DATA["types"]
+TYPE_ORDER = [row["slug"] for row in TYPES]
+REGIONS = [
+    (row["name"], row["range"][0], row["range"][1], row["starters"])
+    for row in POKEMON_DATA["regions"]
 ]
-TYPE_LIGHT = [1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 1]
-TYPE_ZH = {
-    "normal": "一般", "fire": "火", "water": "水", "electric": "电",
-    "grass": "草", "ice": "冰", "fighting": "格斗", "poison": "毒",
-    "ground": "地面", "flying": "飞行", "psychic": "超能力",
-    "bug": "虫", "rock": "岩石", "ghost": "幽灵", "dragon": "龙",
-    "dark": "恶", "steel": "钢", "fairy": "妖精",
+REGION_LOCALES = json.loads((HERE / "region_locales.json").read_text(encoding="utf-8"))
+SPECIES_DESCRIPTION_LOCALES = sorted(SPECIES[0]["descriptions"])
+MEGA_DATA = [
+    dict(form, species=species["id"])
+    for species in SPECIES for form in species["megaForms"]
+]
+GIGANTAMAX_BY_SPECIES = {
+    int(row["species"]): [int(move) for move in row["moveIds"]]
+    for row in GIGANTAMAX_REFS
 }
 
-MAX_MOVE_NAMES = (
-    ("Max Strike", "极巨攻击"),
-    ("Max Flare", "极巨火爆"),
-    ("Max Geyser", "极巨水流"),
-    ("Max Lightning", "极巨闪电"),
-    ("Max Overgrowth", "极巨草原"),
-    ("Max Hailstorm", "极巨寒冰"),
-    ("Max Knuckle", "极巨拳斗"),
-    ("Max Ooze", "极巨酸毒"),
-    ("Max Quake", "极巨大地"),
-    ("Max Airstream", "极巨飞冲"),
-    ("Max Mindstorm", "极巨超能"),
-    ("Max Flutterby", "极巨虫蛊"),
-    ("Max Rockfall", "极巨岩石"),
-    ("Max Phantasm", "极巨幽魂"),
-    ("Max Wyrmwind", "极巨龙骑"),
-    ("Max Darkness", "极巨恶霸"),
-    ("Max Steelspike", "极巨钢铁"),
-    ("Max Starfall", "极巨妖精"),
-    ("Max Guard", "极巨防壁"),
-)
+MOVE_TAG_BITS = MOVE_DATA["tagBits"]
+
+TYPE_COLORS = [row["color"] for row in TYPES]
+TYPE_LIGHT = [1 if row["light"] else 0 for row in TYPES]
+TYPE_ZH = {row["slug"]: row["names"]["zh-CN"] for row in TYPES}
+EGG_GROUP_COUNT = len(POKEMON_DATA["eggGroups"])
 
 GMAX_EFFECT_NAMES = (
     "vine-lash", "wildfire", "cannonade", "befuddle", "volt-crash",
@@ -322,25 +267,6 @@ def build_ui_packs(manifest: list[dict]) -> None:
         manifest.append(item)
 
 
-def rarity_rows() -> dict[int, int]:
-    evolved = {
-        target
-        for row in DEX
-        for target in EVOLUTION_BRANCHES.get(row[0], [row[4]] if row[4] else [])
-    }
-    result = {}
-    for number, *_ in DEX:
-        if number in evolved:
-            result[number] = 0
-        elif number in LEGENDARY:
-            result[number] = 3
-        elif number in RARE:
-            result[number] = 2
-        else:
-            result[number] = 1
-    return result
-
-
 def bitmap_font_text(value: str) -> str:
     """Keep official Latin wording readable on the existing ASCII bitmap UI."""
     # GLUE: Latin UI packs still use the ASCII-only 5x7 face. Remove this
@@ -354,31 +280,22 @@ def bitmap_font_text(value: str) -> str:
     return normalized.encode("ascii", "ignore").decode("ascii")
 
 
-def species_descriptions(rows: list[tuple]) -> dict[str, list[str]]:
-    species = SPECIES_DESCRIPTION_DATA.get("species", [])
-    if SPECIES_DESCRIPTION_DATA.get("schema") != 2 or not species:
-        raise ValueError("unsupported species description catalogue")
-    by_dex = {entry["dex"]: entry["descriptions"] for entry in species}
-    locales = sorted(species[0]["descriptions"])
+def species_descriptions(rows: list[dict]) -> dict[str, list[str]]:
+    locales = sorted(SPECIES[0]["descriptions"])
     result = {locale: [] for locale in locales}
     for row in rows:
-        descriptions = by_dex.get(row[0])
-        if descriptions is None or set(descriptions) != set(locales):
-            raise ValueError(f"species {row[0]} description catalogue is incomplete")
+        descriptions = row["descriptions"]
+        if set(descriptions) != set(locales):
+            raise ValueError(f"species {row['id']} description catalogue is incomplete")
         for locale in locales:
             value = descriptions[locale]["text"]
             result[locale].append(value if locale == "zh-CN" else bitmap_font_text(value))
     return result
 
 
-def species_names(rows: list[tuple]) -> dict[str, list[str]]:
-    result = {}
-    for locale, values in NAME_LOCALES.items():
-        catalogue = values["species"]
-        if len(catalogue) < max(row[0] for row in DEX):
-            raise ValueError(f"{locale}: species name catalogue is incomplete")
-        result[locale] = [catalogue[row[0] - 1] for row in rows]
-    return result
+def species_names(rows: list[dict]) -> dict[str, list[str]]:
+    locales = sorted(rows[0]["names"])
+    return {locale: [row["names"][locale] for row in rows] for locale in locales}
 
 
 def regional_names(region_name: str, battle: dict) -> dict[str, list[str]]:
@@ -422,7 +339,7 @@ def append_region_manifest(manifest: list[dict], path: Path, region_name: str,
                 if required_lo <= member["species"] <= required_hi:
                     required_regions.add(required_name.lower())
                     break
-    item["requires"] = ["moves-core"] + [
+    item["requires"] = ["battle-core", "moves-core"] + [
         f"region-{name}" for name in sorted(required_regions)
         if name != region_name.lower()
     ]
@@ -433,34 +350,33 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
                        allow_empty_art: bool = False) -> None:
     region_battles = json.loads((HERE / "region_data.json").read_text(encoding="utf-8"))
     battle_by_name = {row["name"].upper(): row for row in region_battles["regions"]}
-    rarities = rarity_rows()
     type_ids = {name: index for index, name in enumerate(TYPE_ORDER)}
-    spec_record = struct.Struct("<HBBH10BIB")
+    spec_record = struct.Struct("<HBBH11BIB")
     ability_record = struct.Struct("<HHHH")
-    ability_by_species = {int(row["dex"]): row["slots"] for row in ABILITY_DATA["species"]}
     evolution_record = struct.Struct("<HH")
+    learn_record = struct.Struct("<HBB")
+    breeding_record = struct.Struct("<HHHHIH")
+    mega_record = struct.Struct("<HBBBBBBBBHH")
     sprite_record = struct.Struct("<HIIIIIIIIB")
     trainer_record = struct.Struct("<BBBBII" + "HB" * 6)
     badge_record = struct.Struct("<BBBBII")
     for region_id, (region_name, lo, hi, starters) in enumerate(REGIONS):
         battle = battle_by_name[region_name]
         path = WEB_PACKS / f"region-{region_name.lower()}.tregion"
-        rows = [row for row in DEX if lo <= row[0] <= hi]
-        normal_sources = [sprite_dir / f"p{row[0]:03d}.bin" for row in rows]
+        rows = [row for row in SPECIES if lo <= row["id"] <= hi]
+        normal_sources = [sprite_dir / f"p{row['id']:03d}.bin" for row in rows]
         normal_count = sum(source.exists() for source in normal_sources)
         mega_source_count = sum(
             (sprite_dir / f"pm{int(form['species']):03d}-{form.get('form', 'standard')}.bin").exists()
             for form in MEGA_DATA
-            if lo <= int(form["species"]) <= hi and form.get("spritePath")
+            if lo <= int(form["species"]) <= hi and
+            form.get("art", {}).get("normal")
         )
         if normal_count == 0 and mega_source_count == 0 and not allow_empty_art:
-            if not path.exists():
-                raise FileNotFoundError(
-                    f"{sprite_dir} has no regional sprite sources and there is no existing "
-                    f"{path.name}; run pack_pmd.py and make_thumbs.py first"
-                )
-            append_region_manifest(manifest, path, region_name, lo, hi, battle)
-            continue
+            raise FileNotFoundError(
+                f"{sprite_dir} has no regional sprite sources; "
+                "run pack_pmd.py and make_thumbs.py first"
+            )
         if normal_count != len(rows):
             print(f"{region_name}: packing {normal_count}/{len(rows)} species with art")
         if mega_source_count:
@@ -468,31 +384,90 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
         thumbs_path = sprite_dir / "thumbs.bin"
         if not thumbs_path.exists() and not allow_empty_art:
             raise FileNotFoundError(f"{thumbs_path} is required to rebuild regional packs")
-        names_blob, name_offsets = string_pool([row[2] for row in rows])
+        names_blob, name_offsets = string_pool([row["names"]["en-US"] for row in rows])
         specs = bytearray()
         ability_slots = bytearray()
         evolutions = bytearray()
+        learn_offsets = [0]
+        learns = bytearray()
+        breeding_records = bytearray()
+        egg_moves = bytearray()
         for row, name_offset in zip(rows, name_offsets):
-            number, _slug, _display, accent_type, evolves_to, evolve_level = row
-            hp, atk, defense, speed, spa, spd = BASE_STATS[number]
-            t1, t2 = TYPES[number]
+            number = row["id"]
+            stats = row["stats"]
+            hp, atk, defense, speed, spa, spd = (
+                stats["hp"], stats["attack"], stats["defense"], stats["speed"],
+                stats["specialAttack"], stats["specialDefense"],
+            )
+            t1 = row["types"][0]
+            t2 = row["types"][1] if len(row["types"]) > 1 else None
             specs.extend(spec_record.pack(
-                number, evolve_level, rarities[number],
-                rgb565(TYPE_ACCENTS[accent_type]),
+                number, row["evolutionLevel"], row["rarity"],
+                rgb565(row["accent"]),
                 hp, atk, defense, speed, spa, spd,
-                BIOME_OVERRIDE.get(number, TYPE_BIOME[accent_type]),
+                row["biome"],
                 type_ids[t1], type_ids[t2] if t2 else 255, region_id,
-                name_offset, 255 if GENDER_RATES[number] < 0 else GENDER_RATES[number],
+                {"day": 1, "night": 2, "both": 3}[row["encounterPeriod"]],
+                name_offset, 255 if row["femaleRate"] < 0 else row["femaleRate"],
             ))
-            slots = ability_by_species.get(number)
+            slots = row["abilitySlots"]
             if slots is None or len(slots) != 3 or not slots[0]:
                 raise ValueError(f"species {number}: incomplete ability slots")
             ability_slots.extend(ability_record.pack(number, *(int(value) for value in slots)))
-            targets = EVOLUTION_BRANCHES.get(number, [evolves_to] if evolves_to else [])
+            targets = row["evolutions"]
             if len(targets) > 8:
                 raise ValueError(f"species {number}: more than 8 evolution targets")
             for target in targets:
                 evolutions.extend(evolution_record.pack(number, target))
+            for learned in row["learnset"]:
+                method = 1 if learned["method"] == "machine" else 0
+                learns.extend(learn_record.pack(
+                    learned["moveId"], learned["level"], method
+                ))
+            learn_offsets.append(len(learns) // learn_record.size)
+
+            breeding = row["breeding"]
+            group_ids = [int(value) for value in breeding["eggGroupIds"]]
+            offspring = [int(value) for value in breeding["offspringSpecies"]]
+            inherited_moves = sorted({int(value) for value in breeding["eggMoveIds"]})
+            if not group_ids or len(group_ids) != len(set(group_ids)) or \
+                    any(not 1 <= value <= EGG_GROUP_COUNT for value in group_ids) or \
+                    not 1 <= len(offspring) <= 2 or \
+                    any(not 0 < value <= len(SPECIES) for value in offspring) or \
+                    any(not 0 < value <= len(MOVES) for value in inherited_moves):
+                raise ValueError(f"species {number}: invalid breeding metadata")
+            group_mask = sum(1 << (value - 1) for value in group_ids)
+            egg_move_offset = len(egg_moves) // 2
+            for move in inherited_moves:
+                egg_moves.extend(struct.pack("<H", move))
+            breeding_records.extend(breeding_record.pack(
+                number, group_mask, offspring[0], offspring[-1],
+                egg_move_offset, len(inherited_moves),
+            ))
+
+        learn_offset_blob = struct.pack(f"<{len(learn_offsets)}I", *learn_offsets)
+        mega_forms = bytearray()
+        form_ids = {"standard": 0, "x": 1, "y": 2, "z": 3}
+        for row in rows:
+            for form in row["megaForms"]:
+                stats = form["stats"]
+                types = form["types"]
+                mega_forms.extend(mega_record.pack(
+                    row["id"], form_ids[form["form"]], type_ids[types[0]],
+                    type_ids[types[1]] if len(types) > 1 else 255,
+                    stats["attack"], stats["defense"], stats["specialAttack"],
+                    stats["specialDefense"], stats["speed"], form["abilityId"],
+                    form["learnsetSpecies"],
+                ))
+        gigantamax = bytearray()
+        for row in rows:
+            move_ids = GIGANTAMAX_BY_SPECIES.get(row["id"], [])
+            if row["gigantamax"] != bool(move_ids) or len(move_ids) > 2:
+                raise ValueError(f"species {row['id']}: invalid Gigantamax move references")
+            if move_ids:
+                gigantamax.extend(struct.pack(
+                    "<HBB", row["id"], *(move_ids + [0] * (2 - len(move_ids)))
+                ))
 
         region = struct.pack(
             "<B16sHHB16H",
@@ -534,7 +509,8 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
             ))
         sprites = bytearray()
         sprite_index = bytearray()
-        for number, *_ in rows:
+        for row in rows:
+            number = row["id"]
             normal_path = sprite_dir / f"p{number:03d}.bin"
             normal = normal_path.read_bytes() if normal_path.exists() else b""
             shiny_path = sprite_dir / f"ps{number:03d}.bin"
@@ -565,7 +541,7 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
         form_ids = {"standard": 0, "x": 1, "y": 2, "z": 3}
         for form in MEGA_DATA:
             species = int(form["species"])
-            if not lo <= species <= hi or not form.get("spritePath"):
+            if not lo <= species <= hi or not form.get("art", {}).get("normal"):
                 continue
             form_name = form.get("form", "standard")
             normal_path = sprite_dir / f"pm{species:03d}-{form_name}.bin"
@@ -589,12 +565,20 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
             regional_names(region_name, battle), 1 + len(battle["trainers"]) * 2,
         )
         mechanics_hash = binascii.crc32(
-            specs + ability_slots + evolutions + region + battle_meta + trainers
+            specs + ability_slots + evolutions + learn_offset_blob + learns +
+            breeding_records + egg_moves + mega_forms + gigantamax +
+            region + battle_meta + trainers
         ) & 0xFFFFFFFF
         sections = [
             ("SPEC", bytes(specs), len(rows)),
             ("ASLT", bytes(ability_slots), len(rows)),
             ("EVOS", bytes(evolutions), len(evolutions) // evolution_record.size),
+            ("LOFS", learn_offset_blob, len(learn_offsets)),
+            ("LERN", bytes(learns), len(learns) // learn_record.size),
+            ("BRSP", bytes(breeding_records), len(rows)),
+            ("BEMV", bytes(egg_moves), len(egg_moves) // 2),
+            ("MEGA", bytes(mega_forms), len(mega_forms) // mega_record.size),
+            ("GMAX", bytes(gigantamax), len(gigantamax) // 4),
             ("NAME", names_blob, len(rows)),
             ("LNAM", localized_names, len(rows)),
             ("REGN", region, 1),
@@ -621,190 +605,21 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
         append_region_manifest(manifest, path, region_name, lo, hi, battle)
 
 
-def unpack_move(row: tuple) -> tuple:
-    return tuple(row) + ((AIL_NONE, 0) if len(row) == 11 else ())
-
-
-STAT_LABELS = {
-    "en-US": ((ST_ATK, "Attack"), (ST_DEF, "Defense"), (ST_SPA, "Sp. Atk"),
-              (ST_SPD, "Sp. Def"), (ST_SPE, "Speed"), (ST_ACC, "Accuracy"),
-              (ST_EVA, "Evasion")),
-    "zh-CN": ((ST_ATK, "攻击"), (ST_DEF, "防御"), (ST_SPA, "特攻"),
-              (ST_SPD, "特防"), (ST_SPE, "速度"), (ST_ACC, "命中率"),
-              (ST_EVA, "闪避率")),
-}
-
-AILMENT_LABELS = {
-    "en-US": {AIL_PARA: "paralysis", AIL_BURN: "a burn", AIL_POISON: "poison",
-              AIL_SLEEP: "sleep", AIL_FREEZE: "freezing", AIL_CONFUSE: "confusion"},
-    "zh-CN": {AIL_PARA: "麻痹", AIL_BURN: "灼伤", AIL_POISON: "中毒",
-              AIL_SLEEP: "睡眠", AIL_FREEZE: "冰冻", AIL_CONFUSE: "混乱"},
-}
-
-
-def stat_names(mask: int, locale: str) -> str:
-    names = [name for bit, name in STAT_LABELS[locale] if mask & bit]
-    return (" and " if locale == "en-US" else "和").join(names)
-
-
-def move_effect_text(category: int, effect: int, param: int, mask: int,
-                     stages: int, target: int, locale: str) -> str:
-    if effect == EF_NONE or effect == EF_NEVER_MISS:
-        return ""
-    if effect == EF_PROTECT:
-        return ("Protects the user for this turn."
-                if locale == "en-US" else "本回合保护使用者。")
-    if effect == EF_STAGE:
-        stats = stat_names(mask, locale)
-        if locale == "en-US":
-            owner = "user's" if target == TG_SELF else "foe's"
-            verb = "Raises" if stages > 0 else "Lowers"
-            prefix = "Also " if category != MC_STATUS else ""
-            return f"{prefix}{verb.lower() if prefix else verb} {owner} {stats} by {abs(stages)} stage{'s' if abs(stages) != 1 else ''}."
-        owner = "自身" if target == TG_SELF else "对手的"
-        prefix = "同时" if category != MC_STATUS else ""
-        if stages > 0:
-            return f"{prefix}使{owner}{stats}提高{stages}级。"
-        return f"{prefix}使{owner}{stats}-{abs(stages)}级。"
-    if effect == EF_SET_WEATHER:
-        names = {
-            "en-US": {BWEATHER_SUN: "sun", BWEATHER_RAIN: "rain",
-                      BWEATHER_SAND: "a sandstorm", BWEATHER_SNOW: "snow"},
-            "zh-CN": {BWEATHER_SUN: "晴天", BWEATHER_RAIN: "雨天",
-                      BWEATHER_SAND: "沙暴", BWEATHER_SNOW: "雪"},
-        }
-        return (f"Creates {names[locale][param]} for 5 turns."
-                if locale == "en-US" else f"使天气变为{names[locale][param]}，持续5回合。")
-    if effect == EF_SET_TERRAIN:
-        names = {
-            "en-US": {BTERRAIN_ELECTRIC: "Electric Terrain",
-                      BTERRAIN_GRASSY: "Grassy Terrain",
-                      BTERRAIN_MISTY: "Misty Terrain",
-                      BTERRAIN_PSYCHIC: "Psychic Terrain"},
-            "zh-CN": {BTERRAIN_ELECTRIC: "电气场地", BTERRAIN_GRASSY: "青草场地",
-                      BTERRAIN_MISTY: "薄雾场地", BTERRAIN_PSYCHIC: "精神场地"},
-        }
-        return (f"Creates {names[locale][param]} for 5 turns."
-                if locale == "en-US" else f"形成{names[locale][param]}，持续5回合。")
-    if effect == EF_SET_SCREEN:
-        names = {
-            "en-US": {BSCREEN_REFLECT: "Reflect", BSCREEN_LIGHT_SCREEN: "Light Screen",
-                      BSCREEN_AURORA_VEIL: "Aurora Veil"},
-            "zh-CN": {BSCREEN_REFLECT: "反射壁", BSCREEN_LIGHT_SCREEN: "光墙",
-                      BSCREEN_AURORA_VEIL: "极光幕"},
-        }
-        requirement = (" Requires snow." if locale == "en-US" else " 仅在雪天下成功。") \
-            if param == BSCREEN_AURORA_VEIL else ""
-        return ((f"Creates {names[locale][param]} on the user's side for 5 turns."
-                 if locale == "en-US" else f"在己方形成{names[locale][param]}，持续5回合。") +
-                requirement)
-    if effect == EF_SET_HAZARD:
-        names = {
-            "en-US": {BHAZARD_SPIKES: "Spikes", BHAZARD_TOXIC_SPIKES: "Toxic Spikes",
-                      BHAZARD_STEALTH_ROCK: "Stealth Rock", BHAZARD_STICKY_WEB: "Sticky Web"},
-            "zh-CN": {BHAZARD_SPIKES: "撒刺", BHAZARD_TOXIC_SPIKES: "毒刺",
-                      BHAZARD_STEALTH_ROCK: "隐形岩", BHAZARD_STICKY_WEB: "黏黏网"},
-        }
-        return (f"Sets {names[locale][param]} on the opposing side."
-                if locale == "en-US" else f"在对方场地设置{names[locale][param]}。")
-    if effect == EF_CLEAR_FIELD:
-        if param == BCLEAR_OWN_HAZARDS:
-            return ("Clears hazards from the user's side and raises Speed by 1 stage."
-                    if locale == "en-US" else "清除己方场地陷阱，并使自身速度提高1级。")
-        return ("Clears hazards and screens from both sides and lowers the foe's Evasion by 1 stage."
-                if locale == "en-US" else "清除双方墙与场地陷阱，并使对手闪避率降低1级。")
-    if effect == EF_FORCE_SWITCH:
-        return ("Forces the target to switch out."
-                if locale == "en-US" else "强制目标换下。")
-    if effect == EF_PIVOT:
-        return ("The user switches out after dealing damage."
-                if locale == "en-US" else "造成伤害后使用者换下。")
-    if locale == "en-US":
-        return {
-            EF_RECOIL: f"User takes 1/{param} of damage dealt as recoil.",
-            EF_DRAIN: f"Restores HP equal to {param}% of damage dealt.",
-            EF_FIXED_LVL: "Damage equals the user's level.",
-            EF_FIXED: f"Deals exactly {param} damage.",
-            EF_PRIORITY: "Usually moves first.",
-            EF_MULTI: "Hits 2-5 times.",
-            EF_HEAL: f"Restores {param}% of the user's maximum HP.",
-            EF_RECHARGE: "User must recharge on the next turn.",
-            EF_CHARGE: "Charges on the first turn and attacks on the next.",
-        }[effect]
-    return {
-        EF_RECOIL: f"使用者的生命也会变少，数值为伤害的1/{param}。",
-        EF_DRAIN: f"回复造成伤害{param}%的生命。",
-        EF_FIXED_LVL: "造成等同于使用者等级的伤害。",
-        EF_FIXED: f"造成{param}点伤害。",
-        EF_PRIORITY: "通常会提前行动。",
-        EF_MULTI: "连续攻击2-5次。",
-        EF_HEAL: f"回复使用者最大生命的{param}%。",
-        EF_RECHARGE: "下一回合无法行动。",
-        EF_CHARGE: "首回合准备，下一回合攻击。",
-    }[effect]
-
-
-def move_descriptions(rows: list[tuple]) -> dict[str, list[str]]:
-    category_en = {MC_PHYS: "Physical", MC_SPEC: "Special", MC_STATUS: "Status"}
-    category_zh = {MC_PHYS: "物理", MC_SPEC: "特殊", MC_STATUS: "变化"}
-    english = ["Empty move slot."]
-    chinese = ["空招式槽。"]
-    for row in rows:
-        _name, _slug, typ, category, power, accuracy, effect, param, mask, stages, target, ailment, chance = unpack_move(row)
-        accuracy_text = "never misses" if accuracy == 0 else f"accuracy {accuracy}%"
-        en = f"{typ.title()} {category_en[category]} move; power {power}, {accuracy_text}."
-        zh_acc = "必中" if accuracy == 0 else f"命中{accuracy}%"
-        zh = f"{TYPE_ZH[typ]}属性{category_zh[category]}招式；威力{power}，{zh_acc}。"
-        if category == MC_STATUS:
-            en = f"{typ.title()} status move; {accuracy_text}."
-            zh = f"{TYPE_ZH[typ]}属性变化招式；{zh_acc}。"
-        en_effect = move_effect_text(category, effect, param, mask, stages, target, "en-US")
-        zh_effect = move_effect_text(category, effect, param, mask, stages, target, "zh-CN")
-        if en_effect:
-            en += f" {en_effect}"
-            zh += f" {zh_effect}"
-        field_flag = FIELD_MOVE_FLAGS.get(_slug, 0)
-        if field_flag & MF_RAIN_ACCURATE:
-            en += " Always hits in rain; accuracy is 50% in harsh sun."
-            zh += " 雨天必中；晴天命中率为50%。"
-        if field_flag & MF_SNOW_ACCURATE:
-            en += " Always hits in snow."
-            zh += " 雪天必中。"
-        if field_flag & MF_SOLAR_CHARGE:
-            en += " Attacks immediately in harsh sun; power is halved in other weather."
-            zh += " 晴天立即攻击；其他天气下威力减半。"
-        if field_flag & MF_GRASSY_WEAKENED:
-            en += " Power is halved against grounded targets on Grassy Terrain."
-            zh += " 对青草场地上的地面目标威力减半。"
-        if field_flag & MF_STANCE_SHIELD:
-            en += " Returns Stance Change users to Shield Form."
-            zh += " 使战斗切换形态的使用者恢复盾牌形态。"
-        if field_flag & MF_AURA_WHEEL:
-            en += " Becomes Dark-type in Hangry Mode."
-            zh += " 在空腹花纹时变为恶属性。"
-        if field_flag & MF_GULP_MISSILE:
-            en += " Triggers Gulp Missile."
-            zh += " 会触发一口导弹。"
-        if ailment:
-            en += f" Has a {chance}% chance to cause {AILMENT_LABELS['en-US'][ailment]}."
-            zh += f" 有{chance}%概率使对手陷入{AILMENT_LABELS['zh-CN'][ailment]}。"
-        english.append(en)
-        chinese.append(zh)
-    return {"en-US": english, "zh-CN": chinese}
-
-
 def move_names() -> dict[str, list[str]]:
-    result = {}
-    for locale, values in NAME_LOCALES.items():
-        names = values["moves"]
-        if len(names) != len(MOVES):
-            raise ValueError(f"{locale}: expected {len(MOVES)} move names, got {len(names)}")
-        result[locale] = ["-"] + names
-    return result
+    locales = sorted(MOVES[0]["names"])
+    return {locale: ["-"] + [row["names"][locale] for row in MOVES]
+            for locale in locales}
+
+
+def move_descriptions() -> dict[str, list[str]]:
+    locales = sorted(MOVES[0]["descriptions"])
+    empty = {"en-US": "Empty move slot.", "zh-CN": "空招式槽。"}
+    return {locale: [empty[locale]] + [row["descriptions"][locale] for row in MOVES]
+            for locale in locales}
 
 
 def localized_type_names() -> dict[str, list[str]]:
-    return {"zh-CN": [TYPE_ZH[name] for name in TYPE_ORDER]}
+    return {"zh-CN": [row["names"]["zh-CN"] for row in TYPES]}
 
 
 def required_ui_codepoints() -> set[int]:
@@ -820,13 +635,7 @@ def required_ui_codepoints() -> set[int]:
 
     sources = [
         json.loads((HERE / "ui_data.json").read_text(encoding="utf-8")),
-        NAME_LOCALES,
-        REGION_LOCALES,
-        species_descriptions(DEX),
-        move_descriptions(list(MOVES)),
-        localized_type_names(),
-        ITEM_DATA,
-        ABILITY_DATA,
+        REGION_LOCALES, POKEMON_DATA, MOVE_DATA, ITEM_DOCUMENT, BATTLE_DATA,
     ]
     return set(range(32, 127)) | {
         ord(char)
@@ -837,63 +646,103 @@ def required_ui_codepoints() -> set[int]:
     }
 
 
-def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
+def build_move_pack(manifest: list[dict]) -> None:
     type_ids = {name: index for index, name in enumerate(TYPE_ORDER)}
-    move_rows = [("-", None, "normal", MC_STATUS, 0, 0, 0, 0, 0, 0, 0)] + list(MOVES)
-    names_blob, name_offsets = string_pool([row[0] for row in move_rows])
+    if [row["id"] for row in MOVES] != list(range(1, len(MOVES) + 1)):
+        raise ValueError("move IDs must remain contiguous and append-only")
+    names_blob, name_offsets = string_pool(
+        ["-"] + [row["names"]["en-US"] for row in MOVES]
+    )
     move_record = struct.Struct("<HBBBBBbBbBBBI")
     move_blob = bytearray()
-    field_flags = bytearray()
-    if MOVE_TAG_DATA.get("schema") != 1 or MOVE_TAG_DATA.get("tagBits") != MOVE_TAG_BITS:
-        raise ValueError("move_tag_data.json has an unsupported schema or tag-bit ABI")
-    move_tag_rows = MOVE_TAG_DATA.get("moves", [])
-    move_tags_by_slug = {row["slug"]: row["tags"] for row in move_tag_rows}
-    if len(move_tags_by_slug) != len(move_tag_rows):
-        raise ValueError("move tag slugs must be unique")
-    expected_slugs = {slug or name.lower() for name, slug, *_rest in MOVES}
-    if set(move_tags_by_slug) != expected_slugs:
-        missing = sorted(expected_slugs - set(move_tags_by_slug))
-        extra = sorted(set(move_tags_by_slug) - expected_slugs)
-        raise ValueError(f"move tag catalogue mismatch: missing={missing}, extra={extra}")
+    field_flags = bytearray([0])
     move_tags = bytearray(struct.pack("<H", 0))
-    for move_id, (row, name_offset) in enumerate(zip(move_rows, name_offsets)):
-        name, _slug, typ, category, power, accuracy, effect, param, mask, stages, target, ailment, chance = unpack_move(row)
-        move_blob.extend(move_record.pack(
-            move_id, type_ids[typ], category, power, accuracy, effect, param,
-            mask, stages, target, ailment, chance, name_offset,
-        ))
-        field_flags.append(FIELD_MOVE_FLAGS.get(_slug, 0))
-        if move_id:
-            tag_names = move_tags_by_slug[_slug or name.lower()]
-            if len(tag_names) != len(set(tag_names)) or any(tag not in MOVE_TAG_BITS for tag in tag_names):
-                raise ValueError(f"move {_slug or name.lower()}: invalid tags {tag_names}")
-            tag_mask = sum(MOVE_TAG_BITS[tag] for tag in tag_names)
-            move_tags.extend(struct.pack("<H", tag_mask))
-
-    by_slug = {
-        slug: index + 1
-        for index, (_name, slug, *_rest) in enumerate(MOVES) if slug
+    sentinel = {
+        "id": 0, "type": "normal", "category": 2, "power": 0, "accuracy": 0,
+        "effect": 0, "param": 0, "statMask": 0, "stages": 0, "target": 0,
+        "ailment": 0, "ailmentChance": 0, "fieldFlags": 0, "tags": [],
     }
-    offsets = [0]
-    learn = bytearray()
-    for species_id in range(0, len(DEX) + 1):
-        for slug, level in (LEARNSETS.get(species_id, []) if species_id else []):
-            learn.extend(struct.pack("<HBB", by_slug[slug], min(level, 255), 1 if level == 0 else 0))
-        offsets.append(len(learn) // 4)
-    offset_blob = struct.pack(f"<{len(offsets)}I", *offsets)
+    for row, name_offset in zip([sentinel] + MOVES, name_offsets):
+        move_id = row["id"]
+        move_blob.extend(move_record.pack(
+            move_id, type_ids[row["type"]], row["category"], row["power"],
+            row["accuracy"], row["effect"], row["param"], row["statMask"],
+            row["stages"], row["target"], row["ailment"], row["ailmentChance"],
+            name_offset,
+        ))
+        if move_id:
+            field_flags.append(row["fieldFlags"])
+            tag_names = row["tags"]
+            if len(tag_names) != len(set(tag_names)) or any(
+                    tag not in MOVE_TAG_BITS for tag in tag_names):
+                raise ValueError(f"move {move_id}: invalid tags {tag_names}")
+            tag_mask = sum(int(MOVE_TAG_BITS[tag]) for tag in tag_names)
+            move_tags.extend(struct.pack("<H", tag_mask))
+    move_count = len(MOVES) + 1
+    locales = localized_strings(move_descriptions(), move_count)
+    localized_names = localized_strings(move_names(), move_count)
 
-    chart = bytearray()
-    for attack in TYPE_ORDER:
-        for defense in TYPE_ORDER:
-            chart.append(int(CHART.get(attack, {}).get(defense, 1) * 10))
-    type_names, type_name_offsets = string_pool([name.upper() for name in TYPE_ORDER])
-    type_blob = bytearray()
-    for name_offset, color, light in zip(type_name_offsets, TYPE_COLORS, TYPE_LIGHT):
-        type_blob.extend(struct.pack("<IHBB", name_offset, color, light, 0))
-    locales = localized_strings(move_descriptions(list(MOVES)), len(move_rows))
-    localized_names = localized_strings(move_names(), len(move_rows))
-    type_locales = localized_strings(localized_type_names(), len(TYPE_ORDER))
+    if [row["id"] for row in GIGANTAMAX_MOVES] != \
+            list(range(1, len(GIGANTAMAX_MOVES) + 1)) or len(GIGANTAMAX_MOVES) > 255:
+        raise ValueError("Gigantamax move IDs must be contiguous uint8 values")
+    gmax_names, gmax_name_offsets = string_pool(
+        [row["names"]["en-US"] for row in GIGANTAMAX_MOVES]
+    )
+    gmax_moves = bytearray()
+    gmax_move_record = struct.Struct("<BBBBI")
+    for row, name_offset in zip(GIGANTAMAX_MOVES, gmax_name_offsets):
+        effect = GMAX_EFFECT_IDS.get(row["effect"], 0)
+        source_type = type_ids.get(row["sourceType"], 255)
+        power = int(row["power"])
+        if source_type >= len(TYPE_ORDER) or not effect or not 0 <= power <= 255 or \
+                set(row["names"]) != {"en-US", "zh-CN"} or \
+                not all(row["names"].values()):
+            raise ValueError(f"Gigantamax move {row['id']}: invalid definition")
+        gmax_moves.extend(gmax_move_record.pack(
+            row["id"], source_type, effect, power, name_offset,
+        ))
+    referenced_gmax_moves = {
+        move for move_ids in GIGANTAMAX_BY_SPECIES.values() for move in move_ids
+    }
+    if referenced_gmax_moves != set(range(1, len(GIGANTAMAX_MOVES) + 1)):
+        raise ValueError("Gigantamax move references must cover the move catalogue exactly")
+    gmax_localized_names = localized_strings({
+        "zh-CN": [row["names"]["zh-CN"] for row in GIGANTAMAX_MOVES]
+    }, len(GIGANTAMAX_MOVES))
+    max_move_names = MOVE_DATA["maxMoveNames"]
+    if set(max_move_names) != {"en-US", "zh-CN"} or \
+            any(len(values) != len(TYPE_ORDER) + 1 for values in max_move_names.values()):
+        raise ValueError("Max Move names must cover every type plus Max Guard")
+    max_names, _max_name_offsets = string_pool(max_move_names["en-US"])
+    max_localized_names = localized_strings({
+        "zh-CN": max_move_names["zh-CN"]
+    }, len(TYPE_ORDER) + 1)
 
+    mechanics_hash = binascii.crc32(
+        move_blob + field_flags + move_tags + gmax_moves
+    ) & 0xFFFFFFFF
+    sections = [
+        ("MOVE", bytes(move_blob), move_count),
+        ("MFLG", bytes(field_flags), move_count),
+        ("MTAG", bytes(move_tags), move_count),
+        ("NAME", names_blob, move_count),
+        ("LNAM", localized_names, move_count),
+        ("LOCL", locales, move_count),
+        ("GMOV", bytes(gmax_moves), len(GIGANTAMAX_MOVES)),
+        ("GMNM", gmax_names, len(GIGANTAMAX_MOVES)),
+        ("GMLN", gmax_localized_names, len(GIGANTAMAX_MOVES)),
+        ("MXNM", max_names, len(TYPE_ORDER) + 1),
+        ("MXLN", max_localized_names, len(TYPE_ORDER) + 1),
+    ]
+    path = WEB_PACKS / "moves-core.tmove"
+    path.write_bytes(pack(KIND_MOVE, "moves-core", mechanics_hash, sections))
+    item = pack_manifest(path, "move", "moves-core", ["en-US", "zh-CN"])
+    item["label"] = "Moves"
+    item["requires"] = ["battle-core"]
+    manifest.append(item)
+
+
+def build_item_pack(manifest: list[dict]) -> None:
     item_keys = [int(item["key"]) for item in ITEM_DATA]
     if len(item_keys) != len(set(item_keys)) or any(not 0 < key <= 0xFFFF for key in item_keys):
         raise ValueError("item keys must be unique non-zero uint16 values")
@@ -915,8 +764,25 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
         for locale in ("en-US", "zh-CN")
     }, len(ITEM_DATA))
     item_icons = packed_item_icons(ITEM_DATA)
+    mechanics_hash = binascii.crc32(item_blob) & 0xFFFFFFFF
+    sections = [
+        ("ITEM", bytes(item_blob), len(ITEM_DATA)),
+        ("INAM", item_names, len(ITEM_DATA)),
+        ("ILNM", item_localized_names, len(ITEM_DATA)),
+        ("ILOC", item_localized_descriptions, len(ITEM_DATA)),
+    ]
+    if item_icons:
+        sections.append(("IICO", item_icons, len(ITEM_DATA)))
+    path = WEB_PACKS / "items-core.titem"
+    path.write_bytes(pack(KIND_ITEM, "items-core", mechanics_hash, sections))
+    item = pack_manifest(path, "item", "items-core", ["en-US", "zh-CN"])
+    item["label"] = "Items"
+    item["requires"] = ["moves-core"]
+    manifest.append(item)
 
-    ability_rows = ABILITY_DATA.get("abilities", [])
+
+def build_battle_pack(manifest: list[dict]) -> None:
+    ability_rows = ABILITIES
     if not ability_rows or len(ability_rows) > 512:
         raise ValueError("ability catalogue is empty or too large")
     ability_keys = [int(row["id"]) for row in ability_rows]
@@ -937,151 +803,32 @@ def build_move_pack(manifest: list[dict], sprite_dir: Path) -> None:
         locale: [row["descriptions"][locale] for row in ability_rows]
         for locale in ("en-US", "zh-CN")
     }, len(ability_rows))
-
-    mega_record = struct.Struct("<HBBBBBBBBH")
-    mega_blob = bytearray()
-    form_ids = {"standard": 0, "x": 1, "y": 2, "z": 3}
-    mega_abilities = {
-        (int(row["dex"]), form_ids[row["form"]]): int(row["ability"])
-        for row in ABILITY_DATA.get("mega", [])
-    }
-    previous_key = (0, -1)
-    for form in MEGA_DATA:
-        species = int(form["species"])
-        form_id = form_ids[form.get("form", "standard")]
-        types = form["types"]
-        stats = form["stats"]
-        if (species, form_id) <= previous_key or species > 0xFFFF:
-            raise ValueError("mega form keys must be unique and sorted")
-        if not 1 <= len(types) <= 2 or any(name not in type_ids for name in types):
-            raise ValueError(f"invalid mega types for species {species}")
-        if len(stats) != 5 or any(not 0 < int(value) <= 255 for value in stats):
-            raise ValueError(f"invalid mega stats for species {species}")
-        if (species, form_id) not in mega_abilities:
-            raise ValueError(f"Mega {species}/{form_id}: missing ability assignment")
-        mega_blob.extend(mega_record.pack(
-            species, form_id, type_ids[types[0]],
-            type_ids[types[1]] if len(types) == 2 else 255,
-            *(int(value) for value in stats),
-            mega_abilities[(species, form_id)],
+    type_names, type_name_offsets = string_pool([row["names"]["en-US"] for row in TYPES])
+    type_blob = bytearray()
+    for name_offset, row in zip(type_name_offsets, TYPES):
+        type_blob.extend(struct.pack(
+            "<IHBB", name_offset, row["color"], 1 if row["light"] else 0, 0
         ))
-        previous_key = (species, form_id)
-
-    gigantamax_blob = bytearray()
-    gigantamax_move_rows = []
-    previous_species = 0
-    for entry in GIGANTAMAX_DATA:
-        species = int(entry["species"])
-        if species <= previous_species or species > 0xFFFF:
-            raise ValueError("Gigantamax species IDs must be unique and sorted")
-        gigantamax_blob.extend(struct.pack("<H", species))
-        moves = entry.get("moves", [])
-        if not moves:
-            raise ValueError(f"Gigantamax species {species} has no signature move")
-        previous_type = -1
-        for move in sorted(moves, key=lambda row: type_ids.get(row.get("type"), 0xFF)):
-            move_type = type_ids.get(move.get("type"), 0xFF)
-            effect = GMAX_EFFECT_IDS.get(move.get("effect"), 0)
-            power = int(move.get("power", 0))
-            names = move.get("names", {})
-            if move_type >= len(TYPE_ORDER) or move_type <= previous_type or not effect:
-                raise ValueError(f"Gigantamax species {species} has an invalid move mapping")
-            if set(names) != {"en-US", "zh-CN"} or not all(names.values()):
-                raise ValueError(f"Gigantamax species {species} has incomplete move names")
-            if power < 0 or power > 255:
-                raise ValueError(f"Gigantamax species {species} has invalid move power")
-            gigantamax_move_rows.append((species, move_type, effect, power, names))
-            previous_type = move_type
-        previous_species = species
-
-    if BREEDING_DATA.get("schema") != 1:
-        raise ValueError("breeding_data.json has an unsupported schema")
-    breeding_rows = BREEDING_DATA.get("species", [])
-    if len(breeding_rows) != len(DEX):
-        raise ValueError("breeding catalogue does not cover the authored dex")
-    breeding_record = struct.Struct("<HHHHIH")
-    breeding_blob = bytearray()
-    egg_move_blob = bytearray()
-    for expected_species, row in enumerate(breeding_rows, 1):
-        species = int(row["dex"])
-        groups = int(row["groups"])
-        offspring = [int(value) for value in row["offspring"]]
-        egg_moves = sorted({by_slug[slug] for slug in row["eggMoves"]})
-        if species != expected_species or not groups or groups > 0x7FFF or \
-                not 1 <= len(offspring) <= 2 or \
-                any(not 0 < child <= len(DEX) for child in offspring):
-            raise ValueError(f"species {species}: invalid breeding record")
-        offset = len(egg_move_blob) // 2
-        for move in egg_moves:
-            egg_move_blob.extend(struct.pack("<H", move))
-        breeding_blob.extend(breeding_record.pack(
-            species, groups, offspring[0], offspring[-1], offset, len(egg_moves)
-        ))
-
-    gmax_names, gmax_name_offsets = string_pool(
-        [row[4]["en-US"] for row in gigantamax_move_rows]
-    )
-    gmax_moves = bytearray()
-    gmax_move_record = struct.Struct("<HBBBBI")
-    for row, name_offset in zip(gigantamax_move_rows, gmax_name_offsets):
-        species, move_type, effect, power, _names = row
-        gmax_moves.extend(gmax_move_record.pack(
-            species, move_type, effect, power, 0, name_offset,
-        ))
-    gmax_localized_names = localized_strings({
-        "zh-CN": [row[4]["zh-CN"] for row in gigantamax_move_rows],
-    }, len(gigantamax_move_rows))
-    if len(MAX_MOVE_NAMES) != len(TYPE_ORDER) + 1:
-        raise ValueError("Max Move names must cover every type plus Max Guard")
-    max_move_names, _max_move_name_offsets = string_pool(
-        [names[0] for names in MAX_MOVE_NAMES]
-    )
-    max_move_localized_names = localized_strings({
-        "zh-CN": [names[1] for names in MAX_MOVE_NAMES],
-    }, len(MAX_MOVE_NAMES))
-
-    mechanics_hash = binascii.crc32(
-        move_blob + field_flags + move_tags + learn + offset_blob + chart + item_blob + mega_blob +
-        gigantamax_blob + gmax_moves + ability_blob + breeding_blob + egg_move_blob
-    ) & 0xFFFFFFFF
+    chart_rows = BATTLE_DATA["typeChartTenth"]
+    if len(chart_rows) != len(TYPES) or any(len(row) != len(TYPES) for row in chart_rows):
+        raise ValueError("type chart dimensions do not match type catalogue")
+    chart = bytes(value for row in chart_rows for value in row)
+    type_locales = localized_strings(localized_type_names(), len(TYPES))
+    mechanics_hash = binascii.crc32(chart + type_blob + ability_blob) & 0xFFFFFFFF
     sections = [
-        ("MOVE", bytes(move_blob), len(move_rows)),
-        ("MFLG", bytes(field_flags), len(move_rows)),
-        ("MTAG", bytes(move_tags), len(move_rows)),
-        ("NAME", names_blob, len(move_rows)),
-        ("LNAM", localized_names, len(move_rows)),
-        ("LOFS", offset_blob, len(offsets)),
-        ("LERN", bytes(learn), len(learn) // 4),
-        ("TYPS", bytes(type_blob), len(TYPE_ORDER)),
-        ("TSTR", type_names, len(TYPE_ORDER)),
-        ("TLNM", type_locales, len(TYPE_ORDER)),
+        ("TYPS", bytes(type_blob), len(TYPES)),
+        ("TSTR", type_names, len(TYPES)),
+        ("TLNM", type_locales, len(TYPES)),
         ("CHRT", bytes(chart), len(chart)),
-        ("LOCL", locales, len(move_rows)),
-        ("ITEM", bytes(item_blob), len(ITEM_DATA)),
-        ("INAM", item_names, len(ITEM_DATA)),
-        ("ILNM", item_localized_names, len(ITEM_DATA)),
-        ("ILOC", item_localized_descriptions, len(ITEM_DATA)),
         ("ABIL", bytes(ability_blob), len(ability_rows)),
         ("ANAM", ability_names, len(ability_rows)),
         ("ALNM", ability_localized_names, len(ability_rows)),
         ("ALOC", ability_localized_descriptions, len(ability_rows)),
-        ("MEGA", bytes(mega_blob), len(MEGA_DATA)),
-        ("GMAX", bytes(gigantamax_blob), len(GIGANTAMAX_DATA)),
-        ("GMOV", bytes(gmax_moves), len(gigantamax_move_rows)),
-        ("GMNM", gmax_names, len(gigantamax_move_rows)),
-        ("GMLN", gmax_localized_names, len(gigantamax_move_rows)),
-        ("MXNM", max_move_names, len(MAX_MOVE_NAMES)),
-        ("MXLN", max_move_localized_names, len(MAX_MOVE_NAMES)),
-        ("BRSP", bytes(breeding_blob), len(breeding_rows)),
-        ("BEMV", bytes(egg_move_blob), len(egg_move_blob) // 2),
     ]
-    if item_icons:
-        sections.append(("IICO", item_icons, len(ITEM_DATA)))
-    blob = pack(KIND_MOVE, "moves-core", mechanics_hash, sections)
-    path = WEB_PACKS / "moves-core.tmove"
-    path.write_bytes(blob)
-    item = pack_manifest(path, "move", "moves-core", ["en-US", "zh-CN"])
-    item["label"] = "Core moves"
+    path = WEB_PACKS / "battle-core.tbattle"
+    path.write_bytes(pack(KIND_BATTLE, "battle-core", mechanics_hash, sections))
+    item = pack_manifest(path, "battle", "battle-core", ["en-US", "zh-CN"])
+    item["label"] = "Battle catalogue"
     manifest.append(item)
 
 
@@ -1121,8 +868,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sprite-dir", type=Path, default=HERE / "sdcard" / "mons",
                         help="directory containing pNNN.bin, psNNN.bin and thumbs.bin sources")
-    parser.add_argument("--move-only", action="store_true",
-                        help="rebuild only moves-core.tmove without requiring regional art")
+    parser.add_argument("--core-only", action="store_true",
+                        help="rebuild battle, move and item packs without regional art")
     parser.add_argument("--allow-empty-art", action="store_true",
                         help="build test packs without copyrighted sprite inputs")
     parser.add_argument("--output-dir", type=Path,
@@ -1131,14 +878,16 @@ def main() -> int:
     if args.output_dir:
         WEB_PACKS = args.output_dir.resolve()
     WEB_PACKS.mkdir(parents=True, exist_ok=True)
-    if args.move_only:
+    if args.core_only:
         manifest: list[dict] = []
-        build_move_pack(manifest, args.sprite_dir.resolve())
+        build_battle_pack(manifest)
+        build_move_pack(manifest)
+        build_item_pack(manifest)
         index_path = WEB_PACKS / "index.json"
         if index_path.exists():
             index = json.loads(index_path.read_text(encoding="utf-8"))
             packages = [item for item in index.get("packages", [])
-                        if item.get("id") != "moves-core"]
+                        if item.get("id") not in {"battle-core", "moves-core", "items-core"}]
             packages.extend(manifest)
             index["packAbi"] = PACK_ABI
             index["packages"] = packages
@@ -1146,14 +895,16 @@ def main() -> int:
                 json.dumps(index, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
-        print(f"wrote {WEB_PACKS / 'moves-core.tmove'}")
+        print("wrote battle, move and item core packs")
         return 0
-    for pattern in ("*.tui", "*.tmove", "*.tpet", "*.tquiz"):
+    for pattern in ("*.tui", "*.tmove", "*.titem", "*.tbattle", "*.tquiz"):
         for obsolete in WEB_PACKS.glob(pattern):
             obsolete.unlink()
     manifest: list[dict] = []
     build_ui_packs(manifest)
-    build_move_pack(manifest, args.sprite_dir.resolve())
+    build_battle_pack(manifest)
+    build_move_pack(manifest)
+    build_item_pack(manifest)
     build_region_packs(manifest, args.sprite_dir.resolve(), args.allow_empty_art)
     build_quiz_packs(manifest)
     expected_regions = {item["file"] for item in manifest if item["kind"] == "region"}

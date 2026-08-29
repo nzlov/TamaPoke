@@ -121,9 +121,9 @@
     <p>Put a microSD into the board, choose the installed UI languages and regions,
        then connect the board and deploy. The catalogue below is generated from the
        available packs; adding a language or region does not require editing this page.</p>
-    <p class="note">UI packs provide language, fonts, strings and layout. The move pack
-       provides moves and descriptions. Region packs provide species, sprites,
-       descriptions, trainers, regional battles and badges. Any catalogue pack can be
+    <p class="note">UI packs provide language, fonts, strings and layout. Battle, move and
+       item packs provide shared combat rules, moves and inventory data. Region packs
+       provide species, learnsets, forms, sprites, descriptions, trainers, regional battles and badges. Any catalogue pack can be
        deployed independently; missing dependencies are shown before transfer, with an
        explicit option to force deployment.</p>
     <p class="note">⏱️ Region packs are large and travel over USB serial. A 40 MB region
@@ -137,8 +137,9 @@
       <button id="deploy" disabled>⬇️ Deploy selected packs</button>
     </div>
     <p class="note">Have a custom pack? <label style="cursor:pointer;text-decoration:underline">select
-       <code>.tui</code>, <code>.tmove</code>, <code>.tregion</code> or <code>.tquiz</code> files
-       <input id="files" type="file" accept=".tui,.tmove,.tregion,.tquiz" multiple disabled hidden></label>.</p>
+       <code>.tui</code>, <code>.tbattle</code>, <code>.tmove</code>, <code>.titem</code>,
+       <code>.tregion</code> or <code>.tquiz</code> files
+       <input id="files" type="file" accept=".tui,.tbattle,.tmove,.titem,.tregion,.tquiz" multiple disabled hidden></label>.</p>
     <p class="note"><a href="question-bank.html">Build, edit and deploy a question bank</a>.</p>
     <div class="progress-status" id="progress-status">
       <span id="progress-label">Preparing deployment…</span>
@@ -332,7 +333,9 @@ function renderCatalog(index) {
   catalogEl.textContent = '';
   const groups = [
     ['ui', 'UI and languages'],
+    ['battle', 'Battle rules'],
     ['move', 'Moves'],
+    ['item', 'Items'],
     ['region', 'Regions'],
     ['quiz', 'Question banks'],
   ];
@@ -351,7 +354,8 @@ function renderCatalog(index) {
       const input = document.createElement('input');
       input.type = 'checkbox';
       input.dataset.packId = pkg.id;
-      input.checked = kind === 'move' || Boolean(pkg.default) || (kind === 'region' && index === 0);
+      input.checked = ['battle', 'move', 'item'].includes(kind) || Boolean(pkg.default) ||
+                      (kind === 'region' && index === 0);
       input.onchange = updateSelection;
       const text = document.createElement('span');
       const name = document.createElement('strong');

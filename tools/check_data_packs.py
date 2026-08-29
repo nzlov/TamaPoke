@@ -17,18 +17,23 @@ ROOT = Path(__file__).resolve().parent.parent
 PACKS = ROOT / "web" / "packs"
 COMMON = struct.Struct("<4sHBBIIIIHH20s")
 SECTION = struct.Struct("<4sIII")
-EXT_KIND = {".tui": 1, ".tregion": 2, ".tmove": 3, ".tquiz": 4}
+EXT_KIND = {
+    ".tui": 1, ".tregion": 2, ".tmove": 3, ".tquiz": 4,
+    ".titem": 5, ".tbattle": 6,
+}
 REQUIRED_SECTIONS = {
     1: {b"META", b"STRS", b"FONT", b"LAYT"},
-    2: {b"SPEC", b"ASLT", b"EVOS", b"NAME", b"LNAM", b"REGN", b"RLNM", b"SPRI", b"SBLB", b"THMB",
+    2: {b"SPEC", b"ASLT", b"EVOS", b"LOFS", b"LERN", b"BRSP", b"BEMV",
+        b"MEGA", b"GMAX",
+        b"NAME", b"LNAM", b"REGN", b"RLNM", b"SPRI", b"SBLB", b"THMB",
         b"LOCL", b"BTTL", b"TRNR", b"GSTR", b"BADG", b"BBLB"},
-    3: {b"MOVE", b"MFLG", b"MTAG", b"NAME", b"LNAM", b"LOFS", b"LERN", b"TYPS", b"TSTR", b"TLNM",
-        b"CHRT", b"LOCL", b"ITEM", b"INAM", b"ILNM", b"ILOC", b"ABIL", b"ANAM", b"ALNM",
-        b"ALOC", b"MEGA", b"GMAX", b"GMOV", b"GMNM", b"GMLN", b"MXNM", b"MXLN",
-        b"BRSP", b"BEMV"},
+    3: {b"MOVE", b"MFLG", b"MTAG", b"NAME", b"LNAM", b"LOCL",
+        b"GMOV", b"GMNM", b"GMLN", b"MXNM", b"MXLN"},
     4: {b"QLOC", b"QIDX", b"QDAT"},
+    5: {b"ITEM", b"INAM", b"ILNM", b"ILOC"},
+    6: {b"TYPS", b"TSTR", b"TLNM", b"CHRT", b"ABIL", b"ANAM", b"ALNM", b"ALOC"},
 }
-OPTIONAL_SECTIONS = {2: {b"MFSP", b"MFBL"}, 3: {b"IICO"}}
+OPTIONAL_SECTIONS = {2: {b"MFSP", b"MFBL"}, 5: {b"IICO"}}
 
 QLOC = struct.Struct("<16sII")
 QIDX = struct.Struct("<III")
@@ -179,6 +184,14 @@ def validate(path: Path, expected: dict) -> None:
     elif kind == 2:
         validate_localized_strings(sections[b"RLNM"], section_counts[b"RLNM"])
         species_count = section_counts[b"SPEC"]
+        if len(sections[b"SPEC"]) != species_count * 22:
+            raise ValueError("invalid species table size")
+        species_ids = []
+        for offset in range(0, len(sections[b"SPEC"]), 22):
+            species_ids.append(struct.unpack_from("<H", sections[b"SPEC"], offset)[0])
+            encounter_periods = sections[b"SPEC"][offset + 16]
+            if not encounter_periods or encounter_periods & ~0x03:
+                raise ValueError("invalid species encounter period")
         ability_slot_record = struct.Struct("<HHHH")
         if not species_count or section_counts[b"ASLT"] != species_count or \
                 len(sections[b"ASLT"]) != species_count * ability_slot_record.size:
@@ -190,6 +203,61 @@ def validate(path: Path, expected: dict) -> None:
             if species <= previous_species or not slot_one:
                 raise ValueError("invalid species ability slot record")
             previous_species = species
+        learn_offset_count = section_counts[b"LOFS"]
+        learn_count = section_counts[b"LERN"]
+        if learn_offset_count != species_count + 1 or \
+                len(sections[b"LOFS"]) != learn_offset_count * 4 or \
+                len(sections[b"LERN"]) != learn_count * 4:
+            raise ValueError("invalid regional learnset tables")
+        learn_offsets = struct.unpack(f"<{learn_offset_count}I", sections[b"LOFS"])
+        if learn_offsets[0] or learn_offsets[-1] != learn_count or any(
+                left > right for left, right in zip(learn_offsets, learn_offsets[1:])):
+            raise ValueError("invalid regional learnset offsets")
+        breeding_record = struct.Struct("<HHHHIH")
+        breeding_count = section_counts[b"BRSP"]
+        egg_move_count = section_counts[b"BEMV"]
+        if breeding_count != species_count or \
+                len(sections[b"BRSP"]) != breeding_count * breeding_record.size or \
+                len(sections[b"BEMV"]) != egg_move_count * 2:
+            raise ValueError("invalid regional breeding tables")
+        inherited_moves = struct.unpack(
+            f"<{egg_move_count}H", sections[b"BEMV"]
+        ) if egg_move_count else ()
+        for index in range(breeding_count):
+            species, groups, child_a, child_b, first, count = breeding_record.unpack_from(
+                sections[b"BRSP"], index * breeding_record.size)
+            moves = inherited_moves[first:first + count]
+            if species != species_ids[index] or not groups or groups & 0x8000 or \
+                    not child_a or not child_b or first > egg_move_count or \
+                    count > egg_move_count - first or any(not move for move in moves) or \
+                    any(left >= right for left, right in zip(moves, moves[1:])):
+                raise ValueError("invalid regional species breeding record")
+        mega_record = struct.Struct("<HBBBBBBBBHH")
+        mega_count = section_counts[b"MEGA"]
+        if len(sections[b"MEGA"]) != mega_count * mega_record.size:
+            raise ValueError("invalid regional Mega form table")
+        previous_key = (0, -1)
+        for offset in range(0, len(sections[b"MEGA"]), mega_record.size):
+            values = mega_record.unpack_from(sections[b"MEGA"], offset)
+            species, form, type1, type2 = values[:4]
+            stats, ability, learnset_species = values[4:9], values[9], values[10]
+            if (species, form) <= previous_key or form > 3 or type1 >= 18 or \
+                    (type2 != 255 and type2 >= 18) or any(not value for value in stats) or \
+                    not learnset_species:
+                raise ValueError("invalid regional Mega form record")
+            previous_key = (species, form)
+        gmax_count = section_counts[b"GMAX"]
+        gmax_record = struct.Struct("<HBB")
+        if len(sections[b"GMAX"]) != gmax_count * gmax_record.size:
+            raise ValueError("invalid regional Gigantamax table")
+        previous_species = 0
+        for offset in range(0, len(sections[b"GMAX"]), gmax_record.size):
+            gmax_species, first_move, second_move = gmax_record.unpack_from(
+                sections[b"GMAX"], offset)
+            if gmax_species <= previous_species or not first_move or \
+                    (second_move and second_move <= first_move):
+                raise ValueError("invalid regional Gigantamax move references")
+            previous_species = gmax_species
         sprite_record = struct.Struct("<HIIIIIIIIB")
         sprite_count = section_counts[b"SPRI"]
         if not sprite_count or len(sections[b"SPRI"]) != sprite_count * sprite_record.size:
@@ -222,7 +290,7 @@ def validate(path: Path, expected: dict) -> None:
             previous_species = species
     elif kind == 3:
         move_count = section_counts[b"MOVE"]
-        if len(sections[b"MOVE"]) != move_count * 17 or \
+        if not move_count or len(sections[b"MOVE"]) != move_count * 17 or \
                 len(sections[b"MFLG"]) != move_count or \
                 section_counts[b"MFLG"] != move_count or \
                 any(flag & ~0x7F for flag in sections[b"MFLG"]):
@@ -233,6 +301,35 @@ def validate(path: Path, expected: dict) -> None:
         move_tags = struct.unpack(f"<{move_count}H", sections[b"MTAG"])
         if any(tags & ~0x07FF for tags in move_tags):
             raise ValueError("invalid move tags")
+        validate_localized_strings(sections[b"LNAM"], move_count)
+        validate_localized_strings(sections[b"LOCL"], move_count)
+        gmax_move_record = struct.Struct("<BBBBI")
+        gmax_move_count = section_counts[b"GMOV"]
+        if not gmax_move_count or gmax_move_count > 255 or \
+                len(sections[b"GMOV"]) != gmax_move_count * gmax_move_record.size or \
+                section_counts[b"GMNM"] != gmax_move_count or \
+                section_counts[b"GMLN"] != gmax_move_count:
+            raise ValueError("invalid Gigantamax move table size")
+        names = sections[b"GMNM"]
+        for index, offset in enumerate(
+                range(0, len(sections[b"GMOV"]), gmax_move_record.size), 1):
+            move_id, move_type, effect, _power, name_at = \
+                gmax_move_record.unpack_from(sections[b"GMOV"], offset)
+            name_end = names.find(b"\0", name_at) if name_at < len(names) else -1
+            if move_id != index or move_type >= 18 or not 1 <= effect <= 33 or \
+                    name_end <= name_at or (name_at and names[name_at - 1] != 0):
+                raise ValueError("invalid Gigantamax move record")
+        validate_localized_strings(sections[b"GMLN"], gmax_move_count)
+        max_move_count = 19
+        if section_counts[b"MXNM"] != max_move_count or \
+                section_counts[b"MXLN"] != max_move_count:
+            raise ValueError("invalid Max Move name count")
+        max_names = sections[b"MXNM"].split(b"\0")
+        if len(max_names) != max_move_count + 1 or max_names[-1] or \
+                any(not name for name in max_names[:-1]):
+            raise ValueError("invalid Max Move name table")
+        validate_localized_strings(sections[b"MXLN"], max_move_count)
+    elif kind == 5:
         item_record = struct.Struct("<HBBBBhHBBI")
         item_count = section_counts[b"ITEM"]
         if not item_count or len(sections[b"ITEM"]) != item_count * item_record.size:
@@ -241,47 +338,14 @@ def validate(path: Path, expected: dict) -> None:
         for offset in range(0, len(sections[b"ITEM"]), item_record.size):
             key, category, effect, rarity, flags, param, weight, daily, reserved, _name = \
                 item_record.unpack_from(sections[b"ITEM"], offset)
-            training_item = effect == 6
-            battle_boost = effect == 7
-            battle_mechanic = effect == 8
-            catch_item = effect == 1
-            move_stone = effect == 10
             if not key or not 1 <= category <= 9 or not 1 <= effect <= 10 or \
                     not 1 <= rarity <= 4 or daily > 99 or reserved:
                 raise ValueError("invalid item record")
-            if training_item and (category != 6 or flags not in (1, 2, 16) or param <= 0):
-                raise ValueError("invalid training tonic")
-            if catch_item and (category != 1 or (param <= 0 and param != -1)):
-                raise ValueError("invalid capture item")
-            if battle_boost and (category != 7 or flags not in (1, 2, 4, 8, 16) or
-                                 not 1 <= param <= 6):
-                raise ValueError("invalid battle booster")
-            if battle_mechanic and (category != 8 or flags not in (1, 2, 3) or
-                                    (flags != 3 and param) or not 0 <= param <= 3 or
-                                    weight or daily):
-                raise ValueError("invalid battle mechanic item")
-            if effect == 9 and (category != 5 or flags or param or daily):
-                raise ValueError("invalid Max Soup item")
-            if move_stone and (category != 9 or flags or param or daily):
-                raise ValueError("invalid move stone item")
             keys.append(key)
         if len(keys) != len(set(keys)):
             raise ValueError("duplicate item key")
         validate_localized_strings(sections[b"ILNM"], item_count)
         validate_localized_strings(sections[b"ILOC"], item_count)
-        ability_record = struct.Struct("<HI")
-        ability_count = section_counts[b"ABIL"]
-        if not ability_count or len(sections[b"ABIL"]) != ability_count * ability_record.size:
-            raise ValueError("invalid ability table size")
-        ability_keys = []
-        for offset in range(0, len(sections[b"ABIL"]), ability_record.size):
-            key, _name = ability_record.unpack_from(sections[b"ABIL"], offset)
-            ability_keys.append(key)
-        if any(not key for key in ability_keys) or any(
-                left >= right for left, right in zip(ability_keys, ability_keys[1:])):
-            raise ValueError("invalid ability keys")
-        validate_localized_strings(sections[b"ALNM"], ability_count)
-        validate_localized_strings(sections[b"ALOC"], ability_count)
         if b"IICO" in sections:
             icon_section = sections[b"IICO"]
             icon_record = struct.Struct("<II")
@@ -292,95 +356,25 @@ def validate(path: Path, expected: dict) -> None:
             if icon_count != item_count or record_size != icon_record.size or \
                     table_end > len(icon_section):
                 raise ValueError("invalid item icon index")
-            previous_end = table_end
-            for number in range(icon_count):
-                icon_at, icon_size = icon_record.unpack_from(
-                    icon_section, 4 + number * icon_record.size)
-                if not icon_at and not icon_size:
-                    continue
-                if icon_at < previous_end or not icon_size or \
-                        icon_at + icon_size > len(icon_section):
-                    raise ValueError("item icon is outside IICO")
-                icon = icon_section[icon_at:icon_at + icon_size]
-                if len(icon) < 8 or icon[:4] != b"TIC1":
-                    raise ValueError("invalid TIC1 item icon")
-                width, height, palette_count, reserved = icon[4:8]
-                pixels_at = 8 + palette_count * 2
-                if not width or not height or width > 32 or height > 32 or \
-                        not palette_count or reserved or \
-                        pixels_at + width * height != len(icon) or \
-                        any(pixel != 0xFF and pixel >= palette_count
-                            for pixel in icon[pixels_at:]):
-                    raise ValueError("invalid TIC1 item icon data")
-                previous_end = icon_at + icon_size
-        mega_record = struct.Struct("<HBBBBBBBBH")
-        mega_count = section_counts[b"MEGA"]
-        if not mega_count or len(sections[b"MEGA"]) != mega_count * mega_record.size:
-            raise ValueError("invalid mega form table size")
-        previous_key = (0, -1)
+    elif kind == 6:
         type_count = section_counts[b"TYPS"]
-        for offset in range(0, len(sections[b"MEGA"]), mega_record.size):
-            values = mega_record.unpack_from(sections[b"MEGA"], offset)
-            species, form, type1, type2 = values[:4]
-            stats, ability = values[4:9], values[9]
-            if (species, form) <= previous_key or form > 3 or type1 >= type_count or \
-                    (type2 != 255 and type2 >= type_count) or any(not value for value in stats) or \
-                    (ability and ability not in ability_keys):
-                raise ValueError("invalid mega form record")
-            previous_key = (species, form)
-        gmax_count = section_counts[b"GMAX"]
-        if not gmax_count or len(sections[b"GMAX"]) != gmax_count * 2:
-            raise ValueError("invalid Gigantamax species table size")
-        species = struct.unpack(f"<{gmax_count}H", sections[b"GMAX"])
-        if any(not value for value in species) or any(
-                left >= right for left, right in zip(species, species[1:])):
-            raise ValueError("invalid Gigantamax species table")
-        breeding_record = struct.Struct("<HHHHIH")
-        breeding_count = section_counts[b"BRSP"]
-        egg_move_count = section_counts[b"BEMV"]
-        if not breeding_count or len(sections[b"BRSP"]) != breeding_count * breeding_record.size or \
-                len(sections[b"BEMV"]) != egg_move_count * 2:
-            raise ValueError("invalid breeding table size")
-        egg_moves = struct.unpack(f"<{egg_move_count}H", sections[b"BEMV"])
-        for index in range(breeding_count):
-            breeding_species, groups, child_a, child_b, first, count = breeding_record.unpack_from(
-                sections[b"BRSP"], index * breeding_record.size)
-            moves = egg_moves[first:first + count]
-            if breeding_species != index + 1 or not groups or groups & 0x8000 or \
-                    not 0 < child_a <= breeding_count or not 0 < child_b <= breeding_count or \
-                    first > egg_move_count or count > egg_move_count - first or \
-                    any(not 0 < move < move_count for move in moves) or \
-                    any(left >= right for left, right in zip(moves, moves[1:])):
-                raise ValueError("invalid species breeding record")
-        gmax_move_record = struct.Struct("<HBBBBI")
-        gmax_move_count = section_counts[b"GMOV"]
-        if not gmax_move_count or gmax_move_count > 255 or \
-                len(sections[b"GMOV"]) != gmax_move_count * gmax_move_record.size or \
-                section_counts[b"GMNM"] != gmax_move_count or \
-                section_counts[b"GMLN"] != gmax_move_count:
-            raise ValueError("invalid Gigantamax move table size")
-        previous_key = (0, -1)
-        names = sections[b"GMNM"]
-        for offset in range(0, len(sections[b"GMOV"]), gmax_move_record.size):
-            move_species, move_type, effect, _power, reserved, name_at = \
-                gmax_move_record.unpack_from(sections[b"GMOV"], offset)
-            key = (move_species, move_type)
-            name_end = names.find(b"\0", name_at) if name_at < len(names) else -1
-            if move_species not in species or key <= previous_key or move_type >= type_count or \
-                    not 1 <= effect <= 33 or reserved or name_end <= name_at or \
-                    (name_at and names[name_at - 1] != 0):
-                raise ValueError("invalid Gigantamax move record")
-            previous_key = key
-        validate_localized_strings(sections[b"GMLN"], gmax_move_count)
-        max_move_count = type_count + 1
-        if section_counts[b"MXNM"] != max_move_count or \
-                section_counts[b"MXLN"] != max_move_count:
-            raise ValueError("invalid Max Move name count")
-        max_names = sections[b"MXNM"].split(b"\0")
-        if len(max_names) != max_move_count + 1 or max_names[-1] or \
-                any(not name for name in max_names[:-1]):
-            raise ValueError("invalid Max Move name table")
-        validate_localized_strings(sections[b"MXLN"], max_move_count)
+        if not type_count or len(sections[b"TYPS"]) != type_count * 8 or \
+                len(sections[b"CHRT"]) != type_count * type_count:
+            raise ValueError("invalid battle type catalogue")
+        validate_localized_strings(sections[b"TLNM"], type_count)
+        ability_record = struct.Struct("<HI")
+        ability_count = section_counts[b"ABIL"]
+        if not ability_count or len(sections[b"ABIL"]) != ability_count * ability_record.size:
+            raise ValueError("invalid ability table size")
+        ability_keys = [
+            ability_record.unpack_from(sections[b"ABIL"], offset)[0]
+            for offset in range(0, len(sections[b"ABIL"]), ability_record.size)
+        ]
+        if any(not key for key in ability_keys) or any(
+                left >= right for left, right in zip(ability_keys, ability_keys[1:])):
+            raise ValueError("invalid ability keys")
+        validate_localized_strings(sections[b"ALNM"], ability_count)
+        validate_localized_strings(sections[b"ALOC"], ability_count)
     if kind == 2 and ((b"MFSP" in sections) != (b"MFBL" in sections)):
         raise ValueError("incomplete regional Mega sprite sections")
     if kind == 2 and b"MFSP" in sections:
@@ -405,7 +399,7 @@ def validate(path: Path, expected: dict) -> None:
             previous_key = (species, form)
     elif kind == 4:
         validate_quiz(sections, section_counts)
-    if kind in (2, 3) and mechanics_hash == 0:
+    if kind in (2, 3, 5, 6) and mechanics_hash == 0:
         raise ValueError(f"{path.name}: mechanics pack has no fingerprint")
 
 

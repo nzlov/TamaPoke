@@ -1,295 +1,442 @@
-[
-  {
-    "key": 1001,
-    "category": 1,
-    "effect": 1,
-    "rarity": 1,
-    "param": 100,
-    "dropWeight": 50,
-    "dailyMin": 5,
-    "icon": "poke-ball",
-    "names": {"en-US": "POKE BALL", "zh-CN": "精灵球"},
-    "descriptions": {"en-US": "A basic ball for catching wild Pokemon.", "zh-CN": "用于捕捉野生宝可梦的基础精灵球。"}
-  },
-  {
-    "key": 1002,
-    "category": 1,
-    "effect": 1,
-    "rarity": 2,
-    "param": 150,
-    "dropWeight": 20,
-    "dailyMin": 0,
-    "icon": "great-ball",
-    "names": {"en-US": "GREAT BALL", "zh-CN": "超级球"},
-    "descriptions": {"en-US": "A better ball with a 1.5x catch modifier.", "zh-CN": "捕获修正为1.5倍的高性能精灵球。"}
-  },
-  {
-    "key": 1003,
-    "category": 1,
-    "effect": 1,
-    "rarity": 3,
-    "param": 200,
-    "dropWeight": 8,
-    "dailyMin": 0,
-    "icon": "ultra-ball",
-    "names": {"en-US": "ULTRA BALL", "zh-CN": "高级球"},
-    "descriptions": {"en-US": "A high-grade ball with a 2x catch modifier.", "zh-CN": "捕获修正为2倍的高等级精灵球。"}
-  },
-  {
-    "key": 1004,
-    "category": 1,
-    "effect": 1,
-    "rarity": 4,
-    "param": -1,
-    "dropWeight": 1,
-    "dailyMin": 0,
-    "icon": "master-ball",
-    "names": {"en-US": "MASTER BALL", "zh-CN": "大师球"},
-    "descriptions": {"en-US": "The best ball. It catches any valid wild Pokemon without fail.", "zh-CN": "性能最好的球，必定捕获任何有效的野生宝可梦。"}
-  },
-  {
-    "key": 1101,
-    "category": 2,
-    "effect": 2,
-    "rarity": 1,
-    "param": 20,
-    "dropWeight": 40,
-    "dailyMin": 2,
-    "icon": "potion",
-    "names": {"en-US": "POTION", "zh-CN": "伤药"},
-    "descriptions": {"en-US": "Restores 20 HP during battle.", "zh-CN": "在战斗中回复20点HP。"}
-  },
-  {
-    "key": 1102,
-    "category": 2,
-    "effect": 2,
-    "rarity": 2,
-    "param": 60,
-    "dropWeight": 16,
-    "dailyMin": 0,
-    "icon": "super-potion",
-    "names": {"en-US": "SUPER POTION", "zh-CN": "好伤药"},
-    "descriptions": {"en-US": "Restores 60 HP during battle.", "zh-CN": "在战斗中回复60点HP。"}
-  },
-  {
-    "key": 1201,
-    "category": 3,
-    "effect": 3,
-    "rarity": 2,
-    "param": 127,
-    "dropWeight": 14,
-    "dailyMin": 0,
-    "icon": "full-heal",
-    "names": {"en-US": "FULL HEAL", "zh-CN": "万灵药"},
-    "descriptions": {"en-US": "Cures any battle status condition.", "zh-CN": "治愈战斗中的任意异常状态。"}
-  },
-  {
-    "key": 1301,
-    "category": 4,
-    "effect": 4,
-    "rarity": 3,
-    "param": 50,
-    "dropWeight": 6,
-    "dailyMin": 0,
-    "icon": "revive",
-    "names": {"en-US": "REVIVE", "zh-CN": "活力碎片"},
-    "descriptions": {"en-US": "Revives a fainted team member with half HP.", "zh-CN": "让倒下的队伍成员以一半HP复活。"}
-  },
-  {
-    "key": 1401,
-    "category": 6,
-    "effect": 6,
-    "rarity": 3,
-    "flags": 1,
-    "param": 10,
-    "dropWeight": 3,
-    "dailyMin": 0,
-    "names": {"en-US": "ATTACK TONIC", "zh-CN": "攻击训练剂"},
-    "descriptions": {"en-US": "Permanently raises Attack training's decay floor by 10.", "zh-CN": "永久提高10点攻击训练下限。"}
-  },
-  {
-    "key": 1402,
-    "category": 6,
-    "effect": 6,
-    "rarity": 3,
-    "flags": 2,
-    "param": 10,
-    "dropWeight": 3,
-    "dailyMin": 0,
-    "names": {"en-US": "DEFENSE TONIC", "zh-CN": "防御训练剂"},
-    "descriptions": {"en-US": "Permanently raises Defense training's decay floor by 10.", "zh-CN": "永久提高10点防御训练下限。"}
-  },
-  {
-    "key": 1403,
-    "category": 6,
-    "effect": 6,
-    "rarity": 3,
-    "flags": 16,
-    "param": 10,
-    "dropWeight": 3,
-    "dailyMin": 0,
-    "names": {"en-US": "SPEED TONIC", "zh-CN": "速度训练剂"},
-    "descriptions": {"en-US": "Permanently raises Speed training's decay floor by 10.", "zh-CN": "永久提高10点速度训练下限。"}
-  },
-  {
-    "key": 1501,
-    "category": 7,
-    "effect": 7,
-    "rarity": 2,
-    "flags": 1,
-    "param": 1,
-    "dropWeight": 10,
-    "dailyMin": 0,
-    "icon": "x-attack",
-    "names": {"en-US": "X ATTACK", "zh-CN": "攻击强化剂"},
-    "descriptions": {"en-US": "Raises Attack by one stage for the current battle.", "zh-CN": "本场战斗中使攻击提高1级。"}
-  },
-  {
-    "key": 1502,
-    "category": 7,
-    "effect": 7,
-    "rarity": 2,
-    "flags": 2,
-    "param": 1,
-    "dropWeight": 10,
-    "dailyMin": 0,
-    "icon": "x-defense",
-    "names": {"en-US": "X DEFENSE", "zh-CN": "防御强化剂"},
-    "descriptions": {"en-US": "Raises Defense by one stage for the current battle.", "zh-CN": "本场战斗中使防御提高1级。"}
-  },
-  {
-    "key": 1503,
-    "category": 7,
-    "effect": 7,
-    "rarity": 2,
-    "flags": 4,
-    "param": 1,
-    "dropWeight": 10,
-    "dailyMin": 0,
-    "icon": "x-sp-atk",
-    "names": {"en-US": "X SP. ATK", "zh-CN": "特攻强化剂"},
-    "descriptions": {"en-US": "Raises Sp. Atk by one stage for the current battle.", "zh-CN": "本场战斗中使特攻提高1级。"}
-  },
-  {
-    "key": 1504,
-    "category": 7,
-    "effect": 7,
-    "rarity": 2,
-    "flags": 8,
-    "param": 1,
-    "dropWeight": 10,
-    "dailyMin": 0,
-    "icon": "x-sp-def",
-    "names": {"en-US": "X SP. DEF", "zh-CN": "特防强化剂"},
-    "descriptions": {"en-US": "Raises Sp. Def by one stage for the current battle.", "zh-CN": "本场战斗中使特防提高1级。"}
-  },
-  {
-    "key": 1505,
-    "category": 7,
-    "effect": 7,
-    "rarity": 2,
-    "flags": 16,
-    "param": 1,
-    "dropWeight": 10,
-    "dailyMin": 0,
-    "icon": "x-speed",
-    "names": {"en-US": "X SPEED", "zh-CN": "速度强化剂"},
-    "descriptions": {"en-US": "Raises Speed by one stage for the current battle.", "zh-CN": "本场战斗中使速度提高1级。"}
-  },
-  {
-    "key": 1601,
-    "category": 8,
-    "effect": 8,
-    "rarity": 4,
-    "flags": 1,
-    "param": 0,
-    "dropWeight": 0,
-    "dailyMin": 0,
-    "names": {"en-US": "Z CRYSTAL", "zh-CN": "Z纯晶"},
-    "descriptions": {"en-US": "Consumed to turn one damaging move into its type's Z-Move.", "zh-CN": "消耗后将一次攻击招式转化为对应属性的Z招式。"}
-  },
-  {
-    "key": 1602,
-    "category": 8,
-    "effect": 8,
-    "rarity": 4,
-    "flags": 2,
-    "param": 0,
-    "dropWeight": 0,
-    "dailyMin": 0,
-    "names": {"en-US": "WISHING STAR", "zh-CN": "许愿星"},
-    "descriptions": {"en-US": "Consumed to Dynamax one Pokemon for three actions.", "zh-CN": "消耗后让一只宝可梦极巨化三个行动回合。"}
-  },
-  {
-    "key": 1603,
-    "category": 8,
-    "effect": 8,
-    "rarity": 4,
-    "flags": 3,
-    "param": 0,
-    "dropWeight": 0,
-    "dailyMin": 0,
-    "names": {"en-US": "MEGA STONE", "zh-CN": "超级石"},
-    "descriptions": {"en-US": "Consumed to Mega Evolve a Pokemon with one standard Mega form.", "zh-CN": "消耗后让仅有普通超级形态的宝可梦在本场战斗中超级进化。"}
-  },
-  {
-    "key": 1604,
-    "category": 8,
-    "effect": 8,
-    "rarity": 4,
-    "flags": 3,
-    "param": 1,
-    "dropWeight": 0,
-    "dailyMin": 0,
-    "names": {"en-US": "MEGA STONE X", "zh-CN": "超级石X"},
-    "descriptions": {"en-US": "Consumed to trigger an eligible Pokemon's Mega X form.", "zh-CN": "消耗后让符合条件的宝可梦进化为超级X形态。"}
-  },
-  {
-    "key": 1605,
-    "category": 8,
-    "effect": 8,
-    "rarity": 4,
-    "flags": 3,
-    "param": 2,
-    "dropWeight": 0,
-    "dailyMin": 0,
-    "names": {"en-US": "MEGA STONE Y", "zh-CN": "超级石Y"},
-    "descriptions": {"en-US": "Consumed to trigger an eligible Pokemon's Mega Y form.", "zh-CN": "消耗后让符合条件的宝可梦进化为超级Y形态。"}
-  },
-  {
-    "key": 1606,
-    "category": 8,
-    "effect": 8,
-    "rarity": 4,
-    "flags": 3,
-    "param": 3,
-    "dropWeight": 0,
-    "dailyMin": 0,
-    "names": {"en-US": "MEGA STONE Z", "zh-CN": "超级石Z"},
-    "descriptions": {"en-US": "Consumed to trigger an eligible Pokemon's Mega Z form.", "zh-CN": "消耗后让符合条件的宝可梦进化为超级Z形态。"}
-  },
-  {
-    "key": 1607,
-    "category": 5,
-    "effect": 9,
-    "rarity": 4,
-    "flags": 0,
-    "param": 0,
-    "dropWeight": 1,
-    "dailyMin": 0,
-    "names": {"en-US": "MAX SOUP", "zh-CN": "极巨汤"},
-    "descriptions": {"en-US": "Gives an eligible Pokemon the Gigantamax Factor.", "zh-CN": "让符合条件的宝可梦获得超极巨化因子。"}
-  },
-  {
-    "key": 1701,
-    "category": 9,
-    "effect": 10,
-    "rarity": 2,
-    "flags": 0,
-    "param": 0,
-    "dropWeight": 10,
-    "dailyMin": 0,
-    "names": {"en-US": "MOVE STONE", "zh-CN": "技能石"},
-    "descriptions": {"en-US": "Teaches the move stored in this stone to a compatible Pokemon.", "zh-CN": "让能够学习的宝可梦学会石中记录的技能。"}
-  }
-]
+{
+  "schema": 1,
+  "items": [
+    {
+      "key": 1001,
+      "category": 1,
+      "effect": 1,
+      "rarity": 1,
+      "param": 100,
+      "dropWeight": 50,
+      "dailyMin": 5,
+      "icon": "poke-ball",
+      "names": {
+        "en-US": "POKE BALL",
+        "zh-CN": "精灵球"
+      },
+      "descriptions": {
+        "en-US": "A basic ball for catching wild Pokemon.",
+        "zh-CN": "用于捕捉野生宝可梦的基础精灵球。"
+      }
+    },
+    {
+      "key": 1002,
+      "category": 1,
+      "effect": 1,
+      "rarity": 2,
+      "param": 150,
+      "dropWeight": 20,
+      "dailyMin": 0,
+      "icon": "great-ball",
+      "names": {
+        "en-US": "GREAT BALL",
+        "zh-CN": "超级球"
+      },
+      "descriptions": {
+        "en-US": "A better ball with a 1.5x catch modifier.",
+        "zh-CN": "捕获修正为1.5倍的高性能精灵球。"
+      }
+    },
+    {
+      "key": 1003,
+      "category": 1,
+      "effect": 1,
+      "rarity": 3,
+      "param": 200,
+      "dropWeight": 8,
+      "dailyMin": 0,
+      "icon": "ultra-ball",
+      "names": {
+        "en-US": "ULTRA BALL",
+        "zh-CN": "高级球"
+      },
+      "descriptions": {
+        "en-US": "A high-grade ball with a 2x catch modifier.",
+        "zh-CN": "捕获修正为2倍的高等级精灵球。"
+      }
+    },
+    {
+      "key": 1004,
+      "category": 1,
+      "effect": 1,
+      "rarity": 4,
+      "param": -1,
+      "dropWeight": 1,
+      "dailyMin": 0,
+      "icon": "master-ball",
+      "names": {
+        "en-US": "MASTER BALL",
+        "zh-CN": "大师球"
+      },
+      "descriptions": {
+        "en-US": "The best ball. It catches any valid wild Pokemon without fail.",
+        "zh-CN": "性能最好的球，必定捕获任何有效的野生宝可梦。"
+      }
+    },
+    {
+      "key": 1101,
+      "category": 2,
+      "effect": 2,
+      "rarity": 1,
+      "param": 20,
+      "dropWeight": 40,
+      "dailyMin": 2,
+      "icon": "potion",
+      "names": {
+        "en-US": "POTION",
+        "zh-CN": "伤药"
+      },
+      "descriptions": {
+        "en-US": "Restores 20 HP during battle.",
+        "zh-CN": "在战斗中回复20点HP。"
+      }
+    },
+    {
+      "key": 1102,
+      "category": 2,
+      "effect": 2,
+      "rarity": 2,
+      "param": 60,
+      "dropWeight": 16,
+      "dailyMin": 0,
+      "icon": "super-potion",
+      "names": {
+        "en-US": "SUPER POTION",
+        "zh-CN": "好伤药"
+      },
+      "descriptions": {
+        "en-US": "Restores 60 HP during battle.",
+        "zh-CN": "在战斗中回复60点HP。"
+      }
+    },
+    {
+      "key": 1201,
+      "category": 3,
+      "effect": 3,
+      "rarity": 2,
+      "param": 127,
+      "dropWeight": 14,
+      "dailyMin": 0,
+      "icon": "full-heal",
+      "names": {
+        "en-US": "FULL HEAL",
+        "zh-CN": "万灵药"
+      },
+      "descriptions": {
+        "en-US": "Cures any battle status condition.",
+        "zh-CN": "治愈战斗中的任意异常状态。"
+      }
+    },
+    {
+      "key": 1301,
+      "category": 4,
+      "effect": 4,
+      "rarity": 3,
+      "param": 50,
+      "dropWeight": 6,
+      "dailyMin": 0,
+      "icon": "revive",
+      "names": {
+        "en-US": "REVIVE",
+        "zh-CN": "活力碎片"
+      },
+      "descriptions": {
+        "en-US": "Revives a fainted team member with half HP.",
+        "zh-CN": "让倒下的队伍成员以一半HP复活。"
+      }
+    },
+    {
+      "key": 1401,
+      "category": 6,
+      "effect": 6,
+      "rarity": 3,
+      "flags": 1,
+      "param": 10,
+      "dropWeight": 3,
+      "dailyMin": 0,
+      "names": {
+        "en-US": "ATTACK TONIC",
+        "zh-CN": "攻击训练剂"
+      },
+      "descriptions": {
+        "en-US": "Permanently raises Attack training's decay floor by 10.",
+        "zh-CN": "永久提高10点攻击训练下限。"
+      }
+    },
+    {
+      "key": 1402,
+      "category": 6,
+      "effect": 6,
+      "rarity": 3,
+      "flags": 2,
+      "param": 10,
+      "dropWeight": 3,
+      "dailyMin": 0,
+      "names": {
+        "en-US": "DEFENSE TONIC",
+        "zh-CN": "防御训练剂"
+      },
+      "descriptions": {
+        "en-US": "Permanently raises Defense training's decay floor by 10.",
+        "zh-CN": "永久提高10点防御训练下限。"
+      }
+    },
+    {
+      "key": 1403,
+      "category": 6,
+      "effect": 6,
+      "rarity": 3,
+      "flags": 16,
+      "param": 10,
+      "dropWeight": 3,
+      "dailyMin": 0,
+      "names": {
+        "en-US": "SPEED TONIC",
+        "zh-CN": "速度训练剂"
+      },
+      "descriptions": {
+        "en-US": "Permanently raises Speed training's decay floor by 10.",
+        "zh-CN": "永久提高10点速度训练下限。"
+      }
+    },
+    {
+      "key": 1501,
+      "category": 7,
+      "effect": 7,
+      "rarity": 2,
+      "flags": 1,
+      "param": 1,
+      "dropWeight": 10,
+      "dailyMin": 0,
+      "icon": "x-attack",
+      "names": {
+        "en-US": "X ATTACK",
+        "zh-CN": "攻击强化剂"
+      },
+      "descriptions": {
+        "en-US": "Raises Attack by one stage for the current battle.",
+        "zh-CN": "本场战斗中使攻击提高1级。"
+      }
+    },
+    {
+      "key": 1502,
+      "category": 7,
+      "effect": 7,
+      "rarity": 2,
+      "flags": 2,
+      "param": 1,
+      "dropWeight": 10,
+      "dailyMin": 0,
+      "icon": "x-defense",
+      "names": {
+        "en-US": "X DEFENSE",
+        "zh-CN": "防御强化剂"
+      },
+      "descriptions": {
+        "en-US": "Raises Defense by one stage for the current battle.",
+        "zh-CN": "本场战斗中使防御提高1级。"
+      }
+    },
+    {
+      "key": 1503,
+      "category": 7,
+      "effect": 7,
+      "rarity": 2,
+      "flags": 4,
+      "param": 1,
+      "dropWeight": 10,
+      "dailyMin": 0,
+      "icon": "x-sp-atk",
+      "names": {
+        "en-US": "X SP. ATK",
+        "zh-CN": "特攻强化剂"
+      },
+      "descriptions": {
+        "en-US": "Raises Sp. Atk by one stage for the current battle.",
+        "zh-CN": "本场战斗中使特攻提高1级。"
+      }
+    },
+    {
+      "key": 1504,
+      "category": 7,
+      "effect": 7,
+      "rarity": 2,
+      "flags": 8,
+      "param": 1,
+      "dropWeight": 10,
+      "dailyMin": 0,
+      "icon": "x-sp-def",
+      "names": {
+        "en-US": "X SP. DEF",
+        "zh-CN": "特防强化剂"
+      },
+      "descriptions": {
+        "en-US": "Raises Sp. Def by one stage for the current battle.",
+        "zh-CN": "本场战斗中使特防提高1级。"
+      }
+    },
+    {
+      "key": 1505,
+      "category": 7,
+      "effect": 7,
+      "rarity": 2,
+      "flags": 16,
+      "param": 1,
+      "dropWeight": 10,
+      "dailyMin": 0,
+      "icon": "x-speed",
+      "names": {
+        "en-US": "X SPEED",
+        "zh-CN": "速度强化剂"
+      },
+      "descriptions": {
+        "en-US": "Raises Speed by one stage for the current battle.",
+        "zh-CN": "本场战斗中使速度提高1级。"
+      }
+    },
+    {
+      "key": 1601,
+      "category": 8,
+      "effect": 8,
+      "rarity": 4,
+      "flags": 1,
+      "param": 0,
+      "dropWeight": 0,
+      "dailyMin": 0,
+      "names": {
+        "en-US": "Z CRYSTAL",
+        "zh-CN": "Z纯晶"
+      },
+      "descriptions": {
+        "en-US": "Consumed to turn one damaging move into its type's Z-Move.",
+        "zh-CN": "消耗后将一次攻击招式转化为对应属性的Z招式。"
+      }
+    },
+    {
+      "key": 1602,
+      "category": 8,
+      "effect": 8,
+      "rarity": 4,
+      "flags": 2,
+      "param": 0,
+      "dropWeight": 0,
+      "dailyMin": 0,
+      "names": {
+        "en-US": "WISHING STAR",
+        "zh-CN": "许愿星"
+      },
+      "descriptions": {
+        "en-US": "Consumed to Dynamax one Pokemon for three actions.",
+        "zh-CN": "消耗后让一只宝可梦极巨化三个行动回合。"
+      }
+    },
+    {
+      "key": 1603,
+      "category": 8,
+      "effect": 8,
+      "rarity": 4,
+      "flags": 3,
+      "param": 0,
+      "dropWeight": 0,
+      "dailyMin": 0,
+      "names": {
+        "en-US": "MEGA STONE",
+        "zh-CN": "超级石"
+      },
+      "descriptions": {
+        "en-US": "Consumed to Mega Evolve a Pokemon with one standard Mega form.",
+        "zh-CN": "消耗后让仅有普通超级形态的宝可梦在本场战斗中超级进化。"
+      }
+    },
+    {
+      "key": 1604,
+      "category": 8,
+      "effect": 8,
+      "rarity": 4,
+      "flags": 3,
+      "param": 1,
+      "dropWeight": 0,
+      "dailyMin": 0,
+      "names": {
+        "en-US": "MEGA STONE X",
+        "zh-CN": "超级石X"
+      },
+      "descriptions": {
+        "en-US": "Consumed to trigger an eligible Pokemon's Mega X form.",
+        "zh-CN": "消耗后让符合条件的宝可梦进化为超级X形态。"
+      }
+    },
+    {
+      "key": 1605,
+      "category": 8,
+      "effect": 8,
+      "rarity": 4,
+      "flags": 3,
+      "param": 2,
+      "dropWeight": 0,
+      "dailyMin": 0,
+      "names": {
+        "en-US": "MEGA STONE Y",
+        "zh-CN": "超级石Y"
+      },
+      "descriptions": {
+        "en-US": "Consumed to trigger an eligible Pokemon's Mega Y form.",
+        "zh-CN": "消耗后让符合条件的宝可梦进化为超级Y形态。"
+      }
+    },
+    {
+      "key": 1606,
+      "category": 8,
+      "effect": 8,
+      "rarity": 4,
+      "flags": 3,
+      "param": 3,
+      "dropWeight": 0,
+      "dailyMin": 0,
+      "names": {
+        "en-US": "MEGA STONE Z",
+        "zh-CN": "超级石Z"
+      },
+      "descriptions": {
+        "en-US": "Consumed to trigger an eligible Pokemon's Mega Z form.",
+        "zh-CN": "消耗后让符合条件的宝可梦进化为超级Z形态。"
+      }
+    },
+    {
+      "key": 1607,
+      "category": 5,
+      "effect": 9,
+      "rarity": 4,
+      "flags": 0,
+      "param": 0,
+      "dropWeight": 1,
+      "dailyMin": 0,
+      "names": {
+        "en-US": "MAX SOUP",
+        "zh-CN": "极巨汤"
+      },
+      "descriptions": {
+        "en-US": "Gives an eligible Pokemon the Gigantamax Factor.",
+        "zh-CN": "让符合条件的宝可梦获得超极巨化因子。"
+      }
+    },
+    {
+      "key": 1701,
+      "category": 9,
+      "effect": 10,
+      "rarity": 2,
+      "flags": 0,
+      "param": 0,
+      "dropWeight": 10,
+      "dailyMin": 0,
+      "names": {
+        "en-US": "MOVE STONE",
+        "zh-CN": "技能石"
+      },
+      "descriptions": {
+        "en-US": "Teaches the move stored in this stone to a compatible Pokemon.",
+        "zh-CN": "让能够学习的宝可梦学会石中记录的技能。"
+      }
+    }
+  ]
+}

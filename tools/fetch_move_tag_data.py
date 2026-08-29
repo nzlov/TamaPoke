@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the committed move-tag catalogue from a pinned PokeAPI revision."""
+"""Refresh move tags in the committed move catalogue from pinned PokeAPI data."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
-OUTPUT = HERE / "move_tag_data.json"
+OUTPUT = HERE / "move_data.json"
 CACHE = HERE / "pokeapi_cache" / "move_tags"
 POKEAPI_REVISION = "c40a25c6544b97334a1ae8b1965a378fa3317c28"
 CSV_NAMES = ("moves", "move_flags", "move_flag_map")
@@ -80,7 +80,9 @@ def rows(name: str, source_dir: Path | None) -> list[dict[str, str]]:
 
 
 def build(source_dir: Path | None) -> dict:
-    from dex_moves import MOVES
+    catalogue = json.loads(OUTPUT.read_text(encoding="utf-8"))
+    if catalogue.get("schema") != 1 or not isinstance(catalogue.get("moves"), list):
+        raise ValueError("move catalogue must use schema 1")
 
     move_ids = {row["identifier"]: int(row["id"]) for row in rows("moves", source_dir)}
     flag_names = {
@@ -90,9 +92,8 @@ def build(source_dir: Path | None) -> dict:
     for row in rows("move_flag_map", source_dir):
         upstream[int(row["move_id"])].add(flag_names[int(row["move_flag_id"])])
 
-    result = []
-    for name, slug, *_rest in MOVES:
-        key = slug or name.lower()
+    for move in catalogue["moves"]:
+        key = move["slug"]
         move_id = move_ids.get(key)
         if move_id is None:
             raise ValueError(f"move {key}: absent from pinned PokeAPI move table")
@@ -104,19 +105,16 @@ def build(source_dir: Path | None) -> dict:
         for tag, members in SUPPLEMENTAL.items():
             if key in members:
                 tags.add(tag)
-        result.append({"slug": key, "tags": sorted(tags, key=TAG_BITS.get)})
+        move["tags"] = sorted(tags, key=TAG_BITS.get)
 
-    return {
-        "schema": 1,
-        "source": {
-            "repository": "https://github.com/PokeAPI/pokeapi",
-            "revision": POKEAPI_REVISION,
-            "path": "data/v2/csv",
-            "supplemental": "Scarlet/Violet slicing and wind move groupings",
-        },
-        "tagBits": TAG_BITS,
-        "moves": result,
+    catalogue["source"] = {
+        "repository": "https://github.com/PokeAPI/pokeapi",
+        "revision": POKEAPI_REVISION,
+        "path": "data/v2/csv",
+        "supplemental": "Scarlet/Violet slicing and wind move groupings",
     }
+    catalogue["tagBits"] = TAG_BITS
+    return catalogue
 
 
 def main() -> int:
@@ -127,8 +125,8 @@ def main() -> int:
     encoded = json.dumps(build(args.csv_dir), ensure_ascii=False, indent=2) + "\n"
     if args.check:
         if not OUTPUT.exists() or OUTPUT.read_text(encoding="utf-8") != encoded:
-            raise SystemExit("move_tag_data.json is stale; run tools/fetch_move_tag_data.py")
-        print("PASS move_tag_data.json matches the pinned move flags")
+            raise SystemExit("move_data.json tags are stale; run tools/fetch_move_tag_data.py")
+        print("PASS move_data.json tags match the pinned move flags")
         return 0
     OUTPUT.write_text(encoded, encoding="utf-8")
     print(f"wrote {OUTPUT}")

@@ -24,9 +24,9 @@ packages = index.get("packages", [])
 ids = {package["id"] for package in packages}
 
 kinds = {package["kind"] for package in packages}
-if not packages or not {"ui", "move", "region"}.issubset(kinds) or \
-        not kinds.issubset({"ui", "move", "region", "quiz"}):
-    raise SystemExit("catalogue must expose UI, move and region packs, plus optional question banks")
+if not packages or not {"ui", "battle", "move", "item", "region"}.issubset(kinds) or \
+        not kinds.issubset({"ui", "battle", "move", "item", "region", "quiz"}):
+    raise SystemExit("catalogue must expose UI, battle, move, item and region packs, plus optional question banks")
 if len(ids) != len(packages):
     raise SystemExit("duplicate package id")
 if sum(bool(package.get("default")) for package in packages if package["kind"] == "ui") != 1:
@@ -56,7 +56,7 @@ for package_id in ids:
 
 required_fragments = [
     "packs/index.json", "data-pack-id", "pkg.requires", "serial.sendFile(`packs/${name}`",
-    ".tui,.tmove,.tregion,.tquiz", "Deploy selected packs", "SD card management",
+    ".tui,.tbattle,.tmove,.titem,.tregion,.tquiz", "Deploy selected packs", "SD card management",
     "runCommand('LS')", "`RM packs/${name}`", "runCommand('FORMAT'", "confirm(",
     "progress-percent", "deploy-error", "BOARD_ERRORS",
     "reportDeploymentError", "transferred === total ? total * .999",
