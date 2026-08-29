@@ -44,7 +44,8 @@ struct RosterSnapshot {
   uint32_t magic;
   uint32_t seenEpoch;
   uint8_t active;
-  uint8_t reserved[3];
+  uint8_t lead;
+  uint8_t reserved[2];
   PartyMon slots[PARTY_SLOTS];
 };
 static_assert(sizeof(RosterSnapshot) <= 4096,
@@ -126,6 +127,7 @@ void Party::begin() {
   for (auto &s : slots) sanitize(s, false);
   for (auto &s : box) sanitize(s, true);
   if (active >= PARTY_SLOTS || slots[active].empty()) active = 0;
+  normalizeLead();
   lastRosterTick = millis();
   if (!legacyMigration && rosterVersion != ROSTER_VERSION) {
     saveTeam();
@@ -170,6 +172,7 @@ bool Party::loadSnapshot() {
       snapshot.magic != ROSTER_SNAPSHOT_MAGIC) return false;
   memcpy(slots, snapshot.slots, sizeof(slots));
   active = snapshot.active;
+  lead = snapshot.lead;
   savedSeenEpoch = snapshot.seenEpoch;
   loadBox();
   return true;
@@ -284,6 +287,7 @@ void Party::attach(Pet &pet) {
     }
     if (!slots[active].empty()) pet.importState(slots[active]);
   }
+  normalizeLead();
   boundPet = &pet;
   pet.attachRoster(this);
   lastRosterTick = millis();
@@ -296,6 +300,7 @@ void Party::saveTeam() {
   snapshot.magic = ROSTER_SNAPSHOT_MAGIC;
   snapshot.seenEpoch = savedSeenEpoch;
   snapshot.active = active;
+  snapshot.lead = lead;
   memcpy(snapshot.slots, slots, sizeof(slots));
   prefs.putBytes("team2", &snapshot, sizeof(snapshot));
 }
@@ -337,6 +342,20 @@ bool Party::activateNext(int direction, Pet &pet) {
     if (!slots[next].empty()) return activate((uint8_t)next, pet);
   }
   return false;
+}
+
+bool Party::setLead(uint8_t index) {
+  if (index >= PARTY_SLOTS || slots[index].empty() || index == lead) return false;
+  lead = index;
+  saveTeam();
+  return true;
+}
+
+void Party::normalizeLead() {
+  if (lead < PARTY_SLOTS && !slots[lead].empty()) return;
+  lead = 0;
+  while (lead < PARTY_SLOTS && slots[lead].empty()) lead++;
+  if (lead >= PARTY_SLOTS) lead = 0;
 }
 
 void Party::update(Pet &pet, uint32_t nowMs) {
@@ -440,6 +459,7 @@ void Party::swapPartyBox(uint8_t partyIdx, uint8_t boxIdx) {
         if (!slots[i].empty()) { active = i; boundPet->importState(slots[i]); break; }
     }
   }
+  normalizeLead();
   saveTeam();
   saveBoxPage(boxIdx / BOX_PAGE_SLOTS);
 }
@@ -478,6 +498,7 @@ void Party::replaceAt(uint8_t i, const PartyMon &m) {
   slots[i] = m;
   sanitize(slots[i], false);
   if (i == active && boundPet && !slots[i].empty()) boundPet->importState(slots[i]);
+  normalizeLead();
   saveTeam();
 }
 
@@ -487,6 +508,7 @@ void Party::releaseAt(uint8_t i) {
   if (i == active && boundPet)
     for (uint8_t n = 0; n < PARTY_SLOTS; n++)
       if (!slots[n].empty()) { active = n; boundPet->importState(slots[n]); break; }
+  normalizeLead();
   saveTeam();
 }
 
@@ -523,6 +545,7 @@ void Party::rewardRandomTraining(uint8_t slotMask, Pet &pet, uint8_t points) {
 
 void Party::removeActiveAndEnsurePlayable(Pet &pet) {
   if (active < PARTY_SLOTS) slots[active] = PartyMon();
+  normalizeLead();
 
   for (uint8_t i = 0; i < PARTY_SLOTS; i++) {
     if (slots[i].empty()) continue;
@@ -539,6 +562,7 @@ void Party::removeActiveAndEnsurePlayable(Pet &pet) {
     slots[active] = box[i];
     box[i] = PartyMon();
     pet.importState(slots[active]);
+    normalizeLead();
     saveTeam();
     saveBoxPage(i / BOX_PAGE_SLOTS);
     pet.saveNow();
@@ -548,6 +572,7 @@ void Party::removeActiveAndEnsurePlayable(Pet &pet) {
   active = 0;
   pet.newEgg();
   pet.exportState(slots[active]);
+  normalizeLead();
   saveTeam();
 }
 

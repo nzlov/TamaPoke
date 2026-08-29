@@ -593,11 +593,15 @@ bool menuOpen = false;
 #define MENU_H 316
 #define MENU_ROW_H 52
 #define MENU_ROW_GAP 6
-// 5 rows: STATS / POKEDEX / SETTINGS / RELEASE-or-FAREWELL / POWER OFF. At MENU_Y
+// 5 rows: LEAD / POKEDEX / SETTINGS / RELEASE-or-FAREWELL / POWER OFF. At MENU_Y
 // 75 the panel spans 75..391 and the round display gives a half-width of 171 there against
 // the 160 a row needs, so the corners stay on glass.
 #define MENU_ROWS 5
 #define MENU_ROW_Y(i) (MENU_Y + 16 + (i) * (MENU_ROW_H + MENU_ROW_GAP))
+
+bool menuRowDisabled(uint8_t row) {
+  return row == 0 && party.activeIndex() == party.leadIndex();
+}
 
 // Swipe-down navigation is deliberately separate from the name-band menu.
 // The latter remains the only route to Pokedex, settings and creature exit; this
@@ -2799,9 +2803,10 @@ void onTap(int16_t x, int16_t y) {
       int ry = MENU_ROW_Y(i);
       if (x < MENU_X + 18 || x > MENU_X + MENU_W - 18) continue;
       if (y < ry || y > ry + MENU_ROW_H) continue;
+      if (menuRowDisabled((uint8_t)i)) { sfxPlay(SFX_DENY); return; }
       sfxPlay(SFX_TAP);
       menuOpen = false;
-      if (i == 0) { cardOpen = true; cardPage = 1; }   // straight to the stats page
+      if (i == 0) { party.setLead(party.activeIndex()); }
       else if (i == 1) { galleryOpen = true; galleryPick = true; galleryPage = 0; rpickPage = 0; galleryDetail = 0; galleryDirty = true; }
       else if (i == 2) { openClock(); }
       else if (i == 3) {
@@ -2981,7 +2986,7 @@ void onTap(int16_t x, int16_t y) {
       return;
     }
   }
-  // Tapping the name/status band opens the creature menu. The slot dots above
+  // Tapping the name band opens the creature menu. The slot dots above
   // it are handled first by petNavTap(), so both controls keep distinct hit zones.
   if (y >= 68 && y < 120) {
     menuOpen = true;
@@ -4862,8 +4867,9 @@ static void foeFromSpecies(Combatant &c, int16_t dex, uint8_t lvl, uint8_t iv) {
   combatantFromPet(c, foe);
 }
 
-// Your side is the six cultivation slots. The active slot is read from Pet so
-// actions performed immediately before battle cannot be hidden by a stale save.
+// Your side is the six cultivation slots, ordered with the selected lead first.
+// The active cultivation slot is read from Pet so actions performed immediately
+// before battle cannot be hidden by a stale save.
 //
 // Both ladders cap your LEVEL to the leader's best, so a gym is always fought
 // on its own terms and grinding is never the answer -- the type chart, the
@@ -4876,7 +4882,9 @@ static void buildSquad(uint8_t maxLvl, uint8_t maxCount, uint16_t mask) {
   btlSquadAt = 0;
   btlPetIn = false;
   if (maxCount > TRAINER_TEAM_MAX) maxCount = TRAINER_TEAM_MAX;
-  for (int i = 0; i < PARTY_SLOTS && btlSquadN < maxCount; i++) {
+  for (uint8_t order = 0; order < PARTY_SLOTS && btlSquadN < maxCount; order++) {
+    uint8_t i = order == 0 ? party.leadIndex() : (uint8_t)(order - 1);
+    if (order && i >= party.leadIndex()) i++;
     if (!(mask & (1 << i))) continue;
     if (i == party.activeIndex()) {
       if (pet.isEgg() || pet.isDead()) continue;
@@ -7201,12 +7209,15 @@ uint8_t pickCandidates() {
     if (pickExists(n)) c++;
   return c;
 }
-// Trims the selection to the first `cap` battle-ready cultivation slots.
+// Selects the lead first, then fills the remaining cap in cultivation-slot order.
 void pickDefault(uint8_t cap) {
   squadMask = 0;
   uint8_t taken = 0;
-  for (uint8_t n = 0; n < PARTY_SLOTS && taken < cap; n++)
+  for (uint8_t order = 0; order < PARTY_SLOTS && taken < cap; order++) {
+    uint8_t n = order == 0 ? party.leadIndex() : (uint8_t)(order - 1);
+    if (order && n >= party.leadIndex()) n++;
     if (pickUsable(n)) { squadMask |= (1 << n); taken++; }
+  }
 }
 
 static void drawPickCell(uint8_t n, int x, int y, uint8_t capLvl) {
@@ -8038,10 +8049,11 @@ void renderCard() {
 
 // ---------- menu overlay ----------
 
-// Row labels are built fresh each frame because two of them carry live counts.
+// Row labels are built fresh because the lead state and Pokedex count are live.
 static void menuRowLabel(int i, char *out, size_t n) {
   switch (i) {
-    case 0: snprintf(out, n, "%s", T(S_STATS)); break;
+    case 0: snprintf(out, n, "%s", T(party.activeIndex() == party.leadIndex()
+                                     ? S_LEADING : S_LEAD)); break;
     case 1: snprintf(out, n, T(S_POKEDEX_FMT), pet.registeredCount(), dexCount()); break;
     case 2: snprintf(out, n, "%s", T(S_SETTINGS)); break;
     case 3: snprintf(out, n, "%s",
@@ -8062,13 +8074,14 @@ void drawMenu() {
   for (int i = 0; i < MENU_ROWS; i++) {
     int y = MENU_ROW_Y(i);
     bool close = (i == MENU_ROWS - 1);
-    bool dead = (i == 3 && !pet.canExitNow());   // an egg or sleeping companion
+    bool disabled = menuRowDisabled((uint8_t)i) ||
+                    (i == 3 && !pet.canExitNow());
     gfx->fillRoundRect(MENU_X + 18, y, MENU_W - 36, MENU_ROW_H, 12,
-                       close || dead ? UI_TRACK : UI_BG_DAY);
+                       close || disabled ? UI_TRACK : UI_BG_DAY);
     gfx->drawRoundRect(MENU_X + 18, y, MENU_W - 36, MENU_ROW_H, 12, UI_INK);
     char lbl[28];
     menuRowLabel(i, lbl, sizeof(lbl));
-    gfx->setTextColor(UI_INK);
+    gfx->setTextColor(disabled ? UI_MUTED : UI_INK);
     gfx->setTextSize(2);
     uiDrawCenteredIn(lbl, MENU_X + 18, y, MENU_W - 36, MENU_ROW_H);
   }

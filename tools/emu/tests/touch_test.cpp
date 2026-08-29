@@ -229,17 +229,15 @@ int main(int argc, char **argv) {
   gameOpen = false;
   trainOpen = false;
 
-  click(233, 82);                        // relocated name/status band opens the menu
+  click(233, 82);                        // relocated name band opens the menu
   if (!menuOpen) { printf("FAIL: name band did not open the menu\n"); return 1; }
-  click(233, 104 + 16 + 22);             // menu row 0 == STATS == MENU_ROW_Y(0)+22
-  if (!cardOpen || cardPage != 1) {
-    printf("FAIL: STATS row -> cardOpen=%d cardPage=%d (want 1,1)\n",
-           (int)cardOpen, (int)cardPage);
-    return 1;
-  }
-  printf("PASS: menu STATS row opens the stats card page\n");
+  click(233, 104 + 16 + 22);             // row 0 is disabled for the current lead
+  if (!menuOpen) { printf("FAIL: LEADING row accepted a tap\n"); return 1; }
+  printf("PASS: menu LEADING row is disabled\n");
 
   // ---- moves card page -> picker -> slot actually changes, with no duplicates
+  menuOpen = false;
+  cardOpen = true;
   cardPage = 2;
   MoveId before = pet.moves[1];
   click(233, 154);                       // slot 1 == MOVE_ROW_Y(1)

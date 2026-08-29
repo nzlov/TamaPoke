@@ -145,6 +145,8 @@ public:
   bool activate(uint8_t index, Pet &pet);
   bool activateNext(int direction, Pet &pet);
   uint8_t activeIndex() const { return active; }
+  bool setLead(uint8_t index);
+  uint8_t leadIndex() const { return lead; }
   bool savePending() const { return pendingSave; }
   void flushSave(Pet &pet);
   void saveSnapshot(Pet &pet, uint32_t nowEpoch);
@@ -186,6 +188,7 @@ private:
   Preferences prefs;
   Pet *boundPet = nullptr;
   uint8_t active = 0;
+  uint8_t lead = 0;
   uint32_t lastRosterTick = 0;
   uint8_t ticksSinceSave = 0;
   bool pendingSave = false;
@@ -197,6 +200,7 @@ private:
   void loadRoster();
   void loadBox();
   bool loadSnapshot();
+  void normalizeLead();
   void sanitize(PartyMon &mon, bool boxed);
 };
 

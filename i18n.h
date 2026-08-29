@@ -165,6 +165,8 @@ enum StrId : uint8_t {
   // bag actions (append-only)
   S_ITEM_VIEW, S_ITEM_DISCARD, S_ITEM_CHOOSE_TARGET, S_ITEM_QUANTITY,
   S_ITEM_DISCARD_Q_FMT, S_CONFIRM,
+  // persistent mutually-exclusive battle lead (append-only)
+  S_LEAD, S_LEADING,
   STR_COUNT
 };
 

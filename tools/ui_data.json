@@ -259,7 +259,9 @@
         "ELIGE UNA MASCOTA",
         "CANTIDAD",
         "Tirar %u x %s?",
-        "CONFIRMAR"
+        "CONFIRMAR",
+        "PRIMERO",
+        "PRIMERO ACTIVO"
       ],
       "medalNames": [
         "Nv.10",
@@ -581,7 +583,9 @@
         "CHOOSE A PET",
         "QUANTITY",
         "Discard %u x %s?",
-        "CONFIRM"
+        "CONFIRM",
+        "LEAD",
+        "LEADING"
       ],
       "medalNames": [
         "Lv.10",
@@ -903,7 +907,9 @@
         "CHOISIS UN COMPAGNON",
         "QUANTITE",
         "Jeter %u x %s ?",
-        "CONFIRMER"
+        "CONFIRMER",
+        "EN TETE",
+        "EN TETE ACTUELLEMENT"
       ],
       "medalNames": [
         "Niv.10",
@@ -1225,7 +1231,9 @@
         "WAHL EIN MONSTER",
         "ANZAHL",
         "%u x %s wegwerfen?",
-        "BESTATIGEN"
+        "BESTATIGEN",
+        "ANFUEHRER",
+        "IST ANFUEHRER"
       ],
       "medalNames": [
         "Lv.10",
@@ -1547,7 +1555,9 @@
         "SCEGLI UN COMPAGNO",
         "QUANTITA",
         "Scartare %u x %s?",
-        "CONFERMA"
+        "CONFERMA",
+        "PRIMO",
+        "PRIMO ATTIVO"
       ],
       "medalNames": [
         "Lv.10",
@@ -1869,7 +1879,9 @@
         "ESCOLHE UM COMPANHEIRO",
         "QUANTIDADE",
         "Descartar %u x %s?",
-        "CONFIRMAR"
+        "CONFIRMAR",
+        "PRIMEIRO",
+        "PRIMEIRO ATIVO"
       ],
       "medalNames": [
         "Niv.10",
@@ -2197,7 +2209,9 @@
         "选择伙伴",
         "数量",
         "丢弃%u个%s？",
-        "确定"
+        "确定",
+        "首发",
+        "已首发"
       ],
       "medalNames": [
         "10级",

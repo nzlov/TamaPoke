@@ -303,6 +303,9 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 - Swipe horizontally to change the displayed creature. The indicators above
   the creature name show only occupied cultivation slots; tapping them opens
   the Box. Swipe down for the **bag / battle centre / badges** navigation page.
+- The name menu can make the displayed creature the single **Lead**. That
+  choice persists independently of which creature is displayed and sends the
+  Lead out first whenever it is included in a battle squad.
 - The **Box holds 24 creatures** across four pages of six. Box state is frozen;
   exchanging a creature with a cultivation slot resumes it with no state reset.
 - The Box is the only cultivation-management screen. Tap any Box cell: an empty
@@ -726,10 +729,11 @@ If one bottoms out it counts as a *slip-up*.
 - 🫧 **Bath** → a foam scene that cleans up the poops.
 
 **Touch gestures:**
-- **Tap the name** at the top = the **menu** (stats / Pokédex / Settings /
+- **Tap the name** at the top = the **menu** (Lead / Pokédex / Settings /
   Release or Farewell, Power off). Power off opens a confirmation and saves the
-  current cultivation snapshot before asking the PMU to shut down. Close the
-  menu by tapping anywhere outside the panel or with any swipe.
+  current cultivation snapshot before asking the PMU to shut down. The current
+  Lead row reads **Leading** and is disabled. Close the menu by tapping anywhere
+  outside the panel or with any swipe.
 - Tap the occupied-slot indicators above the name to open the Box.
 - Tap the creature = pet it (+happiness, bond).
 - Horizontal swipe = switch between the occupied cultivation slots.
