@@ -42,6 +42,7 @@ extern Pet pet;
 extern Party party;
 extern Inventory inventory;
 extern Combatant btlYou, btlFoe;
+extern Combatant btlSquad[];
 extern PartyMon btlWildMon, capturedMon, partyPending;
 extern bool battleOpen, btlWild, btlOver, btlWon, partyPick, boxOpen;
 extern uint8_t gymRegion;
@@ -67,6 +68,7 @@ extern ItemRef btlRewardItems[];
 extern uint8_t btlRewardItemCount;
 extern uint8_t btlGmaxBonusDrops;
 extern UiScrollView btlRewardScroll;
+extern bool btlLearnPromptOpen;
 void btlUpdateCapture(uint32_t now);
 void btlUpdateThrow(uint32_t now);
 bool btlFeedThrowSample(const MotionSample &sample);
@@ -136,13 +138,78 @@ int main() {
   pet.trAtk = pet.trDef = pet.trSpe = 10;
   party.captureActive(pet, false);
   btlSquadN = 1;
-  btlSquadSource[0] = 0;
+  btlSquadSource[0] = (int8_t)party.activeIndex();
   btlEnteredMask = 1;
   btlWildMechanic = 0;
   btlTrainer = -1;
   btlWild = true;
   btlLink = false;
   battleOpen = true;
+
+  MoveId observedMoves[2] = { MOVE_NONE, MOVE_NONE };
+  for (MoveId move = 1; move < moveCount(); move++) {
+    if (pet.knowsMove(move)) continue;
+    if (!observedMoves[0]) observedMoves[0] = move;
+    else { observedMoves[1] = move; break; }
+  }
+  for (MoveId &move : pet.reserveMoves) move = MOVE_NONE;
+  party.captureActive(pet, false);
+  combatantFromPet(btlYou, pet);
+  btlYou.observedMove = observedMoves[0];
+  btlSquad[0] = btlYou;
+  btlYou.hp = 0;
+  btlWild = false;
+  btlFinish(false);
+  check(!btlLearnPromptOpen && pet.knowsMove(observedMoves[0]),
+        "a move observed before fainting is retained after a lost battle when a learned slot is free");
+
+  MoveId fullSet[LEARNED_MOVE_SLOTS] = {};
+  uint8_t fullCount = 0;
+  for (MoveId move = 1; move < moveCount() && fullCount < LEARNED_MOVE_SLOTS; move++)
+    if (move != observedMoves[1]) fullSet[fullCount++] = move;
+  for (uint8_t i = 0; i < MOVE_SLOTS; i++) pet.moves[i] = fullSet[i];
+  for (uint8_t i = 0; i < RESERVE_MOVE_SLOTS; i++)
+    pet.reserveMoves[i] = fullSet[MOVE_SLOTS + i];
+  party.captureActive(pet, false);
+  combatantFromPet(btlYou, pet);
+  btlYou.observedMove = observedMoves[1];
+  btlSquad[0] = btlYou;
+  btlYou.hp = 0;
+  btlMsgCount = 0;
+  btlTapDebounceArmed = false;
+  battleOpen = true;
+  randomSeed(17);
+  btlFinish(false);
+  check(btlLearnPromptOpen && !pet.knowsMove(observedMoves[1]),
+        "a full learned set waits for an explicit post-battle retention choice");
+  gfx->frameReady = false;
+  render();
+  check(gfx->frameReady, "the post-battle move retention prompt flushes to the panel");
+  onTap(150, 350);
+  check(!btlLearnPromptOpen && pet.learnedMoveCount() == LEARNED_MOVE_SLOTS &&
+        pet.knowsMove(observedMoves[1]),
+        "retaining the observed move randomly replaces one of eight learned moves");
+
+  MoveId declined = MOVE_NONE;
+  for (MoveId move = 1; move < moveCount(); move++)
+    if (!pet.knowsMove(move)) { declined = move; break; }
+  combatantFromPet(btlYou, pet);
+  btlYou.observedMove = declined;
+  btlSquad[0] = btlYou;
+  btlMsgCount = 0;
+  btlTapDebounceArmed = false;
+  battleOpen = true;
+  btlFinish(false);
+  check(btlLearnPromptOpen, "a later full-set observation opens a new retention choice");
+  onTap(320, 350);
+  check(!btlLearnPromptOpen && !pet.knowsMove(declined),
+        "declining keeps the existing eight learned moves unchanged");
+
+  btlMsgCount = 0;
+  btlWild = true;
+  battleOpen = true;
+  combatantFromPet(btlYou, pet);
+  btlSquad[0] = btlYou;
   uint32_t inventoryWrites = perfSample(PERF_INVENTORY_SAVE).nvsWrites;
   btlFinish(true);
   check(btlWinUntil && screenIs("win"),

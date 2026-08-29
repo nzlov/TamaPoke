@@ -23,12 +23,14 @@ void setup();
 void startBattle(int16_t dex, uint8_t lvl);
 void commitBattleMove(uint8_t moveSlot, uint8_t percent);
 void battleTap(int16_t x, int16_t y);
+bool btlTryObserveFoeMove(MoveId move, bool foeActed, uint8_t roll);
 void btlUpdateTurnPresentation(uint32_t now);
 uint8_t uiCurrentScreen();
 bool uiScreenContinuous(uint8_t screen);
 extern Pet pet;
 extern Combatant btlYou, btlFoe;
 extern bool battleOpen, btlTurnAnimating, btlTurnShowingRound, btlOver, btlWon;
+extern bool btlObservedNoticeOpen, btlLearnPromptOpen, btlTapDebounceArmed;
 extern bool btlHard, btlPetIn;
 extern int8_t btlTrainer;
 extern uint8_t btlRegion;
@@ -126,7 +128,19 @@ int main() {
         "a special move keeps its type on the ranged effect beat");
 
   btlUpdateTurnPresentation(btlTurnBeatStartedAt + 60000);
+  MoveId full[LEARNED_MOVE_SLOTS] = {};
+  for (MoveId move = 1, i = 0; move < moveCount() && i < LEARNED_MOVE_SLOTS; move++)
+    if (speciesCanLearnMove(pet.speciesId, move)) full[i++] = move;
+  for (uint8_t i = 0; i < MOVE_SLOTS; i++) pet.moves[i] = full[i];
+  for (uint8_t i = 0; i < RESERVE_MOVE_SLOTS; i++)
+    pet.reserveMoves[i] = full[MOVE_SLOTS + i];
   startBattle(9, 50);
+  MoveId observed = MOVE_NONE;
+  for (MoveId move = 1; move < moveCount(); move++)
+    if (speciesCanLearnMove(pet.speciesId, move) && !pet.knowsMove(move)) {
+      observed = move;
+      break;
+    }
   btlTrainer = 0;
   btlRegion = 0;
   btlHard = false;
@@ -137,13 +151,27 @@ int main() {
   btlFoe.hp = 1;
   btlHpShown[1] = 1;
   btlUpdateTurnPresentation(btlTurnBeatStartedAt + 700);
+  btlYou.bond = 100;
+  check(observed && btlTryObserveFoeMove(observed, true, 0),
+        "the winning-turn fixture records an observed move");
   commitBattleMove(0, 100);
-  check(btlOver && btlWon && btlWinUntil && btlTurnAnimating,
-        "a winning exchange keeps its queued presentation before the victory page");
+  check(btlOver && btlWon && btlLearnPromptOpen && !btlWinUntil &&
+        btlTurnAnimating,
+        "a winning exchange keeps its queued presentation before move settlement");
   check(uiScreenContinuous(uiCurrentScreen()),
         "the winning presentation remains on a continuously rendered screen");
   btlUpdateTurnPresentation(btlTurnBeatStartedAt + 60000);
-  check(!btlTurnAnimating && btlWinUntil,
-        "the winning action finishes and leaves the victory page ready");
+  check(!btlTurnAnimating && btlObservedNoticeOpen && btlLearnPromptOpen &&
+        !btlWinUntil &&
+        uiScreenContinuous(uiCurrentScreen()),
+        "the winning action shows the observation notice before full-set retention");
+  btlTapDebounceArmed = false;
+  battleTap(0, 0);
+  check(!btlObservedNoticeOpen && btlLearnPromptOpen && !btlWinUntil,
+        "dismissing the winning-turn notice reveals the retention choice");
+  btlTapDebounceArmed = false;
+  battleTap(320, 350);
+  check(!btlLearnPromptOpen && btlWinUntil,
+        "answering the retention choice continues to the victory settlement");
   return failures ? 1 : 0;
 }

@@ -26,22 +26,31 @@ void FakeESP::restart(){exit(0);}
 int FakeSerial::available(){return 0;}
 String FakeSerial::readStringUntil(char){return String("");}
 
-void setup(); void render(); void battleTap(int16_t,int16_t);
+void setup(); void render(); void battleTap(int16_t,int16_t); void onSwipe(int dir);
+void onSwipeV(int dir);
 void updateQuiz(uint32_t now);
 bool beginBattleQuiz(uint8_t moveSlot);
+bool btlTryObserveFoeMove(MoveId move, bool foeActed, uint8_t roll);
+MoveId btlMoveChoiceAt(uint8_t choice);
 extern Pet pet;
 extern Arduino_Canvas *gfx;
 extern QuizRuntime quiz;
 extern bool battleOpen;
+extern bool btlTapDebounceArmed;
 extern uint8_t choiceKind;
 extern uint8_t btlMenu;
-extern Combatant btlYou;
+extern uint8_t btlMovePage;
+extern uint8_t btlMsgCount;
+extern Combatant btlYou, btlFoe;
 extern BattleMechanic btlPendingMechanic;
 extern ItemKey btlPendingItem;
 extern BattleSideMechanics btlYourMechanics;
 void startBattle(int16_t dex, uint8_t lvl);
 void commitBattleMove(uint8_t moveSlot, uint8_t percent);
 extern bool btlTurnAnimating, btlTurnShowingRound;
+extern bool btlObservedNoticeOpen;
+extern char btlObservedNotice[96];
+extern uint16_t btlTurnNumber;
 extern uint32_t btlTurnBeatStartedAt;
 void btlUpdateTurnPresentation(uint32_t now);
 int btlCellIndexAt(int16_t x, int16_t y);
@@ -107,6 +116,7 @@ int main(){
   pet.ageMinutes = 50UL*MINUTES_PER_LEVEL;
   pet.relearnFromLevel();
   quiz.config.choiceWeight = 0;
+  quiz.config.questionTypes = QUIZ_TYPE_ARITHMETIC;
 
   ck(!strcmp(rareMark(false), "") && !strcmp(rareMark(true), "*"),
      "one marker represents the combined rare state");
@@ -168,8 +178,77 @@ int main(){
      "and so does the row seam");
 
   // finally, drive a real tap low in the bottom-left cell through battleTap
+  pet.bond = 100;
+  MoveId observed = MOVE_NONE;
+  for (MoveId move = 1; move < moveCount(); move++)
+    if (speciesCanLearnMove(pet.speciesId, move) && !pet.knowsMove(move)) {
+      observed = move;
+      break;
+    }
+  MoveId incompatible = MOVE_NONE;
+  for (MoveId move = 1; move < moveCount(); move++)
+    if (!speciesCanLearnMove(pet.speciesId, move) && !pet.knowsMove(move)) {
+      incompatible = move;
+      break;
+    }
+  MoveId harmless = MOVE_NONE;
+  for (MoveId move = 1; move < moveCount(); move++)
+    if (moveEntry(move).cat == MC_STATUS && move != observed) { harmless = move; break; }
   startBattle(9, 50);
   openBattleRound();
+  ck(moveValid(incompatible) &&
+     !btlTryObserveFoeMove(incompatible, true, 0) && !btlYou.observedMove,
+     "an opposing move outside the current species learnset cannot be observed");
+  ck(!btlTryObserveFoeMove(observed, false, 0),
+     "selecting an unknown foe move without using it cannot teach the move");
+  bool learnedFromResolvedTurn = false;
+  for (uint32_t seed = 1; seed <= 64 && !learnedFromResolvedTurn; seed++) {
+    startBattle(9, 50);
+    for (MoveId &move : btlFoe.moves) move = observed;
+    btlYou.moves[0] = harmless;
+    randomSeed(seed);
+    openBattleRound();
+    commitBattleMove(0, 100);
+    learnedFromResolvedTurn = btlYou.observedMove == observed;
+  }
+  ck(moveValid(observed) && moveValid(harmless) && learnedFromResolvedTurn,
+     "the resolved enemy-action path can add an unknown move as the current pet's fifth move");
+  btlUpdateTurnPresentation(btlTurnBeatStartedAt + 60000UL);
+  ck(btlObservedNoticeOpen && !btlTurnAnimating &&
+     strstr(btlObservedNotice, moveName(observed)) != nullptr,
+     "observing a move pauses after the completed round with an attributed notice");
+  gfx->frameReady = false;
+  render();
+  ck(gfx->frameReady, "the observation notice flushes to the battle screen");
+  onSwipe(-1);
+  onSwipeV(-1);
+  ck(btlObservedNoticeOpen,
+     "swipes cannot dismiss the observation notice or leak into the battle menu");
+  uint16_t observedRound = btlTurnNumber;
+  battleTap(0, 0);
+  ck(!btlObservedNoticeOpen && btlTurnAnimating && btlTurnShowingRound &&
+     btlTurnNumber == observedRound + 1,
+     "tapping the observation notice dismisses it and starts the next round");
+  ck(!btlTryObserveFoeMove(btlFoe.moves[0], true, 0) &&
+     btlYou.observedMove == observed,
+     "a pet observes at most one move per battle");
+  btlMenu = 1;
+  onSwipe(-1);
+  ck(btlMovePage == 1 && btlMoveChoiceAt(4) == observed,
+     "the observed fifth move is reachable on the battle move page");
+  if (btlTurnAnimating && !btlTurnShowingRound)
+    btlUpdateTurnPresentation(btlTurnBeatStartedAt + 60000UL);
+  openBattleRound();
+  btlMsgCount = 0;
+  btlMenu = 1;
+  btlMovePage = 1;
+  btlTapDebounceArmed = false;
+  battleTap(150, 300);
+  ck(quiz.active && answerActiveQuiz() && btlTurnAnimating,
+     "the observed fifth move can be selected and used during the same battle");
+  startBattle(9, 50);
+  openBattleRound();
+  btlMsgCount = 0;
   btlYou.moves[2] = btlYou.moves[0];
   btlMenu = 1;
   uint8_t before = btlMenu;

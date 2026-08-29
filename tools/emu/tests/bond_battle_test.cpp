@@ -62,6 +62,12 @@ int main() {
   Combatant high;
   combatantFromPet(high, pet);
   ck(scaledBy(high, neutral, 120), "bond 100 scales all six battle stats to 120 percent");
+  ck(!battleObservesMove(0, 0) &&
+     battleObservesMove(50, 14) && !battleObservesMove(50, 15) &&
+     battleObservesMove(100, 29) && !battleObservesMove(100, 30),
+     "bond scales observed-move learning linearly from 0 to 30 percent");
+  ck(high.bond == 100,
+     "the combatant keeps bond for battle-time observation checks");
 
   PartyMon banked;
   pet.exportState(banked);

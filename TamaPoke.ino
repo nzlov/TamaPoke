@@ -876,6 +876,8 @@ void bootReport();
 uint8_t uiCurrentScreen();
 bool beginCareQuiz(const CareAction &action, bool showGameResult);
 bool beginBattleQuiz(uint8_t moveSlot);
+MoveId btlMoveChoiceAt(uint8_t choice);
+static uint8_t btlMovePageCount();
 void updateQuiz(uint32_t now);
 bool quizBlocking();
 void commitBattleMove(uint8_t moveSlot, uint8_t percent);
@@ -946,6 +948,18 @@ void btlApplyGmaxInventoryEffect(uint8_t actorSide, uint8_t bonusRewardItems,
       inventory.add(btlLastConsumedItem))
     btlLastConsumedItem = ItemRef();
 }
+uint8_t btlMovePage = 0;
+bool btlLearnPromptOpen = false;
+uint8_t btlLearnPromptSquad = 0;
+
+enum BtlEndContinuation : uint8_t {
+  BTL_END_NONE = 0,
+  BTL_END_NORMAL,
+  BTL_END_CAPTURE,
+};
+static BtlEndContinuation btlEndContinuation = BTL_END_NONE;
+static uint8_t btlLearnSettleAt = 0;
+static void btlBeginLearnSettlement(BtlEndContinuation continuation);
 
 static void btlResetRewardSummary() {
   btlRewardTraining[0] = btlRewardTraining[1] = btlRewardTraining[2] = 0;
@@ -1226,6 +1240,9 @@ uint16_t btlTurnNumber = 0;
 bool btlTurnCapturing = false;
 bool btlTurnAnimating = false;
 bool btlTurnShowingRound = false;
+static bool btlObservedNoticePending = false;
+bool btlObservedNoticeOpen = false;
+char btlObservedNotice[96] = {};
 uint32_t btlTurnBeatStartedAt = 0;
 uint16_t btlTurnHpFrom[2] = { 0, 0 };
 uint16_t btlTurnHpTarget[2] = { 0, 0 };
@@ -2150,6 +2167,7 @@ void onSwipeV(int dir) {
     return;
   }
   if (moveInfoOpen) { moveInfoOpen = false; return; }
+  if (btlObservedNoticeOpen) return;
   if (btlWinUntil) {
     if (btlTrainer < 0 && btlRewardScroll.scroll(dir)) sfxPlay(SFX_TAP);
     return;
@@ -2804,6 +2822,7 @@ void onSwipe(int dir) {
   uiRenderDirty = true;
   if (quizBlocking()) return;
   if (moveInfoOpen) { moveInfoOpen = false; return; }
+  if (btlObservedNoticeOpen) return;
   if (btlWinUntil) return;
   // The region chooser pages, and it is checked before everything else because
   // it sits on TOP of the starter/gallery/gym screens -- each of which has its
@@ -2824,6 +2843,9 @@ void onSwipe(int dir) {
     if (btlMenu == 3) {
       int p = (int)btlItemPage + (dir > 0 ? -1 : 1);
       if (p >= 0) btlItemPage = (uint8_t)p;
+    } else if (btlMenu == 1) {
+      int p = (int)btlMovePage + (dir > 0 ? -1 : 1);
+      if (p >= 0 && p < btlMovePageCount()) btlMovePage = (uint8_t)p;
     } else if (btlMenu == 2 || btlMenu == 4) {
       uint8_t pages = (uint8_t)((btlSquadN + 3) / 4);
       int p = (int)btlTargetPage + (dir > 0 ? -1 : 1);
@@ -3061,7 +3083,7 @@ void onTap(int16_t x, int16_t y) {
     }
     return;
   }
-  if (btlWinUntil) {
+  if (btlWinUntil && !btlObservedNoticeOpen) {
     btlDismissWin();
     return;
   }
@@ -3588,7 +3610,7 @@ uint8_t uiCurrentScreen() {
   if (moveInfoOpen) return SCR_MOVEPICK;
   if (galleryOpen) return galleryPick ? SCR_DEXPICK : SCR_GALLERY;
   if (movePickOpen) return SCR_MOVEPICK;
-  if (btlWinUntil && !btlTurnAnimating) return SCR_WIN;
+  if (btlWinUntil && !btlTurnAnimating && !btlObservedNoticeOpen) return SCR_WIN;
   if (bagOpen) return SCR_BAG;
   if (breedingOpen) return SCR_BREEDING;
   if (boxOpen) return SCR_BOX;
@@ -3931,7 +3953,7 @@ bool beginCareQuiz(const CareAction &action, bool showGameResult) {
 }
 
 bool beginBattleQuiz(uint8_t moveSlot) {
-  if (moveSlot >= MOVE_SLOTS || !btlYou.moves[moveSlot]) return false;
+  if (!btlMoveChoiceAt(moveSlot)) return false;
   lastInteract = millis();
   if (!quiz.begin(uiActiveLocaleCode())) {
     commitBattleMove(moveSlot, 100);
@@ -5065,6 +5087,9 @@ static void btlResetTurnPresentation() {
   btlTurnCapturing = false;
   btlTurnAnimating = false;
   btlTurnShowingRound = false;
+  btlObservedNoticePending = false;
+  btlObservedNoticeOpen = false;
+  btlObservedNotice[0] = 0;
   btlTurnBeatStartedAt = 0;
   btlFoeTurnPlan = BtlFoeTurnPlan();
   btlHitFrom[0] = btlHitFrom[1] = 0;
@@ -5198,6 +5223,11 @@ static void btlFinishTurnPresentation(uint32_t now) {
   btlTurnShowingRound = false;
   btlHpShown[0] = btlYou.hp;
   btlHpShown[1] = btlFoe.hp;
+  if (btlObservedNoticePending) {
+    btlObservedNoticePending = false;
+    btlObservedNoticeOpen = true;
+    return;
+  }
   if (btlOver && !btlWinUntil && btlTurnBeatCount) {
     snprintf(btlMsg[0], sizeof(btlMsg[0]), "%s",
              btlTurnBeats[btlTurnBeatCount - 1].text);
@@ -5455,6 +5485,20 @@ static void btlResetMechanics() {
   btlLastConsumedItem = ItemRef();
   btlGmaxBonusDrops = 0;
   btlField = BattleField();
+  btlMovePage = 0;
+  btlLearnPromptOpen = false;
+  btlLearnPromptSquad = 0;
+  btlEndContinuation = BTL_END_NONE;
+  btlLearnSettleAt = 0;
+}
+
+MoveId btlMoveChoiceAt(uint8_t choice) {
+  if (choice < MOVE_SLOTS) return btlYou.moves[choice];
+  return choice == MOVE_SLOTS ? btlYou.observedMove : MOVE_NONE;
+}
+
+static uint8_t btlMovePageCount() {
+  return btlYou.observedMove ? 2 : 1;
 }
 
 static void btlScaleShownHp(uint8_t who, uint16_t oldMaxHp, uint16_t newMaxHp) {
@@ -6251,10 +6295,67 @@ static void btlGrantWildRewards() {
   }
 }
 
-void btlFinish(bool won) {
-  btlOver = true;
-  btlWon = won;
-  btlResetRewardSummary();
+static void btlFinishAfterLearning();
+static void btlCompleteCaptureAfterLearning();
+
+static void btlContinueAfterLearning() {
+  BtlEndContinuation continuation = btlEndContinuation;
+  btlEndContinuation = BTL_END_NONE;
+  btlLearnPromptOpen = false;
+  if (continuation == BTL_END_CAPTURE) btlCompleteCaptureAfterLearning();
+  else btlFinishAfterLearning();
+}
+
+// GLUE: battle members carry transient observation state while Party owns the
+// durable eight-move repertoire; remove this mapping if those identities ever
+// share one runtime record.
+static void btlAdvanceLearnSettlement() {
+  while (btlLearnSettleAt < btlSquadN) {
+    uint8_t squadIndex = btlLearnSettleAt;
+    MoveId move = btlSquad[squadIndex].observedMove;
+    int8_t source = btlSquadSource[squadIndex];
+    if (!move || source < 0 || source >= PARTY_SLOTS ||
+        !party.slots[source].battleReady() ||
+        Pet::knowsLearnedMove(party.slots[source].moves,
+                              party.slots[source].reserveMoves, move)) {
+      btlLearnSettleAt++;
+      continue;
+    }
+    if (Pet::learnedMoveCount(party.slots[source].moves,
+                              party.slots[source].reserveMoves) <
+        LEARNED_MOVE_SLOTS) {
+      party.retainObservedMove((uint8_t)source, pet, move);
+      btlLearnSettleAt++;
+      continue;
+    }
+    btlLearnPromptSquad = squadIndex;
+    btlLearnPromptOpen = true;
+    return;
+  }
+  btlContinueAfterLearning();
+}
+
+static void btlBeginLearnSettlement(BtlEndContinuation continuation) {
+  if (btlSquadAt < btlSquadN) btlSquad[btlSquadAt] = btlYou;
+  party.captureActive(pet, false);
+  btlEndContinuation = continuation;
+  btlLearnSettleAt = 0;
+  btlAdvanceLearnSettlement();
+}
+
+static void btlAnswerLearnPrompt(bool keep) {
+  if (!btlLearnPromptOpen || btlLearnPromptSquad >= btlSquadN) return;
+  uint8_t squadIndex = btlLearnPromptSquad;
+  int8_t source = btlSquadSource[squadIndex];
+  if (keep && source >= 0 && source < PARTY_SLOTS)
+    party.retainObservedMove((uint8_t)source, pet,
+                             btlSquad[squadIndex].observedMove);
+  btlLearnPromptOpen = false;
+  btlLearnSettleAt = squadIndex + 1;
+  btlAdvanceLearnSettlement();
+}
+
+static void btlFinishAfterLearning() {
   btlNewBadge = false;
   btlIvReward = GYM_IV_NONE;
   if (btlWon && btlTrainer >= 0) {
@@ -6284,6 +6385,13 @@ void btlFinish(bool won) {
     return;
   }
   btlSay("%s", btlWon ? T(S_BTL_WIN) : T(S_BTL_LOSE));
+}
+
+void btlFinish(bool won) {
+  btlOver = true;
+  btlWon = won;
+  btlResetRewardSummary();
+  btlBeginLearnSettlement(BTL_END_NORMAL);
 }
 
 static void btlHandleFaints() {
@@ -6348,7 +6456,43 @@ static BtlFoeTurnPlan btlPlanFoeTurn() {
 }
 
 static bool btlCanSubmitTurn() {
-  return battleOpen && !btlOver && !btlTurnAnimating && btlFoeTurnPlan.ready;
+  return battleOpen && !btlOver && !btlTurnAnimating &&
+         !btlObservedNoticeOpen && btlFoeTurnPlan.ready;
+}
+
+// GLUE: battle squad indices refer back to cultivation-slot indices; this is
+// the single read boundary used to compare a temporary battle move with the
+// complete eight-move persistent repertoire.
+static bool btlCurrentSourceKnowsMove(MoveId move) {
+  if (btlSquadAt >= btlSquadN) return true;
+  int8_t source = btlSquadSource[btlSquadAt];
+  if (source < 0 || source >= PARTY_SLOTS) return true;
+  if (source == party.activeIndex()) return pet.knowsMove(move);
+  const PartyMon &mon = party.slots[source];
+  return Pet::knowsLearnedMove(mon.moves, mon.reserveMoves, move);
+}
+
+static bool btlCanObserveFoeMove(MoveId move, bool foeActed) {
+  return !btlLink && foeActed && moveValid(move) &&
+         speciesCanLearnMove(btlYou.dex, move) && !btlYou.observedMove &&
+         !btlCurrentSourceKnowsMove(move);
+}
+
+bool btlTryObserveFoeMove(MoveId move, bool foeActed, uint8_t roll) {
+  if (!btlCanObserveFoeMove(move, foeActed) ||
+      !battleObservesMove(btlYou.bond, roll)) return false;
+  btlYou.observedMove = move;
+  btlMovePage = 0;
+  snprintf(btlObservedNotice, sizeof(btlObservedNotice), T(S_STONE_KNOWN_FMT),
+           displayCombatantName(btlYou), moveName(move));
+  btlObservedNoticePending = true;
+  return true;
+}
+
+static void btlObserveFoeAction(MoveId move, const TurnLog &log) {
+  bool foeActed = !log.skipped && !log.hurtSelf;
+  if (btlCanObserveFoeMove(move, foeActed))
+    btlTryObserveFoeMove(move, true, (uint8_t)random(100));
 }
 
 // One exchange: both sides act in speed order, then burn/poison chip.
@@ -6440,6 +6584,7 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
     btlApplyGmaxInventoryEffect(aSide, lg.bonusRewardItems, lg.restoreLastItem);
     btlPrepareTurnAction(aSide, bSide, lg, BTL_TURN_ACTION);
     btlNarrate(*a, *b, lg);
+    if (a == &btlFoe) btlObserveFoeAction(foeMove, lg);
   }
   bool skipSecond = false;
   if (lg.switchRequest == BSWITCH_TARGET && btlReplaceFirstAvailable(bSide))
@@ -6467,6 +6612,7 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
       btlApplyGmaxInventoryEffect(bSide, lg.bonusRewardItems, lg.restoreLastItem);
       btlPrepareTurnAction(bSide, aSide, lg, BTL_TURN_ACTION);
       btlNarrate(*b, *a, lg);
+      if (b == &btlFoe) btlObserveFoeAction(foeMove, lg);
       if (lg.switchRequest == BSWITCH_TARGET)
         btlReplaceFirstAvailable(aSide);
       else if (lg.switchRequest == BSWITCH_USER)
@@ -7290,13 +7436,51 @@ static void renderBattleCapture(uint32_t now, uint8_t stage) {
   gfx->flush();
 }
 
+static void renderBattleLearnPrompt() {
+  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  const Combatant &learner = btlSquad[btlLearnPromptSquad];
+  char question[64];
+  snprintf(question, sizeof(question), T(S_LEARN_Q), displayCombatantName(learner));
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  uiDrawCenteredIn(question, 53, 86, 360, 56);
+
+  gfx->fillRoundRect(83, 158, 300, 100, 12, UI_WHITE);
+  gfx->setTextColor(UI_BAR_WARN);
+  gfx->setTextSize(2);
+  uiDrawCenteredIn(moveName(learner.observedMove), 93, 168, 280, 80);
+
+  const char *actions[2] = { T(S_YES), T(S_LEARN_SKIP) };
+  for (uint8_t i = 0; i < 2; i++) {
+    int cell = i + 2;
+    int x = BTL_CELL_X(cell), y = BTL_CELL_Y(cell);
+    gfx->fillRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10,
+                       i ? UI_TRACK : UI_BG_DAY);
+    gfx->drawRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, UI_INK);
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(1);
+    uiDrawCenteredIn(actions[i], x + 4, y, BTL_CELL_W - 8, BTL_CELL_H);
+  }
+  gfx->flush();
+}
+
 void renderBattle() {
-  if (btlWinUntil && !btlTurnAnimating) { renderWin(); return; }
+  if (btlWinUntil && !btlTurnAnimating && !btlObservedNoticeOpen) {
+    renderWin();
+    return;
+  }
   if (btlFoeDetailOpen) { renderBattleFoeDetail(); return; }
   uint32_t now = millis();
   btlUpdateCapture(now);
   btlUpdateTurnPresentation(now);
-  if (btlWinUntil && !btlTurnAnimating) { renderWin(); return; }
+  if (btlWinUntil && !btlTurnAnimating && !btlObservedNoticeOpen) {
+    renderWin();
+    return;
+  }
+  if (btlLearnPromptOpen && !btlTurnAnimating && !btlObservedNoticeOpen) {
+    renderBattleLearnPrompt();
+    return;
+  }
   uint8_t captureStage = btlCaptureStageAt(now);
   if (captureStage != BTL_CAPTURE_NONE) {
     renderBattleCapture(now, captureStage);
@@ -7382,6 +7566,15 @@ void renderBattle() {
     gfx->fillRoundRect(BTL_GRID_X + 86, BTL_GRID_Y + 67, 220, 5, 2, UI_TRACK);
     if (remaining)
       gfx->fillRoundRect(BTL_GRID_X + 86, BTL_GRID_Y + 67, remaining, 5, 2, UI_BAR_OK);
+  } else if (btlObservedNoticeOpen) {
+    gfx->fillRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_WHITE);
+    gfx->drawRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_INK);
+    gfx->setTextColor(UI_BAR_WARN);
+    gfx->setTextSize(1);
+    uiDrawCenteredIn(btlObservedNotice, BTL_GRID_X + 8, BTL_GRID_Y + 12,
+                     312, 52);
+    gfx->setTextColor(UI_MUTED);
+    uiDrawCenteredIn("tap...", BTL_GRID_X, BTL_GRID_Y + 76, 328, 16);
   } else if (btlMsgCount) {            // narration takes over the menu area
     gfx->fillRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_WHITE);
     gfx->drawRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_INK);
@@ -7480,7 +7673,8 @@ void renderBattle() {
     }
     for (int i = 0; i < MOVE_SLOTS; i++) {
       int x = BTL_CELL_X(i), y = BTL_CELL_Y(i);
-      MoveId mv = btlYou.moves[i];
+      uint8_t choice = (uint8_t)(btlMovePage * MOVE_SLOTS + i);
+      MoveId mv = btlMoveChoiceAt(choice);
       bool usable = mv && (btlPendingMechanic != BMECH_Z_MOVE ||
                            moveEntry(mv).cat != MC_STATUS);
       gfx->fillRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10,
@@ -7540,6 +7734,13 @@ void renderBattle() {
         gfx->setCursor(uiRightX(power, x + BTL_CELL_W - 10), y + 16);
       gfx->print(power);
     }
+    if (btlMovePageCount() > 1) {
+      for (uint8_t page = 0; page < btlMovePageCount(); page++) {
+        int px = CX - 8 + page * 16;
+        if (page == btlMovePage) gfx->fillCircle(px, 376, 3, UI_INK);
+        else gfx->drawCircle(px, 376, 3, UI_TRACK);
+      }
+    }
   }
   gfx->flush();
 }
@@ -7577,8 +7778,8 @@ static void btlSwitchTo(uint8_t i) {
 }
 
 void commitBattleMove(uint8_t moveSlot, uint8_t percent) {
-  if (!btlCanSubmitTurn() || moveSlot >= MOVE_SLOTS || !btlYou.moves[moveSlot]) return;
-  MoveId move = btlYou.moves[moveSlot];
+  MoveId move = btlMoveChoiceAt(moveSlot);
+  if (!btlCanSubmitTurn() || !move) return;
   BattleMechanic mechanic = btlPendingMechanic;
   MegaFormKind megaForm = btlPendingMegaForm;
   btlPendingMechanic = BMECH_NONE;
@@ -7697,11 +7898,9 @@ static void btlSpendItemTurn(const ItemEntry &item, uint8_t targetIndex) {
   btlResolve(MOVE_NONE, 100, BMECH_NONE);
 }
 
-void btlCompleteCapture() {
-  btlFoeTurnPlan = BtlFoeTurnPlan();
+static void btlCompleteCaptureAfterLearning() {
   capturedMon = btlWildMon;
   pet.registerCaught(capturedMon.dex, capturedMon.shiny);
-  btlResetRewardSummary();
   btlGrantWildRewards();
   if (party.store(capturedMon) == PARTY_STORE_FULL) {
     partyPending = capturedMon;
@@ -7717,6 +7916,14 @@ void btlCompleteCapture() {
   btlFreeSprites();
   audioMusic(MUS_VICTORY);
   sfxPlay(SFX_VICTORY);
+}
+
+void btlCompleteCapture() {
+  btlFoeTurnPlan = BtlFoeTurnPlan();
+  btlOver = true;
+  btlWon = true;
+  btlResetRewardSummary();
+  btlBeginLearnSettlement(BTL_END_CAPTURE);
 }
 
 bool btlStartCapture(const ItemEntry &item, uint8_t roll, uint32_t now) {
@@ -7800,6 +8007,26 @@ static void btlDismissWin() {
 static bool btlDispatchTap(int16_t x, int16_t y) {
   if (btlCaptureAnimating) return false;
   if (btlTurnAnimating) return false;
+  if (btlObservedNoticeOpen) {
+    btlObservedNoticeOpen = false;
+    btlObservedNotice[0] = 0;
+    sfxPlay(SFX_TAP);
+    if (!btlOver) btlStartRoundIntro(millis());
+    return true;
+  }
+  if (btlLearnPromptOpen) {
+    if (btlCellHit(2, x, y)) {
+      sfxPlay(SFX_TAP);
+      btlAnswerLearnPrompt(true);
+      return true;
+    }
+    if (btlCellHit(3, x, y)) {
+      sfxPlay(SFX_TAP);
+      btlAnswerLearnPrompt(false);
+      return true;
+    }
+    return false;
+  }
   if (btlThrowArmed) { btlCancelThrow(false); return true; }
   if (btlWinUntil) {          // dismiss the win screen and leave the fight
     btlDismissWin();
@@ -7835,6 +8062,7 @@ static bool btlDispatchTap(int16_t x, int16_t y) {
   if (btlMenu == 0) {
     if (btlCellHit(0, x, y)) {
       sfxPlay(SFX_TAP);
+      btlMovePage = 0;
       btlMenu = 1;                       // FIGHT
       return true;
     }
@@ -7931,16 +8159,18 @@ static bool btlDispatchTap(int16_t x, int16_t y) {
   }
   if (btlBackTap(x, y)) return true;
   for (int i = 0; i < MOVE_SLOTS; i++) {
-    if (!btlYou.moves[i]) continue;
+    uint8_t choice = (uint8_t)(btlMovePage * MOVE_SLOTS + i);
+    MoveId move = btlMoveChoiceAt(choice);
+    if (!move) continue;
     if (!btlCellHit(i, x, y)) continue;
     if (btlPendingMechanic == BMECH_Z_MOVE &&
-        moveEntry(btlYou.moves[i]).cat == MC_STATUS) {
+        moveEntry(move).cat == MC_STATUS) {
       sfxPlay(SFX_DENY);
       return true;
     }
     sfxPlay(SFX_TAP);
     btlMenu = 0;
-    beginBattleQuiz((uint8_t)i);
+    beginBattleQuiz(choice);
     return true;
   }
   btlMenu = 0;        // a tap off the grid goes back to FIGHT/POKEMON

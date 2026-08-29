@@ -716,9 +716,14 @@ uint8_t Pet::moveCount() const {
 }
 
 uint8_t Pet::learnedMoveCount() const {
-  uint8_t n = moveCount();
-  for (int i = 0; i < RESERVE_MOVE_SLOTS; i++)
-    if (reserveMoves[i]) n++;
+  return learnedMoveCount(moves, reserveMoves);
+}
+
+uint8_t Pet::learnedMoveCount(const MoveId (&active)[MOVE_SLOTS],
+                              const MoveId (&reserve)[RESERVE_MOVE_SLOTS]) {
+  uint8_t n = 0;
+  for (MoveId move : active) if (move) n++;
+  for (MoveId move : reserve) if (move) n++;
   return n;
 }
 

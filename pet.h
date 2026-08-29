@@ -188,6 +188,8 @@ public:
   MoveId reserveMoves[RESERVE_MOVE_SLOTS] = { 0, 0, 0, 0 };
   uint8_t moveCount() const;
   uint8_t learnedMoveCount() const;
+  static uint8_t learnedMoveCount(const MoveId (&active)[MOVE_SLOTS],
+                                  const MoveId (&reserve)[RESERVE_MOVE_SLOTS]);
   bool knowsMove(MoveId mv) const;
   static bool knowsLearnedMove(const MoveId (&active)[MOVE_SLOTS],
                                const MoveId (&reserve)[RESERVE_MOVE_SLOTS],

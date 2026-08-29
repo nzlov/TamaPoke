@@ -915,13 +915,22 @@ by its nature modifier and then its gender modifier (see
 
 ### Moves
 
-Each creature keeps **4 active moves and 4 reserve moves**. Battle selection uses
-only these eight learned moves:
+Each creature keeps **4 active moves and 4 reserve moves**. Battle selection normally
+uses these eight learned moves:
 
 - **Level-up moves** are gated: Charizard learns FLAMETHROWER at 34, WING ATTACK
   at 36, DRAGON RAGE at 54. A hatchling starts with **only** what its species
   knows at level 1. Crossing a gate fills active slots first, then reserve slots;
   when all eight are full, one learned move is replaced at random.
+- In wild and trainer battles, each participating creature can observe at most one
+  opposing move that appears in its species' complete original learnset and that it
+  does not already know. The chance is `bond × 30% / 100` (0% at bond 0, 30% at
+  bond 100). A successful observation adds a fifth move that can be used immediately
+  for the rest of that battle. Once the current round finishes, a
+  tap-to-dismiss notice pauses the battle before the next round or settlement. The
+  move remains observed even if the creature later faints or the battle is lost.
+  After battle it fills a free learned slot; if all eight are full, the player may
+  keep it and randomly replace one learned move, or decline it.
   Evolving keeps the moves it already has, and the new form's gates take over —
   moves it would have learned *below* your current level are not backfilled,
   same as the real games.

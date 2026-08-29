@@ -771,6 +771,19 @@ void Party::setDeadAt(uint8_t i, bool dead) {
   save();
 }
 
+bool Party::retainObservedMove(uint8_t i, Pet &pet, MoveId move) {
+  if (i >= PARTY_SLOTS || slots[i].empty()) return false;
+  if (i == active) {
+    if (!Pet::placeInLearnedMoves(pet.moves, pet.reserveMoves, move)) return false;
+    captureActive(pet, true);
+    return true;
+  }
+  PartyMon &mon = slots[i];
+  if (!Pet::placeInLearnedMoves(mon.moves, mon.reserveMoves, move)) return false;
+  saveTeam();
+  return true;
+}
+
 void Party::rewardRandomTraining(uint8_t slotMask, Pet &pet, uint8_t points) {
   captureActive(pet, false);
   for (uint8_t i = 0; i < PARTY_SLOTS; i++) {

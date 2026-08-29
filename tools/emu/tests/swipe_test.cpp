@@ -8,6 +8,7 @@
 #include "pet.h"
 #include "moves.h"
 #include "party.h"
+#include "battle.h"
 #include <cstdio>
 uint32_t g_seed=2; FakeSerial Serial; FakeESP ESP; FakeWire Wire;
 volatile int g_touchX=0,g_touchY=0; volatile bool g_touchDown=false;
@@ -31,6 +32,9 @@ extern uint8_t gymRegion;
 extern bool gymPick, galleryPick;
 extern uint8_t movePickSlot, movePickParty, boxSel;
 extern uint16_t squadMask;
+extern Combatant btlYou;
+extern uint8_t btlMenu, btlMovePage;
+void startBattle(int16_t dex, uint8_t lvl);
 extern uint8_t pickTrainer; extern bool pickHard;
 void pickDefault(uint8_t);
 uint8_t squadCap(uint8_t, bool);
@@ -108,6 +112,13 @@ int main(){
   } else printf("PASS  %-10s detail introduction pages horizontally\n", "breeding");
   clearAll(); movePickOpen=true; movePickParty=0; movePickSlot=0;
                                                   check("movepick", &movePickOpen, &movePickPage);
+  clearAll(); startBattle(9, 50); btlYou.observedMove = btlYou.moves[0];
+  btlMenu = 1; btlMovePage = 0;
+  onSwipe(-1);
+  if (!battleOpen || btlMovePage != 1) {
+    printf("FAIL  battle moves did not page to the observed fifth move\n"); bad++;
+  } else printf("PASS  %-10s pages to the observed fifth move\n", "battle");
+  battleOpen = false;
   clearAll(); pickTrainer=7; pickHard=false; pickDefault(squadCap(7,false)); pickOpen=true;
   onSwipe(-1);
   if (pickOpen) { printf("FAIL  teampick  one-page picker did not close at its edge\n"); bad++; }

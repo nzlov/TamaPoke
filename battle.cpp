@@ -16,6 +16,7 @@ static void fill(Combatant &c, int16_t dex, uint8_t lvl, uint16_t hp,
   c = Combatant();
   c.dex = dex;
   c.level = lvl;
+  c.bond = bond > 100 ? 100 : bond;
   c.maxHp = bondedBattleStat(hp, bond);
   if (!c.maxHp) c.maxHp = 1;
   c.hp = c.maxHp;
@@ -57,6 +58,11 @@ void combatantFromParty(Combatant &c, const PartyMon &m) {
   c.gigantamaxFactor = m.gigantamaxFactor();
   const char *nm = m.nick[0] ? m.nick : dexEntry(m.dex).name;
   snprintf(c.name, sizeof(c.name), "%s", nm);
+}
+
+bool battleObservesMove(uint8_t bond, uint8_t roll) {
+  uint8_t boundedBond = bond > 100 ? 100 : bond;
+  return roll < (uint16_t)boundedBond * 30u / 100u;
 }
 
 // ---------- special battle mechanics ----------

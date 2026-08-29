@@ -183,6 +183,7 @@ public:
   void replaceAt(uint8_t i, const PartyMon &m);
   void releaseAt(uint8_t i);    // free a slot again
   void setDeadAt(uint8_t i, bool dead);
+  bool retainObservedMove(uint8_t i, Pet &pet, MoveId move);
   // Randomly distributes current (decayable) training without raising floors.
   void rewardRandomTraining(uint8_t slotMask, Pet &pet, uint8_t points);
   // Removes the active member after farewell/release/runaway. Another team

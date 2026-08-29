@@ -142,8 +142,13 @@ void nvsSave(const char *path) {
 // the sketch
 void startBattle(int16_t dex, uint8_t lvl);
 extern Combatant btlYou, btlFoe;
+extern Combatant btlSquad[];
 extern uint32_t btlLungeUntil[2], btlHitUntil[2];
-extern uint8_t btlMenu, btlMsgCount;
+extern uint8_t btlMenu, btlMsgCount, btlMovePage, btlSquadAt;
+extern bool btlLearnPromptOpen;
+extern uint8_t btlLearnPromptSquad;
+extern bool btlObservedNoticeOpen;
+extern char btlObservedNotice[96];
 extern char btlMsg[6][64];
 extern uint16_t btlHpShown[2];
 extern BattleSideMechanics btlYourMechanics;
@@ -632,6 +637,48 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     startTrainerBattle(3, false); openBattleRound(); btlMenu = 2;
   }
   else if (!strcmp(screen, "btlmoves")) { startTrainerBattle(3, false); openBattleRound(); btlMenu = 1; }
+  else if (!strcmp(screen, "btlobserved") || !strcmp(screen, "btllearn") ||
+           !strcmp(screen, "btlobservenotice")) {
+    startTrainerBattle(3, false);
+    openBattleRound();
+    MoveId observed = MOVE_NONE;
+    for (MoveId move = 1; move < moveCount(); move++) {
+      const MoveEntry &entry = moveEntry(move);
+      if (speciesCanLearnMove(pet.speciesId, move) && !pet.knowsMove(move) &&
+          entry.cat == MC_SPEC && entry.power) {
+        observed = move;
+        break;
+      }
+    }
+    for (MoveId move = 1; !observed && move < moveCount(); move++)
+      if (speciesCanLearnMove(pet.speciesId, move) && !pet.knowsMove(move))
+        observed = move;
+    btlYou.observedMove = observed;
+    btlFoe.moves[0] = observed;
+    if (!strcmp(screen, "btlobserved")) {
+      btlMovePage = 1;
+      btlMenu = 1;
+    } else if (!strcmp(screen, "btllearn")) {
+      MoveId full[LEARNED_MOVE_SLOTS] = {};
+      uint8_t count = 0;
+      for (MoveId move = 1; move < moveCount() && count < LEARNED_MOVE_SLOTS; move++)
+        if (move != observed) full[count++] = move;
+      for (uint8_t i = 0; i < MOVE_SLOTS; i++) pet.moves[i] = full[i];
+      for (uint8_t i = 0; i < RESERVE_MOVE_SLOTS; i++)
+        pet.reserveMoves[i] = full[MOVE_SLOTS + i];
+      party.captureActive(pet, false);
+      combatantFromPet(btlYou, pet);
+      btlYou.observedMove = observed;
+      btlSquad[btlSquadAt] = btlYou;
+      btlLearnPromptSquad = btlSquadAt;
+      btlLearnPromptOpen = true;
+    } else {
+      snprintf(btlObservedNotice, sizeof(btlObservedNotice), T(S_STONE_KNOWN_FMT),
+               speciesName(btlYou.dex), moveName(observed));
+      btlObservedNoticeOpen = true;
+      btlMenu = 0;
+    }
+  }
   else if (!strcmp(screen, "btlitems2")) {
     startTrainerBattle(3, false);
     openBattleRound();

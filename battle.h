@@ -130,6 +130,10 @@ struct Combatant {
   uint8_t nativeType1 = T_NORMAL, nativeType2 = T_NONE;
   AbilityKey ability = ABILITY_NONE;
   MoveId moves[MOVE_SLOTS] = { 0, 0, 0, 0 };
+  // One move observed from an NPC opponent. It exists only for this battle and
+  // deliberately stays outside the four-slot save and LAN protocol ABIs.
+  MoveId observedMove = MOVE_NONE;
+  uint8_t bond = 0;
   int8_t stage[SI_COUNT] = { 0, 0, 0, 0, 0 };   // -6..+6
   int8_t accuracyStage = 0;
   int8_t evasionStage = 0;
@@ -183,6 +187,7 @@ struct BattleMove {
 void combatantFromPet(Combatant &c, const Pet &p);
 void combatantFromParty(Combatant &c, const PartyMon &m);
 void battleInitializeForm(Combatant &combatant);
+bool battleObservesMove(uint8_t bond, uint8_t roll);
 
 // What one action did, so the UI can narrate it without recomputing anything.
 struct TurnLog {
