@@ -321,6 +321,10 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
   `python3 tools/fetch_item_icons.py` before generating packs to use PokeAPI's
   original 24×24/30×30 item sprites; missing artwork keeps the built-in icon.
   The capture throw uses the image of the ball actually consumed.
+- The bag list scrolls vertically. Tapping a stack opens View, Use and Discard:
+  View shows its description; field-use items open the six cultivation-slot picker
+  and consume one only after a valid target is chosen. Discard asks for a quantity
+  when a stack has more than one item, then always asks for confirmation.
 - After a wild victory, a settlement page lists every item and training-stat gain.
   A normal-difficulty victory or capture guarantees one weighted item reward;
   hard difficulty guarantees two. Both then make one independent **30%** roll

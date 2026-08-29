@@ -636,14 +636,29 @@ char partyBannerName[32] = "";
 static constexpr int THUMB_CELL = 80;
 #define PARTY_TEXT_X_OFF 52
 
-// Bag inventory. Item identities and labels come from the move pack; the UI
-// only pages opaque inventory stacks.
+// Bag inventory. Item identities and labels come from the move pack.
 bool bagOpen = false;
-uint8_t bagPage = 0;
 ItemKey bagDetailKey = ITEM_KEY_NONE;
-#define BAG_PER_PAGE 5
-#define BAG_ROW_Y(i) (92 + (i) * 52)
-#define BAG_ROW_H 44
+enum BagView : uint8_t {
+  BAG_VIEW_LIST,
+  BAG_VIEW_ACTIONS,
+  BAG_VIEW_DETAIL,
+  BAG_VIEW_TARGET,
+  BAG_VIEW_QUANTITY,
+  BAG_VIEW_CONFIRM,
+};
+uint8_t bagView = BAG_VIEW_LIST;
+ItemKey bagSelectedKey = ITEM_KEY_NONE;
+uint8_t bagDiscardAmount = 1;
+UiScrollView bagScroll;
+#define BAG_LIST_Y 82
+#define BAG_LIST_H 274
+#define BAG_ROW_STEP 54
+#define BAG_ROW_H 46
+#define BAG_ACTION_X 93
+#define BAG_ACTION_W 280
+#define BAG_ACTION_Y(i) (148 + (i) * 58)
+#define BAG_ACTION_H 48
 
 #define DEAD_BTN_Y 346
 #define DEAD_BTN_W 150
@@ -1929,8 +1944,13 @@ void onSwipeV(int dir) {
   if (pickOpen) { pickOpen = false; return; }
   if (lanOpen) { lanLeave(); lanOpen = false; return; }
   if (bagOpen) {
-    if (bagDetailKey) { bagDetailKey = ITEM_KEY_NONE; return; }
-    bagOpen = false;
+    if (bagView == BAG_VIEW_LIST) {
+      if (bagScroll.scroll(dir)) sfxPlay(SFX_TAP);
+      return;
+    }
+    bagDetailKey = ITEM_KEY_NONE;
+    bagView = bagView == BAG_VIEW_DETAIL || bagView == BAG_VIEW_TARGET
+                ? BAG_VIEW_ACTIONS : BAG_VIEW_LIST;
     return;
   }
   if (boxOpen) {
@@ -1984,71 +2004,43 @@ void onSwipeV(int dir) {
   }
 }
 
-// This is the only item store. Battle actions query and consume the same
-// Inventory directly; there is no carried subset or second battle bag.
-void renderBag() {
+static bool bagTargetCanApply(const ItemEntry &item, uint8_t slot) {
+  if (slot >= PARTY_SLOTS) return false;
+  if (slot == party.activeIndex()) return itemCanApplyToPet(item, pet);
+  return !party.slots[slot].empty() &&
+         itemCanApplyToPartyMon(item, party.slots[slot]);
+}
+
+static bool bagHasUsableTarget(const ItemEntry &item) {
+  if (!itemUsableOutsideBattle(item)) return false;
+  for (uint8_t slot = 0; slot < PARTY_SLOTS; slot++)
+    if (bagTargetCanApply(item, slot)) return true;
+  return false;
+}
+
+static void drawBagList() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
   gfx->setCursor(uiCenterX(T(S_BAG)), 42);
   gfx->print(T(S_BAG));
-
-  if (bagDetailKey) {
-    const ItemEntry *item = itemByKey(bagDetailKey);
-    if (!item || !inventory.count(bagDetailKey)) {
-      bagDetailKey = ITEM_KEY_NONE;
-      renderBag();
-      return;
-    }
-    drawItemIcon(*item, CX, 106, 2);
-    gfx->setTextColor(UI_INK);
-    gfx->setTextSize(3);
-    gfx->setCursor(uiCenterX(itemName(item->key)), 144);
-    gfx->print(itemName(item->key));
-    char meta[32];
-    char rarity[5] = "****";
-    rarity[item->rarity < 4 ? item->rarity : 4] = 0;
-    snprintf(meta, sizeof(meta), "x%u  %s", inventory.count(item->key), rarity);
-    gfx->setTextColor(UI_BAR_WARN);
-    gfx->setTextSize(2);
-    gfx->setCursor(uiCenterX(meta), 180);
-    gfx->print(meta);
-    const char *description = itemDescription(item->key, uiActiveLocaleCode());
-    gfx->setTextColor(UI_INK);
-    gfx->setTextSize(2);
-    drawWrappedText(description ? description : "?", 76, 218, 314, 5);
-    gfx->setTextColor(UI_MUTED);
-    gfx->setTextSize(2);
-    if (itemCanApplyToPet(*item, pet)) {
-      gfx->fillRoundRect(133, 342, 200, 44, 12, UI_BAR_OK);
-      gfx->setTextColor(UI_WHITE);
-      uiDrawCenteredIn(T(S_USE), 133, 342, 200, 44);
-      gfx->setTextColor(UI_MUTED);
-    } else {
-      gfx->setCursor(uiCenterX(T(S_ITEM_CANT_USE)), 354);
-      gfx->print(T(S_ITEM_CANT_USE));
-    }
-    gfx->setCursor(uiCenterX(T(S_BACK)), 408);
-    gfx->print(T(S_BACK));
-    gfx->flush();
-    return;
-  }
-
   uint8_t stackCount = inventory.stackCount();
+  int contentHeight = stackCount ? stackCount * BAG_ROW_STEP - 8 : 0;
+  bagScroll.configure(BAG_LIST_Y, BAG_LIST_H, contentHeight, BAG_ROW_STEP);
   if (!stackCount) {
     gfx->setTextColor(UI_MUTED);
     gfx->setTextSize(2);
     gfx->setCursor(uiCenterX(T(S_ITEM_EMPTY)), 220);
     gfx->print(T(S_ITEM_EMPTY));
   }
-  for (uint8_t row = 0; row < BAG_PER_PAGE; row++) {
-    uint8_t index = (uint8_t)(bagPage * BAG_PER_PAGE + row);
+  for (uint8_t index = 0; index < stackCount; index++) {
     const InventoryStack *stack = inventory.stackAt(index);
-    if (!stack) break;
+    if (!stack) continue;
     const ItemEntry *item = itemByKey(stack->key);
     if (!item) continue;
-    int y = BAG_ROW_Y(row);
+    int y = bagScroll.contentY(index * BAG_ROW_STEP);
+    if (!bagScroll.fullyVisible(y, BAG_ROW_H)) continue;
     gfx->fillRoundRect(70, y, 326, BAG_ROW_H, 10, UI_BG_DAY);
     gfx->drawRoundRect(70, y, 326, BAG_ROW_H, 10, UI_INK);
     drawItemIcon(*item, 94, y + BAG_ROW_H / 2);
@@ -2061,38 +2053,263 @@ void renderBag() {
     gfx->setCursor(uiRightX(count, 382), y + 13);
     gfx->print(count);
   }
-  uint8_t pages = stackCount ? (uint8_t)((stackCount + BAG_PER_PAGE - 1) / BAG_PER_PAGE) : 1;
-  for (uint8_t i = 0; i < pages; i++) {
-    int dx = CX - (pages - 1) * 10 + i * 20;
-    if (i == bagPage) gfx->fillCircle(dx, 372, 4, UI_INK);
-    else gfx->drawCircle(dx, 372, 4, UI_TRACK);
+  if (bagScroll.scrollable()) {
+    gfx->fillRoundRect(405, BAG_LIST_Y, 5, BAG_LIST_H, 2, UI_TRACK);
+    int thumbH = bagScroll.thumbHeight(BAG_LIST_H, 18);
+    int thumbY = bagScroll.thumbTop(BAG_LIST_Y, BAG_LIST_H, 18);
+    gfx->fillRoundRect(405, thumbY, 5, thumbH, 2, UI_INK);
   }
   gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(T(S_CLOSE)), 402);
   gfx->print(T(S_CLOSE));
+}
+
+static void drawBagDetail(const ItemEntry &item) {
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawItemIcon(item, CX, 92, 2);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(3);
+  gfx->setCursor(uiCenterX(itemName(item.key)), 130);
+  gfx->print(itemName(item.key));
+  char meta[32];
+  char rarity[5] = "****";
+  rarity[item.rarity < 4 ? item.rarity : 4] = 0;
+  snprintf(meta, sizeof(meta), "x%u  %s", inventory.count(item.key), rarity);
+  gfx->setTextColor(UI_BAR_WARN);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(meta), 168);
+  gfx->print(meta);
+  const char *description = itemDescription(item.key, uiActiveLocaleCode());
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  drawWrappedText(description ? description : "?", 76, 208, 314, 7);
+  gfx->setTextColor(UI_MUTED);
+  gfx->setCursor(uiCenterX(T(S_BACK)), 408);
+  gfx->print(T(S_BACK));
+}
+
+static void drawBagActions(const ItemEntry &item) {
+  drawBagList();
+  gfx->fillRoundRect(73, 124, 320, 224, 16, UI_WHITE);
+  gfx->drawRoundRect(73, 124, 320, 224, 16, UI_INK);
+  const char *labels[3] = { T(S_ITEM_VIEW), T(S_USE), T(S_ITEM_DISCARD) };
+  bool canUse = bagHasUsableTarget(item);
+  for (uint8_t row = 0; row < 3; row++) {
+    uint16_t fill = row == 1 && !canUse ? UI_TRACK : UI_BG_DAY;
+    gfx->fillRoundRect(BAG_ACTION_X, BAG_ACTION_Y(row), BAG_ACTION_W,
+                       BAG_ACTION_H, 12, fill);
+    gfx->drawRoundRect(BAG_ACTION_X, BAG_ACTION_Y(row), BAG_ACTION_W,
+                       BAG_ACTION_H, 12, UI_INK);
+    gfx->setTextColor(row == 1 && !canUse ? UI_MUTED : UI_INK);
+    gfx->setTextSize(2);
+    uiDrawCenteredIn(labels[row], BAG_ACTION_X, BAG_ACTION_Y(row),
+                     BAG_ACTION_W, BAG_ACTION_H);
+  }
+}
+
+static void drawBagTargets(const ItemEntry &item) {
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(T(S_ITEM_CHOOSE_TARGET)), 42);
+  gfx->print(T(S_ITEM_CHOOSE_TARGET));
+  for (uint8_t slot = 0; slot < PARTY_SLOTS; slot++) {
+    int x = 78 + (slot % 2) * 160;
+    int y = 82 + (slot / 2) * 84;
+    const PartyMon &m = party.slots[slot];
+    bool usable = bagTargetCanApply(item, slot);
+    gfx->fillRoundRect(x, y, 150, 70, 10, usable ? UI_WHITE : UI_TRACK);
+    gfx->drawRoundRect(x, y, 150, 70, 10, usable ? UI_INK : UI_MUTED);
+    if (m.empty()) {
+      gfx->setTextColor(UI_MUTED);
+      gfx->setTextSize(2);
+      uiDrawCenteredIn(T(S_PARTY_EMPTY), x, y, 150, 70);
+      continue;
+    }
+    int16_t dex = slot == party.activeIndex() ? pet.speciesId : m.dex;
+    const char *nick = slot == party.activeIndex() ? pet.nick : m.nick;
+    const uint8_t *th = dex > 0 ? thumbs.get(dex) : nullptr;
+    if (th) drawThumb(th, x - 12, y - 5, 2, !usable);
+    gfx->setTextColor(usable ? UI_INK : UI_MUTED);
+    gfx->setTextSize(1);
+    gfx->setCursor(x + 54, y + 20);
+    gfx->print(dex > 0 ? displaySpeciesName(dex, nick) : T(S_EGG_HDR));
+    gfx->setTextSize(1);
+    gfx->setCursor(x + 54, y + 42);
+    gfx->print(usable ? T(S_USE) : T(S_ITEM_CANT_USE));
+  }
+  gfx->setTextColor(UI_MUTED);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(T(S_BACK)), 392);
+  gfx->print(T(S_BACK));
+}
+
+static void drawBagQuantity(const ItemEntry &item) {
+  drawBagList();
+  gfx->fillRoundRect(73, 144, 320, 206, 16, UI_WHITE);
+  gfx->drawRoundRect(73, 144, 320, 206, 16, UI_INK);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(T(S_ITEM_QUANTITY)), 166);
+  gfx->print(T(S_ITEM_QUANTITY));
+  gfx->setTextSize(1);
+  gfx->setCursor(uiCenterX(itemName(item.key)), 194);
+  gfx->print(itemName(item.key));
+  gfx->fillRoundRect(96, 218, 72, 52, 12, UI_TRACK);
+  gfx->fillRoundRect(298, 218, 72, 52, 12, UI_TRACK);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(4);
+  uiDrawCenteredIn("-", 96, 218, 72, 52);
+  uiDrawCenteredIn("+", 298, 218, 72, 52);
+  char amount[12];
+  snprintf(amount, sizeof(amount), "%u/%u", bagDiscardAmount,
+           inventory.count(item.key));
+  gfx->setTextSize(2);
+  uiDrawCenteredIn(amount, 168, 218, 130, 52);
+  gfx->fillRoundRect(133, 282, 200, 52, 12, UI_BAR_BAD);
+  gfx->setTextColor(UI_WHITE);
+  uiDrawCenteredIn(T(S_CONFIRM), 133, 282, 200, 52);
+}
+
+static void drawBagConfirm(const ItemEntry &item) {
+  drawBagList();
+  char question[96];
+  snprintf(question, sizeof(question), T(S_ITEM_DISCARD_Q_FMT),
+           bagDiscardAmount, itemName(item.key));
+  gfx->fillRoundRect(73, 156, 320, 188, 16, UI_WHITE);
+  gfx->drawRoundRect(73, 156, 320, 188, 16, UI_INK);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(1);
+  uiDrawCenteredIn(question, 83, 166, 300, 42);
+  gfx->fillRoundRect(CHOICE_BTN_X, CHOICE_BTN1_Y, CHOICE_BTN_W,
+                     CHOICE_BTN_H, 12, UI_BAR_BAD);
+  gfx->setTextColor(UI_WHITE);
+  uiDrawCenteredIn(T(S_YES), CHOICE_BTN_X, CHOICE_BTN1_Y,
+                   CHOICE_BTN_W, CHOICE_BTN_H);
+  gfx->fillRoundRect(CHOICE_BTN_X, CHOICE_BTN2_Y, CHOICE_BTN_W,
+                     CHOICE_BTN_H, 12, UI_TRACK);
+  gfx->setTextColor(UI_INK);
+  uiDrawCenteredIn(T(S_NO), CHOICE_BTN_X, CHOICE_BTN2_Y,
+                   CHOICE_BTN_W, CHOICE_BTN_H);
+}
+
+// This is the only item store. Battle actions query and consume the same
+// Inventory directly; there is no carried subset or second battle bag.
+void renderBag() {
+  const ItemEntry *item = itemByKey(bagSelectedKey);
+  if (bagView != BAG_VIEW_LIST &&
+      (!item || !inventory.count(bagSelectedKey))) {
+    bagView = BAG_VIEW_LIST;
+    bagSelectedKey = bagDetailKey = ITEM_KEY_NONE;
+  }
+  if (bagView == BAG_VIEW_DETAIL && item) drawBagDetail(*item);
+  else if (bagView == BAG_VIEW_ACTIONS && item) drawBagActions(*item);
+  else if (bagView == BAG_VIEW_TARGET && item) drawBagTargets(*item);
+  else if (bagView == BAG_VIEW_QUANTITY && item) drawBagQuantity(*item);
+  else if (bagView == BAG_VIEW_CONFIRM && item) drawBagConfirm(*item);
+  else drawBagList();
   gfx->flush();
 }
 
+static void bagReturnToList() {
+  bagView = BAG_VIEW_LIST;
+  bagSelectedKey = bagDetailKey = ITEM_KEY_NONE;
+  bagDiscardAmount = 1;
+}
+
 void bagTap(int16_t x, int16_t y) {
-  if (bagDetailKey) {
-    const ItemEntry *item = itemByKey(bagDetailKey);
-    if (item && x >= 133 && x <= 333 && y >= 342 && y <= 386 &&
-        itemApplyToPet(*item, pet) && inventory.consume(item->key)) {
-      sfxPlay(SFX_TAP);
-      return;
-    }
+  const ItemEntry *item = itemByKey(bagSelectedKey);
+  if (bagView == BAG_VIEW_DETAIL) {
     bagDetailKey = ITEM_KEY_NONE;
+    bagView = BAG_VIEW_ACTIONS;
     sfxPlay(SFX_TAP);
     return;
   }
-  for (uint8_t row = 0; row < BAG_PER_PAGE; row++) {
-    uint8_t index = (uint8_t)(bagPage * BAG_PER_PAGE + row);
+  if (bagView == BAG_VIEW_ACTIONS && item) {
+    for (uint8_t row = 0; row < 3; row++) {
+      int top = BAG_ACTION_Y(row);
+      if (x < BAG_ACTION_X || x > BAG_ACTION_X + BAG_ACTION_W ||
+          y < top || y > top + BAG_ACTION_H) continue;
+      if (row == 0) {
+        bagDetailKey = item->key;
+        bagView = BAG_VIEW_DETAIL;
+      } else if (row == 1) {
+        if (!bagHasUsableTarget(*item)) { sfxPlay(SFX_DENY); return; }
+        party.captureActive(pet, false);
+        bagView = BAG_VIEW_TARGET;
+      } else {
+        bagDiscardAmount = 1;
+        bagView = inventory.count(item->key) > 1
+                    ? BAG_VIEW_QUANTITY : BAG_VIEW_CONFIRM;
+      }
+      sfxPlay(SFX_TAP);
+      return;
+    }
+    bagReturnToList();
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  if (bagView == BAG_VIEW_TARGET && item) {
+    for (uint8_t slot = 0; slot < PARTY_SLOTS; slot++) {
+      int left = 78 + (slot % 2) * 160;
+      int top = 82 + (slot / 2) * 84;
+      if (x < left || x > left + 150 || y < top || y > top + 70) continue;
+      if (!bagTargetCanApply(*item, slot)) { sfxPlay(SFX_DENY); return; }
+      bool applied = slot == party.activeIndex()
+          ? itemApplyToPet(*item, pet)
+          : itemApplyToPartyMon(*item, party.slots[slot]);
+      if (!applied || !inventory.consume(item->key)) {
+        sfxPlay(SFX_DENY);
+        return;
+      }
+      if (slot == party.activeIndex()) party.captureActive(pet, true);
+      else party.save();
+      bagReturnToList();
+      sfxPlay(SFX_TAP);
+      return;
+    }
+    if (y >= 370) bagView = BAG_VIEW_ACTIONS;
+    return;
+  }
+  if (bagView == BAG_VIEW_QUANTITY && item) {
+    uint8_t count = inventory.count(item->key);
+    if (x >= 96 && x <= 168 && y >= 218 && y <= 270) {
+      if (bagDiscardAmount > 1) bagDiscardAmount--;
+    } else if (x >= 298 && x <= 370 && y >= 218 && y <= 270) {
+      if (bagDiscardAmount < count) bagDiscardAmount++;
+    } else if (x >= 133 && x <= 333 && y >= 282 && y <= 334) {
+      bagView = BAG_VIEW_CONFIRM;
+    }
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  if (bagView == BAG_VIEW_CONFIRM && item) {
+    bool yes = x >= CHOICE_BTN_X && x <= CHOICE_BTN_X + CHOICE_BTN_W &&
+               y >= CHOICE_BTN1_Y && y <= CHOICE_BTN1_Y + CHOICE_BTN_H;
+    bool no = x >= CHOICE_BTN_X && x <= CHOICE_BTN_X + CHOICE_BTN_W &&
+              y >= CHOICE_BTN2_Y && y <= CHOICE_BTN2_Y + CHOICE_BTN_H;
+    if (yes && inventory.consume(item->key, bagDiscardAmount)) {
+      bagReturnToList();
+      sfxPlay(SFX_TAP);
+    } else if (no) {
+      bagView = inventory.count(item->key) > 1
+                  ? BAG_VIEW_QUANTITY : BAG_VIEW_ACTIONS;
+      sfxPlay(SFX_TAP);
+    }
+    return;
+  }
+  uint8_t stackCount = inventory.stackCount();
+  for (uint8_t index = 0; index < stackCount; index++) {
     const InventoryStack *stack = inventory.stackAt(index);
-    if (!stack) break;
-    int top = BAG_ROW_Y(row);
+    if (!stack) continue;
+    int top = bagScroll.contentY(index * BAG_ROW_STEP);
+    if (!bagScroll.fullyVisible(top, BAG_ROW_H)) continue;
     if (x >= 70 && x <= 396 && y >= top && y <= top + BAG_ROW_H) {
-      bagDetailKey = stack->key;
+      bagSelectedKey = stack->key;
+      bagView = BAG_VIEW_ACTIONS;
       sfxPlay(SFX_TAP);
       return;
     }
@@ -2261,12 +2478,13 @@ void onSwipe(int dir) {
     return;
   }
   if (bagOpen) {
-    if (bagDetailKey) { bagDetailKey = ITEM_KEY_NONE; return; }
-    uint8_t pages = inventory.stackCount()
-        ? (inventory.stackCount() + BAG_PER_PAGE - 1) / BAG_PER_PAGE : 1;
-    int p = (int)bagPage + (dir > 0 ? -1 : 1);
-    if (p < 0 || p >= pages) bagOpen = false;
-    else bagPage = (uint8_t)p;
+    if (bagView == BAG_VIEW_LIST) bagOpen = false;
+    else if (bagView == BAG_VIEW_DETAIL || bagView == BAG_VIEW_TARGET) {
+      bagDetailKey = ITEM_KEY_NONE;
+      bagView = BAG_VIEW_ACTIONS;
+    } else {
+      bagReturnToList();
+    }
     return;
   }
   if (boxOpen) {
@@ -2370,8 +2588,10 @@ bool navMenuTap(int16_t x, int16_t y) {
     sfxPlay(SFX_TAP);
     if (i == 0) {
       bagOpen = true;
-      bagPage = 0;
-      bagDetailKey = ITEM_KEY_NONE;
+      bagView = BAG_VIEW_LIST;
+      bagSelectedKey = bagDetailKey = ITEM_KEY_NONE;
+      bagDiscardAmount = 1;
+      bagScroll.reset();
     } else if (i == 1) {
       gymOpen = true;
       gymPick = true;

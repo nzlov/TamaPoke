@@ -221,8 +221,8 @@ extern bool gameOpen, gameNewHi, sackOpen, sackNewHi, spdOpen, spdNewHi;
 extern uint32_t gameOverUntil, sackOverUntil, spdOverUntil;
 extern uint8_t gameScore, gameMisses, sackGain, spdGain;
 extern uint16_t sackHits, spdHits;
-extern ItemKey bagDetailKey, btlPendingItem;
-extern uint8_t bagPage, boxSel, btlItemPage, btlSquadN;
+extern ItemKey bagSelectedKey, bagDetailKey, btlPendingItem;
+extern uint8_t bagView, bagDiscardAmount, boxSel, btlItemPage, btlSquadN;
 extern Combatant btlSquad[];
 #define PANEL 466
 
@@ -458,19 +458,42 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   else if (!strcmp(screen, "moves"))   { cardOpen = true; cardPage = 2; }
   else if (!strcmp(screen, "moveinfo")) { movePickSlot = 0; moveInfoOpen = true; }
   else if (!strcmp(screen, "movepick")) { movePickOpen = true; }
-  else if (!strcmp(screen, "bag")) {
-    for (uint16_t i = 0; i < itemCount(); i++) {
-      const ItemEntry *item = itemAt(i);
-      if (item) inventory.add(item->key, (uint8_t)(i + 3));
-    }
-    bagOpen = true;
-  }
-  else if (!strcmp(screen, "bagdetail")) {
+  else if (!strcmp(screen, "bag") || !strcmp(screen, "bagactions") ||
+           !strcmp(screen, "bagdetail") || !strcmp(screen, "bagtarget") ||
+           !strcmp(screen, "bagquantity") || !strcmp(screen, "bagconfirm")) {
+    const ItemEntry *selected = nullptr;
     for (uint16_t i = 0; i < itemCount(); i++) {
       const ItemEntry *item = itemAt(i);
       if (!item) continue;
-      inventory.add(item->key, 3);
-      if (!bagDetailKey) bagDetailKey = item->key;
+      inventory.add(item->key, (uint8_t)(i + 3));
+      if (!selected && itemUsableOutsideBattle(*item)) selected = item;
+    }
+    if (strcmp(screen, "bag")) {
+      for (uint16_t i = 0; i < itemCount(); i++) {
+        const ItemEntry *item = itemAt(i);
+        while (item && inventory.consume(item->key)) {}
+      }
+      if (selected) inventory.add(selected->key, 3);
+    }
+    bagSelectedKey = selected ? selected->key : ITEM_KEY_NONE;
+    bagDetailKey = !strcmp(screen, "bagdetail") ? bagSelectedKey : ITEM_KEY_NONE;
+    bagDiscardAmount = !strcmp(screen, "bagconfirm") ? 2 : 1;
+    if (!strcmp(screen, "bagactions")) bagView = 1;
+    else if (!strcmp(screen, "bagdetail")) bagView = 2;
+    else if (!strcmp(screen, "bagtarget")) {
+      pet.dbgHatchAs(1, false);
+      PartyMon second = pet.toPartyMon();
+      second.dex = 6;
+      second.nick[0] = 0;
+      second.trMinAtk = second.trMinDef = second.trMinSpe = 0;
+      party.replaceAt(1, second);
+      party.captureActive(pet, false);
+      bagView = 3;
+    } else if (!strcmp(screen, "bagquantity")) bagView = 4;
+    else if (!strcmp(screen, "bagconfirm")) bagView = 5;
+    else {
+      bagView = 0;
+      bagSelectedKey = ITEM_KEY_NONE;
     }
     bagOpen = true;
   }

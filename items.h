@@ -69,6 +69,7 @@ struct ItemEntry {
 };
 
 struct Combatant;
+struct PartyMon;
 class Pet;
 
 // The pack selects an opcode and parameters. Firmware executes that generic
@@ -77,3 +78,6 @@ bool itemCanApplyToCombatant(const ItemEntry &item, const Combatant &target);
 bool itemApplyToCombatant(const ItemEntry &item, Combatant &target);
 bool itemCanApplyToPet(const ItemEntry &item, const Pet &target);
 bool itemApplyToPet(const ItemEntry &item, Pet &target);
+bool itemUsableOutsideBattle(const ItemEntry &item);
+bool itemCanApplyToPartyMon(const ItemEntry &item, const PartyMon &target);
+bool itemApplyToPartyMon(const ItemEntry &item, PartyMon &target);

@@ -253,7 +253,13 @@
         "Evasion",
         "FORMA",
         "LANZA Y MANTEN",
-        "toca: cancelar"
+        "toca: cancelar",
+        "VER",
+        "TIRAR",
+        "ELIGE UNA MASCOTA",
+        "CANTIDAD",
+        "Tirar %u x %s?",
+        "CONFIRMAR"
       ],
       "medalNames": [
         "Nv.10",
@@ -569,7 +575,13 @@
         "Evasion",
         "FORM",
         "FLICK & HOLD",
-        "tap: cancel"
+        "tap: cancel",
+        "VIEW",
+        "DISCARD",
+        "CHOOSE A PET",
+        "QUANTITY",
+        "Discard %u x %s?",
+        "CONFIRM"
       ],
       "medalNames": [
         "Lv.10",
@@ -885,7 +897,13 @@
         "Esquive",
         "FORME",
         "LANCE ET MAINTIENS",
-        "touche: annuler"
+        "touche: annuler",
+        "VOIR",
+        "JETER",
+        "CHOISIS UN COMPAGNON",
+        "QUANTITE",
+        "Jeter %u x %s ?",
+        "CONFIRMER"
       ],
       "medalNames": [
         "Niv.10",
@@ -1201,7 +1219,13 @@
         "Fluchtwert",
         "FORM",
         "SCHWINGEN & HALTEN",
-        "tippen: abbrechen"
+        "tippen: abbrechen",
+        "ANSEHEN",
+        "WEGWERFEN",
+        "WAHL EIN MONSTER",
+        "ANZAHL",
+        "%u x %s wegwerfen?",
+        "BESTATIGEN"
       ],
       "medalNames": [
         "Lv.10",
@@ -1517,7 +1541,13 @@
         "Elusione",
         "FORMA",
         "LANCIA E TIENI",
-        "tocca: annulla"
+        "tocca: annulla",
+        "VEDI",
+        "SCARTA",
+        "SCEGLI UN COMPAGNO",
+        "QUANTITA",
+        "Scartare %u x %s?",
+        "CONFERMA"
       ],
       "medalNames": [
         "Lv.10",
@@ -1833,7 +1863,13 @@
         "Evasao",
         "FORMA",
         "LANCE E SEGURE",
-        "toca: cancelar"
+        "toca: cancelar",
+        "VER",
+        "DESCARTAR",
+        "ESCOLHE UM COMPANHEIRO",
+        "QUANTIDADE",
+        "Descartar %u x %s?",
+        "CONFIRMAR"
       ],
       "medalNames": [
         "Niv.10",
@@ -2155,7 +2191,13 @@
         "闪避率",
         "形态",
         "向前甩动并保持",
-        "点击取消"
+        "点击取消",
+        "查看",
+        "丢弃",
+        "选择伙伴",
+        "数量",
+        "丢弃%u个%s？",
+        "确定"
       ],
       "medalNames": [
         "10级",

@@ -162,6 +162,9 @@ enum StrId : uint8_t {
   S_BTL_FORM,
   S_BTL_THROW_PROMPT, // prompt shown while the IMU is armed for a ball throw
   S_BTL_THROW_CANCEL,
+  // bag actions (append-only)
+  S_ITEM_VIEW, S_ITEM_DISCARD, S_ITEM_CHOOSE_TARGET, S_ITEM_QUANTITY,
+  S_ITEM_DISCARD_Q_FMT, S_CONFIRM,
   STR_COUNT
 };
 

@@ -77,7 +77,7 @@ read -r -a FT_LIBS <<< "$(pkg-config --libs freetype2 zlib)"
 FLAGS=(-std=c++17 -O1 -w -I"$EMU" -I"$ROOT" "${FT_CFLAGS[@]}" "$FW_DEFINE" -DCONTENT_DIR="\"$TEST_CONTENT_DIR\"")
 
 # these drive setup()/loop()/render(), so they need the sketch itself
-needs_sketch() { case "$1" in touch_test|flush_test|joy_test|anim_test|capture_animation_test|swipe_test|lan_test|console_test|hit_test|battle_debounce_test|battle_reward_ui_test|boot_order_test|brightness_test|card_nature_ui_test|first_boot_language_test|starter_test|recovery_test|navigation_test|wild_detail_test|missing_pack_roster_test|poweroff_test) return 0;; *) return 1;; esac; }
+needs_sketch() { case "$1" in touch_test|flush_test|joy_test|anim_test|capture_animation_test|swipe_test|lan_test|console_test|hit_test|battle_debounce_test|battle_reward_ui_test|bag_ui_test|boot_order_test|brightness_test|card_nature_ui_test|first_boot_language_test|starter_test|recovery_test|navigation_test|wild_detail_test|missing_pack_roster_test|poweroff_test) return 0;; *) return 1;; esac; }
 
 # These are standalone cores with no host-hardware dependencies. Linking the
 # whole game would only demand stubs for symbols the test never calls.
@@ -134,7 +134,7 @@ for src in "$HERE"/*_test.cpp; do
     mkdir -p "$OUT/missing-pack-packs"
     python3 "$HERE/make_gender_fixture.py" "$OUT/missing-pack-packs" 905
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/missing-pack-packs\"")
-  elif [[ "$name" =~ ^(battle_reward_ui|bond_battle|gender|box|nature|revive|save|link|hit|wild_traits|lifecycle_exit|flush|i18n|cultivation_team|sleep|item_effect|poweroff|roster_snapshot)_test$ ]]; then
+  elif [[ "$name" =~ ^(bag_ui|battle_reward_ui|bond_battle|gender|box|nature|revive|save|link|hit|wild_traits|lifecycle_exit|flush|i18n|cultivation_team|sleep|item_effect|poweroff|roster_snapshot)_test$ ]]; then
     mkdir -p "$OUT/gender-packs"
     python3 "$HERE/make_gender_fixture.py" "$OUT/gender-packs"
     test_flags+=(-UCONTENT_DIR -DCONTENT_DIR="\"$OUT/gender-packs\"")

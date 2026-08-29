@@ -1,5 +1,6 @@
 #include "items.h"
 #include "battle.h"
+#include "party.h"
 #include "pet.h"
 
 static_assert(ITEM_STAT_ATK == (1u << SI_ATK) && ITEM_STAT_DEF == (1u << SI_DEF) &&
@@ -92,4 +93,53 @@ bool itemApplyToPet(const ItemEntry &item, Pet &target) {
   TrainingStat stat = TRAINING_ATK;
   return itemTrainingStat(item, stat) &&
          target.raiseTrainingFloor(stat, (uint8_t)item.param);
+}
+
+bool itemUsableOutsideBattle(const ItemEntry &item) {
+  return item.effect == ITEM_EFFECT_TRAINING_FLOOR ||
+         item.effect == ITEM_EFFECT_GIGANTAMAX_FACTOR;
+}
+
+bool itemCanApplyToPartyMon(const ItemEntry &item, const PartyMon &target) {
+  if (target.empty() || target.isEgg()) return false;
+  if (item.effect == ITEM_EFFECT_GIGANTAMAX_FACTOR)
+    return !target.gigantamaxFactor() && battleGigantamaxEligible(target.dex);
+  TrainingStat stat = TRAINING_ATK;
+  if (!itemTrainingStat(item, stat)) return false;
+  // GLUE: reserve cultivation members live as PartyMon records while the active
+  // member uses Pet behavior. Delete this field mapping when both share one
+  // mutable creature-state type.
+  switch (stat) {
+    case TRAINING_ATK: return target.trMinAtk < Pet::trMaxFor(target.ivAtk);
+    case TRAINING_DEF: return target.trMinDef < Pet::trMaxFor(target.ivDef);
+    case TRAINING_SPE: return target.trMinSpe < Pet::trMaxFor(target.ivSpe);
+    default: return false;
+  }
+}
+
+bool itemApplyToPartyMon(const ItemEntry &item, PartyMon &target) {
+  if (!itemCanApplyToPartyMon(item, target)) return false;
+  if (item.effect == ITEM_EFFECT_GIGANTAMAX_FACTOR) {
+    target.setGigantamaxFactor(true);
+    return true;
+  }
+  TrainingStat stat = TRAINING_ATK;
+  if (!itemTrainingStat(item, stat)) return false;
+  uint8_t *floor = nullptr, *training = nullptr, cap = 0;
+  switch (stat) {
+    case TRAINING_ATK:
+      floor = &target.trMinAtk; training = &target.trAtk;
+      cap = Pet::trMaxFor(target.ivAtk); break;
+    case TRAINING_DEF:
+      floor = &target.trMinDef; training = &target.trDef;
+      cap = Pet::trMaxFor(target.ivDef); break;
+    case TRAINING_SPE:
+      floor = &target.trMinSpe; training = &target.trSpe;
+      cap = Pet::trMaxFor(target.ivSpe); break;
+    default: return false;
+  }
+  uint16_t next = (uint16_t)*floor + (uint16_t)item.param;
+  *floor = next > cap ? cap : (uint8_t)next;
+  if (*training < *floor) *training = *floor;
+  return true;
 }
