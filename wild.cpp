@@ -25,9 +25,12 @@ BattleField wildBattleField(uint8_t biome, uint8_t roll) {
   return field;
 }
 
-uint8_t wildEncounterMaxLevel(uint8_t playerLevel, bool hard) {
-  if (hard) return 100;
-  uint16_t limit = (uint16_t)playerLevel + 5;
+uint8_t wildEncounterMaxLevel(const Combatant party[], uint8_t partyCount,
+                              bool hard) {
+  uint8_t highest = 0;
+  for (uint8_t i = 0; i < partyCount; i++)
+    if (party[i].level > highest) highest = party[i].level;
+  uint16_t limit = (uint16_t)highest + (hard ? 20 : 10);
   return limit > 100 ? 100 : (uint8_t)limit;
 }
 

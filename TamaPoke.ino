@@ -5536,7 +5536,7 @@ void startWildBattle(uint8_t region, bool hard) {
   if (!btlSquadN) return;
   btlBeginParticipation();
   uint8_t level = (uint8_t)random(1L,
-      (long)wildEncounterMaxLevel(pet.level(), hard) + 1L);
+      (long)wildEncounterMaxLevel(btlSquad, btlSquadN, hard) + 1L);
   const RegionBattleInfo &battle = regionBattleInfo(region);
   uint8_t ivBase = hard ? battle.hardIv : battle.easyIv;
   Pet foe;

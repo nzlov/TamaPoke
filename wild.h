@@ -27,9 +27,10 @@ AbilitySlot wildAbilitySlotForRoll(SpeciesId species, bool hard, uint8_t roll,
 uint8_t wildCaptureChance(uint8_t rarity, uint16_t hp, uint16_t maxHp,
                           bool hasStatus, int16_t ballModifier);
 
-// Normal encounters can range from level 1 through five above the player;
-// hard encounters may use the full level range.
-uint8_t wildEncounterMaxLevel(uint8_t playerLevel, bool hard);
+// Encounters range from level 1 through ten above the party's highest level
+// on normal difficulty, or twenty above it on hard, capped at level 100.
+uint8_t wildEncounterMaxLevel(const Combatant party[], uint8_t partyCount,
+                              bool hard);
 
 // Normal grants one weighted item and hard grants two. Both difficulties make
 // one independent roll for a single bonus item.

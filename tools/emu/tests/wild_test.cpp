@@ -57,15 +57,18 @@ int main() {
   ck(wildBattleField(6, 99).weather == BWEATHER_NONE,
      "an invalid biome safely produces a clear field");
 
-  ck(wildEncounterMaxLevel(1, false) == 6,
-     "normal encounters include five levels above the player");
-  ck(wildEncounterMaxLevel(94, false) == 99,
-     "normal encounters include every lower level");
-  ck(wildEncounterMaxLevel(95, false) == 100,
-     "normal encounter levels stop at the game limit");
-  ck(wildEncounterMaxLevel(1, true) == 100 &&
-     wildEncounterMaxLevel(100, true) == 100,
-     "hard encounters allow every level");
+  Combatant squad[3];
+  squad[0].level = 20;
+  squad[1].level = 60;
+  squad[2].level = 35;
+  ck(wildEncounterMaxLevel(squad, 3, false) == 70,
+     "normal encounters stop ten levels above the party's highest level");
+  ck(wildEncounterMaxLevel(squad, 3, true) == 80,
+     "hard encounters stop twenty levels above the party's highest level");
+  squad[1].level = 95;
+  ck(wildEncounterMaxLevel(squad, 3, false) == 100 &&
+     wildEncounterMaxLevel(squad, 3, true) == 100,
+     "wild encounter levels stop at the game limit");
   ck(wildWeightedDropCount(false, 29) == 2 &&
      wildWeightedDropCount(false, 30) == 1,
      "normal wild rewards add exactly one item below the thirty-percent boundary");

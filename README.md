@@ -326,6 +326,9 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 - A wild capture uses a free cultivation slot first, then a free Box slot. If both
   are full, the player explicitly chooses a replacement or lets it go; nothing
   is overwritten silently.
+- Wild opponents range from level 1 through at most **10 levels above the
+  party's highest level on normal difficulty**, or **20 levels above it on hard**.
+  Both limits stop at level 100.
 - Bag items have distinct icons everywhere they appear. Poké, Great and Ultra Balls
   use 1×, 1.5× and 2× catch modifiers; the four-star Master Ball is a weight-1 wild
   victory drop and catches any valid wild target without fail. Run
