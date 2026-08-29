@@ -85,40 +85,47 @@ int main() {
         "the active UI pack formats the actual round number");
   btlYou.moves[0] = meleeMove;
 
-  commitBattleMove(0, 100);
   check(btlTurnAnimating && btlTurnShowingRound && btlTurnNumber == 1,
-        "a resolved exchange opens with TURN 1");
+        "a new battle opens by showing TURN 1 before player input");
+  commitBattleMove(0, 100);
+  check(btlTurnShowingRound && btlTurnBeatCount == 0,
+        "player input cannot submit an operation during the round title");
+  uint32_t roundEnd = btlTurnBeatStartedAt + 700;
+  btlUpdateTurnPresentation(roundEnd);
+  check(!btlTurnAnimating && !btlTurnShowingRound,
+        "the round title commits the AI action and then unlocks player input");
+
+  commitBattleMove(0, 100);
+  check(btlTurnAnimating && !btlTurnShowingRound && btlTurnNumber == 1,
+        "player submission starts the already committed TURN 1 actions without replaying its title");
   check(btlTurnBeatCount >= 2 && btlMsgCount == 0,
         "both actions are queued instead of appearing together");
 
   battleTap(69 + 10, 274 + 10);
   check(btlMenu == 0, "battle input stays locked during the presentation");
 
-  uint32_t roundEnd = btlTurnBeatStartedAt + 700;
-  btlUpdateTurnPresentation(roundEnd);
-  check(!btlTurnShowingRound && btlTurnBeatAt == 0,
-        "the round title advances automatically to the first action");
   check(btlTurnBeats[0].moveStyle == BTL_ACTION_MELEE,
         "a contact move is classified as a close-range action");
-  check(btlLungeUntil[0] > roundEnd && btlLungeUntil[1] <= roundEnd,
+  uint32_t actionStartedAt = btlTurnBeatStartedAt;
+  check(btlLungeUntil[0] > actionStartedAt && btlLungeUntil[1] <= actionStartedAt,
         "the faster combatant animates first");
 
-  btlUpdateTurnPresentation(roundEnd + 60000);
-  check(!btlTurnAnimating, "all action and effect beats finish automatically");
+  btlUpdateTurnPresentation(actionStartedAt + 60000);
+  check(btlTurnAnimating && btlTurnShowingRound && btlTurnNumber == 2,
+        "all TURN 1 beats finish automatically and open the TURN 2 title");
   check(btlHpShown[0] == btlYou.hp && btlHpShown[1] == btlFoe.hp,
         "the visible HP bars finish at the authoritative result");
 
+  btlUpdateTurnPresentation(btlTurnBeatStartedAt + 700);
   btlYou.moves[0] = specialMove;
   commitBattleMove(0, 100);
-  check(btlTurnAnimating && btlTurnNumber == 2,
-        "the next exchange is labelled TURN 2");
-  uint32_t secondRoundEnd = btlTurnBeatStartedAt + 700;
-  btlUpdateTurnPresentation(secondRoundEnd);
+  check(btlTurnAnimating && !btlTurnShowingRound && btlTurnNumber == 2,
+        "TURN 2 actions start only after its title and player submission");
   check(btlTurnBeats[0].moveStyle == BTL_ACTION_RANGED &&
         btlTurnBeats[0].moveType == moveEntry(specialMove).type,
         "a special move keeps its type on the ranged effect beat");
 
-  btlUpdateTurnPresentation(secondRoundEnd + 60000);
+  btlUpdateTurnPresentation(btlTurnBeatStartedAt + 60000);
   startBattle(9, 50);
   btlTrainer = 0;
   btlRegion = 0;
@@ -129,6 +136,7 @@ int main() {
   btlFoe.base[SI_SPE] = 1;
   btlFoe.hp = 1;
   btlHpShown[1] = 1;
+  btlUpdateTurnPresentation(btlTurnBeatStartedAt + 700);
   commitBattleMove(0, 100);
   check(btlOver && btlWon && btlWinUntil && btlTurnAnimating,
         "a winning exchange keeps its queued presentation before the victory page");

@@ -31,6 +31,7 @@ void onSwipeV(int dir);
 void boxTap(int16_t x, int16_t y);
 void btlFinish(bool won);
 void btlCompleteCapture();
+void startBattle(int16_t dex, uint8_t lvl);
 void startTrainerBattle(uint8_t idx, bool hard);
 bool btlAttemptRun(uint8_t roll);
 uint8_t uiCurrentScreen();
@@ -53,7 +54,9 @@ extern bool btlTapDebounceArmed;
 extern int8_t btlSquadSource[];
 extern uint32_t btlWinUntil;
 extern bool btlCaptureAnimating, btlCaptureSuccess, btlCaptureCuePlayed;
+extern bool btlTurnAnimating, btlTurnShowingRound;
 extern uint32_t btlCaptureStartedAt;
+extern uint32_t btlTurnBeatStartedAt;
 extern ItemKey btlCaptureItem;
 extern ThrowGestureDetector btlThrowDetector;
 extern bool btlThrowArmed;
@@ -66,6 +69,8 @@ extern UiScrollView btlRewardScroll;
 void btlUpdateCapture(uint32_t now);
 void btlUpdateThrow(uint32_t now);
 bool btlFeedThrowSample(const MotionSample &sample);
+bool btlStartCapture(const ItemEntry &item, uint8_t roll, uint32_t now);
+void btlUpdateTurnPresentation(uint32_t now);
 
 static int bad = 0;
 
@@ -82,6 +87,17 @@ static MoveId findMove(const char *name) {
   for (MoveId id = 1; id < moveCount(); id++)
     if (!std::strcmp(moveEntry(id).name, name)) return id;
   return MOVE_NONE;
+}
+
+static void finishTurnActions() {
+  if (btlTurnAnimating && !btlTurnShowingRound)
+    btlUpdateTurnPresentation(btlTurnBeatStartedAt + 60000UL);
+}
+
+static void openRoundWithSeed(uint32_t seed) {
+  randomSeed(seed);
+  if (btlTurnAnimating && btlTurnShowingRound)
+    btlUpdateTurnPresentation(btlTurnBeatStartedAt + 700UL);
 }
 
 int main() {
@@ -173,17 +189,21 @@ int main() {
 
   uint8_t partyBefore = party.count();
   const ItemEntry *masterBall = nullptr;
+  const ItemEntry *catchBall = nullptr;
   for (uint16_t i = 0; i < itemCount(); i++) {
     const ItemEntry *item = itemAt(i);
     if (item && item->effect == ITEM_EFFECT_CATCH &&
+        item->param != ITEM_CATCH_GUARANTEED && !catchBall) catchBall = item;
+    if (item && item->effect == ITEM_EFFECT_CATCH &&
         item->param == ITEM_CATCH_GUARANTEED) {
       masterBall = item;
-      break;
     }
   }
-  check(masterBall, "the move pack provides a guaranteed-catch ball");
-  btlWildMon = party.slots[0];
+  check(masterBall && catchBall,
+        "the move pack provides ordinary and guaranteed-catch balls");
   int16_t captureDex = dexCount() ? 1 : -1;
+  startBattle(captureDex, 50);
+  btlWildMon = party.slots[0];
   btlWildMon.dex = captureDex;
   btlFoe.dex = captureDex;
   btlFoe.maxHp = btlFoe.hp = 100;
@@ -193,6 +213,7 @@ int main() {
   btlOver = false;
   battleOpen = true;
   btlTrainer = -1;
+  openRoundWithSeed(1);
   for (uint16_t i = 0; i < itemCount(); i++) {
     const ItemEntry *item = itemAt(i);
     while (item && inventory.count(item->key)) inventory.consume(item->key);
@@ -314,24 +335,25 @@ int main() {
   startTrainerBattle(0, false);
   check(battleOpen && btlSquadN == 1, "a one-member gym battle starts");
   for (MoveId &move : btlFoe.moves) move = MOVE_NONE;
+  openRoundWithSeed(1);
   uint16_t hpBeforeRun = btlYou.hp;
   check(!btlAttemptRun(99) && !btlOver && !pet.isDead() && btlYou.hp == hpBeforeRun,
         "a failed gym escape consumes the turn without forcing a defeat");
+  finishTurnActions();
   btlWild = true;
+  openRoundWithSeed(1);
   check(!btlAttemptRun(99) && !btlOver && !pet.isDead() && btlYou.hp == hpBeforeRun,
         "a failed wild escape also leaves death to normal enemy damage");
+  finishTurnActions();
   MoveId tackle = findMove("TACKLE");
   btlYou.maxHp = btlYou.hp = 1000;
   btlFoe.moves[0] = tackle;
+  openRoundWithSeed(1);
   check(tackle && !btlAttemptRun(99) && !btlOver && !pet.isDead() &&
         btlYou.hp > 0 && btlYou.hp < 1000,
         "the opponent takes its normal action after a failed escape");
+  finishTurnActions();
 
-  btlCaptureAnimating = true;
-  btlCaptureSuccess = false;
-  btlCaptureCuePlayed = false;
-  btlCaptureStartedAt = 1000;
-  btlCaptureItem = masterBall ? masterBall->key : ITEM_KEY_NONE;
   btlFoe.angry = false;
   btlFoe.maxHp = 100;
   btlFoe.hp = 40;
@@ -341,26 +363,44 @@ int main() {
   btlOver = false;
   btlMsgCount = 0;
   battleOpen = true;
-  randomSeed(23);  // The first 0..99 roll is 1, inside the angry 15% escape band.
-  btlUpdateCapture(btlCaptureStartedAt + 4250);
-  check(!btlCaptureAnimating && btlOver && !pet.isDead() && btlYou.hp == 1000,
-        "a wild foe escaping after a failed capture uses its action instead of attacking");
+  btlHard = true;
+  if (catchBall) inventory.add(catchBall->key);
+  openRoundWithSeed(23);  // Intent 1/100; committed escape roll 99/100 fails after anger.
+  check(catchBall && btlStartCapture(*catchBall, 99, 1000),
+        "an ordinary ball starts a guaranteed failed-capture fixture");
+  btlUpdateCapture(5250);
+  check(!btlCaptureAnimating && !btlOver && !pet.isDead() && btlYou.hp == 1000,
+        "a preselected escape that fails after capture anger still consumes the foe's only action");
+  finishTurnActions();
 
-  btlCaptureAnimating = true;
-  btlCaptureSuccess = false;
-  btlCaptureCuePlayed = false;
-  btlCaptureStartedAt = 1000;
-  btlCaptureItem = masterBall ? masterBall->key : ITEM_KEY_NONE;
   btlFoe.angry = false;
   btlFoe.hp = 40;
   btlYou.hp = 1000;
   btlOver = false;
   btlMsgCount = 0;
   battleOpen = true;
-  randomSeed(1);  // The first 0..99 roll is 38, outside the angry escape band.
-  btlUpdateCapture(btlCaptureStartedAt + 4250);
+  if (catchBall) inventory.add(catchBall->key);
+  openRoundWithSeed(1);  // Intent 38/100 stays outside the pre-capture ten-percent band.
+  check(catchBall && btlStartCapture(*catchBall, 99, 1000),
+        "a second ordinary ball starts the committed-attack fixture");
+  btlUpdateCapture(5250);
   check(!btlCaptureAnimating && !btlOver && !pet.isDead() && btlYou.hp < 1000,
-        "a wild foe that stays after a failed capture still attacks normally");
+        "a preselected attack executes normally after capture anger");
+  finishTurnActions();
+
+  btlFoe.angry = false;
+  btlFoe.hp = 40;
+  btlYou.hp = 1000;
+  btlOver = false;
+  btlMsgCount = 0;
+  battleOpen = true;
+  if (catchBall) inventory.add(catchBall->key);
+  openRoundWithSeed(140);  // Intent 3/100 and committed escape roll 8/100 both succeed.
+  check(catchBall && btlStartCapture(*catchBall, 99, 1000),
+        "a third ordinary ball starts the successful-escape fixture");
+  btlUpdateCapture(5250);
+  check(!btlCaptureAnimating && btlOver && !pet.isDead() && btlYou.hp == 1000,
+        "a preselected escape that succeeds after capture anger ends the battle without attacking");
 
   std::puts(bad ? "FAILURES" : "capture is settled and stored through the reward flow");
   return bad ? 1 : 0;

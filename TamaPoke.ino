@@ -957,8 +957,19 @@ static void drawBtlBack();
 static void btlLinkPoll();   // defined with the battle code, called from render()
 static void btlSwitchTo(uint8_t i);
 static void btlDoSwap();
-static void btlResolve(MoveId yourMove, uint8_t yourPercent = 100,
-                       BattleMechanic yourMechanic = BMECH_NONE);
+// Local AI commits exactly one operation before either side changes battle
+// state. Capture keeps the plan across its asynchronous animation.
+struct BtlFoeTurnPlan {
+  MoveId move = MOVE_NONE;
+  BattleMechanic mechanic = BMECH_NONE;
+  MegaFormKind megaForm = MEGA_FORM_NONE;
+  bool wantsRun = false;
+  uint8_t runRoll = 100;
+  bool ready = false;
+};
+static BtlFoeTurnPlan btlPlanFoeTurn();
+static void btlResolve(MoveId yourMove, uint8_t yourPercent,
+                       BattleMechanic yourMechanic);
 static void btlSetPersistentDead(uint8_t index, bool dead);
 static void btlMarkEntered(uint8_t index);
 // The opposing team stays live so trainer and linked creatures can switch out
@@ -1090,6 +1101,7 @@ bool btlCaptureSuccess = false;
 bool btlCaptureCuePlayed = false;
 uint32_t btlCaptureStartedAt = 0;
 ItemKey btlCaptureItem = ITEM_KEY_NONE;
+static BtlFoeTurnPlan btlFoeTurnPlan;
 ThrowGestureDetector btlThrowDetector;
 bool btlThrowArmed = false;
 uint32_t btlThrowStartedAt = 0;
@@ -4958,8 +4970,23 @@ static void btlResetTurnPresentation() {
   btlTurnAnimating = false;
   btlTurnShowingRound = false;
   btlTurnBeatStartedAt = 0;
+  btlFoeTurnPlan = BtlFoeTurnPlan();
   btlHitFrom[0] = btlHitFrom[1] = 0;
   btlFaintPresented[0] = btlFaintPresented[1] = false;
+}
+
+static void btlStartRoundIntro(uint32_t startedAt) {
+  if (!battleOpen || btlOver) return;
+  btlFoeTurnPlan = BtlFoeTurnPlan();
+  btlTurnBeatCount = 0;
+  btlTurnBeatAt = 0;
+  btlTurnCapturing = false;
+  btlTurnAnimating = true;
+  btlTurnShowingRound = true;
+  btlTurnBeatStartedAt = startedAt;
+  if (btlTurnNumber < UINT16_MAX) btlTurnNumber++;
+  btlTurnHpFrom[0] = btlTurnHpTarget[0] = btlHpShown[0];
+  btlTurnHpFrom[1] = btlTurnHpTarget[1] = btlHpShown[1];
 }
 
 static uint8_t btlActionStyle(MoveId move) {
@@ -5010,7 +5037,6 @@ static void btlBeginTurnPresentation() {
   btlTurnAnimating = false;
   btlTurnShowingRound = false;
   btlFaintPresented[0] = btlFaintPresented[1] = false;
-  if (btlTurnNumber < UINT16_MAX) btlTurnNumber++;
   btlTurnContextKind = BTL_TURN_INFO;
   btlTurnContextActor = 0;
   btlTurnContextTarget = 1;
@@ -5044,14 +5070,18 @@ static void btlStartTurnBeat(uint8_t index, uint32_t startedAt) {
   if (beat.sfx < SFX_COUNT) sfxPlay(beat.sfx);
 }
 
+static void btlFinishTurnPresentation(uint32_t now);
+
 static void btlEndTurnPresentation() {
   btlTurnCapturing = false;
   btlTurnAnimating = true;
-  btlTurnShowingRound = true;
+  btlTurnShowingRound = false;
   btlTurnBeatAt = 0;
   btlTurnBeatStartedAt = millis();
   btlTurnHpFrom[0] = btlTurnHpTarget[0] = btlHpShown[0];
   btlTurnHpFrom[1] = btlTurnHpTarget[1] = btlHpShown[1];
+  if (btlTurnBeatCount) btlStartTurnBeat(0, btlTurnBeatStartedAt);
+  else btlFinishTurnPresentation(btlTurnBeatStartedAt);
 }
 
 static void btlFinishTurnPresentation(uint32_t now) {
@@ -5077,6 +5107,7 @@ static void btlFinishTurnPresentation(uint32_t now) {
              btlTurnBeats[btlTurnBeatCount - 1].text);
     btlMsgCount = 1;
   }
+  if (!btlOver) btlStartRoundIntro(now);
 }
 
 void btlUpdateTurnPresentation(uint32_t now) {
@@ -5084,8 +5115,9 @@ void btlUpdateTurnPresentation(uint32_t now) {
   if (btlTurnShowingRound) {
     if (now - btlTurnBeatStartedAt < BTL_TURN_ROUND_MS) return;
     btlTurnShowingRound = false;
-    if (!btlTurnBeatCount) { btlFinishTurnPresentation(now); return; }
-    btlStartTurnBeat(0, btlTurnBeatStartedAt + BTL_TURN_ROUND_MS);
+    btlTurnAnimating = false;
+    btlFoeTurnPlan = btlPlanFoeTurn();
+    return;
   }
 
   while (btlTurnAnimating && !btlTurnShowingRound &&
@@ -5313,6 +5345,7 @@ static const ItemEntry *btlMechanicItem(BattleMechanic mechanic,
 static void btlResetMechanics() {
   btlYourMechanics = BattleSideMechanics();
   btlFoeMechanics = BattleSideMechanics();
+  btlFoeTurnPlan = BtlFoeTurnPlan();
   btlPendingMechanic = BMECH_NONE;
   btlWildMechanic = BMECH_NONE;
   btlMyMechanic = BMECH_NONE;
@@ -5446,6 +5479,7 @@ void startLinkBattle() {
     btlApplyEntry(0);
     btlApplyEntry(1);
   }
+  btlStartRoundIntro(millis());
 }
 
 void startTrainerBattle(uint8_t idx, bool hard) {
@@ -5500,6 +5534,7 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   battleOpen = true;
   btlApplyEntry(0);
   btlApplyEntry(1);
+  btlStartRoundIntro(millis());
 }
 
 void startBattle(int16_t dex, uint8_t lvl) {
@@ -5548,6 +5583,7 @@ void startBattle(int16_t dex, uint8_t lvl) {
   battleOpen = true;
   btlApplyEntry(0);
   btlApplyEntry(1);
+  btlStartRoundIntro(millis());
 }
 
 static SpeciesId wildSpecies(uint8_t region) {
@@ -5658,6 +5694,7 @@ void startWildBattle(uint8_t region, bool hard) {
   battleOpen = true;
   btlApplyEntry(0);
   btlApplyEntry(1);
+  btlStartRoundIntro(millis());
 }
 
 // The guest's whole turn: copy in what the host resolved and play the same
@@ -5888,7 +5925,8 @@ static void btlLinkPoll() {
       btlMyPercent = 0;
       btlMyMechanic = BMECH_NONE;
       if (LINK_ACT_IS_SWITCH(act)) btlSwitchTo(LINK_ACT_SLOT(act));
-      else btlResolve(btlYou.moves[LINK_ACT_SLOT(act) % MOVE_SLOTS], percent, mechanic);
+      else btlResolve(btlYou.moves[LINK_ACT_SLOT(act) % MOVE_SLOTS], percent,
+                      mechanic);
     }
     return;
   }
@@ -6104,9 +6142,37 @@ bool btlAttemptFoeRun(uint8_t roll) {
   return true;
 }
 
+static BtlFoeTurnPlan btlPlanFoeTurn() {
+  BtlFoeTurnPlan plan;
+  plan.ready = true;
+  if (btlLink) return plan;
+  if (btlWild) {
+    uint8_t chance = wildFoeEscapeChance(btlFoe.hp, btlFoe.maxHp, btlFoe.angry);
+    if (chance && (uint8_t)random(100) < chance) {
+      plan.wantsRun = true;
+      plan.runRoll = (uint8_t)random(100);
+      return plan;
+    }
+  }
+  plan.move = aiChooseMove(btlFoe, btlYou, btlField, btlHard);
+  if (btlWild && btlWildMechanic != BMECH_NONE &&
+      battleMechanicAvailable(btlFoeMechanics, btlFoe, btlWildMechanic,
+                              plan.move, btlWildMegaForm)) {
+    plan.mechanic = btlWildMechanic;
+    plan.megaForm = btlWildMegaForm;
+  }
+  return plan;
+}
+
+static bool btlCanSubmitTurn() {
+  return battleOpen && !btlOver && !btlTurnAnimating && btlFoeTurnPlan.ready;
+}
+
 // One exchange: both sides act in speed order, then burn/poison chip.
 static void btlResolve(MoveId yourMove, uint8_t yourPercent,
                        BattleMechanic yourMechanic) {
+  BtlFoeTurnPlan foePlan = btlFoeTurnPlan;
+  btlFoeTurnPlan = BtlFoeTurnPlan();
   btlBeginTurnPresentation();
   TurnLog lg;
   // Against another device the opponent's move comes off the wire, never from
@@ -6144,28 +6210,21 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
     lan.pendingMechanic = BMECH_NONE;
     lan.pendingMegaForm = MEGA_FORM_NONE;
   } else {
-    if (btlWild) {
-      uint8_t foeRunChance =
-          wildFoeEscapeChance(btlFoe.hp, btlFoe.maxHp, btlFoe.angry);
-      if (foeRunChance) {
-        foeRunRoll = (uint8_t)random(100);
-        foeWantsRun = foeRunRoll < foeRunChance;
-      }
-    }
-    foeMove = foeWantsRun ? MOVE_NONE
-                          : aiChooseMove(btlFoe, btlYou, btlField, btlHard);
+    foeWantsRun = foePlan.wantsRun;
+    foeRunRoll = foePlan.runRoll;
+    foeMove = foePlan.move;
+    foeMechanic = foePlan.mechanic;
   }
   (void)foeSwitched;
 
-  if (!foeWantsRun && btlWild && btlWildMechanic != BMECH_NONE &&
-      battleMechanicAvailable(btlFoeMechanics, btlFoe, btlWildMechanic, foeMove,
-                              btlWildMegaForm)) {
-    foeMechanic = btlWildMechanic;
+  if (!foeWantsRun && btlWild && foeMechanic != BMECH_NONE &&
+      battleMechanicAvailable(btlFoeMechanics, btlFoe, foeMechanic, foeMove,
+                              foePlan.megaForm)) {
     uint16_t oldMaxHp = btlFoe.maxHp;
     battleActivateMechanic(btlFoeMechanics, btlFoe, foeMechanic, foeMove,
-                           btlWildMegaForm);
+                           foePlan.megaForm);
     btlScaleShownHp(1, oldMaxHp, btlFoe.maxHp);
-    const ItemEntry *item = btlMechanicItem(foeMechanic, btlWildMegaForm);
+    const ItemEntry *item = btlMechanicItem(foeMechanic, foePlan.megaForm);
     if (item) btlSay("%s: %s", displayCombatantName(btlFoe), itemName(item->key));
   }
 
@@ -6189,6 +6248,7 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
       btlEndTurnPresentation();
       return;
     }
+    btlSay("%s", T(S_BTL_RUN_FAILED));
   } else {
     battleAct(*a, *b, btlField, ma, lg, a == &btlYou ? yourPercent : foePercent,
               aSide);
@@ -6213,6 +6273,7 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
         btlEndTurnPresentation();
         return;
       }
+      btlSay("%s", T(S_BTL_RUN_FAILED));
     } else {
       battleAct(*b, *a, btlField, mb, lg, b == &btlYou ? yourPercent : foePercent,
                 bSide);
@@ -6951,7 +7012,7 @@ void btlUpdateCapture(uint32_t now) {
 
   btlMenu = 0;
   btlSay("%s", itemName(item));
-  btlResolve(0, 100);
+  btlResolve(MOVE_NONE, 100, BMECH_NONE);
 }
 
 static void renderBattleCapture(uint32_t now, uint8_t stage) {
@@ -7304,15 +7365,15 @@ static void btlDoSwap() {
 // Switching spends your turn: the opponent still acts. That is what stops it
 // being a free look at the matchup every round.
 static void btlSwitchTo(uint8_t i) {
-  if (i >= btlSquadN || i == btlSquadAt) return;
+  if ((!btlLink && !btlCanSubmitTurn()) || i >= btlSquadN || i == btlSquadAt) return;
   if (!battleCanSwitch(btlYou, btlFoe)) { sfxPlay(SFX_DENY); return; }
   if (!btlReplaceActive(0, i, true)) return;
   btlMenu = 0;
-  btlResolve(0, 100);     // move 0 = no attack, so only the foe acts
+  btlResolve(MOVE_NONE, 100, BMECH_NONE);
 }
 
 void commitBattleMove(uint8_t moveSlot, uint8_t percent) {
-  if (!battleOpen || btlOver || moveSlot >= MOVE_SLOTS || !btlYou.moves[moveSlot]) return;
+  if (!btlCanSubmitTurn() || moveSlot >= MOVE_SLOTS || !btlYou.moves[moveSlot]) return;
   MoveId move = btlYou.moves[moveSlot];
   BattleMechanic mechanic = btlPendingMechanic;
   MegaFormKind megaForm = btlPendingMegaForm;
@@ -7338,6 +7399,7 @@ void commitBattleMove(uint8_t moveSlot, uint8_t percent) {
   }
   uint8_t act = LINK_ACT_MOVE(moveSlot);
   if (btlLink && !btlLinkHost) {
+    btlFoeTurnPlan = BtlFoeTurnPlan();
     lan.sendAct(act, percent, mechanic, megaForm);  // the guest asks; the host decides
     return;
   }
@@ -7345,6 +7407,7 @@ void commitBattleMove(uint8_t moveSlot, uint8_t percent) {
     btlMyAct = act;
     btlMyPercent = percent;
     btlMyMechanic = mechanic;
+    btlFoeTurnPlan = BtlFoeTurnPlan();
     if (!lan.hasPeerAct()) return;     // resolved by btlLinkPoll when it lands
     btlMyAct = 0;
     btlMyPercent = 0;
@@ -7383,6 +7446,7 @@ static bool btlBackTap(int16_t x, int16_t y) {
 // The roll is supplied by the caller so the policy boundary can be tested
 // without coupling a regression test to the global PRNG sequence.
 bool btlAttemptRun(uint8_t roll) {
+  if (!btlCanSubmitTurn()) return false;
   // In a linked fight RUN is the existing deliberate disconnect/forfeit, not a
   // simulated wild escape. Applying a local failed roll would desynchronise the
   // two authoritative battle copies.
@@ -7395,6 +7459,7 @@ bool btlAttemptRun(uint8_t roll) {
     battleOpen = false;
     btlWild = false;
     btlMenu = 0;
+    btlFoeTurnPlan = BtlFoeTurnPlan();
     return true;
   }
 
@@ -7411,21 +7476,25 @@ static void btlRun() {
 }
 
 static void btlSpendItemTurn(const ItemEntry &item, uint8_t targetIndex) {
+  if (!btlCanSubmitTurn()) return;
   Combatant *target = btlMember(targetIndex);
-  if (!target || !itemApplyToCombatant(item, *target) ||
+  Combatant applied = target ? *target : Combatant();
+  if (!target || !itemApplyToCombatant(item, applied) ||
       !inventory.consume(item.key)) {
     sfxPlay(SFX_DENY);
     return;
   }
+  *target = applied;
   if (item.effect == ITEM_EFFECT_REVIVE)
     btlSetPersistentDead(targetIndex, false);
   sfxPlay(SFX_TAP);
   btlMenu = 0;
   btlPendingItem = ITEM_KEY_NONE;
-  btlResolve(0, 100);
+  btlResolve(MOVE_NONE, 100, BMECH_NONE);
 }
 
 void btlCompleteCapture() {
+  btlFoeTurnPlan = BtlFoeTurnPlan();
   capturedMon = btlWildMon;
   pet.registerCaught(capturedMon.dex, capturedMon.shiny);
   btlResetRewardSummary();
@@ -7448,7 +7517,7 @@ void btlCompleteCapture() {
 
 bool btlStartCapture(const ItemEntry &item, uint8_t roll, uint32_t now) {
   btlResetThrow();
-  if (!battleOpen || btlOver || btlCaptureAnimating || !btlWild ||
+  if (!btlCanSubmitTurn() || btlCaptureAnimating || !btlWild ||
       item.effect != ITEM_EFFECT_CATCH || !inventory.consume(item.key)) {
     sfxPlay(SFX_DENY);
     return false;
@@ -7635,6 +7704,7 @@ static bool btlDispatchTap(int16_t x, int16_t y) {
         // The guest asks; it never switches on its own. A switch rides the same
         // message as a move, so the host spends the turn on it exactly as it
         // would for us.
+        btlFoeTurnPlan = BtlFoeTurnPlan();
         lan.sendAct(LINK_ACT_SWITCH_TO(i));
         btlMenu = 0;
         return true;
@@ -7642,6 +7712,7 @@ static bool btlDispatchTap(int16_t x, int16_t y) {
       if (btlLink) {            // host: latched like a move, see btlLinkPoll
         btlMyAct = LINK_ACT_SWITCH_TO(i);
         btlMyPercent = 100;
+        btlFoeTurnPlan = BtlFoeTurnPlan();
         btlMenu = 0;
         if (!lan.hasPeerAct()) return true;
         btlMyAct = 0;

@@ -45,7 +45,7 @@ struct BtlTurnBeat {
 };
 extern BtlTurnBeat btlTurnBeats[];
 extern uint8_t btlTurnBeatCount;
-extern bool btlTurnAnimating;
+extern bool btlTurnAnimating, btlTurnShowingRound;
 extern uint32_t btlTurnBeatStartedAt;
 void btlUpdateTurnPresentation(uint32_t now);
 extern bool pickOpen, lanWantHost;
@@ -67,6 +67,11 @@ static void capture(void*, const uint8_t*b, uint8_t n){
 }
 static int bad=0;
 static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!ok)bad++;}
+
+static void openBattleRound() {
+  if (btlTurnAnimating && btlTurnShowingRound)
+    btlUpdateTurnPresentation(btlTurnBeatStartedAt + 700UL);
+}
 
 static bool answerBattleQuiz(uint32_t elapsedMs) {
   if (!quiz.active) return false;
@@ -115,6 +120,7 @@ int main(){
   lan.send=capture;
 
   startLinkBattle();
+  openBattleRound();
   quiz.config.choiceWeight = 0;
   ck(battleOpen && btlLink && btlLinkHost, "the host starts a linked battle");
   // The party above is full of level-30 nobodies and the live pet is level 1.
@@ -152,6 +158,8 @@ int main(){
   // part of that turn's action, while LM_WAIT keeps a long question alive.
   std::this_thread::sleep_for(std::chrono::milliseconds(310));
   lan.state = LINK_READY;
+  startLinkBattle();
+  openBattleRound();
   btlMenu = 1;
   sent = 0;
   battleTap(69 + 10, 286 + 10);
@@ -165,6 +173,9 @@ int main(){
   // --- the host LATCHES its own action instead of throwing it away
   btlLinkHost = true;
   lan.isHost = true;
+  lan.state = LINK_READY;
+  startLinkBattle();
+  openBattleRound();
   btlLink = true;
   btlOver = false;
   btlMsgCount = 0;
@@ -194,6 +205,7 @@ int main(){
   lan.isHost = false;
   lan.state = LINK_READY;
   startLinkBattle();
+  openBattleRound();
   quiz.config.questionTypes = 0;
   btlMenu = 1;
   sent = 0;
@@ -204,6 +216,7 @@ int main(){
   lan.isHost = true;
   lan.state = LINK_READY;
   startLinkBattle();
+  openBattleRound();
   quiz.config.questionTypes = 0;
   btlMenu = 1;
   btlMyAct = 0;
@@ -311,7 +324,9 @@ int main(){
   render();
   ck(btlYou.hp==hpNow, "so a second frame does not replay the turn");
   btlUpdateTurnPresentation(btlTurnBeatStartedAt + 60000);
-  ck(!btlTurnAnimating, "the guest presentation finishes automatically");
+  ck(btlTurnAnimating && btlTurnShowingRound,
+     "the guest presentation advances to the next round title");
+  openBattleRound();
 
   // --- the rival's next creature arrives when the host says so
   r.hostIdx = 1; r.hostHp = 60;
@@ -319,6 +334,7 @@ int main(){
   render();
   ck(btlFoeAt==1 && btlFoe.dex==65, "the rival's next creature comes off the wire");
   btlUpdateTurnPresentation(btlTurnBeatStartedAt + 60000);
+  openBattleRound();
 
   // --- and the guest never decides the ending
   lan.youWon = true; lan.state = LINK_DONE;

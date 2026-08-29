@@ -41,6 +41,9 @@ extern ItemKey btlPendingItem;
 extern BattleSideMechanics btlYourMechanics;
 void startBattle(int16_t dex, uint8_t lvl);
 void commitBattleMove(uint8_t moveSlot, uint8_t percent);
+extern bool btlTurnAnimating, btlTurnShowingRound;
+extern uint32_t btlTurnBeatStartedAt;
+void btlUpdateTurnPresentation(uint32_t now);
 int btlCellIndexAt(int16_t x, int16_t y);
 void uiButtonHeights(int *out, int max, int *n);
 void gymHeaderRects(int *pillTop, int *pillBot, int *rowTop);
@@ -65,6 +68,11 @@ void onTap(int16_t x, int16_t y);
 
 static int bad=0;
 static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!ok)bad++;}
+
+static void openBattleRound() {
+  if (btlTurnAnimating && btlTurnShowingRound)
+    btlUpdateTurnPresentation(btlTurnBeatStartedAt + 700UL);
+}
 
 static bool answerActiveQuiz() {
   if (!quiz.active) return false;
@@ -161,6 +169,7 @@ int main(){
 
   // finally, drive a real tap low in the bottom-left cell through battleTap
   startBattle(9, 50);
+  openBattleRound();
   btlYou.moves[2] = btlYou.moves[0];
   btlMenu = 1;
   uint8_t before = btlMenu;
@@ -172,6 +181,7 @@ int main(){
   // A mechanic item is only spent when a legal move is committed. Backing out
   // or trying a status move with the Z Crystal must leave the stack untouched.
   startBattle(9, 50);
+  openBattleRound();
   const ItemEntry *zItem = nullptr;
   for (uint16_t i = 0; i < itemCount(); i++) {
     const ItemEntry *item = itemAt(i);
@@ -206,6 +216,7 @@ int main(){
      "a valid Z-Move commit consumes exactly one item and records both limits");
 
   startBattle(9, 50);
+  openBattleRound();
   quiz.config.questionTypes = 0;
   ck(beginBattleQuiz(0) && !quiz.active,
      "a disabled battle question resolves the move without a popup");

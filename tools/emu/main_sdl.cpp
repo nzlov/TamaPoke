@@ -205,6 +205,10 @@ extern bool btlTurnAnimating, btlTurnShowingRound;
 extern uint32_t btlTurnBeatStartedAt;
 void commitBattleMove(uint8_t moveSlot, uint8_t percent);
 void btlUpdateTurnPresentation(uint32_t now);
+static void openBattleRound() {
+  if (btlTurnAnimating && btlTurnShowingRound)
+    btlUpdateTurnPresentation(btlTurnBeatStartedAt + 700UL);
+}
 extern bool btlFoeDetailOpen;
 extern uint8_t btlFoeDetailPage;
 extern bool btlCaptureAnimating, btlCaptureSuccess, btlCaptureCuePlayed;
@@ -581,19 +585,21 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     }
     btlWinUntil = 60000;
   }
-  else if (!strcmp(screen, "battle2")) { startBattle(9, 50); }
-  else if (!strcmp(screen, "btlmenu")) { startTrainerBattle(3, false); }
+  else if (!strcmp(screen, "btlround")) { startBattle(9, 50); }
+  else if (!strcmp(screen, "battle2")) { startBattle(9, 50); openBattleRound(); }
+  else if (!strcmp(screen, "btlmenu")) { startTrainerBattle(3, false); openBattleRound(); }
   else if (!strcmp(screen, "btlswitch")) {
     for (int i = 0; i < 2; i++) {
       PartyMon m; m.dex = i ? 25 : 9; m.level = 48 + i * 3;
       m.ivAtk = m.ivDef = m.ivSpe = m.ivHp = 25;
       party.replaceAt(i, m);
     }
-    startTrainerBattle(3, false); btlMenu = 2;
+    startTrainerBattle(3, false); openBattleRound(); btlMenu = 2;
   }
-  else if (!strcmp(screen, "btlmoves")) { startTrainerBattle(3, false); btlMenu = 1; }
+  else if (!strcmp(screen, "btlmoves")) { startTrainerBattle(3, false); openBattleRound(); btlMenu = 1; }
   else if (!strcmp(screen, "btlitems2")) {
     startTrainerBattle(3, false);
+    openBattleRound();
     for (uint16_t i = 0; i < itemCount(); i++) {
       const ItemEntry *item = itemAt(i);
       if (item) inventory.add(item->key, 3);
@@ -605,6 +611,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
     pet.relearnFromLevel();
     startBattle(25, 42);
+    openBattleRound();
     for (MoveId move = 1; move < moveCount(); move++)
       if (moveEntry(move).cat != MC_STATUS) {
         btlYou.moves[0] = move;
@@ -623,6 +630,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   }
   else if (!strcmp(screen, "btlzmove")) {
     startTrainerBattle(3, false);
+    openBattleRound();
     btlPendingMechanic = BMECH_Z_MOVE;
     btlMenu = 1;
   }
@@ -631,12 +639,14 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
     pet.relearnFromLevel();
     startBattle(25, 42);
+    openBattleRound();
   }
   else if (!strcmp(screen, "btlfield")) {
     pet.dbgHatchAs(6, false);
     pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
     pet.relearnFromLevel();
     startBattle(25, 42);
+    openBattleRound();
     battleSetEnvironment(btlField, BWEATHER_RAIN, BTERRAIN_ELECTRIC);
     btlMsgCount = 1;
     snprintf(btlMsg[0], sizeof(btlMsg[0]), T(S_BTL_FIELD_BEGAN), T(S_FIELD_RAIN));
@@ -646,6 +656,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
     pet.relearnFromLevel();
     startBattle(778, 50);
+    openBattleRound();
     btlFoe.ability = ABILITY_DISGUISE;
     battleInitializeForm(btlFoe);
     battleSetEnvironment(btlField, BWEATHER_SNOW);
@@ -665,6 +676,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
     pet.relearnFromLevel();
     startBattle(25, 42);
+    openBattleRound();
     battleActivateMechanic(btlYourMechanics, btlYou, BMECH_DYNAMAX,
                            btlYou.moves[0]);
     btlHpShown[0] = btlYou.hp;
@@ -674,6 +686,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
     pet.relearnFromLevel();
     startBattle(25, 42);
+    openBattleRound();
     battleActivateMechanic(btlYourMechanics, btlYou, BMECH_MEGA,
                            btlYou.moves[0], MEGA_FORM_X);
     btlHpShown[0] = btlYou.hp;
@@ -686,6 +699,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
       party.replaceAt(i, m);
     }
     startTrainerBattle(3, false);
+    openBattleRound();
     for (uint16_t i = 0; i < itemCount(); i++) {
       const ItemEntry *item = itemAt(i);
       if (!item || item->effect != ITEM_EFFECT_REVIVE) continue;
@@ -698,6 +712,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   }
   else if (!strcmp(screen, "battleanim")) {
     startBattle(9, 50);
+    openBattleRound();
     btlFoe.hp = btlFoe.maxHp / 3;      // bar mid-drain
     btlLungeUntil[0] = millis() + 130; // you mid-lunge
     btlHitUntil[1] = millis() + 300;   // foe flinching
@@ -708,6 +723,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
     pet.relearnFromLevel();
     startBattle(1, 42);
+    openBattleRound();
     quiz.config.questionTypes = 0;
     if (strcmp(screen, "btlturn")) {
       for (MoveId move = 1; move < moveCount(); move++) {
@@ -734,6 +750,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.ageMinutes = 41UL * MINUTES_PER_LEVEL;
     pet.relearnFromLevel();
     startBattle(25, 42);
+    openBattleRound();
     btlWild = true;
     if (!strcmp(screen, "wilditems")) {
       for (uint16_t i = 0; i < itemCount(); i++) {
@@ -749,6 +766,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.gender = GENDER_MALE;
     pet.relearnFromLevel();
     startBattle(1, 42);
+    openBattleRound();
     btlWild = true;
     btlFoe.gender = GENDER_FEMALE;
     btlWildMon = PartyMon();
@@ -764,6 +782,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.ageMinutes = 41UL * MINUTES_PER_LEVEL;
     pet.relearnFromLevel();
     startBattle(1, 42);
+    openBattleRound();
     btlWild = true;
     for (uint16_t i = 0; i < itemCount(); i++) {
       const ItemEntry *item = itemAt(i);
@@ -786,6 +805,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.ageMinutes = 41UL * MINUTES_PER_LEVEL;
     pet.relearnFromLevel();
     startBattle(25, 42);
+    openBattleRound();
     if (!battleOpen) {
       fprintf(stderr, "capture screenshots require installed Kanto data packs\n");
       return 2;
@@ -880,10 +900,11 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     }
     lan.theirsN = 3;
     lan.state = LINK_READY;
-    if (!strcmp(screen, "lanbattle")) { startLinkBattle(); }
+    if (!strcmp(screen, "lanbattle")) { startLinkBattle(); openBattleRound(); }
     else if (!strcmp(screen, "landone")) { lan.state = LINK_DONE; lan.youWon = true; lanOpen = true; }
     else if (!strcmp(screen, "lanwait")) {
       startLinkBattle();
+      openBattleRound();
       btlMyAct = LINK_ACT_MOVE(0);      // tapped, rival has not chosen yet
     }
     else lanOpen = true;
@@ -946,6 +967,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   }
   else if (!strcmp(screen, "win")) {
     startTrainerBattle(2, true);
+    openBattleRound();
     btlNewBadge = true; btlWinUntil = 60000; player.badgesHard = 0x07;
     btlIvReward = GYM_IV_GAINED; btlIvWhich = 2;
   }
@@ -974,7 +996,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.medals = 0x5B; player.totalMedals = 12;
     playerOpen = true; playerPage = regionAll();
   }
-  else if (!strcmp(screen, "gymfight")) { startTrainerBattle(0, false); }
+  else if (!strcmp(screen, "gymfight")) { startTrainerBattle(0, false); openBattleRound(); }
   else if (!strcmp(screen, "learn")) {
     // fill the four slots, then cross a gate so the offer has to be answered
     pet.relearnFromLevel();

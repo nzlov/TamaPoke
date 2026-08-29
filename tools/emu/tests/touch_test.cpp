@@ -54,6 +54,9 @@ extern uint8_t btlMsgCount;
 extern uint8_t gymRegion, btlRegion;
 void updateQuiz(uint32_t now);
 void startBattle(int16_t dex, uint8_t lvl);
+extern bool btlTurnAnimating, btlTurnShowingRound;
+extern uint32_t btlTurnBeatStartedAt;
+void btlUpdateTurnPresentation(uint32_t now);
 bool btlAttemptRun(uint8_t roll);
 bool btlAttemptFoeRun(uint8_t roll);
 void startTrainerBattle(uint8_t idx, bool hard);
@@ -87,6 +90,11 @@ static void pump(int times) {
     std::this_thread::sleep_for(std::chrono::milliseconds(30));
     loop();
   }
+}
+
+static void openBattleRound() {
+  if (btlTurnAnimating && btlTurnShowingRound)
+    btlUpdateTurnPresentation(btlTurnBeatStartedAt + 700UL);
 }
 
 static void fire() {
@@ -321,6 +329,7 @@ int main(int argc, char **argv) {
   pet.ageMinutes = 50 * MINUTES_PER_LEVEL;
   pet.relearnFromLevel();
   startBattle(9, 50);
+  openBattleRound();
   if (!battleOpen) { printf("FAIL: battle did not start\n"); return 1; }
   printf("PASS: BATTLE opens (%s L%u vs %s L%u)\n",
          btlYou.name, btlYou.level, btlFoe.name, btlFoe.level);
@@ -393,6 +402,7 @@ int main(int argc, char **argv) {
   pet.relearnFromLevel();
   bool hadBadge = player.hasBadge(0, 0, false);
   startTrainerBattle(0, false);
+  openBattleRound();
   if (!battleOpen) { printf("FAIL: trainer battle did not start\n"); return 1; }
   printf("PASS: gym battle starts (squad of %u vs BROCK)\n", btlSquadN);
 
@@ -431,6 +441,7 @@ int main(int argc, char **argv) {
       gymRegion = region;
       const Trainer &expected = trainerInfo(region, trainer);
       startTrainerBattle(trainer, false);
+      openBattleRound();
       if (btlRegion != region || btlFoeAt != 0 ||
           btlFoe.dex != expected.team[0].dex ||
           btlFoe.level != expected.team[0].level) {
@@ -468,6 +479,7 @@ int main(int argc, char **argv) {
   battleOpen = false;
   pet.ageMinutes = 100 * MINUTES_PER_LEVEL;   // a level 100 creature
   startTrainerBattle(0, true);                // BROCK: 2 mons, top level 14
+  openBattleRound();
   printf("     hard vs BROCK: squad %u, your lead is L%u (pet is L%u)\n",
          btlSquadN, btlYou.level, pet.level());
   if (btlYou.level != 14) {
@@ -487,6 +499,7 @@ int main(int argc, char **argv) {
     m.ivAtk = m.ivDef = m.ivSpe = m.ivHp = 25; party.replaceAt(i, m); }
   squadMask = 0xFFFF;
   startTrainerBattle(0, false);
+  openBattleRound();
   if (btlSquadN < 2) { printf("FAIL: squad too small to test switching\n"); return 1; }
   printf("PASS: battle starts with a squad of %u\n", btlSquadN);
 
@@ -590,6 +603,7 @@ int main(int argc, char **argv) {
 
   // easy caps the level too -- it just does not cap the team size
   startTrainerBattle(0, false);
+  openBattleRound();
   if (btlYou.level != 14) { printf("FAIL: easy mode did not cap the level\n"); return 1; }
   printf("PASS: easy mode caps the level as well\n");
 
@@ -614,6 +628,7 @@ int main(int argc, char **argv) {
   uint8_t reserveSlot = 1;
   party.replaceAt(reserveSlot, reserve);
   startBattle(150, 100);
+  openBattleRound();
   if (btlSquadN != 2 || btlYou.level != 20) {
     printf("FAIL: death test did not start with the intended two-member team\n");
     return 1;
@@ -632,6 +647,7 @@ int main(int argc, char **argv) {
   printf("PASS: a low-HP wild foe can escape without killing the player's pet\n");
   directBattleTap(0, 0);
   startBattle(150, 100);
+  openBattleRound();
   btlWild = true;
   MoveId tackle = findMove("TACKLE");
   if (!tackle) {
