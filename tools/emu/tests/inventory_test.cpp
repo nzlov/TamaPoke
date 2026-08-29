@@ -240,6 +240,33 @@ int main() {
        "each attributed stone stack survives an inventory reload");
   }
 
+  nvs().clear();
+  Inventory taskDrops;
+  taskDrops.begin();
+  uint32_t taskStoneStart = 0;
+  for (uint16_t i = 0; stone && i < itemCount(); i++) {
+    const ItemEntry *item = itemAt(i);
+    if (item == stone) break;
+    if (item && item->dropWeight && item->rarity >= 2)
+      taskStoneStart += item->dropWeight;
+  }
+  ItemRef taskStone = stone
+      ? taskDrops.grantWeightedDrop(taskStoneStart, nullptr, 0, nullptr, 0,
+                                    2, true)
+      : ItemRef();
+  ck(taskStone.key == (stone ? stone->key : ITEM_KEY_NONE) &&
+     moveValid(taskStone.move),
+     "a task move stone draws a valid move without depending on a submitted moveset");
+  bool taskRarityFloor = true;
+  for (uint32_t roll = 0; roll < 200; roll++) {
+    ItemRef drop = taskDrops.grantWeightedDrop(roll, nullptr, 0, nullptr, 0,
+                                               2, true);
+    const ItemEntry *item = itemByKey(drop.key);
+    if (drop && (!item || item->rarity < 2)) taskRarityFloor = false;
+    if (drop) taskDrops.consume(drop);
+  }
+  ck(taskRarityFloor, "hard task weighted draws exclude every rarity-one item");
+
   // The previous inventory blob stored 32 ordinary key/count stacks with no
   // move attribute. Its exact padded shape must remain readable.
   struct LegacyStack { ItemKey key; uint8_t count; };

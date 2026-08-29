@@ -207,6 +207,11 @@ extern Pet pet;
 extern bool cardOpen, natureInfoOpen, galleryOpen, clockOpen, kbOpen, menuOpen,
             partyPick, trainOpen, movePickOpen;
 extern bool bagOpen;
+extern bool taskOpen;
+extern uint8_t taskView, taskIndex, taskPage, taskSelected;
+extern bool taskSubmitHard;
+extern ItemRef taskRewardItems[3];
+extern uint8_t taskRewardItemCount;
 extern bool battleOpen, btlWild;
 extern bool btlTurnAnimating, btlTurnShowingRound;
 extern uint32_t btlTurnBeatStartedAt;
@@ -219,6 +224,10 @@ static void openBattleRound() {
 extern bool btlFoeDetailOpen;
 extern uint8_t btlFoeDetailPage;
 extern bool btlCaptureAnimating, btlCaptureSuccess, btlCaptureCuePlayed;
+extern uint8_t btlTaskSubmitState, btlCapturedTaskIndex;
+extern bool btlCapturedTaskHard;
+extern ItemRef btlCapturedTaskRewards[3];
+extern uint8_t btlCapturedTaskRewardCount;
 extern uint32_t btlCaptureStartedAt;
 extern ItemKey btlCaptureItem;
 extern bool btlThrowArmed;
@@ -320,7 +329,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   cardOpen = natureInfoOpen = galleryOpen = clockOpen = kbOpen = false;
   menuOpen = navMenuOpen = partyPick = trainOpen = movePickOpen = false;
   boxOpen = breedingOpen = false;
-  bagOpen = false;
+  bagOpen = taskOpen = false;
   capturedMon = PartyMon();
   if (!strcmp(screen, "main")) {
     pet.ageMinutes = 0;
@@ -404,6 +413,45 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   else if (!strcmp(screen, "clock"))   clockOpen = true;
   else if (!strcmp(screen, "menu"))    menuOpen = true;
   else if (!strcmp(screen, "navmenu")) navMenuOpen = true;
+  else if (!strcmp(screen, "tasks") || !strcmp(screen, "taskpicker") ||
+           !strcmp(screen, "taskactions") || !strcmp(screen, "taskconfirm") ||
+           !strcmp(screen, "taskreward")) {
+    pet.dbgHatchAs(1, false);
+    pet.ageMinutes = 29UL * MINUTES_PER_LEVEL;
+    party.captureActive(pet, false);
+    PartyMon duplicate = party.slots[0];
+    duplicate.level = 18;
+    duplicate.ageMinutes = 17UL * MINUTES_PER_LEVEL;
+    snprintf(duplicate.nick, sizeof(duplicate.nick), "BULBY");
+    party.replaceAt(1, duplicate);
+    player.dailyTasks.day = pet.lastSeenEpoch / 86400UL;
+    player.dailyTasks.entries[0].species = 1;
+    player.dailyTasks.entries[1].species = 4;
+    player.dailyTasks.entries[2].species = 7;
+    taskOpen = true;
+    taskIndex = 0;
+    taskPage = 0;
+    taskSelected = 1;
+    if (!strcmp(screen, "taskpicker")) taskView = 1;
+    else if (!strcmp(screen, "taskactions")) taskView = 2;
+    else if (!strcmp(screen, "taskconfirm")) taskView = 4;
+    else if (!strcmp(screen, "taskreward")) {
+      player.dailyTasks.entries[0].completed = 1;
+      taskSubmitHard = true;
+      taskRewardItemCount = 0;
+      for (uint16_t i = 0; i < itemCount() && taskRewardItemCount < 2; i++) {
+        const ItemEntry *item = itemAt(i);
+        if (!item || !item->dropWeight || item->rarity < 2) continue;
+        MoveId move = MOVE_NONE;
+        if (item->effect == ITEM_EFFECT_TEACH_MOVE)
+          for (MoveId candidate = 1; candidate < moveCount(); candidate++)
+            if (moveValid(candidate)) { move = candidate; break; }
+        taskRewardItems[taskRewardItemCount++] = { item->key, move };
+      }
+      taskView = 5;
+    }
+    else taskView = 0;
+  }
   else if (!strcmp(screen, "breeding") || !strcmp(screen, "breeding-running") ||
            !strcmp(screen, "breeding-ready") || !strcmp(screen, "breeding-menu")) {
     PartyMon mother;
@@ -594,11 +642,13 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
       bagTap(78 + (slot % 2) * 160 + 75, 82 + (slot / 2) * 84 + 35);
     }
   }
-  else if (!strcmp(screen, "capture") || !strcmp(screen, "reward") ||
+  else if (!strcmp(screen, "capture") || !strcmp(screen, "taskcapture") ||
+           !strcmp(screen, "taskcapturereward") ||
+           !strcmp(screen, "reward") ||
            !strcmp(screen, "rewardscroll")) {
-    if (!strcmp(screen, "capture")) {
+    if (!strcmp(screen, "capture") || !strcmp(screen, "taskcapture")) {
       Pet caught;
-      caught.dbgHatchAs(25, true);
+      caught.dbgHatchAs(!strcmp(screen, "taskcapture") ? 1 : 25, true);
       caught.ageMinutes = 41UL * MINUTES_PER_LEVEL;
       caught.ivAtk = 41;
       caught.ivDef = 34;
@@ -606,6 +656,27 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
       caught.ivHp = 37;
       caught.relearnFromLevel();
       capturedMon = caught.toPartyMon();
+    }
+    if (!strcmp(screen, "taskcapture")) {
+      player.dailyTasks.entries[0].species = capturedMon.dex;
+      player.dailyTasks.entries[0].completed = 0;
+      btlTaskSubmitState = 1;
+      btlCapturedTaskIndex = 0;
+      btlCapturedTaskHard = false;
+    }
+    if (!strcmp(screen, "taskcapturereward")) {
+      btlTaskSubmitState = 2;
+      btlCapturedTaskHard = false;
+      btlCapturedTaskRewardCount = 0;
+      for (uint16_t i = 0; i < itemCount() && btlCapturedTaskRewardCount < 2; i++) {
+        const ItemEntry *item = itemAt(i);
+        if (!item || !item->dropWeight) continue;
+        MoveId move = MOVE_NONE;
+        if (item->effect == ITEM_EFFECT_TEACH_MOVE)
+          for (MoveId candidate = 1; candidate < moveCount(); candidate++)
+            if (moveValid(candidate)) { move = candidate; break; }
+        btlCapturedTaskRewards[btlCapturedTaskRewardCount++] = { item->key, move };
+      }
     }
     btlTrainer = -1;
     btlRewardTraining[0] = 4;

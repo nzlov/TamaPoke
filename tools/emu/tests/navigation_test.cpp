@@ -23,7 +23,8 @@ bool navMenuTap(int16_t x, int16_t y);
 void navMenuButtonPoint(uint8_t index, int *x, int *y);
 void onTap(int16_t x, int16_t y);
 void boxTap(int16_t x, int16_t y);
-extern bool bagOpen, boxOpen, breedingOpen, gymOpen, gymPick, navMenuOpen, playerOpen;
+extern bool bagOpen, boxOpen, breedingOpen, gymOpen, gymPick, navMenuOpen, playerOpen,
+            taskOpen;
 extern uint8_t breedingView, breedingPickPage;
 extern uint8_t playerPage, boxPage, boxSel, boxDetailPage;
 extern Pet pet;
@@ -182,6 +183,13 @@ int main() {
     std::puts("FAIL navigation menu breeding-centre button");
     return 1;
   }
-  std::puts("PASS dynamic slot switcher, Box management, and four-button navigation menu");
+  breedingOpen = false;
+  navMenuOpen = true;
+  navMenuButtonPoint(4, &buttonX, &buttonY);
+  if (!navMenuTap(buttonX, buttonY) || !taskOpen || navMenuOpen) {
+    std::puts("FAIL navigation menu task-centre button");
+    return 1;
+  }
+  std::puts("PASS dynamic slot switcher, Box management, and five-button navigation menu");
   return 0;
 }

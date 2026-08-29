@@ -29,7 +29,9 @@ public:
   ItemRef grantWeightedDrop(uint32_t roll, const MoveId *foeMoves = nullptr,
                             uint8_t foeMoveCount = 0,
                             const ItemRef *excluded = nullptr,
-                            uint8_t excludedCount = 0);
+                            uint8_t excludedCount = 0,
+                            uint8_t minRarity = 0,
+                            bool anyStoneMove = false);
   ItemRef grantMechanicReward(ItemMechanicKind mechanic,
                               MegaFormKind megaForm = MEGA_FORM_NONE);
   void beginBatch();

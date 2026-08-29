@@ -643,10 +643,33 @@ bool menuRowDisabled(uint8_t row) {
 // full page is the fast route to the four player-wide destinations.
 bool navMenuOpen = false;
 #define NAVMENU_BTN_W 160
-#define NAVMENU_BTN_H 116
-#define NAVMENU_BTN_X(i) (65 + ((i) % 2) * 176)
-#define NAVMENU_BTN_Y(i) (88 + ((i) / 2) * 132)
-#define NAVMENU_ROWS 4
+#define NAVMENU_BTN_H 88
+#define NAVMENU_BTN_X(i) ((i) == 4 ? 153 : 65 + ((i) % 2) * 176)
+#define NAVMENU_BTN_Y(i) (72 + ((i) / 2) * 100)
+#define NAVMENU_ROWS 5
+
+bool taskOpen = false;
+enum TaskView : uint8_t {
+  TASK_VIEW_LIST,
+  TASK_VIEW_PICKER,
+  TASK_VIEW_ACTIONS,
+  TASK_VIEW_DETAIL,
+  TASK_VIEW_CONFIRM,
+  TASK_VIEW_REWARD,
+};
+TaskView taskView = TASK_VIEW_LIST;
+uint8_t taskIndex = 0;
+uint8_t taskPage = 0;       // cultivation roster, then four Box pages
+uint8_t taskSelected = 0xFF; // 0..5 party, 6..29 Box
+uint8_t taskDetailPage = 0;
+bool taskSubmitHard = false;
+ItemRef taskRewardItems[3];
+uint8_t taskRewardItemCount = 0;
+#define TASK_PAGES (1 + BOX_SLOTS / BOX_PAGE_SLOTS)
+#define TASK_ACTION_X 93
+#define TASK_ACTION_W 280
+#define TASK_ACTION_H 52
+#define TASK_ACTION_Y(i) (166 + (i) * 66)
 
 bool breedingOpen = false;
 enum BreedingView : uint8_t {
@@ -863,7 +886,7 @@ enum : uint8_t {
   SCR_QUIZ = 0, SCR_LANGUAGE, SCR_STARTER, SCR_REGION, SCR_GALLERY, SCR_DEXPICK, SCR_MOVEPICK, SCR_BOX, SCR_BREEDING,
   SCR_KEYBOARD, SCR_CARD, SCR_PLAYER, SCR_CLOCK, SCR_GYM, SCR_GYMPICK,
   SCR_LAN, SCR_PICK, SCR_BATTLE, SCR_WIN, SCR_TRAIN, SCR_MENU,
-  SCR_GAME, SCR_MAIN, SCR_BAG, SCR_COUNT
+  SCR_GAME, SCR_MAIN, SCR_BAG, SCR_TASK, SCR_COUNT
 };
 extern const char *const SCREEN_NAME[SCR_COUNT];   // const is internal linkage in C++
 
@@ -891,7 +914,11 @@ void renderBag();
 void bagTap(int16_t x, int16_t y);
 void renderBreeding();
 void breedingTap(int16_t x, int16_t y);
+void renderTaskCenter();
+void taskTap(int16_t x, int16_t y);
 static void btlDismissWin();
+static bool btlCapturedTaskTap(int16_t x, int16_t y);
+static uint16_t taskPartyAverageLevel();
 static void btlApplyEntry(uint8_t side);
 static bool btlReplaceActive(uint8_t side, uint8_t next, bool announce);
 void btlCompleteCapture();
@@ -904,7 +931,7 @@ const char *const SCREEN_NAME[SCR_COUNT] = {
   "quiz", "language", "starter", "region", "gallery", "dexpick", "movepick", "box", "breeding",
   "keyboard", "card", "player", "clock", "gym", "gympick",
   "lan", "pick", "battle", "win", "train", "menu",
-  "minigame", "main", "bag"
+  "minigame", "main", "bag", "task"
 };
 
 Combatant btlYou, btlFoe;
@@ -917,6 +944,17 @@ uint8_t btlFoeDetailPage = 0;
 #define BTL_FOE_DETAIL_PAGES 3
 PartyMon btlWildMon;
 PartyMon capturedMon;
+
+enum : uint8_t {
+  BTL_TASK_SUBMIT_NONE,
+  BTL_TASK_SUBMIT_ASK,
+  BTL_TASK_SUBMIT_REWARD,
+};
+uint8_t btlTaskSubmitState = BTL_TASK_SUBMIT_NONE;
+uint8_t btlCapturedTaskIndex = 0xFF;
+bool btlCapturedTaskHard = false;
+ItemRef btlCapturedTaskRewards[3];
+uint8_t btlCapturedTaskRewardCount = 0;
 
 const char *rareMark(bool rare) {
   return rare ? "*" : "";
@@ -971,6 +1009,28 @@ static void btlResetRewardSummary() {
 static void btlRememberRewardItem(ItemRef item) {
   if (item && btlRewardItemCount < BTL_REWARD_ITEM_MAX)
     btlRewardItems[btlRewardItemCount++] = item;
+}
+
+static void grantDailyTaskItems(bool hard, ItemRef *rewards,
+                                uint8_t &rewardCount) {
+  rewardCount = 0;
+  inventory.beginBatch();
+  uint8_t count = wildWeightedDropCount(hard, (uint8_t)random(100));
+  for (uint8_t i = 0; i < count && i < 3; i++) {
+    ItemRef reward = inventory.grantWeightedDrop(
+        (uint32_t)random(0x7FFFFFFF), nullptr, 0,
+        rewards, rewardCount, hard ? 2 : 0, true);
+    if (reward) rewards[rewardCount++] = reward;
+  }
+  inventory.commitBatch();
+}
+
+static void btlResetCapturedTask() {
+  btlTaskSubmitState = BTL_TASK_SUBMIT_NONE;
+  btlCapturedTaskIndex = 0xFF;
+  btlCapturedTaskHard = false;
+  for (ItemRef &reward : btlCapturedTaskRewards) reward = ItemRef();
+  btlCapturedTaskRewardCount = 0;
 }
 // A trainer fight is a run of 1v1s: both sides queue their squad and the next
 // one steps up when the current one faints. This is the whole difficulty curve
@@ -1568,6 +1628,7 @@ void setup() {
   }
   party.syncClock(pet, e);
   inventory.ensureDailySupply(e / 86400UL);
+  player.refreshDailyTasks(e / 86400UL);
 
   audioBegin();  // ES8311 + I2S + amplificador (suena un jingle de arranque)
 
@@ -1605,6 +1666,7 @@ void loop() {
   pet.update(now);
   party.update(pet, now);
   inventory.ensureDailySupply(pet.lastSeenEpoch / 86400UL);
+  player.refreshDailyTasks(pet.lastSeenEpoch / 86400UL);
   updateQuiz(now);
 
   // The link is pumped here rather than from the LAN screen, because it has to
@@ -2169,6 +2231,7 @@ void onSwipeV(int dir) {
   if (moveInfoOpen) { moveInfoOpen = false; return; }
   if (btlObservedNoticeOpen) return;
   if (btlWinUntil) {
+    if (btlTaskSubmitState != BTL_TASK_SUBMIT_NONE) return;
     if (btlTrainer < 0 && btlRewardScroll.scroll(dir)) sfxPlay(SFX_TAP);
     return;
   }
@@ -2191,6 +2254,17 @@ void onSwipeV(int dir) {
     bagStoneTarget = PARTY_SLOTS;
     bagView = bagView == BAG_VIEW_DETAIL || bagView == BAG_VIEW_TARGET
                 ? BAG_VIEW_ACTIONS : BAG_VIEW_LIST;
+    return;
+  }
+  if (taskOpen) {
+    if (taskView == TASK_VIEW_DETAIL || taskView == TASK_VIEW_CONFIRM)
+      taskView = TASK_VIEW_ACTIONS;
+    else if (taskView == TASK_VIEW_ACTIONS)
+      taskView = TASK_VIEW_PICKER;
+    else if (taskView == TASK_VIEW_PICKER || taskView == TASK_VIEW_REWARD)
+      taskView = TASK_VIEW_LIST;
+    else
+      taskOpen = false;
     return;
   }
   if (breedingOpen) {
@@ -2872,6 +2946,25 @@ void onSwipe(int dir) {
     }
     return;
   }
+  if (taskOpen) {
+    if (taskView == TASK_VIEW_DETAIL) {
+      int page = (int)taskDetailPage + (dir > 0 ? -1 : 1);
+      if (page < 0) page = 0;
+      if (page >= BTL_FOE_DETAIL_PAGES) page = BTL_FOE_DETAIL_PAGES - 1;
+      taskDetailPage = (uint8_t)page;
+    } else if (taskView == TASK_VIEW_PICKER) {
+      int page = (int)taskPage + (dir > 0 ? -1 : 1);
+      if (page < 0) page = 0;
+      if (page >= TASK_PAGES) page = TASK_PAGES - 1;
+      taskPage = (uint8_t)page;
+    } else if (taskView == TASK_VIEW_ACTIONS ||
+               taskView == TASK_VIEW_CONFIRM) {
+      taskView = TASK_VIEW_PICKER;
+    } else {
+      taskOpen = false;
+    }
+    return;
+  }
   if (breedingOpen) {
     if (breedingView == BREED_VIEW_PICKER) {
       int page = (int)breedingPickPage + (dir > 0 ? -1 : 1);
@@ -3020,11 +3113,18 @@ bool navMenuTap(int16_t x, int16_t y) {
     } else if (i == 2) {
       playerOpen = true;
       playerPage = 0;
-    } else {
+    } else if (i == 3) {
       breedingOpen = true;
       breedingView = BREED_VIEW_MAIN;
       breedingPickPage = 0;
       breedingPickSwapRequired = false;
+    } else {
+      party.captureActive(pet, false);
+      taskOpen = true;
+      taskView = TASK_VIEW_LIST;
+      taskIndex = taskPage = taskDetailPage = 0;
+      taskSelected = 0xFF;
+      taskRewardItemCount = 0;
     }
     return true;
   }
@@ -3084,11 +3184,16 @@ void onTap(int16_t x, int16_t y) {
     return;
   }
   if (btlWinUntil && !btlObservedNoticeOpen) {
+    if (btlCapturedTaskTap(x, y)) return;
     btlDismissWin();
     return;
   }
   if (bagOpen) {
     bagTap(x, y);
+    return;
+  }
+  if (taskOpen) {
+    taskTap(x, y);
     return;
   }
   if (breedingOpen) {
@@ -3612,6 +3717,7 @@ uint8_t uiCurrentScreen() {
   if (movePickOpen) return SCR_MOVEPICK;
   if (btlWinUntil && !btlTurnAnimating && !btlObservedNoticeOpen) return SCR_WIN;
   if (bagOpen) return SCR_BAG;
+  if (taskOpen) return SCR_TASK;
   if (breedingOpen) return SCR_BREEDING;
   if (boxOpen) return SCR_BOX;
   if (kbOpen) return SCR_KEYBOARD;
@@ -3708,6 +3814,10 @@ void render() {
   }
   if (bagOpen) {
     renderBag();
+    return;
+  }
+  if (taskOpen) {
+    renderTaskCenter();
     return;
   }
   if (breedingOpen) {
@@ -5614,6 +5724,7 @@ void startLinkBattle() {
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
   btlCaptureAnimating = false;
   btlCaptureItem = ITEM_KEY_NONE;
+  btlResetCapturedTask();
   btlResetThrow();
   btlHpShown[0] = btlYou.maxHp;
   btlHpShown[1] = btlFoe.maxHp;
@@ -5669,6 +5780,7 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
   btlCaptureAnimating = false;
   btlCaptureItem = ITEM_KEY_NONE;
+  btlResetCapturedTask();
   btlResetThrow();
   btlHpShown[0] = btlYou.maxHp;
   btlHpShown[1] = btlFoe.maxHp;
@@ -5718,6 +5830,7 @@ void startBattle(int16_t dex, uint8_t lvl) {
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
   btlCaptureAnimating = false;
   btlCaptureItem = ITEM_KEY_NONE;
+  btlResetCapturedTask();
   btlResetThrow();
   btlHpShown[0] = btlYou.maxHp;
   btlHpShown[1] = btlFoe.maxHp;
@@ -5758,7 +5871,10 @@ static SpeciesId wildSpecies(uint8_t region) {
 
 void startWildBattle(uint8_t region, bool hard) {
   if (pet.isEgg() || pet.ceremony != CER_NONE || region >= regionAll()) return;
-  SpeciesId dex = wildSpecies(region);
+  SpeciesId dex = dailyTaskEncounter(
+      player.dailyTasks, region, (uint8_t)random(100),
+      (uint32_t)random(0x7FFFFFFF));
+  if (!dex) dex = wildSpecies(region);
   if (!dex) return;
   buildSquad(0, TRAINER_TEAM_MAX, 0xFFFF);
   if (!btlSquadN) return;
@@ -5829,6 +5945,7 @@ void startWildBattle(uint8_t region, bool hard) {
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
   btlCaptureAnimating = false;
   btlCaptureItem = ITEM_KEY_NONE;
+  btlResetCapturedTask();
   btlResetThrow();
   btlHpShown[0] = btlYou.maxHp;
   btlHpShown[1] = btlFoe.maxHp;
@@ -6974,6 +7091,56 @@ static void btlDrawTurnActionEffect(uint32_t now) {
   }
 }
 
+static void drawCapturedTaskPrompt() {
+  if (btlTaskSubmitState == BTL_TASK_SUBMIT_NONE) return;
+  gfx->fillRoundRect(63, 92, 340, 286, 16, UI_WHITE);
+  gfx->drawRoundRect(63, 92, 340, 286, 16, UI_INK);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  uiDrawCenteredIn(T(S_TASK_CENTER), 73, 106, 320, 30);
+
+  if (btlTaskSubmitState == BTL_TASK_SUBMIT_ASK) {
+    char question[64];
+    snprintf(question, sizeof(question), T(S_TASK_CONFIRM_FMT),
+             displaySpeciesName(capturedMon.dex, capturedMon.nick));
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(2);
+    uiDrawCenteredIn(question, 73, 146, 320, 34);
+    gfx->setTextColor(btlCapturedTaskHard ? UI_BAR_WARN : UI_BAR_OK);
+    gfx->setTextSize(1);
+    uiDrawCenteredIn(btlCapturedTaskHard ? T(S_TASK_HARD) : T(S_TASK_NORMAL),
+                     73, 184, 320, 24);
+    if (!btlCapturedTaskHard) {
+      gfx->setTextColor(UI_BAR_WARN);
+      drawWrappedText(T(S_TASK_HARD_BETTER), 83, 216, 300, 3);
+    }
+    gfx->fillRoundRect(83, 304, 142, 48, 12, UI_BAR_WARN);
+    gfx->fillRoundRect(241, 304, 142, 48, 12, UI_TRACK);
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(2);
+    uiDrawCenteredIn(T(S_YES), 83, 304, 142, 48);
+    uiDrawCenteredIn(T(S_NO), 241, 304, 142, 48);
+    return;
+  }
+
+  gfx->setTextColor(UI_BAR_OK);
+  gfx->setTextSize(2);
+  uiDrawCenteredIn(T(S_TASK_DONE), 73, 146, 320, 30);
+  gfx->setTextColor(btlCapturedTaskHard ? UI_BAR_WARN : UI_INK);
+  gfx->setTextSize(1);
+  uiDrawCenteredIn(btlCapturedTaskHard ? T(S_TASK_HARD) : T(S_TASK_NORMAL),
+                   73, 180, 320, 22);
+  for (uint8_t i = 0; i < btlCapturedTaskRewardCount; i++) {
+    char reward[72];
+    itemRefName(btlCapturedTaskRewards[i], reward, sizeof(reward));
+    gfx->setTextColor(UI_INK);
+    uiDrawCenteredIn(reward, 73, 210 + i * 30, 320, 24);
+  }
+  gfx->setTextColor(UI_MUTED);
+  gfx->setTextSize(2);
+  uiDrawCenteredIn(T(S_OK), 83, 320, 300, 34);
+}
+
 // The moment the ladder builds toward. It used to be one more line in the same
 // message box as "It's super effective!", with the badge awarded silently.
 void renderWin() {
@@ -7073,6 +7240,7 @@ void renderWin() {
     gfx->setTextSize(2);
     gfx->setCursor(uiCenterX(T(S_BACK)), 390);
     gfx->print(T(S_BACK));
+    drawCapturedTaskPrompt();
     gfx->flush();
     return;
   }
@@ -7898,16 +8066,63 @@ static void btlSpendItemTurn(const ItemEntry &item, uint8_t targetIndex) {
   btlResolve(MOVE_NONE, 100, BMECH_NONE);
 }
 
+static int8_t btlPendingTaskFor(SpeciesId species) {
+  for (uint8_t i = 0; i < DAILY_TASK_COUNT; i++) {
+    const DailyTask &task = player.dailyTasks.entries[i];
+    if (!task.completed && task.species == species) return (int8_t)i;
+  }
+  return -1;
+}
+
+static void btlStoreCapturedMon() {
+  if (party.store(capturedMon) != PARTY_STORE_FULL) return;
+  partyPending = capturedMon;
+  partyPick = true;
+  boxOpen = true;
+  boxSel = 0;
+  boxView = BOX_VIEW_PICKER;
+}
+
+static void btlSubmitCapturedTask() {
+  if (btlCapturedTaskIndex >= DAILY_TASK_COUNT || capturedMon.empty()) {
+    btlStoreCapturedMon();
+    btlResetCapturedTask();
+    sfxPlay(SFX_DENY);
+    return;
+  }
+  DailyTask &task = player.dailyTasks.entries[btlCapturedTaskIndex];
+  if (task.completed || task.species != capturedMon.dex) {
+    btlStoreCapturedMon();
+    btlResetCapturedTask();
+    sfxPlay(SFX_DENY);
+    return;
+  }
+  task.completed = 1;
+  player.save();
+  grantDailyTaskItems(btlCapturedTaskHard, btlCapturedTaskRewards,
+                      btlCapturedTaskRewardCount);
+  capturedMon = PartyMon();
+  btlTaskSubmitState = BTL_TASK_SUBMIT_REWARD;
+  sfxPlay(SFX_MEDAL);
+}
+
 static void btlCompleteCaptureAfterLearning() {
   capturedMon = btlWildMon;
   pet.registerCaught(capturedMon.dex, capturedMon.shiny);
+  btlResetCapturedTask();
+  inventory.beginBatch();
   btlGrantWildRewards();
-  if (party.store(capturedMon) == PARTY_STORE_FULL) {
-    partyPending = capturedMon;
-    partyPick = true;
-    boxOpen = true;
-    boxSel = 0;
-    boxView = BOX_VIEW_PICKER;
+  inventory.commitBatch();
+  int8_t pendingTask = btlPendingTaskFor(capturedMon.dex);
+  if (pendingTask >= 0) {
+    // Keep the catch outside Party and Box until the player decides. This is
+    // what lets a full collection submit the target without a forced release.
+    btlCapturedTaskIndex = (uint8_t)pendingTask;
+    btlCapturedTaskHard = dailyTaskHardReward(
+        capturedMon.level, taskPartyAverageLevel());
+    btlTaskSubmitState = BTL_TASK_SUBMIT_ASK;
+  } else {
+    btlStoreCapturedMon();
   }
   battleOpen = false;
   btlOver = true;
@@ -7996,12 +8211,30 @@ static void btlDismissWin() {
     partyBannerUntil = millis() + 3500;
   }
   capturedMon = PartyMon();
+  btlResetCapturedTask();
   btlWinUntil = 0;
   btlFreeSprites();
   audioMusic(MUS_NONE);
   battleOpen = false;
   btlWild = false;
   if (btlLink) { btlLink = false; lanOpen = true; }
+}
+
+static bool btlCapturedTaskTap(int16_t x, int16_t y) {
+  if (btlTaskSubmitState == BTL_TASK_SUBMIT_NONE) return false;
+  if (btlTaskSubmitState == BTL_TASK_SUBMIT_REWARD) {
+    if (y >= 300) btlDismissWin();
+    return true;
+  }
+  if (y < 304 || y > 352) return true;
+  if (x >= 83 && x <= 225) {
+    btlSubmitCapturedTask();
+  } else if (x >= 241 && x <= 383) {
+    btlStoreCapturedMon();
+    btlResetCapturedTask();
+    sfxPlay(SFX_TAP);
+  }
+  return true;
 }
 
 static bool btlDispatchTap(int16_t x, int16_t y) {
@@ -8029,6 +8262,7 @@ static bool btlDispatchTap(int16_t x, int16_t y) {
   }
   if (btlThrowArmed) { btlCancelThrow(false); return true; }
   if (btlWinUntil) {          // dismiss the win screen and leave the fight
+    if (btlCapturedTaskTap(x, y)) return true;
     btlDismissWin();
     return true;
   }
@@ -9327,41 +9561,47 @@ void renderNavMenu() {
   snprintf(badges, sizeof(badges), T(S_BADGES_FMT),
            player.badgeCountIn(0, false));
   const char *labels[NAVMENU_ROWS] = {
-    bagLabel, battleLabel, badges, T(S_BREED_CENTER)
+    bagLabel, battleLabel, badges, T(S_BREED_CENTER), T(S_TASK_CENTER)
   };
   for (uint8_t i = 0; i < NAVMENU_ROWS; i++) {
     int y = NAVMENU_BTN_Y(i);
     int x = NAVMENU_BTN_X(i);
-    const int iconShiftY = 16;
     gfx->fillRoundRect(x, y, NAVMENU_BTN_W, NAVMENU_BTN_H,
                        14, UI_WHITE);
     gfx->drawRoundRect(x, y, NAVMENU_BTN_W, NAVMENU_BTN_H,
                        14, UI_INK);
     if (i == 0) {
-      drawMap(SPR_ICON_BAG, 16, x + 64, y + 10 + iconShiftY, 2, false);
+      drawMap(SPR_ICON_BAG, 16, x + 64, y + 6, 2, false);
     } else if (i == 1) {
-      drawMap(SPR_ICON_BATTLE, 16, x + 64, y + 10 + iconShiftY, 2, false);
+      drawMap(SPR_ICON_BATTLE, 16, x + 64, y + 6, 2, false);
     } else if (i == 2) {
       // A compact shield avoids depending on one region's earned badge art.
-      int cx = x + NAVMENU_BTN_W / 2, cy = y + 30 + iconShiftY;
+      int cx = x + NAVMENU_BTN_W / 2, cy = y + 26;
       gfx->fillTriangle(cx - 16, cy - 14, cx + 16, cy - 14,
                         cx, cy + 20, UI_BAR_WARN);
       gfx->drawLine(cx - 16, cy - 14, cx + 16, cy - 14, UI_INK);
       gfx->drawLine(cx + 16, cy - 14, cx, cy + 20, UI_INK);
       gfx->drawLine(cx, cy + 20, cx - 16, cy - 14, UI_INK);
       gfx->fillCircle(cx, cy - 4, 6, UI_WHITE);
+    } else if (i == 3) {
+      drawMap(SPR_EGG, SPRITE_H, x + 64, y + 2, 1, false);
     } else {
-      drawMap(SPR_EGG, SPRITE_H, x + 48, y - 5 + iconShiftY, 2, false);
+      int cx = x + NAVMENU_BTN_W / 2;
+      gfx->fillRoundRect(cx - 17, y + 8, 34, 39, 5, UI_TRACK);
+      gfx->drawRoundRect(cx - 17, y + 8, 34, 39, 5, UI_INK);
+      gfx->fillRoundRect(cx - 8, y + 4, 16, 8, 3, UI_BAR_WARN);
+      for (uint8_t line = 0; line < 3; line++)
+        gfx->drawFastHLine(cx - 10, y + 19 + line * 9, 20, UI_INK);
     }
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(1);
-    uiDrawCenteredIn(labels[i], x + 8, y + 70,
-                     NAVMENU_BTN_W - 16, 38);
+    uiDrawCenteredIn(labels[i], x + 8, y + 57,
+                     NAVMENU_BTN_W - 16, 24);
   }
 
   gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(T(S_BACK)), 376);
+  gfx->setCursor(uiCenterX(T(S_BACK)), 398);
   gfx->print(T(S_BACK));
   gfx->flush();
 }
@@ -9692,6 +9932,334 @@ void breedingTap(int16_t x, int16_t y) {
     return;
   }
   breedingOpen = false;
+}
+
+// ---------- daily task centre ----------
+
+static uint8_t taskSpeciesRegion(SpeciesId species) {
+  for (uint8_t region = 0; region < regionAll(); region++) {
+    const RegionInfo &info = regionInfo(region);
+    if (species >= info.lo && species <= info.hi) return region;
+  }
+  return regionAll();
+}
+
+static const PartyMon *taskMonAt(uint8_t page, uint8_t cell) {
+  if (cell >= PARTY_SLOTS || page >= TASK_PAGES) return nullptr;
+  return page ? &party.box[(page - 1) * BOX_PAGE_SLOTS + cell]
+              : &party.slots[cell];
+}
+
+static const PartyMon *taskSelectedMon() {
+  if (taskSelected < PARTY_SLOTS) return &party.slots[taskSelected];
+  uint8_t box = taskSelected - PARTY_SLOTS;
+  return box < BOX_SLOTS ? &party.box[box] : nullptr;
+}
+
+static bool taskMonEligible(const PartyMon &mon, bool inParty) {
+  if (taskIndex >= DAILY_TASK_COUNT) return false;
+  const DailyTask &task = player.dailyTasks.entries[taskIndex];
+  return !task.completed && mon.battleReady() && !mon.dead() &&
+         mon.dex == task.species && (!inParty || party.count() > 1);
+}
+
+static uint16_t taskPartyAverageLevel() {
+  uint32_t total = 0;
+  uint8_t count = 0;
+  for (const PartyMon &mon : party.slots) {
+    if (!mon.battleReady() || mon.dead()) continue;
+    total += mon.level;
+    count++;
+  }
+  return count ? (uint16_t)(total / count) : 0;
+}
+
+static uint8_t taskEligibleCount() {
+  uint8_t count = 0;
+  for (uint8_t i = 0; i < PARTY_SLOTS; i++)
+    if (taskMonEligible(party.slots[i], true)) count++;
+  for (uint8_t i = 0; i < BOX_SLOTS; i++)
+    if (taskMonEligible(party.box[i], false)) count++;
+  return count;
+}
+
+static void drawTaskCandidate(const PartyMon &mon, int x, int y,
+                              bool enabled) {
+  gfx->fillRoundRect(x, y, PARTY_CELL_W, PARTY_CELL_H, 10,
+                     enabled ? UI_WHITE : UI_TRACK);
+  gfx->drawRoundRect(x, y, PARTY_CELL_W, PARTY_CELL_H, 10, UI_INK);
+  if (mon.empty()) {
+    gfx->setTextColor(UI_MUTED);
+    gfx->setTextSize(1);
+    uiDrawCenteredIn(T(S_PARTY_EMPTY), x, y, PARTY_CELL_W, PARTY_CELL_H);
+    return;
+  }
+  const uint8_t *thumb = mon.dex > 0 ? thumbs.get(mon.dex) : nullptr;
+  if (thumb) drawThumb(thumb, x + PARTY_THUMB_X_OFF, y + PARTY_THUMB_Y_OFF,
+                       PARTY_THUMB_SCALE, !enabled);
+  gfx->setTextColor(enabled ? dexEntry(mon.dex).accent : UI_MUTED);
+  gfx->setTextSize(1);
+  gfx->setCursor(x + PARTY_TEXT_X_OFF, y + 18);
+  gfx->print(mon.dex > 0 ? displaySpeciesName(mon.dex, mon.nick) : T(S_EGG_HDR));
+  if (mon.dex > 0) {
+    char level[16];
+    snprintf(level, sizeof(level), T(S_LVL_FMT), (unsigned)mon.level);
+    gfx->setCursor(x + PARTY_TEXT_X_OFF, y + 40);
+    gfx->print(mon.dead() ? T(S_DEAD) : level);
+  }
+}
+
+static void drawTaskList() {
+  beginRoundFrame(UI_BG_DAY);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(3);
+  gfx->setCursor(uiCenterX(T(S_TASK_CENTER)), 36);
+  gfx->print(T(S_TASK_CENTER));
+  for (uint8_t i = 0; i < DAILY_TASK_COUNT; i++) {
+    const DailyTask &task = player.dailyTasks.entries[i];
+    int y = 78 + i * 94;
+    bool complete = task.completed;
+    gfx->fillRoundRect(70, y, 326, 82, 12, complete ? UI_TRACK : UI_WHITE);
+    gfx->drawRoundRect(70, y, 326, 82, 12, UI_INK);
+    const uint8_t *thumb = task.species ? thumbs.get(task.species) : nullptr;
+    if (thumb) drawThumb(thumb, 78, y + 8, 2, complete);
+    gfx->setTextColor(complete ? UI_MUTED : dexEntry(task.species).accent);
+    gfx->setTextSize(2);
+    gfx->setCursor(154, y + 18);
+    gfx->print(task.species ? speciesName(task.species) : "?");
+    uint8_t region = taskSpeciesRegion(task.species);
+    gfx->setTextSize(1);
+    gfx->setCursor(154, y + 45);
+    gfx->print(region < regionAll() ? regionName(region) : "?");
+    const char *state = complete ? T(S_TASK_COMPLETED) : T(S_TASK_SUBMIT);
+    gfx->setTextColor(complete ? UI_BAR_OK : UI_BAR_WARN);
+    gfx->setCursor(380 - gfx->textWidth(state), y + 64);
+    gfx->print(state);
+  }
+  gfx->setTextColor(UI_MUTED);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(T(S_BACK)), 398);
+  gfx->print(T(S_BACK));
+}
+
+static void drawTaskPicker() {
+  beginRoundFrame(UI_BG_DAY);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(T(S_TASK_CHOOSE)), 34);
+  gfx->print(T(S_TASK_CHOOSE));
+  char page[32];
+  if (!taskPage)
+    snprintf(page, sizeof(page), T(S_PARTY_FMT), party.count(), PARTY_SLOTS);
+  else
+    snprintf(page, sizeof(page), T(S_BOX_FMT), taskPage,
+             BOX_SLOTS / BOX_PAGE_SLOTS);
+  gfx->setTextSize(1);
+  gfx->setCursor(uiCenterX(page), 62);
+  gfx->print(page);
+  for (uint8_t cell = 0; cell < PARTY_SLOTS; cell++) {
+    const PartyMon *mon = taskMonAt(taskPage, cell);
+    int x = PARTY_GRID_X + (cell % 2) * (PARTY_CELL_W + 10);
+    int y = PARTY_GRID_Y + (cell / 2) * (PARTY_CELL_H + 8);
+    drawTaskCandidate(*mon, x, y, taskMonEligible(*mon, taskPage == 0));
+  }
+  if (!taskEligibleCount()) {
+    gfx->fillRoundRect(90, 336, 286, 28, 8, UI_WHITE);
+    gfx->setTextColor(UI_BAR_BAD);
+    uiDrawCenteredIn(T(S_TASK_NONE), 94, 338, 278, 24);
+  }
+  for (uint8_t pageIndex = 0; pageIndex < TASK_PAGES; pageIndex++) {
+    int x = CX - (TASK_PAGES - 1) * 12 + pageIndex * 24;
+    if (pageIndex == taskPage) gfx->fillCircle(x, 370, 5, UI_INK);
+    else gfx->drawCircle(x, 370, 4, UI_INK);
+  }
+  gfx->setTextColor(UI_MUTED);
+  gfx->setTextSize(2);
+  gfx->setCursor(uiCenterX(T(S_BACK)), 400);
+  gfx->print(T(S_BACK));
+}
+
+static void drawTaskActions() {
+  drawTaskPicker();
+  gfx->fillRoundRect(73, 138, 320, 198, 16, UI_WHITE);
+  gfx->drawRoundRect(73, 138, 320, 198, 16, UI_INK);
+  const char *labels[2] = { T(S_ITEM_VIEW), T(S_TASK_SUBMIT) };
+  for (uint8_t row = 0; row < 2; row++) {
+    gfx->fillRoundRect(TASK_ACTION_X, TASK_ACTION_Y(row), TASK_ACTION_W,
+                       TASK_ACTION_H, 12,
+                       row ? UI_BAR_WARN : UI_BG_DAY);
+    gfx->drawRoundRect(TASK_ACTION_X, TASK_ACTION_Y(row), TASK_ACTION_W,
+                       TASK_ACTION_H, 12, UI_INK);
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(2);
+    uiDrawCenteredIn(labels[row], TASK_ACTION_X, TASK_ACTION_Y(row),
+                     TASK_ACTION_W, TASK_ACTION_H);
+  }
+}
+
+static void drawTaskConfirm() {
+  drawTaskPicker();
+  const PartyMon *mon = taskSelectedMon();
+  if (!mon) return;
+  char question[64];
+  snprintf(question, sizeof(question), T(S_TASK_CONFIRM_FMT),
+           displaySpeciesName(mon->dex, mon->nick));
+  char threshold[48];
+  uint16_t average = taskPartyAverageLevel();
+  uint16_t hardAt = average + 10;
+  snprintf(threshold, sizeof(threshold), T(S_TASK_HARD_AT_FMT), hardAt);
+  taskSubmitHard = dailyTaskHardReward(mon->level, average);
+  gfx->fillRoundRect(73, 132, 320, 224, 16, UI_WHITE);
+  gfx->drawRoundRect(73, 132, 320, 224, 16, UI_INK);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  uiDrawCenteredIn(question, 83, 150, 300, 34);
+  gfx->setTextColor(taskSubmitHard ? UI_BAR_WARN : UI_BAR_OK);
+  gfx->setTextSize(1);
+  uiDrawCenteredIn(taskSubmitHard ? T(S_TASK_HARD) : T(S_TASK_NORMAL),
+                   83, 188, 300, 24);
+  gfx->setTextColor(UI_MUTED);
+  uiDrawCenteredIn(threshold, 83, 214, 300, 22);
+  gfx->fillRoundRect(CHOICE_BTN_X, 246, CHOICE_BTN_W, CHOICE_BTN_H,
+                     12, UI_BAR_WARN);
+  gfx->setTextColor(UI_INK);
+  uiDrawCenteredIn(T(S_YES), CHOICE_BTN_X, 246, CHOICE_BTN_W, CHOICE_BTN_H);
+  gfx->fillRoundRect(CHOICE_BTN_X, 306, CHOICE_BTN_W, 42, 12, UI_TRACK);
+  uiDrawCenteredIn(T(S_NO), CHOICE_BTN_X, 306, CHOICE_BTN_W, 42);
+}
+
+static void completeSelectedTask() {
+  const PartyMon *selected = taskSelectedMon();
+  if (!selected || !taskMonEligible(*selected, taskSelected < PARTY_SLOTS)) {
+    taskView = TASK_VIEW_PICKER;
+    sfxPlay(SFX_DENY);
+    return;
+  }
+  uint16_t submittedLevel = selected->level;
+  taskSubmitHard = dailyTaskHardReward(submittedLevel, taskPartyAverageLevel());
+  player.dailyTasks.entries[taskIndex].completed = 1;
+  if (taskSelected < PARTY_SLOTS) {
+    party.releaseAt(taskSelected);
+  } else {
+    party.boxReleaseAt(taskSelected - PARTY_SLOTS);
+    player.save();
+  }
+
+  grantDailyTaskItems(taskSubmitHard, taskRewardItems, taskRewardItemCount);
+  taskView = TASK_VIEW_REWARD;
+  taskSelected = 0xFF;
+  sfxPlay(SFX_MEDAL);
+}
+
+static void drawTaskReward() {
+  drawTaskList();
+  gfx->fillRoundRect(73, 124, 320, 230, 16, UI_WHITE);
+  gfx->drawRoundRect(73, 124, 320, 230, 16, UI_INK);
+  gfx->setTextColor(UI_BAR_OK);
+  gfx->setTextSize(2);
+  uiDrawCenteredIn(T(S_TASK_DONE), 83, 144, 300, 30);
+  gfx->setTextColor(taskSubmitHard ? UI_BAR_WARN : UI_INK);
+  gfx->setTextSize(1);
+  uiDrawCenteredIn(taskSubmitHard ? T(S_TASK_HARD) : T(S_TASK_NORMAL),
+                   83, 178, 300, 22);
+  for (uint8_t i = 0; i < taskRewardItemCount; i++) {
+    char reward[72];
+    itemRefName(taskRewardItems[i], reward, sizeof(reward));
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(1);
+    uiDrawCenteredIn(reward, 83, 214 + i * 34, 300, 28);
+  }
+  gfx->setTextColor(UI_MUTED);
+  gfx->setTextSize(2);
+  uiDrawCenteredIn(T(S_OK), 83, 322, 300, 28);
+}
+
+void renderTaskCenter() {
+  if (taskView == TASK_VIEW_DETAIL) {
+    const PartyMon *mon = taskSelectedMon();
+    if (mon && !mon->empty()) {
+      renderStoredMonDetail(*mon, nullptr, taskDetailPage, nullptr);
+      return;
+    }
+    taskView = TASK_VIEW_PICKER;
+  }
+  if (taskView == TASK_VIEW_PICKER) drawTaskPicker();
+  else if (taskView == TASK_VIEW_ACTIONS) drawTaskActions();
+  else if (taskView == TASK_VIEW_CONFIRM) drawTaskConfirm();
+  else if (taskView == TASK_VIEW_REWARD) drawTaskReward();
+  else drawTaskList();
+  gfx->flush();
+}
+
+void taskTap(int16_t x, int16_t y) {
+  if (taskView == TASK_VIEW_DETAIL) {
+    taskView = TASK_VIEW_ACTIONS;
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  if (taskView == TASK_VIEW_REWARD) {
+    taskView = TASK_VIEW_LIST;
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  if (taskView == TASK_VIEW_CONFIRM) {
+    bool yes = x >= CHOICE_BTN_X && x <= CHOICE_BTN_X + CHOICE_BTN_W &&
+               y >= 246 && y <= 246 + CHOICE_BTN_H;
+    bool no = x >= CHOICE_BTN_X && x <= CHOICE_BTN_X + CHOICE_BTN_W &&
+              y >= 306 && y <= 348;
+    if (yes) completeSelectedTask();
+    else if (no) { taskView = TASK_VIEW_ACTIONS; sfxPlay(SFX_TAP); }
+    return;
+  }
+  if (taskView == TASK_VIEW_ACTIONS) {
+    for (uint8_t row = 0; row < 2; row++) {
+      int top = TASK_ACTION_Y(row);
+      if (x < TASK_ACTION_X || x > TASK_ACTION_X + TASK_ACTION_W ||
+          y < top || y > top + TASK_ACTION_H) continue;
+      taskView = row ? TASK_VIEW_CONFIRM : TASK_VIEW_DETAIL;
+      taskDetailPage = 0;
+      sfxPlay(SFX_TAP);
+      return;
+    }
+    taskView = TASK_VIEW_PICKER;
+    return;
+  }
+  if (taskView == TASK_VIEW_PICKER) {
+    for (uint8_t cell = 0; cell < PARTY_SLOTS; cell++) {
+      int left = PARTY_GRID_X + (cell % 2) * (PARTY_CELL_W + 10);
+      int top = PARTY_GRID_Y + (cell / 2) * (PARTY_CELL_H + 8);
+      if (x < left || x > left + PARTY_CELL_W ||
+          y < top || y > top + PARTY_CELL_H) continue;
+      const PartyMon *mon = taskMonAt(taskPage, cell);
+      if (!taskMonEligible(*mon, taskPage == 0)) {
+        sfxPlay(SFX_DENY);
+        return;
+      }
+      taskSelected = taskPage ? PARTY_SLOTS + (taskPage - 1) * BOX_PAGE_SLOTS + cell
+                              : cell;
+      taskView = TASK_VIEW_ACTIONS;
+      sfxPlay(SFX_TAP);
+      return;
+    }
+    if (y > 382) { taskView = TASK_VIEW_LIST; sfxPlay(SFX_TAP); }
+    return;
+  }
+  for (uint8_t i = 0; i < DAILY_TASK_COUNT; i++) {
+    int top = 78 + i * 94;
+    if (x < 70 || x > 396 || y < top || y > top + 82) continue;
+    if (player.dailyTasks.entries[i].completed) {
+      sfxPlay(SFX_DENY);
+      return;
+    }
+    party.captureActive(pet, false);
+    taskIndex = i;
+    taskPage = 0;
+    taskSelected = 0xFF;
+    taskView = TASK_VIEW_PICKER;
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  taskOpen = false;
 }
 
 // ---------- training submenu (5th icon) ----------

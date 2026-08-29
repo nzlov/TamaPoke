@@ -136,7 +136,9 @@ void Inventory::ensureDailySupply(uint32_t day) {
 ItemRef Inventory::grantWeightedDrop(uint32_t roll, const MoveId *foeMoves,
                                      uint8_t foeMoveCount,
                                      const ItemRef *excluded,
-                                     uint8_t excludedCount) {
+                                     uint8_t excludedCount,
+                                     uint8_t minRarity,
+                                     bool anyStoneMove) {
   const ItemEntry *stone = nullptr;
   MoveId stoneMoves[MOVE_STONE_DROP_MOVE_MAX] = {};
   uint8_t stoneMoveCount = 0;
@@ -154,18 +156,20 @@ ItemRef Inventory::grantWeightedDrop(uint32_t roll, const MoveId *foeMoves,
       if (!duplicate) stoneMoves[stoneMoveCount++] = move;
     }
   }
+  uint16_t anyStoneMoveCount = 0;
+  if (stone && anyStoneMove)
+    for (MoveId move = 1; move < moveCount(); move++)
+      if (moveValid(move) && canAdd(stone->key, move)) anyStoneMoveCount++;
   uint32_t total = 0;
   for (uint16_t i = 0; i < itemCount(); i++) {
     const ItemEntry *item = itemAt(i);
-    if (!item || !item->dropWeight) continue;
+    if (!item || !item->dropWeight || item->rarity < minRarity) continue;
     if (item->effect == ITEM_EFFECT_TEACH_MOVE) {
-      bool hasEligibleMove = false;
-      for (uint8_t j = 0; j < stoneMoveCount; j++) {
-        bool blocked = false;
-        for (uint8_t k = 0; excluded && k < excludedCount; k++)
-          if (excluded[k].key == item->key) blocked = true;
-        if (!blocked) { hasEligibleMove = true; break; }
-      }
+      bool blocked = false;
+      for (uint8_t k = 0; excluded && k < excludedCount; k++)
+        if (excluded[k].key == item->key) blocked = true;
+      bool hasEligibleMove = !blocked &&
+          (anyStoneMove ? anyStoneMoveCount > 0 : stoneMoveCount > 0);
       if (hasEligibleMove) total += item->dropWeight;
     } else if (canAdd(item->key, MOVE_NONE)) {
       bool blocked = false;
@@ -179,20 +183,25 @@ ItemRef Inventory::grantWeightedDrop(uint32_t roll, const MoveId *foeMoves,
   uint32_t pick = roll % total;
   for (uint16_t i = 0; i < itemCount(); i++) {
     const ItemEntry *item = itemAt(i);
-    if (!item || !item->dropWeight) continue;
+    if (!item || !item->dropWeight || item->rarity < minRarity) continue;
     if (item->effect == ITEM_EFFECT_TEACH_MOVE) {
-      if (!stoneMoveCount) continue;
-      MoveId eligibleMoves[MOVE_STONE_DROP_MOVE_MAX] = {};
-      uint8_t eligibleCount = 0;
-      for (uint8_t j = 0; j < stoneMoveCount; j++) {
-        bool blocked = false;
-        for (uint8_t k = 0; excluded && k < excludedCount; k++)
-          if (excluded[k].key == item->key) blocked = true;
-        if (!blocked) eligibleMoves[eligibleCount++] = stoneMoves[j];
-      }
+      bool blocked = false;
+      for (uint8_t k = 0; excluded && k < excludedCount; k++)
+        if (excluded[k].key == item->key) blocked = true;
+      uint16_t eligibleCount = anyStoneMove ? anyStoneMoveCount : stoneMoveCount;
+      if (blocked) eligibleCount = 0;
       if (!eligibleCount) continue;
       if (pick < item->dropWeight) {
-        MoveId move = eligibleMoves[(roll / total) % eligibleCount];
+        uint16_t movePick = (uint16_t)((roll / total) % eligibleCount);
+        MoveId move = MOVE_NONE;
+        if (anyStoneMove) {
+          for (MoveId candidate = 1; candidate < moveCount(); candidate++) {
+            if (!moveValid(candidate) || !canAdd(stone->key, candidate)) continue;
+            if (!movePick--) { move = candidate; break; }
+          }
+        } else {
+          move = stoneMoves[movePick];
+        }
         ItemRef result = { item->key, move };
         return add(result) ? result : ItemRef();
       }

@@ -23,8 +23,9 @@ extern Pet pet;
 extern bool cardOpen, natureInfoOpen, galleryOpen, clockOpen, kbOpen, menuOpen,
             partyPick;
 extern bool trainOpen, movePickOpen, battleOpen, gymOpen, playerOpen, boxOpen, pickOpen;
-extern bool bagOpen, breedingOpen, breedingPickSwapRequired, navMenuOpen;
+extern bool bagOpen, breedingOpen, breedingPickSwapRequired, navMenuOpen, taskOpen;
 extern uint8_t breedingView, breedingPickPage, breedingDetailPage;
+extern uint8_t taskView, taskPage, taskDetailPage;
 extern uint8_t cardPage, gymPage, playerPage, movePickPage, boxPage, pickPage;
 extern int galleryPage; extern uint8_t galleryDetail;
 extern uint8_t galleryRegion;
@@ -54,7 +55,7 @@ static void clearAll(){
   gymPick=galleryPick=false;
   cardOpen=natureInfoOpen=galleryOpen=clockOpen=kbOpen=menuOpen=partyPick=false;
   trainOpen=movePickOpen=battleOpen=gymOpen=playerOpen=boxOpen=pickOpen=false;
-  bagOpen=breedingOpen=navMenuOpen=false;
+  bagOpen=breedingOpen=navMenuOpen=taskOpen=false;
   breedingView=0; breedingPickPage=0; breedingDetailPage=0;
   breedingPickSwapRequired=false;
   boxSel=0;
@@ -110,6 +111,16 @@ int main(){
   if (!breedingOpen || breedingView != 3 || breedingDetailPage != 1) {
     printf("FAIL  breeding   detail introduction did not advance a page\n"); bad++;
   } else printf("PASS  %-10s detail introduction pages horizontally\n", "breeding");
+  clearAll(); taskOpen=true; taskView=1; taskPage=0;
+  onSwipe(-1);
+  if (!taskOpen || taskView != 1 || taskPage != 1) {
+    printf("FAIL  tasks      picker did not advance to Box page 1\n"); bad++;
+  } else printf("PASS  %-10s picker pages into the Box\n", "tasks");
+  clearAll(); taskOpen=true; taskView=3; taskDetailPage=0;
+  onSwipe(-1);
+  if (!taskOpen || taskView != 3 || taskDetailPage != 1) {
+    printf("FAIL  tasks      selected detail did not advance a page\n"); bad++;
+  } else printf("PASS  %-10s selected detail pages horizontally\n", "tasks");
   clearAll(); movePickOpen=true; movePickParty=0; movePickSlot=0;
                                                   check("movepick", &movePickOpen, &movePickPage);
   clearAll(); startBattle(9, 50); btlYou.observedMove = btlYou.moves[0];

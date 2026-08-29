@@ -337,7 +337,8 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
   together even though only one is shown on the main screen.
 - Swipe horizontally to change the displayed creature. The indicators above
   the creature name show only occupied cultivation slots; tapping them opens
-  the Box. Swipe down for the **bag / battle centre / badges / breeding** navigation page.
+  the Box. Swipe down for the **bag / battle centre / badges / breeding / task
+  centre** navigation page.
 - The name menu can make the displayed creature the single **Lead**. That
   choice persists independently of which creature is displayed and sends the
   Lead out first whenever it is included in a battle squad.
@@ -354,6 +355,31 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 - A wild capture uses a free cultivation slot first, then a free Box slot. If both
   are full, the player explicitly chooses a replacement or lets it go; nothing
   is overwritten silently.
+
+### Daily task centre
+
+- At device-clock midnight, all three tasks are replaced with three distinct
+  species drawn from the installed regions. A legendary species enters this pool
+  only after its region's hard champion has been defeated.
+- Before an ordinary wild species is rolled, a region with one or more unfinished
+  matching tasks gets an exact **30%** task branch. That branch chooses uniformly
+  among the unfinished task species from the current region; completed tasks no
+  longer boost encounters.
+- Each task asks for one matching living, hatched creature from the six cultivation
+  slots or the Box. When more than one individual matches, tap the exact creature,
+  then choose **View** or **Submit**. Submitting permanently removes only that
+  individual, and the final remaining cultivation member cannot be submitted.
+- Capturing an unfinished task target offers immediate submission from the battle
+  settlement before it occupies a cultivation or Box slot. Declining uses the
+  normal storage flow; a normal-tier submission explicitly warns that the hard
+  reward is better before confirmation.
+- Reward difficulty is inferred from the submitted creature. A creature at least
+  **10 levels above the pre-submit average level of the living cultivation team**
+  earns the hard reward; every other valid submission earns the normal reward.
+  Normal and hard use the wild victory item counts (one or two weighted items,
+  plus the same independent 30% bonus item). Hard draws are limited to items of
+  rarity two or higher. Move stones in either tier carry a random valid move from
+  the complete move catalogue. Task rewards do not grant battle training points.
 - Wild opponents range from level 1 through at most **10 levels above the
   party's highest level on normal difficulty**, or **20 levels above it on hard**.
   Both limits stop at level 100.
@@ -754,7 +780,8 @@ Python pipeline.
 - Tap the companion to pet it; tap its name for Lead, Pokédex, Settings,
   Release/Farewell and power-off actions; tap the slot indicators to open the Box.
 - Swipe horizontally between occupied cultivation slots, up for the four-page stat
-  card, and down for the bag, battle centre, badges and breeding navigation page.
+  card, and down for the bag, battle centre, badges, breeding and task-centre
+  navigation page.
 - Short-press the physical PWR button to toggle the screen; hold it for four seconds
   to power off while the RTC continues tracking time.
 

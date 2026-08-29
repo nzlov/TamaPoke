@@ -27,7 +27,7 @@ extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern QuizRuntime quiz;
 extern bool cardOpen, natureInfoOpen, galleryOpen, clockOpen, kbOpen, menuOpen,
-            navMenuOpen, bagOpen, boxOpen, breedingOpen, partyPick;
+            navMenuOpen, bagOpen, boxOpen, breedingOpen, partyPick, taskOpen;
 extern bool trainOpen, movePickOpen, battleOpen, gymOpen, playerOpen;
 extern int16_t galleryDetail;
 extern uint32_t btlWinUntil;
@@ -39,7 +39,7 @@ void startBattle(int16_t dex, uint8_t lvl);
 
 static int bad = 0;
 static void clearAll(){
-  cardOpen=natureInfoOpen=galleryOpen=clockOpen=kbOpen=menuOpen=navMenuOpen=bagOpen=boxOpen=breedingOpen=partyPick=false;
+  cardOpen=natureInfoOpen=galleryOpen=clockOpen=kbOpen=menuOpen=navMenuOpen=bagOpen=boxOpen=breedingOpen=partyPick=taskOpen=false;
   trainOpen=movePickOpen=battleOpen=gymOpen=playerOpen=false;
   breedingView=0; party.breeding.status=BREEDING_IDLE;
   galleryDetail=0; btlWinUntil=0;
@@ -138,6 +138,7 @@ int main(){
   clearAll(); playerOpen=true;   check("player");
   clearAll(); menuOpen=true;     check("menu");
   clearAll(); navMenuOpen=true;  check("navmenu");
+  clearAll(); taskOpen=true;     check("task");
   clearAll(); bagOpen=true;      check("bag");
   clearAll(); boxOpen=true;      check("box");
   clearAll(); breedingOpen=true; check("breeding");
@@ -164,13 +165,15 @@ int main(){
   } else {
     printf("PASS  battle action redraw keeps a valid frame throughout\n");
   }
-  clearAll(); quiz.config.choiceWeight=0;
+  clearAll(); quiz.active=false; quiz.config.questionTypes=QUIZ_TYPE_ARITHMETIC;
+  quiz.config.choiceWeight=0;
   quiz.begin("en-US"); check("quiz"); quiz.active=false;
 
   clearAll();                       crumbIs("main");
   clearAll(); trainOpen=true;       crumbIs("train");
   clearAll(); menuOpen=true;        crumbIs("menu");
   clearAll(); navMenuOpen=true;     crumbIs("menu");
+  clearAll(); taskOpen=true;        crumbIs("task");
   clearAll(); bagOpen=true;         crumbIs("bag");
   clearAll(); boxOpen=true;         crumbIs("box");
   clearAll(); breedingOpen=true;    crumbIs("breeding");
@@ -180,7 +183,8 @@ int main(){
   clearAll(); clockOpen=true;       crumbIs("clock");
   clearAll(); cardOpen=true;        crumbIs("card");
   clearAll(); startBattle(9,50);    crumbIs("battle");
-  clearAll(); quiz.config.choiceWeight=0;
+  clearAll(); quiz.active=false; quiz.config.questionTypes=QUIZ_TYPE_ARITHMETIC;
+  quiz.config.choiceWeight=0;
   quiz.begin("en-US"); crumbIs("quiz"); quiz.active=false;
   clearAll();
 

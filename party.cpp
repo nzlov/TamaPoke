@@ -35,12 +35,14 @@ struct LegacyPartyMonV3 {
 static_assert(sizeof(LegacyPartyMonV3) == 164,
               "combat-only party layout must stay byte-exact");
 
-constexpr uint16_t ROSTER_VERSION = 5;
+constexpr uint16_t ROSTER_VERSION = 6;
+constexpr uint16_t ROSTER_VERSION_WITHOUT_TASKS = 5;
 constexpr uint16_t ROSTER_VERSION_WITHOUT_BREEDING = 4;
 constexpr uint16_t ROSTER_VERSION_WITHOUT_PLAYER = 3;
 constexpr uint16_t ROSTER_VERSION_WITH_SEPARATE_CLOCK = 2;
 constexpr uint16_t ROSTER_VERSION_WITHOUT_DEATH = 1;
-constexpr uint32_t ROSTER_SNAPSHOT_MAGIC = 0x35534B54UL;  // "TKS5"
+constexpr uint32_t ROSTER_SNAPSHOT_MAGIC = 0x36534B54UL;  // "TKS6"
+constexpr uint32_t ROSTER_SNAPSHOT_MAGIC_V5 = 0x35534B54UL;  // "TKS5"
 constexpr uint32_t ROSTER_SNAPSHOT_MAGIC_V4 = 0x34534B54UL;  // "TKS4"
 constexpr uint32_t ROSTER_SNAPSHOT_MAGIC_V3 = 0x33534B54UL;  // "TKS3"
 static const char *const BOX_KEYS[BOX_SLOTS / BOX_PAGE_SLOTS] = {
@@ -64,18 +66,61 @@ static_assert(sizeof(RosterSnapshot) ==
                       sizeof(BreedingCenterState),
               "roster snapshot header must stay byte-exact");
 
+struct PlayerSnapshotV5 {
+  uint8_t dexReg[(CONTENT_MAX_SPECIES + 7) / 8] = { 0 };
+  uint8_t dexShinyReg[(CONTENT_MAX_SPECIES + 7) / 8] = { 0 };
+  uint16_t streak = 0;
+  uint16_t bestStreak = 0;
+  uint8_t wildRareBonus = 0;
+  uint8_t avatar = 0;
+  uint8_t region = 0xFF;
+  uint8_t reserved = 0;
+  uint32_t lastCareDay = 0;
+  uint16_t totalMedals = 0;
+  uint16_t lastMilestone = 0;
+  uint16_t gameHi = 0;
+  uint16_t strHi = 0;
+  uint16_t spdHi = 0;
+  uint16_t badges = 0;
+  uint16_t badgesHard = 0;
+  uint16_t badgesX[CONTENT_MAX_REGIONS - 1] = { 0 };
+  uint16_t badgesHardX[CONTENT_MAX_REGIONS - 1] = { 0 };
+  char trainerName[12] = "";
+};
+static_assert(sizeof(PlayerSnapshotV5) == 612,
+              "v5 player snapshot must remain byte-exact");
+static_assert(offsetof(PlayerSnapshot, dailyTasks) == sizeof(PlayerSnapshotV5),
+              "daily tasks must append to the previous player snapshot");
+
+struct RosterSnapshotV5 {
+  uint32_t magic;
+  uint32_t seenEpoch;
+  uint8_t active;
+  uint8_t lead;
+  uint8_t reserved[2];
+  PlayerSnapshotV5 player;
+  PartyMon slots[PARTY_SLOTS];
+  BreedingCenterState breeding;
+};
+
 struct RosterSnapshotV4 {
   uint32_t magic;
   uint32_t seenEpoch;
   uint8_t active;
   uint8_t lead;
   uint8_t reserved[2];
-  PlayerSnapshot player;
+  PlayerSnapshotV5 player;
   PartyMon slots[PARTY_SLOTS];
 };
 static_assert(sizeof(RosterSnapshotV4) ==
-                  12 + sizeof(PlayerSnapshot) + sizeof(PartyMon) * PARTY_SLOTS,
+                  12 + sizeof(PlayerSnapshotV5) + sizeof(PartyMon) * PARTY_SLOTS,
               "v4 roster snapshot must remain readable");
+
+static PlayerSnapshot upgradePlayerSnapshot(const PlayerSnapshotV5 &old) {
+  PlayerSnapshot current;
+  memcpy(&current, &old, sizeof(old));
+  return current;
+}
 
 struct RosterSnapshotV3 {
   uint32_t magic;
@@ -174,6 +219,7 @@ void Party::begin() {
   // GLUE: v1/v2 stored team, active slot and RTC baseline in separate keys.
   // Remove this branch when split roster saves are no longer supported.
   bool snapshotLoaded = (rosterVersion == ROSTER_VERSION ||
+                         rosterVersion == ROSTER_VERSION_WITHOUT_TASKS ||
                          rosterVersion == ROSTER_VERSION_WITHOUT_BREEDING ||
                          rosterVersion == ROSTER_VERSION_WITHOUT_PLAYER) &&
                         loadSnapshot();
@@ -211,6 +257,7 @@ void Party::begin() {
                           !playerSnapshotLoaded);
   if (rosterUpgradePending &&
       rosterVersion != ROSTER_VERSION_WITHOUT_PLAYER &&
+      rosterVersion != ROSTER_VERSION_WITHOUT_TASKS &&
       rosterVersion != ROSTER_VERSION_WITHOUT_BREEDING) {
     saveTeam();
     if (rosterVersion == ROSTER_VERSION_WITHOUT_DEATH) boxSave();
@@ -264,6 +311,20 @@ bool Party::loadSnapshot() {
     loadBox();
     return true;
   }
+  if (stored == sizeof(RosterSnapshotV5)) {
+    RosterSnapshotV5 snapshot;
+    if (prefs.getBytes("team2", &snapshot, sizeof(snapshot)) != sizeof(snapshot) ||
+        snapshot.magic != ROSTER_SNAPSHOT_MAGIC_V5) return false;
+    memcpy(slots, snapshot.slots, sizeof(slots));
+    active = snapshot.active;
+    lead = snapshot.lead;
+    savedSeenEpoch = snapshot.seenEpoch;
+    savedPlayer = upgradePlayerSnapshot(snapshot.player);
+    breeding = snapshot.breeding;
+    playerSnapshotLoaded = true;
+    loadBox();
+    return true;
+  }
   if (stored == sizeof(RosterSnapshotV4)) {
     RosterSnapshotV4 snapshot;
     if (prefs.getBytes("team2", &snapshot, sizeof(snapshot)) != sizeof(snapshot) ||
@@ -272,7 +333,7 @@ bool Party::loadSnapshot() {
     active = snapshot.active;
     lead = snapshot.lead;
     savedSeenEpoch = snapshot.seenEpoch;
-    savedPlayer = snapshot.player;
+    savedPlayer = upgradePlayerSnapshot(snapshot.player);
     breeding = BreedingCenterState();
     playerSnapshotLoaded = true;
     loadBox();

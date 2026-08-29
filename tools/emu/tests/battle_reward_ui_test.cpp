@@ -7,6 +7,7 @@
 #include "inventory.h"
 #include "party.h"
 #include "pet.h"
+#include "player.h"
 #include "motion.h"
 #include "perf.h"
 #include "ui_scroll.h"
@@ -40,6 +41,7 @@ extern const char *const SCREEN_NAME[];
 extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern Party party;
+extern PlayerProgress player;
 extern Inventory inventory;
 extern Combatant btlYou, btlFoe;
 extern Combatant btlSquad[];
@@ -69,6 +71,10 @@ extern uint8_t btlRewardItemCount;
 extern uint8_t btlGmaxBonusDrops;
 extern UiScrollView btlRewardScroll;
 extern bool btlLearnPromptOpen;
+extern uint8_t btlTaskSubmitState;
+extern bool btlCapturedTaskHard;
+extern ItemRef btlCapturedTaskRewards[3];
+extern uint8_t btlCapturedTaskRewardCount;
 void btlUpdateCapture(uint32_t now);
 void btlUpdateThrow(uint32_t now);
 bool btlFeedThrowSample(const MotionSample &sample);
@@ -284,6 +290,7 @@ int main() {
   btlWildMechanic = BMECH_NONE;
 
   uint8_t partyBefore = party.count();
+  for (DailyTask &task : player.dailyTasks.entries) task.completed = 1;
   const ItemEntry *masterBall = nullptr;
   const ItemEntry *catchBall = nullptr;
   for (uint16_t i = 0; i < itemCount(); i++) {
@@ -406,13 +413,50 @@ int main() {
   filler.dex = 1;
   for (uint8_t i = 0; i < PARTY_SLOTS; i++) party.slots[i] = filler;
   for (uint8_t i = 0; i < BOX_SLOTS; i++) party.box[i] = filler;
+  partyPick = false;
+  partyPending = PartyMon();
+  boxOpen = false;
+  player.dailyTasks.entries[0].species = captureDex;
+  player.dailyTasks.entries[0].completed = 0;
+  btlWildMon = filler;
+  btlWildMon.dex = captureDex;
+  btlWildMon.level = filler.level;
+  btlWild = true;
+  battleOpen = true;
+  btlCompleteCapture();
+  check(screenIs("win") && btlTaskSubmitState == 1 && !btlCapturedTaskHard &&
+        !partyPick && partyPending.empty(),
+        "a normal task target stays outside a full collection for the submit warning");
+  gfx->frameReady = false;
+  render();
+  check(gfx->frameReady,
+        "the captured-task submit warning renders and flushes over settlement");
+  onSwipeV(1);
+  check(screenIs("win") && btlTaskSubmitState == 1 && !partyPick,
+        "the captured-task prompt cannot be dismissed or stored by swiping");
+  onTap(150, 328);
+  check(btlTaskSubmitState == 2 && player.dailyTasks.entries[0].completed &&
+        capturedMon.empty() && !partyPick &&
+        (btlCapturedTaskRewardCount == 1 || btlCapturedTaskRewardCount == 2) &&
+        btlCapturedTaskRewards[0].key != ITEM_KEY_NONE,
+        "confirming the warning submits directly and grants the normal task reward");
+  gfx->frameReady = false;
+  render();
+  check(gfx->frameReady, "the direct-submit task reward flushes to the panel");
+  onTap(233, 335);
+  check(!btlWinUntil && !boxOpen && !partyPick,
+        "closing the direct-submit reward returns to play without replacement");
+
+  player.dailyTasks.entries[0].completed = 0;
   btlWildMon = filler;
   btlWildMon.dex = captureDex;
   btlWild = true;
   battleOpen = true;
   btlCompleteCapture();
-  check(screenIs("win") && partyPick && partyPending.dex == captureDex,
-        "a full collection keeps the caught creature pending behind settlement");
+  onTap(300, 328);
+  check(screenIs("win") && btlTaskSubmitState == 0 && partyPick &&
+        partyPending.dex == captureDex,
+        "declining direct submission falls back to the full-collection replacement path");
   onSwipeV(1);
   check(screenIs("win") && partyPick,
         "the modal settlement cannot discard a pending caught creature by swiping");

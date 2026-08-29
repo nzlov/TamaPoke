@@ -276,7 +276,18 @@
         "RECOGER CRIA",
         "RETIRAR",
         "SUSTITUIR",
-        "ELIGE PROGENITOR"
+        "ELIGE PROGENITOR",
+        "CENTRO DE TAREAS",
+        "ENTREGAR",
+        "COMPLETADA",
+        "ELIGE UN POKEMON",
+        "RECOMPENSA NORMAL",
+        "RECOMPENSA DIFICIL",
+        "Entregar a %s?",
+        "NO HAY POKEMON VALIDOS",
+        "Dificil desde Nv.%u",
+        "TAREA COMPLETADA",
+        "La recompensa dificil es mejor. Entregar igualmente?"
       ],
       "medalNames": [
         "Nv.10",
@@ -615,7 +626,18 @@
         "TAKE OFFSPRING",
         "REMOVE",
         "REPLACE",
-        "CHOOSE A PARENT"
+        "CHOOSE A PARENT",
+        "TASK CENTER",
+        "SUBMIT",
+        "COMPLETED",
+        "CHOOSE A POKEMON",
+        "NORMAL REWARD",
+        "HARD REWARD",
+        "Submit %s?",
+        "NO ELIGIBLE POKEMON",
+        "Hard from Lv.%u",
+        "TASK COMPLETED",
+        "Hard rewards are better. Submit anyway?"
       ],
       "medalNames": [
         "Lv.10",
@@ -954,7 +976,18 @@
         "RECUPERER LE PETIT",
         "RETIRER",
         "REMPLACER",
-        "CHOISIS UN PARENT"
+        "CHOISIS UN PARENT",
+        "CENTRE DE MISSIONS",
+        "CONFIER",
+        "TERMINEE",
+        "CHOISIS UN POKEMON",
+        "RECOMPENSE NORMALE",
+        "RECOMPENSE DIFFICILE",
+        "Confier %s ?",
+        "AUCUN POKEMON VALIDE",
+        "Difficile des Niv.%u",
+        "MISSION TERMINEE",
+        "La recompense difficile est meilleure. Confier quand meme ?"
       ],
       "medalNames": [
         "Niv.10",
@@ -1293,7 +1326,18 @@
         "NACHWUCHS ABHOLEN",
         "ENTFERNEN",
         "ERSETZEN",
-        "ELTERNTEIL WAHLEN"
+        "ELTERNTEIL WAHLEN",
+        "AUFGABENZENTRUM",
+        "ABGEBEN",
+        "ERLEDIGT",
+        "POKEMON WAHLEN",
+        "NORMALE BELOHNUNG",
+        "SCHWERE BELOHNUNG",
+        "%s abgeben?",
+        "KEIN GULTIGES POKEMON",
+        "Schwer ab Lv.%u",
+        "AUFGABE ERLEDIGT",
+        "Die schwere Belohnung ist besser. Trotzdem abgeben?"
       ],
       "medalNames": [
         "Lv.10",
@@ -1632,7 +1676,18 @@
         "RITIRA CUCCIOLO",
         "RITIRA",
         "SOSTITUISCI",
-        "SCEGLI UN GENITORE"
+        "SCEGLI UN GENITORE",
+        "CENTRO INCARICHI",
+        "CONSEGNA",
+        "COMPLETATO",
+        "SCEGLI UN POKEMON",
+        "RICOMPENSA NORMALE",
+        "RICOMPENSA DIFFICILE",
+        "Consegnare %s?",
+        "NESSUN POKEMON VALIDO",
+        "Difficile da Lv.%u",
+        "INCARICO COMPLETATO",
+        "La ricompensa difficile e migliore. Consegnare comunque?"
       ],
       "medalNames": [
         "Lv.10",
@@ -1971,7 +2026,18 @@
         "RECOLHER CRIA",
         "RETIRAR",
         "SUBSTITUIR",
-        "ESCOLHE UM PROGENITOR"
+        "ESCOLHE UM PROGENITOR",
+        "CENTRO DE TAREFAS",
+        "ENTREGAR",
+        "CONCLUIDA",
+        "ESCOLHE UM POKEMON",
+        "RECOMPENSA NORMAL",
+        "RECOMPENSA DIFICIL",
+        "Entregar %s?",
+        "SEM POKEMON VALIDOS",
+        "Dificil desde Niv.%u",
+        "TAREFA CONCLUIDA",
+        "A recompensa dificil e melhor. Entregar mesmo assim?"
       ],
       "medalNames": [
         "Niv.10",
@@ -2316,7 +2382,18 @@
         "取出新伙伴",
         "取出",
         "替换",
-        "选择父母"
+        "选择父母",
+        "每日目标",
+        "提交",
+        "已完成",
+        "选择宝可梦",
+        "普通战利品",
+        "困难战利品",
+        "提交%s？",
+        "没有符合条件的宝可梦",
+        "%u级起为困难战利品",
+        "目标完成",
+        "困难战利品更好，仍要提交？"
       ],
       "medalNames": [
         "10级",

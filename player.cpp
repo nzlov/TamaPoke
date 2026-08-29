@@ -103,6 +103,7 @@ PlayerSnapshot PlayerProgress::snapshot() const {
   memcpy(out.badgesX, badgesX, sizeof(badgesX));
   memcpy(out.badgesHardX, badgesHardX, sizeof(badgesHardX));
   memcpy(out.trainerName, trainerName, sizeof(trainerName));
+  out.dailyTasks = dailyTasks;
   return out;
 }
 
@@ -122,6 +123,12 @@ void PlayerProgress::restore(const PlayerSnapshot &in) {
   memcpy(badgesHardX, in.badgesHardX, sizeof(badgesHardX));
   memcpy(trainerName, in.trainerName, sizeof(trainerName));
   trainerName[sizeof(trainerName) - 1] = 0;
+  dailyTasks = in.dailyTasks;
+  for (DailyTask &task : dailyTasks.entries) {
+    if (task.species > CONTENT_MAX_SPECIES) task = DailyTask();
+    task.completed = task.completed ? 1 : 0;
+    task.reserved = 0;
+  }
 }
 
 bool PlayerProgress::isRegistered(int16_t dex) const {
@@ -212,4 +219,20 @@ void PlayerProgress::renameTrainer(const char *name) {
 const char *PlayerProgress::regionName() const {
   uint8_t count = regionCount();
   return count ? ::regionName(region < count ? region : regionAll()) : "?";
+}
+
+bool PlayerProgress::refreshDailyTasks(uint32_t day) {
+  if (!day || dailyTasks.day == day) return false;
+  uint16_t legendaryRegionMask = 0;
+  for (uint8_t region = 0; region < regionAll() && region < 16; region++) {
+    const RegionBattleInfo &battle = regionBattleInfo(region);
+    if (battle.trainerCount &&
+        hasBadge(region, battle.trainerCount - 1, true))
+      legendaryRegionMask |= (uint16_t)1 << region;
+  }
+  if (!dailyTasksRefresh(dailyTasks, day, legendaryRegionMask,
+                         (uint32_t)random(0x7FFFFFFF)))
+    return false;
+  save();
+  return true;
 }

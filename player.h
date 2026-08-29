@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include "dex.h"
+#include "daily_tasks.h"
 #include "trainers.h"
 
 class Pet;
@@ -27,9 +28,10 @@ struct PlayerSnapshot {
   uint16_t badgesX[CONTENT_MAX_REGIONS - 1] = { 0 };
   uint16_t badgesHardX[CONTENT_MAX_REGIONS - 1] = { 0 };
   char trainerName[12] = "";
+  DailyTaskState dailyTasks;
 };
-static_assert(sizeof(PlayerSnapshot) == 612,
-              "player snapshot must stay byte-exact for roster v4");
+static_assert(sizeof(PlayerSnapshot) == 612 + sizeof(DailyTaskState),
+              "player snapshot must stay byte-exact for roster v6");
 
 class PlayerProgress {
 public:
@@ -48,6 +50,7 @@ public:
   uint16_t badgesHard = 0;
   uint16_t badgesX[CONTENT_MAX_REGIONS - 1] = { 0 };
   uint16_t badgesHardX[CONTENT_MAX_REGIONS - 1] = { 0 };
+  DailyTaskState dailyTasks;
 
   void begin();
   void attach(Pet &pet, Party &party);
@@ -70,6 +73,7 @@ public:
 
   void renameTrainer(const char *name);
   const char *regionName() const;
+  bool refreshDailyTasks(uint32_t day);
 
 private:
   Preferences prefs;
