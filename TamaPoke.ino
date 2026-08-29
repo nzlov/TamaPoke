@@ -42,9 +42,13 @@
 #include "i18n.h"
 #include "audio.h"
 #include "motion.h"
+#include "perf.h"
 #include <Preferences.h>
 
 #if defined(ESP32)
+#include <esp_heap_caps.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 // FreeType's CFF glyph interpreter needs more than Arduino's default 8 KiB
 // loop-task stack while rendering the Chinese OpenType font.
 SET_LOOP_TASK_STACK_SIZE(32 * 1024);
@@ -210,6 +214,12 @@ public:
     if (right) *right = maxX;
     if (bottom) *bottom = maxY;
     return true;
+  }
+
+  void flush() {
+    uint32_t started = perfNowUs();
+    Arduino_Canvas::flush();
+    perfRecord(PERF_FLUSH, perfNowUs() - started);
   }
 
 private:
@@ -1253,6 +1263,8 @@ static bool starterRegionDone = false;
 volatile bool gTouchIrq = false;
 void IRAM_ATTR touchIsr() { gTouchIrq = true; }
 uint32_t lastRender = 0;
+bool uiRenderDirty = true;
+uint8_t uiLastRenderedScreen = 0xFF;
 // proteccion del AMOLED: atenuado por inactividad
 uint32_t lastInteract = 0;
 uint8_t dimStage = 0;        // 0 despierto, 1 atenuado (90s), 2 casi apagado (5min)
@@ -1454,7 +1466,6 @@ void loop() {
 
   handleTouch();
   if (battleOpen) btlUpdateThrow(millis());
-  updateQuiz(millis());
   handleSerial();
   ensureMon();
 
@@ -1466,6 +1477,7 @@ void loop() {
       screenOff = !screenOff;
       pet.setScreenOff(screenOff);   // asleep only if it is also night
       if (!screenOff) lastInteract = now;
+      uiRenderDirty = true;
     }
   }
 
@@ -1478,7 +1490,6 @@ void loop() {
   // activo persiste igual por los guardados de cada accion (comer/jugar/...).
   if ((pet.savePending() || party.savePending()) &&
       (screenOff || dimStage >= 1 || pet.sleeping)) {
-    pet.flushSave();
     party.flushSave(pet);
   }
 
@@ -1488,22 +1499,31 @@ void loop() {
     lastClock = now;
     uint32_t e = rtcEpoch();
     if (e) pet.lastSeenEpoch = e;
+    uint8_t screen = uiCurrentScreen();
+    if (screen == SCR_CLOCK || screen == SCR_CARD) uiRenderDirty = true;
   }
 
   // latido de salud cada 5 min (para el soak test; se descarta si no hay monitor)
   static uint32_t lastHealth = 0;
   if (now - lastHealth > 300000) {
     lastHealth = now;
-    Serial.printf("HEALTH up=%lus heap=%u min=%u\n", (unsigned long)(now / 1000),
-                  ESP.getFreeHeap(), ESP.getMinFreeHeap());
+    printHealthReport();
   }
 
   // 85 ms en juego/saco: margen seguro para que el redibujado no pise el envio
   // DMA del frame anterior (a 40-65 ms solapaba y causaba flashes negros; con
   // sprites grandes el dibujo tarda mas, asi que se deja colchon)
-  if (now - lastRender >= (uint32_t)((gameOpen || sackOpen || spdOpen) ? 85 : 100)) {
+  uint8_t screen = uiCurrentScreen();
+  bool renderDue = uiRenderDirty || screen != uiLastRenderedScreen ||
+                   uiScreenContinuous(screen);
+  if (renderDue &&
+      now - lastRender >= (uint32_t)((gameOpen || sackOpen || spdOpen) ? 85 : 100)) {
     lastRender = now;
+    uint32_t started = perfNowUs();
     render();
+    perfRecord(PERF_FRAME, perfNowUs() - started);
+    uiRenderDirty = false;
+    uiLastRenderedScreen = uiCurrentScreen();
   }
 }
 
@@ -1539,6 +1559,7 @@ void handleSerial() {
   String line = Serial.readStringUntil('\n');
   line.trim();
   if (line.length() == 0) return;
+  uiRenderDirty = true;
   if (line == "INFO") {
     Serial.printf("FW\t%s\n", FW_VERSION);
     sdSerialPackInfo();
@@ -1823,14 +1844,7 @@ void handleSerial() {
     Serial.println();
     Serial.println("DONE");
   } else if (line == "HEALTH") {
-    Serial.printf("up=%lus heap=%u min=%u sd=%d mon=%d\n",
-                  (unsigned long)(millis() / 1000), ESP.getFreeHeap(),
-                  ESP.getMinFreeHeap(), sdReady, pmd.loaded);
-    // PSRAM is where the sprites and the framebuffer live, so a memory problem
-    // shows up here long before it shows up in the heap figure above.
-    Serial.printf("psram=%u screen=%s btlspr=%d/%d\n", (unsigned)ESP.getFreePsram(),
-                  SCREEN_NAME[uiCurrentScreen() % SCR_COUNT],
-                  btlPmd[0].loaded ? 1 : 0, btlPmd[1].loaded ? 1 : 0);
+    printHealthReport();
     Serial.println("DONE");
   } else if (line == "STATS") {
     Serial.printf("spec=%d nv=%u com=%u fel=%u ene=%u lim=%u desc=%u sd=%d mon=%d bat=%d usb=%d rtc=%u\n",
@@ -1850,6 +1864,40 @@ void handleSerial() {
                   player.bestStreak, pet.bond, pet.medals, player.totalMedals, pet.nick);
     Serial.println("DONE");
   }
+}
+
+static void printPerfSample(const char *name, PerfMetric metric) {
+  const PerfSample &sample = perfSample(metric);
+  uint32_t average = sample.count ? (uint32_t)(sample.totalUs / sample.count) : 0;
+  Serial.printf("perf %s n=%lu avg_us=%lu max_us=%lu nvs=%lu\n", name,
+                (unsigned long)sample.count, (unsigned long)average,
+                (unsigned long)sample.maxUs, (unsigned long)sample.nvsWrites);
+}
+
+void printHealthReport() {
+  Serial.printf("up=%lus heap=%u min=%u sd=%d mon=%d\n",
+                (unsigned long)(millis() / 1000), ESP.getFreeHeap(),
+                ESP.getMinFreeHeap(), sdReady, pmd.loaded);
+  // PSRAM is where the sprites and the framebuffer live, so a memory problem
+  // shows up here long before it shows up in the heap figure above.
+  Serial.printf("psram=%u screen=%s btlspr=%d/%d\n", (unsigned)ESP.getFreePsram(),
+                SCREEN_NAME[uiCurrentScreen() % SCR_COUNT],
+                btlPmd[0].loaded ? 1 : 0, btlPmd[1].loaded ? 1 : 0);
+#if defined(ESP32)
+  Serial.printf("heapblk=%u psblk=%u psmin=%u stack_words=%u\n",
+                (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+                (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),
+                (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM),
+                (unsigned)uxTaskGetStackHighWaterMark(nullptr));
+#else
+  Serial.println("heapblk=0 psblk=0 psmin=0 stack_words=0");
+#endif
+  printPerfSample("frame", PERF_FRAME);
+  printPerfSample("flush", PERF_FLUSH);
+  printPerfSample("pet", PERF_PET_SAVE);
+  printPerfSample("player", PERF_PLAYER_SAVE);
+  printPerfSample("team", PERF_TEAM_SAVE);
+  printPerfSample("items", PERF_INVENTORY_SAVE);
 }
 
 // ---------- entrada tactil ----------
@@ -1896,6 +1944,7 @@ void handleTouch() {
   if (sackOpen && !quizBlocking()) {
     if (pressed && !wasPressed) {
       lastInteract = millis();
+      uiRenderDirty = true;
       if (y < 72) leaveSack();       // tocar arriba = salir, conservando lo ganado
       else sackTap();
     }
@@ -1920,9 +1969,11 @@ void handleTouch() {
     tYl = y;
     if (brightnessDrag) {
       setUserBrightness(brightnessLevelAt(x), false);
+      uiRenderDirty = true;
     }
   } else if (wasPressed) {  // levanta el dedo: resolver gesto
     lastInteract = millis();
+    uiRenderDirty = true;
     int dx = tXl - tX0, dy = tYl - tY0;
     uint32_t dt = millis() - tStart;
     if (brightnessDrag) {
@@ -3346,6 +3397,12 @@ uint8_t uiCurrentScreen() {
   if (trainOpen) return SCR_TRAIN;
   if (menuOpen) return SCR_MENU;
   return SCR_MAIN;
+}
+
+bool uiScreenContinuous(uint8_t screen) {
+  return (screen == SCR_MAIN && !screenOff) || screen == SCR_QUIZ ||
+         (screen == SCR_GALLERY && galleryDetail) || screen == SCR_BATTLE || screen == SCR_GAME ||
+         screen == SCR_LAN || (screen == SCR_CARD && cardPage == 0 && !natureInfoOpen);
 }
 
 static void crumbDrop() {
@@ -5658,10 +5715,12 @@ void btlFinish(bool won) {
   if (btlLink) { btlSay("%s", btlWon ? T(S_BTL_WIN) : T(S_BTL_LOSE)); return; }
   if (btlWon && btlTrainer >= 0) { btlWinUntil = millis() + 60000; return; }
   if (btlWon && btlWild) {
+    inventory.beginBatch();
     btlGrantWildRewards();
     ItemRef mechanicDrop = inventory.grantMechanicReward(
         (ItemMechanicKind)btlWildMechanic, btlWildMegaForm);
     btlRememberRewardItem(mechanicDrop);
+    inventory.commitBatch();
     btlWinUntil = millis() + 60000;
     return;
   }
@@ -8613,11 +8672,20 @@ void drawThumb(const uint8_t *b, int x, int y, int s, bool sil) {
   int ox = x + (GAL_CELL - w * s) / 2;
   int oy = y + (GAL_CELL - h * s) / 2;
   for (int r = 0; r < h; r++) {
-    for (int c = 0; c < w; c++) {
-      uint8_t idx = d[r * w + c];
-      if (idx == 0xFF) continue;
+    const uint8_t *row = d + r * w;
+    for (int c = 0; c < w;) {
+      uint8_t idx = row[c];
+      if (idx == 0xFF) { c++; continue; }
       uint16_t col = sil ? INK_K : (uint16_t)(pal[idx * 2] | (pal[idx * 2 + 1] << 8));
-      gfx->fillRect(ox + c * s, oy + r * s, s, s, col);
+      int start = c++;
+      while (c < w && row[c] != 0xFF) {
+        uint8_t next = row[c];
+        uint16_t nextCol = sil ? INK_K
+            : (uint16_t)(pal[next * 2] | (pal[next * 2 + 1] << 8));
+        if (nextCol != col) break;
+        c++;
+      }
+      gfx->fillRect(ox + start * s, oy + r * s, (c - start) * s, s, col);
     }
   }
 }
@@ -9297,10 +9365,14 @@ void drawPmdActM(PmdMon &m, uint8_t actId, int cx, int groundY, uint32_t t,
   int x0 = cx - a.w * s / 2, y0 = groundY - (a.base ? a.base : a.h) * s;
   for (int r = 0; r < a.h; r++) {
     const uint8_t *row = fr + r * a.w;
-    for (int c = 0; c < a.w; c++) {
+    for (int c = 0; c < a.w;) {
       uint8_t idx = row[c];
-      if (idx == 0xFF) continue;
-      gfx->fillRect(x0 + c * s, y0 + r * s, s, s, sil ? INK_K : m.pal[idx]);
+      if (idx == 0xFF) { c++; continue; }
+      uint16_t col = sil ? INK_K : m.pal[idx];
+      int start = c++;
+      while (c < a.w && row[c] != 0xFF &&
+             (sil || m.pal[row[c]] == col)) c++;
+      gfx->fillRect(x0 + start * s, y0 + r * s, (c - start) * s, s, col);
     }
   }
 }

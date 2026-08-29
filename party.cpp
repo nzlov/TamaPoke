@@ -1,6 +1,8 @@
 #include "party.h"
 #include "pet.h"
 #include "dex.h"
+#include "perf.h"
+#include "save.h"
 
 Party party;
 
@@ -67,6 +69,32 @@ struct RosterSnapshotV3 {
 };
 static_assert(sizeof(RosterSnapshotV3) == 12 + sizeof(PartyMon) * PARTY_SLOTS,
               "v3 roster snapshot must stay byte-exact");
+
+// GLUE: these keys belong only to schema-v1 import. Once team2 and the current
+// schema marker are durable they must disappear, so normal boots and saves have
+// exactly one persistence shape. Remove this list with the v1 migration code.
+static const char *const LEGACY_SAVE_KEYS[] = {
+  "init", "full", "joy", "ene", "hyg", "poop", "wgt", "age", "raise",
+  "dexn", "eggT2", "crack", "mist", "sleep", "lend", "seen", "bond",
+  "nick", "froz", "dead", "ivat", "ivdf", "ivsp", "ivhp", "tatk",
+  "tdef", "tspe", "tminat", "tmindf", "tminsp", "nat", "gndr", "abil",
+  "giv", "mvs", "rsvm", "mvlv", "bk", "shy", "spkl", "gmax", "eshy",
+  "stpk", "evop", "slpa", "rtpn", "tnam", "avtr", "badg", "reg",
+  "eggR", "badgX", "badhX", "badh", "dexreg", "dexsh", "strk", "bstrk",
+  "wrbon", "cday", "medal", "tmedal", "mstone", "ghi", "shi", "qhi",
+  "active", "team1", "party", "box",
+};
+
+static void finishSaveUpgrade(Preferences &prefs) {
+  if (prefs.getUShort("rostv", 0) != ROSTER_VERSION ||
+      prefs.getBytesLength("team2") != sizeof(RosterSnapshot)) return;
+  // The current marker is written only after the canonical snapshot. Cleanup
+  // may be interrupted safely; the next current-format boot resumes it.
+  if (prefs.getUShort("savev", 0) != SAVE_STATE_VERSION)
+    prefs.putUShort("savev", SAVE_STATE_VERSION);
+  for (const char *key : LEGACY_SAVE_KEYS)
+    if (prefs.isKey(key)) prefs.remove(key);
+}
 
 // GLUE: maps the common prefix of both previous raw NVS records into today's
 // PartyMon. Remove only when saves made before natures are unsupported.
@@ -349,10 +377,12 @@ void Party::attach(Pet &pet) {
     prefs.putUShort("rostv", ROSTER_VERSION);
     rosterUpgradePending = false;
   }
+  finishSaveUpgrade(prefs);
   lastRosterTick = millis();
 }
 
 void Party::saveTeam() {
+  uint32_t started = perfNowUs();
   if (boundPet && boundPet->lastSeenEpoch)
     savedSeenEpoch = boundPet->lastSeenEpoch;
   RosterSnapshot snapshot = {};
@@ -364,6 +394,7 @@ void Party::saveTeam() {
                              : player.snapshot();
   memcpy(snapshot.slots, slots, sizeof(slots));
   prefs.putBytes("team2", &snapshot, sizeof(snapshot));
+  perfRecord(PERF_TEAM_SAVE, perfNowUs() - started, 1);
 }
 
 void Party::saveBoxPage(uint8_t page) {
@@ -450,14 +481,11 @@ void Party::syncClock(Pet &pet, uint32_t nowEpoch) {
     background.exportState(slots[i]);
   }
   pet.lastSeenEpoch = nowEpoch;
-  captureActive(pet, false);
-  saveTeam();
   pet.saveNow();
 }
 
 void Party::flushSave(Pet &pet) {
-  captureActive(pet, false);
-  saveTeam();
+  pet.saveNow();
   pendingSave = false;
   ticksSinceSave = 0;
 }
@@ -612,7 +640,6 @@ void Party::removeActiveAndEnsurePlayable(Pet &pet) {
     if (slots[i].empty()) continue;
     active = i;
     pet.importState(slots[i]);
-    saveTeam();
     pet.saveNow();
     return;
   }
@@ -624,7 +651,6 @@ void Party::removeActiveAndEnsurePlayable(Pet &pet) {
     box[i] = PartyMon();
     pet.importState(slots[active]);
     normalizeLead();
-    saveTeam();
     saveBoxPage(i / BOX_PAGE_SLOTS);
     pet.saveNow();
     return;
@@ -632,9 +658,7 @@ void Party::removeActiveAndEnsurePlayable(Pet &pet) {
 
   active = 0;
   pet.newEgg();
-  pet.exportState(slots[active]);
   normalizeLead();
-  saveTeam();
 }
 
 // Mirrors calcStat() in pet.cpp: base + level + IV contribution + training.

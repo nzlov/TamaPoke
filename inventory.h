@@ -32,17 +32,22 @@ public:
                             uint8_t excludedCount = 0);
   ItemRef grantMechanicReward(ItemMechanicKind mechanic,
                               MegaFormKind megaForm = MEGA_FORM_NONE);
+  void beginBatch();
+  void commitBatch();
   void save();
 
 private:
   InventoryStack stacks[INVENTORY_MAX_STACKS] = {};
   uint32_t suppliedDay = 0;
   bool suppliedOnce = false;
+  uint8_t batchDepth = 0;
+  bool batchDirty = false;
   Preferences prefs;
 
   int find(ItemKey key, MoveId move = MOVE_NONE) const;
   int freeSlot() const;
   bool canAdd(ItemKey key, MoveId move) const;
+  void persistChange();
 };
 
 extern Inventory inventory;

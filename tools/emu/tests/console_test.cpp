@@ -61,6 +61,13 @@ static std::string runConsole(const std::vector<std::string> &lines){
 int main(){
   setup();
   for (int i=0;i<4;i++) render();
+  {
+    std::string health = runConsole({"HEALTH"});
+    ck(health.find("perf frame n=") != std::string::npos &&
+       health.find("perf flush n=") != std::string::npos &&
+       health.find("heapblk=") != std::string::npos,
+       "HEALTH reports frame, flush, heap and stack telemetry");
+  }
   if (pet.awaitingStarter()) pet.chooseStarter(4);
   if (pet.isEgg()) pet.dbgHatchAs(59,false);
   pet.ageMinutes = 61UL*MINUTES_PER_LEVEL;
@@ -121,7 +128,7 @@ int main(){
     ck(r2.find("IMPORT REJECTED") != std::string::npos,
        "a single mistyped digit is rejected");
     ck(!gRestarted, "and nothing reboots on a rejection");
-    Pet p3; p3.begin();
+    Pet p3; Party q3; p3.begin(); q3.begin(); q3.attach(p3);
     ck(!strcmp(player.trainerName,"ASH"), "the save it was pasted over is untouched");
   }
   {
@@ -144,7 +151,7 @@ int main(){
     std::string r5 = runConsole({"IMPORT"});
     ck(r5.find("IMPORT EMPTY") != std::string::npos,
        "committing nothing says so rather than wiping the save");
-    Pet p4; p4.begin();
+    Pet p4; Party q4; p4.begin(); q4.begin(); q4.attach(p4);
     ck(!strcmp(player.trainerName,"ASH"), "and the save is still there");
   }
 
@@ -162,7 +169,8 @@ int main(){
     runConsole({"TR 0"});
     ck(pet.trAtk == 0 && pet.trDef == 0 && pet.trSpe == 0,
        "one argument sets all three, so TR 0 clears them");
-    Pet again; again.begin();
+    Pet again; Party againParty;
+    again.begin(); againParty.begin(); againParty.attach(again);
     ck(again.trAtk == 0, "and the change is persisted rather than lost on reload");
 
     // These used flushSave(), which is `if (pendingSave) save()` -- a no-op
@@ -171,18 +179,20 @@ int main(){
     // even called that. Reload after each one, from a clean pendingSave.
     pet.flushSave();                       // make sure nothing is pending
     runConsole({"IV 31 31 31 31"});
-    { Pet r; r.begin();
+    { Pet r; Party roster; r.begin(); roster.begin(); roster.attach(r);
       ck(r.ivAtk == 31 && r.ivHp == 31, "IV survives a reload"); }
     pet.flushSave();
     runConsole({"TR 40 40 40"});
-    { Pet r; r.begin();
+    { Pet r; Party roster; r.begin(); roster.begin(); roster.attach(r);
       ck(r.trAtk == 40 && r.trSpe == 40, "TR survives a reload"); }
     pet.flushSave();
     runConsole({"MISS 3"});
-    { Pet r; r.begin(); ck(r.careMistakes == 3, "MISS survives a reload"); }
+    { Pet r; Party roster; r.begin(); roster.begin(); roster.attach(r);
+      ck(r.careMistakes == 3, "MISS survives a reload"); }
     pet.flushSave();
     runConsole({"LVL 25"});
-    { Pet r; r.begin(); ck(r.level() == 25, "LVL survives a reload"); }
+    { Pet r; Party roster; r.begin(); roster.begin(); roster.attach(r);
+      ck(r.level() == 25, "LVL survives a reload"); }
     runConsole({"TR -5 999 20"});
     ck(pet.trAtk == 0 && pet.trDef == pet.trMaxDef() && pet.trSpe == 20,
        "nonsense arguments clamp instead of wrapping");

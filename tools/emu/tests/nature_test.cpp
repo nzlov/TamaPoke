@@ -98,7 +98,7 @@ int main(){
   // rerolling on each boot.
   {
     nvs().clear(); Preferences old; old.begin("tamapoke",false);
-    old.putUShort("savev",SAVE_STATE_VERSION); old.putBool("init",true);
+    old.putUShort("savev",SAVE_STATE_VERSION_LEGACY); old.putBool("init",true);
     old.putShort("dexn",6); old.putUChar("ivat",17); old.putUChar("ivdf",23);
     old.putUChar("ivsp",29); old.putUChar("ivhp",31); old.end();
     Pet first; first.begin(); NatureId migrated=first.nature;

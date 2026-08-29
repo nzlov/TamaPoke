@@ -30,6 +30,7 @@ public:
   void end() {}
   void clear() { kv.clear(); }
   bool isKey(const char *k) { return kv.count(k) != 0; }
+  bool remove(const char *k) { return kv.erase(k) != 0; }
 
   template <typename T> void putT(const char *k, T v) {
     if (nvsWriteFails(k)) return;

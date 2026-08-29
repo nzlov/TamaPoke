@@ -5,6 +5,7 @@
 #include "party.h"
 #include "pet.h"
 #include "save.h"
+#include "perf.h"
 #include <cstdio>
 
 uint32_t g_seed = 211;
@@ -31,7 +32,9 @@ int main() {
   roster.begin();
   roster.attach(active);
   active.dbgSetSeen(1000);
-  roster.captureActive(active);
+  uint32_t teamWrites = perfSample(PERF_TEAM_SAVE).nvsWrites;
+  active.saveNow();
+  bool singleCommit = perfSample(PERF_TEAM_SAVE).nvsWrites == teamWrites + 1;
 
   for (int i = 0; i < 10; i++) active.dbgTick();
   active.lastSeenEpoch = 1600;
@@ -44,7 +47,7 @@ int main() {
   rebootedRoster.attach(rebooted);
   rebootedRoster.syncClock(rebooted, 1600);
 
-  bool ok = rebooted.fullness == 60 && nvs().count("team2") == 1;
+  bool ok = singleCommit && rebooted.fullness == 60 && nvs().count("team2") == 1;
   std::printf("%s  roster snapshot keeps state and seen atomic\n", ok ? "PASS" : "FAIL");
 
   nvs().clear();
@@ -59,7 +62,7 @@ int main() {
   Preferences seed;
   seed.begin("tamapoke", false);
   seed.putBool("init", true);
-  seed.putUShort("savev", SAVE_STATE_VERSION);
+  seed.putUShort("savev", SAVE_STATE_VERSION_LEGACY);
   seed.putBytes("team1", old, sizeof(old));
   seed.putUChar("active", 0);
   seed.putUInt("seen", 2000);
@@ -90,7 +93,7 @@ int main() {
   oldSnapshot.slots[0] = old[0];
   oldSnapshot.slots[0].gymIvRewards[0] = GYM_IV_REWARD_DEF;
   seed.putBool("init", true);
-  seed.putUShort("savev", SAVE_STATE_VERSION);
+  seed.putUShort("savev", SAVE_STATE_VERSION_LEGACY);
   seed.putUShort("badg", 0x0005);
   seed.putBytes("team2", &oldSnapshot, sizeof(oldSnapshot));
   seed.putUShort("rostv", 3);

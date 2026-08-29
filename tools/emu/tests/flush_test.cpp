@@ -17,9 +17,10 @@ volatile int g_touchX=0,g_touchY=0; volatile bool g_touchDown=false;
 void FakeESP::restart(){exit(0);}
 int FakeSerial::available(){return 0;}
 String FakeSerial::readStringUntil(char){return String("");}
-void setup(); void render(); void renderBootSplash();
+void setup(); void loop(); void render(); void renderBootSplash();
 void battleTap(int16_t x, int16_t y);
 uint8_t uiCurrentScreen();
+bool uiScreenContinuous(uint8_t screen);
 extern const char *const SCREEN_NAME[];
 extern Arduino_Canvas *gfx;
 extern Pet pet;
@@ -27,6 +28,10 @@ extern QuizRuntime quiz;
 extern bool cardOpen, natureInfoOpen, galleryOpen, clockOpen, kbOpen, menuOpen,
             navMenuOpen, bagOpen, boxOpen, partyPick;
 extern bool trainOpen, movePickOpen, battleOpen, gymOpen, playerOpen;
+extern int16_t galleryDetail;
+extern uint32_t btlWinUntil;
+extern bool uiRenderDirty;
+extern uint32_t lastRender;
 extern uint8_t cardPage;
 void startBattle(int16_t dex, uint8_t lvl);
 
@@ -34,6 +39,7 @@ static int bad = 0;
 static void clearAll(){
   cardOpen=natureInfoOpen=galleryOpen=clockOpen=kbOpen=menuOpen=navMenuOpen=bagOpen=boxOpen=partyPick=false;
   trainOpen=movePickOpen=battleOpen=gymOpen=playerOpen=false;
+  galleryDetail=0; btlWinUntil=0;
 }
 static void check(const char *name){
   gfx->frameReady = false;
@@ -67,6 +73,35 @@ int main(){
   if (pet.awaitingStarter()) pet.chooseStarter(4);
   if (pet.isEgg()) pet.dbgHatchAs(6,false);
   pet.ageMinutes = 60UL*60;
+
+  clearAll(); bool mainAnimated = uiScreenContinuous(uiCurrentScreen());
+  clearAll(); cardOpen = true; bool cardAnimated = uiScreenContinuous(uiCurrentScreen());
+  clearAll(); bagOpen = true; bool bagStatic = !uiScreenContinuous(uiCurrentScreen());
+  clearAll(); boxOpen = true; bool boxStatic = !uiScreenContinuous(uiCurrentScreen());
+  clearAll(); clockOpen = true; bool clockStatic = !uiScreenContinuous(uiCurrentScreen());
+  clearAll(); galleryOpen = true; galleryDetail = 0;
+  bool galleryGridStatic = !uiScreenContinuous(uiCurrentScreen());
+  galleryDetail = 1;
+  bool galleryDetailAnimated = uiScreenContinuous(uiCurrentScreen());
+  clearAll(); battleOpen = true; btlWinUntil = 1;
+  bool winStatic = !uiScreenContinuous(uiCurrentScreen());
+  btlWinUntil = 0;
+  if (!mainAnimated || !cardAnimated || !bagStatic || !boxStatic || !clockStatic ||
+      !galleryGridStatic || !galleryDetailAnimated || !winStatic) {
+    printf("FAIL  frame scheduler misclassifies animated and static screens\n"); bad++;
+  } else printf("PASS  frame scheduler redraws animated screens and idles static screens\n");
+
+  clearAll(); bagOpen = true; uiRenderDirty = true;
+  lastRender = millis() - 101; gfx->frameReady = false; loop();
+  bool initialBagFrame = gfx->frameReady;
+  lastRender = millis() - 101; gfx->frameReady = false; loop();
+  bool idleBagFrame = gfx->frameReady;
+  uiRenderDirty = true;
+  lastRender = millis() - 101; gfx->frameReady = false; loop();
+  bool dirtyBagFrame = gfx->frameReady;
+  if (!initialBagFrame || idleBagFrame || !dirtyBagFrame) {
+    printf("FAIL  static screen scheduler does not honor dirty state\n"); bad++;
+  } else printf("PASS  static screen redraws once, idles, then redraws when dirty\n");
 
   clearAll(); check("main");
   clearAll(); trainOpen=true;    check("train");

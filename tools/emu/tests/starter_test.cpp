@@ -97,7 +97,8 @@ int main(){
   // --- and it survives a reload: region is persisted, the flow is not repeated
   {
     Pet again; again.begin();
-    ck(again.region == chosenRegion, "the region choice is saved");
+    Party againParty; againParty.begin(); againParty.attach(again);
+    ck(again.playerProgress().region == chosenRegion, "the region choice is saved");
     ck(!again.awaitingStarter(), "and the first boot does not run a second time");
   }
 

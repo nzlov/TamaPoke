@@ -2,8 +2,10 @@
 #include "dex.h"
 #include "moves.h"
 #include "audio.h"
+#include "party.h"
 #include "save.h"
 #include "wild.h"
+#include "perf.h"
 
 void Pet::begin() {
   progress.begin();
@@ -16,7 +18,13 @@ void Pet::begin() {
   // Party::begin() already guards the same way for the same reason.
   memset(gymIvRewards, 0, sizeof(gymIvRewards));
   for (int i = 0; i < regionCount(); i++) eggByRegion[i] = 0;
-  if (!prefs.getBool("init", false)) {
+  if (prefs.getUShort("savev", 0) == SAVE_STATE_VERSION) {
+    // Current saves are loaded exclusively by Party::attach from team2.
+    // The temporary Pet state is never rendered before that attachment.
+    speciesId = -1;
+    pendingSave = false;
+    ticksSinceSave = 0;
+  } else if (!prefs.getBool("init", false)) {
     prefs.putBool("init", true);
     newEgg();
   } else {
@@ -1246,8 +1254,17 @@ PetMood Pet::mood() const {
 
 void Pet::save() {
   if (backgroundMode) return;
+  uint32_t started = perfNowUs();
   ticksSinceSave = 0;
   pendingSave = false;
+  if (roster) {
+    roster->captureActive(*this, false);
+    roster->save();
+    perfRecord(PERF_PET_SAVE, perfNowUs() - started, 1);
+    return;
+  }
+  // Before Party is attached these scalar keys remain the migration and
+  // standalone-Pet format. Normal runtime commits use the atomic team2 blob.
   prefs.putUChar("full", fullness);
   prefs.putUChar("joy", joy);
   prefs.putUChar("ene", energy);
@@ -1294,6 +1311,7 @@ void Pet::save() {
   prefs.putUShort("medal", medals);
   prefs.putString("nick", nick);
   progress.save();
+  perfRecord(PERF_PET_SAVE, perfNowUs() - started, lastSeenEpoch ? 63 : 62);
 }
 
 void Pet::load() {

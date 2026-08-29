@@ -1,6 +1,5 @@
-// Saves without the current schema marker are deliberately reset. Runtime
-// packs widen species and move IDs, so interpreting an old raw struct would be
-// less safe than starting a clean game.
+// Unsupported unversioned saves reset, while the supported v1 scalar layout is
+// consumed exactly once and replaced by the canonical roster snapshot.
 #include "Arduino.h"
 #include "Preferences.h"
 #include "pet.h"
@@ -51,6 +50,7 @@ int main() {
   ck(pet.awaitingStarter(), "the reset starts the normal starter flow");
   ck(loadedParty.count() == 0 && loadedParty.boxCount() == 0,
      "old party and box data are removed with the save");
+  loadedParty.attach(pet);
 
   Preferences current;
   current.begin("tamapoke", true);
@@ -61,6 +61,49 @@ int main() {
   ck(strcmp(nickname, "BLAZE") != 0 && !current.isKey("party"),
      "unsupported contents do not survive the reset");
   current.end();
+
+  old.begin("tamapoke", false);
+  old.clear();
+  old.putUShort("savev", SAVE_STATE_VERSION_LEGACY);
+  old.putBool("init", true);
+  old.putShort("dexn", 59);
+  old.putString("nick", "BLAZE");
+  old.putUShort("badg", 0x0005);
+  old.end();
+
+  Pet migratedPet;
+  Party migratedParty;
+  migratedPet.begin();
+  migratedParty.begin();
+  migratedParty.attach(migratedPet);
+  ck(migratedPet.speciesId == 59 && !strcmp(migratedPet.nick, "BLAZE") &&
+         migratedPet.playerProgress().badges == 0x0005,
+     "schema v1 scalar data migrates into the current roster");
+
+  current.begin("tamapoke", true);
+  ck(current.getUShort("savev", 0) == SAVE_STATE_VERSION &&
+         current.getUShort("rostv", 0) == 4 && current.isKey("team2"),
+     "migration commits the current schema and roster snapshot");
+  ck(!current.isKey("init") && !current.isKey("dexn") &&
+         !current.isKey("nick") && !current.isKey("badg") &&
+         !current.isKey("party"),
+     "migration removes legacy scalar and roster keys");
+  current.end();
+
+  migratedPet.playerProgress().renameTrainer("CURRENT");
+  current.begin("tamapoke", true);
+  ck(!current.isKey("tnam") && current.isKey("team2"),
+     "current player saves update only the canonical snapshot");
+  current.end();
+
+  Pet reloadedPet;
+  Party reloadedParty;
+  reloadedPet.begin();
+  reloadedParty.begin();
+  reloadedParty.attach(reloadedPet);
+  ck(!strcmp(reloadedPet.playerProgress().trainerName, "CURRENT") &&
+         reloadedPet.speciesId == 59,
+     "the migrated current snapshot reloads without legacy keys");
 
   printf("%s\n", bad ? "FAILURES" : "all good");
   return bad ? 1 : 0;

@@ -1,5 +1,6 @@
 #include "inventory.h"
 #include "content.h"
+#include "perf.h"
 
 Inventory inventory;
 constexpr uint8_t MOVE_STONE_DROP_MOVE_MAX = 8;
@@ -39,6 +40,8 @@ bool Inventory::canAdd(ItemKey key, MoveId move) const {
 
 void Inventory::begin() {
   for (auto &stack : stacks) stack = InventoryStack();
+  batchDepth = 0;
+  batchDirty = false;
   prefs.begin("tamapoke", false);
   size_t stored = prefs.getBytesLength("items");
   if (stored == sizeof(stacks)) {
@@ -81,7 +84,7 @@ bool Inventory::add(ItemKey key, uint8_t amount, MoveId move) {
   stacks[index].key = key;
   stacks[index].move = move;
   stacks[index].count = next > INVENTORY_STACK_MAX ? INVENTORY_STACK_MAX : (uint8_t)next;
-  save();
+  persistChange();
   return true;
 }
 
@@ -90,7 +93,7 @@ bool Inventory::consume(ItemKey key, uint8_t amount, MoveId move) {
   if (index < 0 || !amount || stacks[index].count < amount) return false;
   stacks[index].count -= amount;
   if (!stacks[index].count) stacks[index] = InventoryStack();
-  save();
+  persistChange();
   return true;
 }
 
@@ -225,6 +228,23 @@ ItemRef Inventory::grantMechanicReward(ItemMechanicKind mechanic,
   return {};
 }
 
+void Inventory::beginBatch() {
+  if (batchDepth < UINT8_MAX) batchDepth++;
+}
+
+void Inventory::commitBatch() {
+  if (!batchDepth || --batchDepth) return;
+  if (batchDirty) save();
+  batchDirty = false;
+}
+
+void Inventory::persistChange() {
+  if (batchDepth) batchDirty = true;
+  else save();
+}
+
 void Inventory::save() {
+  uint32_t started = perfNowUs();
   prefs.putBytes("items", stacks, sizeof(stacks));
+  perfRecord(PERF_INVENTORY_SAVE, perfNowUs() - started, 1);
 }

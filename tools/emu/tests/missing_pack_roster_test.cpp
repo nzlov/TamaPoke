@@ -20,7 +20,7 @@ extern Party party;
 int main() {
   Preferences seed;
   seed.begin("tamapoke", false);
-  seed.putUShort("savev", SAVE_STATE_VERSION);
+  seed.putUShort("savev", SAVE_STATE_VERSION_LEGACY);
   seed.putBool("init", true);
   seed.putShort("dexn", 1);
 

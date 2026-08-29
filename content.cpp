@@ -27,7 +27,6 @@ constexpr uint8_t MAX_SECTIONS = 24;
 constexpr uint16_t COMMON_SIZE = 48;
 constexpr uint16_t SECTION_SIZE = 16;
 constexpr uint8_t MAX_PET_PACKS = CONTENT_MAX_REGIONS;
-constexpr uint8_t MAX_QUIZ_PACKS = MAX_PACKS;
 constexpr uint8_t MAX_QUIZ_LOCALES = 16;
 constexpr uint8_t MAX_STARTERS = 16;
 constexpr uint32_t UI_FONT_HEADER_SIZE = 8;
@@ -94,13 +93,14 @@ struct AbilityRuntime {
 
 static bool gAttempted = false;
 static bool gRegionsReady = false, gMoves = false;
-static PackRef gPacks[MAX_PACKS];
+static PackRef *gPacks = nullptr;
 static uint8_t gPackCount = 0;
 static RegionPackRuntime gRegionPacks[MAX_PET_PACKS];
 static uint8_t gRegionPackCount = 0;
 
 static DexEntry *gDex = nullptr;
 static SpriteRef *gSprites = nullptr;
+static uint16_t gDexCapacity = 0;
 static uint16_t gDexCount = 0;
 static char *gSpeciesNames[MAX_PET_PACKS] = {};
 
@@ -162,7 +162,8 @@ static uint8_t gUiCount = 0, gUiActive = 0xFF;
 static uint8_t *gUiStrings = nullptr, *gUiFont = nullptr, *gUiLayout = nullptr;
 static uint32_t gUiStringsSize = 0, gUiFontSize = 0, gUiLayoutSize = 0;
 static uint32_t gMechanicsHash = 2166136261u;
-static QuizPackRuntime gQuizPacks[MAX_QUIZ_PACKS];
+static QuizPackRuntime *gQuizPacks = nullptr;
+static uint8_t gQuizPackCapacity = 0;
 static uint8_t gQuizPackCount = 0;
 
 static const DexEntry MISSING_SPECIES = {
@@ -271,6 +272,19 @@ static void *contentAlloc(size_t size) {
 #endif
   if (ptr) memset(ptr, 0, size);
   return ptr;
+}
+
+static bool allocateSpeciesCatalog(uint16_t maxSpecies) {
+  uint16_t required = maxSpecies + 1;
+  if (gDex || gSprites || gDexCapacity) return false;
+  DexEntry *dex = (DexEntry *)contentAlloc(sizeof(DexEntry) * required);
+  SpriteRef *sprites = (SpriteRef *)contentAlloc(sizeof(SpriteRef) * required);
+  if (!dex || !sprites) { free(dex); free(sprites); return false; }
+  for (uint16_t i = 0; i < required; i++) sprites[i].pack = 0xFF;
+  gDex = dex;
+  gSprites = sprites;
+  gDexCapacity = required;
+  return true;
 }
 
 static bool readRange(const PackRef &pack, uint32_t offset, void *out, uint32_t size) {
@@ -437,6 +451,22 @@ static void scanPacks() {
   std::sort(gPacks, gPacks + gPackCount, [](const PackRef &a, const PackRef &b) {
     return strcmp(a.id, b.id) < 0;
   });
+}
+
+static uint16_t installedSpeciesMaximum() {
+  uint16_t maximum = 0;
+  for (uint8_t i = 0; i < gPackCount; i++) {
+    if (gPacks[i].kind != CONTENT_PACK_REGION) continue;
+    const SectionRef *region = findSection(gPacks[i], "REGN");
+    uint8_t row[54];
+    if (!region || region->count != 1 || region->size != sizeof(row) ||
+        !readRange(gPacks[i], region->offset, row, sizeof(row))) continue;
+    uint16_t lo = rd16(row + 17), hi = rd16(row + 19);
+    if (row[0] >= CONTENT_MAX_REGIONS || !lo || lo > hi ||
+        hi > CONTENT_MAX_SPECIES) continue;
+    if (hi > maximum) maximum = hi;
+  }
+  return maximum;
 }
 
 static bool validString(const uint8_t *blob, uint32_t size, uint32_t offset) {
@@ -1046,6 +1076,15 @@ static bool loadRegionPack(uint8_t packIndex) {
       evolutionSection->size != evolutionSection->count * 4u) {
     free(specs); free(names); free(regions); return false;
   }
+  uint16_t maxSpecies = 0;
+  for (uint32_t i = 0; i < specCount; i++) {
+    SpeciesId id = rd16(specs + i * 21u);
+    if (id > maxSpecies) maxSpecies = id;
+  }
+  if (!maxSpecies || maxSpecies > CONTENT_MAX_SPECIES ||
+      maxSpecies >= gDexCapacity) {
+    free(specs); free(names); free(regions); return false;
+  }
   SpeciesId *touched = (SpeciesId *)contentAlloc(sizeof(SpeciesId) * specCount);
   if (!touched) { free(specs); free(names); free(regions); return false; }
   uint32_t touchedCount = 0;
@@ -1075,15 +1114,6 @@ static bool loadRegionPack(uint8_t packIndex) {
   }
   free(regions);
 
-  if (!gDex) {
-    gDex = (DexEntry *)contentAlloc(sizeof(DexEntry) * (CONTENT_MAX_SPECIES + 1));
-    gSprites = (SpriteRef *)contentAlloc(sizeof(SpriteRef) * (CONTENT_MAX_SPECIES + 1));
-    if (!gDex || !gSprites) {
-      free(gDex); free(gSprites); gDex = nullptr; gSprites = nullptr;
-      rollback(); free(touched); free(specs); free(names); return false;
-    }
-    for (uint32_t i = 0; i <= CONTENT_MAX_SPECIES; i++) gSprites[i].pack = 0xFF;
-  }
   uint8_t runtimePack = gRegionPackCount;
   uint16_t firstSpecies = 0;
   uint8_t packRegion = 0xFF;
@@ -1339,7 +1369,7 @@ static bool parseQuizMeta(const PackRef &pack, QuizPackRuntime &runtime) {
 }
 
 static bool loadQuizMeta(uint8_t packIndex) {
-  if (gQuizPackCount >= MAX_QUIZ_PACKS) return false;
+  if (gQuizPackCount >= gQuizPackCapacity) return false;
   QuizPackRuntime runtime;
   if (!parseQuizMeta(gPacks[packIndex], runtime)) return false;
   runtime.packRef = packIndex;
@@ -1375,7 +1405,18 @@ static void ensureContent() {
 bool contentBegin() {
   if (gAttempted) return contentReady();
   gAttempted = true;
+  gPacks = (PackRef *)contentAlloc(sizeof(PackRef) * MAX_PACKS);
+  if (!gPacks) return false;
   scanPacks();
+  uint16_t installedMaximum = installedSpeciesMaximum();
+  if (installedMaximum && !allocateSpeciesCatalog(installedMaximum)) return false;
+  for (uint8_t i = 0; i < gPackCount; i++)
+    if (gPacks[i].kind == CONTENT_PACK_QUIZ) gQuizPackCapacity++;
+  if (gQuizPackCapacity) {
+    gQuizPacks = (QuizPackRuntime *)contentAlloc(
+        sizeof(QuizPackRuntime) * gQuizPackCapacity);
+    if (!gQuizPacks) return false;
+  }
   for (uint8_t i = 0; i < gPackCount; i++)
     if (gPacks[i].kind == CONTENT_PACK_MOVE && !gMoves) loadMovePack(i);
   for (uint8_t i = 0; i < gPackCount; i++)
@@ -1523,7 +1564,7 @@ bool contentChoiceQuestionAt(const char *locale, uint32_t index,
 uint16_t dexCount() { ensureContent(); return gDexCount; }
 bool dexValid(SpeciesId id) {
   ensureContent();
-  return id && id <= CONTENT_MAX_SPECIES && gDex && gDex[id].name;
+  return id && id < gDexCapacity && gDex && gDex[id].name;
 }
 const DexEntry &dexEntry(SpeciesId id) { return dexValid(id) ? gDex[id] : MISSING_SPECIES; }
 uint8_t evolutionCount(SpeciesId id) { return dexValid(id) ? gDex[id].evolutionCount : 0; }

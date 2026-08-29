@@ -217,11 +217,11 @@ int main(){
 
   // --- a restore must not leave anything of whatever was there before
   {
-    Pet p3; p3.begin();
+    Pet p3; Party q3; p3.begin(); q3.begin(); q3.attach(p3);
     player.badges = 0xFFFF;
     player.renameTrainer("GHOST");
     ck(saveImport(buf, n), "a second restore over a different save");
-    Pet p4; p4.begin();
+    Pet p4; Party q4; p4.begin(); q4.begin(); q4.attach(p4);
     ck(!strcmp(player.trainerName,"DYLAN") && player.badges==0x00BF,
        "overwrites it rather than merging with it");
   }

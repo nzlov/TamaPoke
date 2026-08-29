@@ -4,6 +4,7 @@
 #include "pet.h"
 #include "save.h"
 #include "wild.h"
+#include "perf.h"
 
 PlayerProgress player;
 
@@ -12,17 +13,18 @@ void PlayerProgress::begin() {
   roster = nullptr;
   prefs.begin("tamapoke", false);
   uint16_t storedVersion = prefs.getUShort("savev", 0);
-  if (storedVersion != SAVE_STATE_VERSION) {
+  if (storedVersion != SAVE_STATE_VERSION &&
+      storedVersion != SAVE_STATE_VERSION_LEGACY) {
     if (prefs.isKey("init") || prefs.isKey("savev"))
       Serial.printf("save schema %u unsupported; resetting\n", storedVersion);
     prefs.clear();
-    prefs.putUShort("savev", SAVE_STATE_VERSION);
+    // Fresh and reset games bootstrap through the legacy scalar layout until
+    // Party::attach can atomically create the first current roster snapshot.
+    prefs.putUShort("savev", SAVE_STATE_VERSION_LEGACY);
+    storedVersion = SAVE_STATE_VERSION_LEGACY;
   }
-  memset(dexReg, 0, sizeof(dexReg));
-  memset(dexShinyReg, 0, sizeof(dexShinyReg));
-  memset(badgesX, 0, sizeof(badgesX));
-  memset(badgesHardX, 0, sizeof(badgesHardX));
-  load();
+  restore(PlayerSnapshot());
+  if (storedVersion == SAVE_STATE_VERSION_LEGACY) load();
 }
 
 void PlayerProgress::attach(Pet &pet, Party &party) {
@@ -31,6 +33,7 @@ void PlayerProgress::attach(Pet &pet, Party &party) {
 }
 
 void PlayerProgress::saveKeys() {
+  uint32_t started = perfNowUs();
   prefs.putString("tnam", trainerName);
   prefs.putUChar("avtr", avatar);
   prefs.putUChar("reg", region);
@@ -49,13 +52,18 @@ void PlayerProgress::saveKeys() {
   prefs.putUShort("ghi", gameHi);
   prefs.putUShort("shi", strHi);
   prefs.putUShort("qhi", spdHi);
+  perfRecord(PERF_PLAYER_SAVE, perfNowUs() - started, 18);
 }
 
 void PlayerProgress::save() {
+  if (boundPet && roster) {
+    roster->captureActive(*boundPet, false);
+    roster->save();
+    return;
+  }
+  // This is only the pre-Party bootstrap/migration path. Normal firmware
+  // runtime is attached and therefore writes the current snapshot above.
   saveKeys();
-  if (!boundPet || !roster) return;
-  roster->captureActive(*boundPet, false);
-  roster->save();
 }
 
 void PlayerProgress::load() {
@@ -114,7 +122,6 @@ void PlayerProgress::restore(const PlayerSnapshot &in) {
   memcpy(badgesHardX, in.badgesHardX, sizeof(badgesHardX));
   memcpy(trainerName, in.trainerName, sizeof(trainerName));
   trainerName[sizeof(trainerName) - 1] = 0;
-  saveKeys();
 }
 
 bool PlayerProgress::isRegistered(int16_t dex) const {

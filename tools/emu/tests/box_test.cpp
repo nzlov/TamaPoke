@@ -130,7 +130,7 @@ int main(){
   // from the previous firmware must be mapped rather than appearing empty.
   {
     Preferences seed; seed.begin("tamapoke", false); seed.clear();
-    seed.putUShort("savev", SAVE_STATE_VERSION);
+    seed.putUShort("savev", SAVE_STATE_VERSION_LEGACY);
     seed.putBool("init", true);
     LegacyPartyMonV1 oldParty[PARTY_SLOTS];
     LegacyPartyMonV1 oldBox[18];
@@ -157,7 +157,7 @@ int main(){
   // It must keep every byte and receive one stable migrated nature.
   {
     Preferences seed; seed.begin("tamapoke", false); seed.clear();
-    seed.putUShort("savev", SAVE_STATE_VERSION);
+    seed.putUShort("savev", SAVE_STATE_VERSION_LEGACY);
     seed.putBool("init", true);
     LegacyPartyMonV2 oldParty[PARTY_SLOTS];
     LegacyPartyMonV2 oldBox[18];

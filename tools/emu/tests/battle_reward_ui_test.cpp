@@ -8,6 +8,7 @@
 #include "party.h"
 #include "pet.h"
 #include "motion.h"
+#include "perf.h"
 #include "ui_scroll.h"
 #include <cstdio>
 #include <cstring>
@@ -110,6 +111,7 @@ int main() {
   btlWild = true;
   btlLink = false;
   battleOpen = true;
+  uint32_t inventoryWrites = perfSample(PERF_INVENTORY_SAVE).nvsWrites;
   btlFinish(true);
   check(btlWinUntil && screenIs("win"),
         "defeating a wild creature opens the reward settlement page");
@@ -120,6 +122,8 @@ int main() {
         (btlRewardItemCount == 1 ||
          btlRewardItems[0].key != btlRewardItems[1].key),
         "a normal wild victory records one base reward and at most one distinct bonus");
+  check(perfSample(PERF_INVENTORY_SAVE).nvsWrites == inventoryWrites + 1,
+        "a multi-item wild reward commits the inventory once");
   gfx->frameReady = false;
   render();
   check(gfx->frameReady, "the reward settlement page flushes to the panel");
@@ -131,6 +135,7 @@ int main() {
   btlWild = true;
   btlLink = false;
   battleOpen = true;
+  inventoryWrites = perfSample(PERF_INVENTORY_SAVE).nvsWrites;
   btlFinish(true);
   check((btlRewardItemCount == 3 || btlRewardItemCount == 4) &&
         btlRewardItems[0].key != ITEM_KEY_NONE &&
@@ -140,6 +145,8 @@ int main() {
          (btlRewardItems[2].key != btlRewardItems[0].key &&
           btlRewardItems[2].key != btlRewardItems[1].key)),
         "a hard wild victory records two base rewards, an optional distinct bonus, and its mechanic reward");
+  check(perfSample(PERF_INVENTORY_SAVE).nvsWrites == inventoryWrites + 1,
+        "hard-mode item and mechanic rewards share one inventory commit");
   btlRewardTraining[0] = btlRewardTraining[1] = btlRewardTraining[2] = 1;
   btlRewardItemCount = 0;
   for (uint16_t i = 0; i < itemCount() && btlRewardItemCount < 4; i++) {
