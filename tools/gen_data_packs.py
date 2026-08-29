@@ -27,7 +27,7 @@ KIND_REGION = 2
 KIND_MOVE = 3
 
 sys.path.insert(0, str(HERE))
-from pack_format import PACK_ABI, PACK_REVISION, pack  # noqa: E402
+from pack_format import PACK_ABI, PACK_REVISION, pack, pack_content_version  # noqa: E402
 from pmd_layout import pmd_display_scale, pmd_pair_display_scale  # noqa: E402
 from quiz_pack import build_quiz_pack  # noqa: E402
 from dex_data import (  # noqa: E402
@@ -985,6 +985,7 @@ def pack_manifest(path: Path, kind: str, pack_id: str, locales: list[str],
         "kind": kind,
         "abi": PACK_ABI,
         "revision": revision,
+        "contentVersion": f"{pack_content_version(blob):08x}",
         "file": path.name,
         "size": len(blob),
         "crc32": f"{binascii.crc32(blob) & 0xFFFFFFFF:08x}",

@@ -61,7 +61,7 @@ required_fragments = [
     "progress-percent", "deploy-error", "BOARD_ERRORS",
     "reportDeploymentError", "transferred === total ? total * .999",
     "confirmDependencyOverride", "installedPackIds", "ignore dependencies",
-    "web-firmware-version", "target-firmware-version", "web revision",
+    "web-firmware-version", "target-firmware-version", "web version", "SD version",
     "runCommand('INFO'", "versions match", "versions differ",
     "format-overlay", ".loading-overlay[hidden]", "Formatting microSD as FAT32…",
     "formatOverlay.hidden = false",
@@ -88,12 +88,18 @@ for cleanup in ("formatOverlay.hidden = true", "document.body.removeAttribute('a
 
 catalog_renderer = html.split("function renderCatalog(index) {", 1)[1].split(
     "async function loadCatalog()", 1)[0]
-if "web revision" in catalog_renderer:
-    raise SystemExit("pending deployment catalogue must not show redundant pack revisions")
+if "web version" not in catalog_renderer or "pkg.contentVersion" not in catalog_renderer:
+    raise SystemExit("deployment catalogue must show content-derived web pack versions")
 installed_renderer = html.split("async function refreshInstalledPacks() {", 1)[1].split(
     "async function deleteInstalledPack", 1)[0]
-if "target revision" not in installed_renderer or "web revision" not in installed_renderer:
-    raise SystemExit("installed packs must retain target and web revision comparison")
+if "SD version" not in installed_renderer or "web version" not in installed_renderer:
+    raise SystemExit("installed packs must compare SD and web content versions")
+pack_parser = html.split("function parseInstalledPack(line) {", 1)[1].split(
+    "async function queryInstalledPacks()", 1)[0]
+for fragment in ("const versioned", "contentVersion: versioned[4].toLowerCase()",
+                 "const detailed", "contentVersion: null"):
+    if fragment not in pack_parser:
+        raise SystemExit(f"installed-pack parser is missing compatibility path {fragment!r}")
 
 for build in manifest.get("builds", []):
     for part in build.get("parts", []):
@@ -227,8 +233,8 @@ for fragment in ('consume(chunk)', 'async readFile(path, progress = null)',
                  '`GET ${path}\\n`', "waitFor('DONE', 120000"):
     if fragment not in serial_client:
         raise SystemExit(f"shared Web Serial download is missing {fragment!r}")
-if 'Serial.printf("PACK\\t%s\\t%lu\\t%u\\t%s' not in sdmon:
-    raise SystemExit("firmware must report installed package ids and revisions")
+if 'Serial.printf("PACK\\t%s\\t%lu\\t%u\\t%08lx\\t%s' not in sdmon:
+    raise SystemExit("firmware must report installed package content versions")
 if 'contentReadPackInfo' not in content or 'line == "INFO"' not in firmware or 'FW\\t%s' not in firmware:
     raise SystemExit("firmware must expose package and firmware versions through INFO")
 for reason in ("SD_NOT_READY", "WRITE_FAILED", "READ_TIMEOUT", "PACK_VALIDATION_FAILED",

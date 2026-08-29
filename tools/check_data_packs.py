@@ -9,7 +9,7 @@ import struct
 from pathlib import Path
 
 from pmd_layout import pmd_display_scale, pmd_pair_display_scale
-from pack_format import PACK_ABI
+from pack_format import PACK_ABI, pack_content_version
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -149,6 +149,8 @@ def validate(path: Path, expected: dict) -> None:
         raise ValueError(f"{path.name}: payload CRC mismatch")
     if expected["crc32"] != f"{binascii.crc32(raw) & 0xFFFFFFFF:08x}":
         raise ValueError(f"{path.name}: download CRC mismatch")
+    if expected.get("contentVersion") != f"{pack_content_version(raw):08x}":
+        raise ValueError(f"{path.name}: content version mismatch")
     ranges = []
     tags = set()
     sections = {}

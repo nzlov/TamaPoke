@@ -32,6 +32,9 @@ extern "C" int __wrap_fseek(FILE *stream, long offset, int origin) {
 int main() {
   bool ok = contentValidatePackFile(PACK_READER_FIXTURE) == CONTENT_PACK_VALID;
   bool sequential = seekCount == 5;
+  ContentPackInfo info{};
+  bool contentVersion = contentReadPackInfo(PACK_READER_FIXTURE, info) &&
+      info.contentVersion == 0x502E4C39u;
   FILE *source = fopen(PACK_READER_FIXTURE, "rb");
   __real_fseek(source, 0, SEEK_END);
   long size = ftell(source);
@@ -74,6 +77,8 @@ int main() {
   contentBegin();
   bool discoverySkipsCrc = installedCorrupt && contentPackCount() == 1;
   printf("%s  pack validation tolerates short filesystem reads\n", ok ? "PASS" : "FAIL");
+  printf("%s  pack metadata exposes the content-derived version\n",
+         contentVersion ? "PASS" : "FAIL");
   printf("%s  payload CRC uses one sequential filesystem scan\n",
          sequential ? "PASS" : "FAIL");
   printf("%s  pack validation reports the failing format stage\n",
@@ -82,5 +87,5 @@ int main() {
          abi2Rejected ? "PASS" : "FAIL");
   printf("%s  startup discovers packs without rescanning payload CRC\n",
          discoverySkipsCrc ? "PASS" : "FAIL");
-  return ok && sequential && precise && abi2Rejected && discoverySkipsCrc ? 0 : 1;
+  return ok && contentVersion && sequential && precise && abi2Rejected && discoverySkipsCrc ? 0 : 1;
 }

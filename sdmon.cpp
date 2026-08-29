@@ -159,7 +159,7 @@ bool sdBegin() {
 //   PUT <ruta> <bytes>\n  + datos crudos   -> "OK" ... "DONE"
 //   GET <ruta>\n -> "FILE <bytes>"; cliente "OK"; datos crudos; "DONE"
 //   LS\n                                   -> listado de /packs
-//   INFO\n                                 -> firmware + id/revision/tamano/ruta
+//   INFO\n                                 -> firmware + id/revision/tamano/version/ruta
 //   RM <ruta>\n                            -> borra un paquete de /packs
 //   FORMAT\n                              -> reformatea FAT32 y recrea /packs
 // Usar con tools/send_sd.py
@@ -244,8 +244,9 @@ void sdSerialPackInfo() {
     ContentPackInfo info{};
     if (!entry.isDirectory() && isPackPath(path)) {
       if (contentReadPackInfo(path.c_str(), info)) {
-        Serial.printf("PACK\t%s\t%lu\t%u\t%s\n", info.id,
-                      (unsigned long)info.revision, size, path.c_str());
+        Serial.printf("PACK\t%s\t%lu\t%u\t%08lx\t%s\n", info.id,
+                      (unsigned long)info.revision, size,
+                      (unsigned long)info.contentVersion, path.c_str());
       } else {
         Serial.printf("FILE\t%u\t%s\n", size, path.c_str());
       }

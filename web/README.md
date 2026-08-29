@@ -39,8 +39,10 @@ After connecting through Web Serial, the SD card management area lists the
 resource packs currently deployed in `/packs`, allows individual packs to be
 deleted, and can erase all microSD contents. Delete and format operations require
 confirmation; restart the board afterward before deploying or playing. Current
-firmware reports each installed pack ID and revision through `INFO`, so the page
-shows target and web-catalogue revisions side by side. The same response exposes
+firmware reports each installed pack ID and content-derived version through `INFO`,
+so the page shows the SD and web-catalogue versions side by side and marks whether
+they match. Rebuilding unchanged pack content produces the same version without
+changing the pack ABI. The same response exposes
 the target firmware version, which is displayed next to the version from
 `manifest.json`. Older firmware automatically falls back to the size-only `LS`
 listing.

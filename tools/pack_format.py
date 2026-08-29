@@ -19,6 +19,22 @@ def fourcc(tag: str) -> bytes:
     return raw
 
 
+def pack_content_version(blob: bytes) -> int:
+    """Return a stable version for the runtime-relevant bytes of a pack."""
+    if len(blob) < COMMON.size:
+        raise ValueError("pack is smaller than its common header")
+    (_magic, _abi, _kind, _flags, file_size, _payload_crc, _revision,
+     _mechanics_hash, header_size, section_count, _ident) = COMMON.unpack_from(blob)
+    if file_size != len(blob) or header_size != COMMON.size + section_count * SECTION.size \
+            or header_size > len(blob):
+        raise ValueError("pack has an inconsistent header")
+    # GLUE: Mirror contentReadPackInfo's wire-format identity until a future pack
+    # ABI stores a content version directly. Revision is deliberately excluded;
+    # the stored payload CRC represents the large payload.
+    version = binascii.crc32(blob[:16])
+    return binascii.crc32(blob[20:header_size], version) & 0xFFFFFFFF
+
+
 def pack(kind: int, pack_id: str, mechanics_hash: int,
          sections: list[tuple[str, bytes, int]], revision: int = PACK_REVISION) -> bytes:
     encoded_id = pack_id.encode("ascii")

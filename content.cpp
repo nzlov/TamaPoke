@@ -1459,9 +1459,18 @@ bool contentReadPackInfo(const char *path, ContentPackInfo &out) {
   Reader reader;
   uint8_t common[COMMON_SIZE];
   if (!readPackHeader(path, reader, common)) return false;
+  uint16_t headerSize = rd16(common + 24);
+  uint16_t directorySize = headerSize - COMMON_SIZE;
+  uint8_t directory[MAX_SECTIONS * SECTION_SIZE];
+  if (!reader.readAt(COMMON_SIZE, directory, directorySize)) return false;
   memcpy(out.id, common + 28, 20);
   out.id[20] = 0;
   out.revision = rd32(common + 16);
+  // GLUE: Mirror pack_content_version's wire-format identity until a future pack
+  // ABI stores it directly. The common header already carries the payload CRC.
+  out.contentVersion = crcStep(0, common, 16);
+  out.contentVersion = crcStep(out.contentVersion, common + 20, COMMON_SIZE - 20);
+  out.contentVersion = crcStep(out.contentVersion, directory, directorySize);
   return out.id[0] != 0;
 }
 

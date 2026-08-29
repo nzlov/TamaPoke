@@ -150,8 +150,8 @@
     <pre id="log"></pre>
 
     <h3>SD card management</h3>
-    <p class="note">List or remove deployed resource packs and compare their target
-       revision with the current web catalogue. Formatting rebuilds the FAT32 filesystem
+    <p class="note">List or remove deployed resource packs and compare their content
+       version with the current web catalogue. Formatting rebuilds the FAT32 filesystem
        and erases every file on the microSD; restart the board afterwards.</p>
     <div class="row">
       <button id="refresh-packs" disabled>↻ Refresh installed packs</button>
@@ -358,7 +358,8 @@ function renderCatalog(index) {
       name.textContent = packageLabel(pkg);
       const detail = document.createElement('small');
       const locales = pkg.locales?.length ? ` · ${pkg.locales.join(', ')}` : '';
-      detail.textContent = `${pkg.id} · ${formatSize(pkg.size)}${locales}`;
+      const version = pkg.contentVersion || 'unavailable';
+      detail.textContent = `${pkg.id} · web version ${version} · ${formatSize(pkg.size)}${locales}`;
       text.append(name, detail);
       label.append(input, text);
       list.append(label);
@@ -431,25 +432,36 @@ function setSdManagementBusy(busy) {
 }
 
 function parseInstalledPack(line) {
+  const versioned = line.match(/^PACK\t([^\t]+)\t(\d+)\t(\d+)\t([0-9a-fA-F]{8})\t(.+)$/);
+  if (versioned) {
+    const name = versioned[5].split('/').pop();
+    return /\.(tui|tmove|tregion|tquiz)$/.test(name)
+      ? { id: versioned[1], revision: Number(versioned[2]), size: Number(versioned[3]),
+          contentVersion: versioned[4].toLowerCase(), name }
+      : null;
+  }
   const detailed = line.match(/^PACK\t([^\t]+)\t(\d+)\t(\d+)\t(.+)$/);
   if (detailed) {
     const name = detailed[4].split('/').pop();
     return /\.(tui|tmove|tregion|tquiz)$/.test(name)
-      ? { id: detailed[1], revision: Number(detailed[2]), size: Number(detailed[3]), name }
+      ? { id: detailed[1], revision: Number(detailed[2]), size: Number(detailed[3]),
+          contentVersion: null, name }
       : null;
   }
   const physical = line.match(/^FILE\t(\d+)\t(.+)$/);
   if (physical) {
     const name = physical[2].split('/').pop();
     return /\.(tui|tmove|tregion|tquiz)$/.test(name)
-      ? { id: packageByFile.get(name)?.id, revision: null, size: Number(physical[1]), name }
+      ? { id: packageByFile.get(name)?.id, revision: null, size: Number(physical[1]),
+          contentVersion: null, name }
       : null;
   }
   const legacy = line.match(/^(.*) (\d+)$/);
   if (!legacy) return null;
   const name = legacy[1].split('/').pop();
   return /\.(tui|tmove|tregion|tquiz)$/.test(name)
-    ? { id: packageByFile.get(name)?.id, revision: null, size: Number(legacy[2]), name }
+    ? { id: packageByFile.get(name)?.id, revision: null, size: Number(legacy[2]),
+        contentVersion: null, name }
     : null;
 }
 
@@ -497,12 +509,14 @@ async function refreshInstalledPacks() {
       name.textContent = pack.name;
       const size = document.createElement('small');
       const webPack = packageById.get(pack.id) || packageByFile.get(pack.name);
-      const targetRevision = pack.revision === null ? 'target revision unavailable'
-        : `target revision ${pack.revision}`;
-      const webRevision = webPack ? `web revision ${webPack.revision}` : 'not in web catalogue';
-      const match = webPack && pack.revision !== null
-        ? (pack.revision === webPack.revision ? ' · versions match' : ' · versions differ') : '';
-      size.textContent = `${formatSize(pack.size)} · ${targetRevision} · ${webRevision}${match}`;
+      const sdVersion = pack.contentVersion
+        ? `SD version ${pack.contentVersion}` : 'SD version unavailable';
+      const webVersion = webPack?.contentVersion
+        ? `web version ${webPack.contentVersion}` : (webPack ? 'web version unavailable' : 'not in web catalogue');
+      const match = webPack?.contentVersion && pack.contentVersion
+        ? (pack.contentVersion === webPack.contentVersion
+            ? ' · versions match' : ' · versions differ') : '';
+      size.textContent = `${formatSize(pack.size)} · ${sdVersion} · ${webVersion}${match}`;
       text.append(name, size);
       const remove = document.createElement('button');
       remove.className = 'danger';

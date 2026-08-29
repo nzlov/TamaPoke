@@ -58,6 +58,7 @@ enum ContentPackValidation : uint8_t {
 struct ContentPackInfo {
   char id[21];
   uint32_t revision;
+  uint32_t contentVersion;
 };
 
 struct MegaFormEntry {

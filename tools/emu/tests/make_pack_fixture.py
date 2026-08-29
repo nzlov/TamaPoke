@@ -9,7 +9,7 @@ from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
-from pack_format import PACK_ABI  # noqa: E402
+from pack_format import PACK_ABI, pack_content_version  # noqa: E402
 
 
 # Large enough to cross several of the firmware reader's 4 KiB CRC chunks.
@@ -23,4 +23,11 @@ raw = common.pack(
     header_size, 1, b"reader-test".ljust(20, b"\0"),
 )
 raw += section.pack(b"TEST", header_size, len(payload), 1) + payload
+assert pack_content_version(raw) == 0x502E4C39
+changed_revision = bytearray(raw)
+changed_revision[16] ^= 1
+assert pack_content_version(changed_revision) == 0x502E4C39
+changed_mechanics = bytearray(raw)
+changed_mechanics[20] ^= 1
+assert pack_content_version(changed_mechanics) != 0x502E4C39
 Path(sys.argv[1]).write_bytes(raw)

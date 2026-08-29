@@ -75,8 +75,10 @@ package's ABI and CRC. Missing required packages open the built-in USB recovery
 screen instead of an incomplete Pokédex, and an interrupted upload cannot
 replace a working package.
 
-After connecting, the installer also lists deployed package IDs and revisions,
-can delete an individual package, and can format the microSD. Delete and format
+After connecting, the installer shows each Web package's content-derived version,
+lists the version installed on the microSD, and marks whether they match. Unchanged
+package content keeps the same version across repeated Pages builds. The installer
+can also delete an individual package and format the microSD. Delete and format
 operations require confirmation; restart the device after changing the card.
 
 > **Upgrade note:** the first migration to runtime packages clears saves made by
