@@ -106,16 +106,19 @@ int main() {
      "a wild foe does not flee above forty percent HP");
   ck(wildFoeEscapeChance(40, 100) == 10,
      "a wild foe has ten percent escape chance at forty percent HP");
-  ck(wildFoeEscapeChance(25, 100) == 20,
-     "wild foe escape chance rises linearly as HP falls");
-  ck(wildFoeEscapeChance(10, 100) == 30 &&
-     wildFoeEscapeChance(1, 100) == 30,
-     "wild foe escape chance reaches and keeps its thirty percent cap");
+  ck(wildFoeEscapeChance(30, 100) == 15 &&
+     wildFoeEscapeChance(20, 100) == 20,
+     "wild foe escape chance rises linearly from forty to twenty percent HP");
+  ck(wildFoeEscapeChance(15, 100) == 15 &&
+     wildFoeEscapeChance(10, 100) == 10 &&
+     wildFoeEscapeChance(1, 100) == 10,
+     "wild foe escape chance falls linearly to ten percent and stays there");
   ck(wildFoeEscapeChance(0, 100) == 0 && wildFoeEscapeChance(10, 0) == 0,
      "fainted foes and invalid HP cannot escape");
   ck(wildFoeEscapeChance(41, 100, true) == 5 &&
      wildFoeEscapeChance(40, 100, true) == 15 &&
-     wildFoeEscapeChance(10, 100, true) == 35,
+     wildFoeEscapeChance(20, 100, true) == 25 &&
+     wildFoeEscapeChance(10, 100, true) == 15,
      "anger adds five percentage points to wild escape chance");
   ck(wildFoeEscapeChance(0, 100, true) == 0 &&
      wildFoeEscapeChance(10, 0, true) == 0,

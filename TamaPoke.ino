@@ -5590,6 +5590,8 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
   BattleMechanic foeMechanic = BMECH_NONE;
   uint8_t foePercent = 100;
   bool foeSwitched = false;
+  bool foeWantsRun = false;
+  uint8_t foeRunRoll = 100;
   uint32_t now = millis();
   if (btlLink) {
     // Off the wire, never from the AI. A switch is carried in the same message
@@ -5618,11 +5620,20 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
     lan.pendingMechanic = BMECH_NONE;
     lan.pendingMegaForm = MEGA_FORM_NONE;
   } else {
-    foeMove = aiChooseMove(btlFoe, btlYou, btlField, btlHard);
+    if (btlWild) {
+      uint8_t foeRunChance =
+          wildFoeEscapeChance(btlFoe.hp, btlFoe.maxHp, btlFoe.angry);
+      if (foeRunChance) {
+        foeRunRoll = (uint8_t)random(100);
+        foeWantsRun = foeRunRoll < foeRunChance;
+      }
+    }
+    foeMove = foeWantsRun ? MOVE_NONE
+                          : aiChooseMove(btlFoe, btlYou, btlField, btlHard);
   }
   (void)foeSwitched;
 
-  if (btlWild && btlWildMechanic != BMECH_NONE &&
+  if (!foeWantsRun && btlWild && btlWildMechanic != BMECH_NONE &&
       battleMechanicAvailable(btlFoeMechanics, btlFoe, btlWildMechanic, foeMove,
                               btlWildMegaForm)) {
     foeMechanic = btlWildMechanic;
@@ -5649,25 +5660,38 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
   uint8_t bSide = aSide ^ 1u;
 
   uint16_t hp0You = btlYou.hp, hp0Foe = btlFoe.hp;
-  battleAct(*a, *b, btlField, ma, lg, a == &btlYou ? yourPercent : foePercent,
-            aSide);
-  btlNarrate(*a, *b, lg);
-  if (lg.damage && !lg.hurtSelf) btlLungeUntil[a == &btlYou ? 0 : 1] = now + BTL_LUNGE_MS;
+  if (a == &btlFoe && foeWantsRun) {
+    if (btlAttemptFoeRun(foeRunRoll)) return;
+  } else {
+    battleAct(*a, *b, btlField, ma, lg, a == &btlYou ? yourPercent : foePercent,
+              aSide);
+    btlNarrate(*a, *b, lg);
+    if (lg.damage && !lg.hurtSelf)
+      btlLungeUntil[a == &btlYou ? 0 : 1] = now + BTL_LUNGE_MS;
+  }
   bool skipSecond = false;
   if (lg.switchRequest == BSWITCH_TARGET && btlReplaceFirstAvailable(bSide))
     skipSecond = true;
   else if (lg.switchRequest == BSWITCH_USER)
     btlReplaceFirstAvailable(aSide);
   if (!skipSecond && !b->fainted()) {
-    battleAct(*b, *a, btlField, mb, lg, b == &btlYou ? yourPercent : foePercent,
-              bSide);
-    btlNarrate(*b, *a, lg);
-    if (lg.damage && !lg.hurtSelf)
-      btlLungeUntil[b == &btlYou ? 0 : 1] = now + BTL_LUNGE_MS + BTL_LUNGE_MS;
-    if (lg.switchRequest == BSWITCH_TARGET)
-      btlReplaceFirstAvailable(aSide);
-    else if (lg.switchRequest == BSWITCH_USER)
-      btlReplaceFirstAvailable(bSide);
+    if (b == &btlFoe && foeWantsRun) {
+      if (btlYou.fainted()) {
+        btlHandleFaints();
+        if (btlOver) return;
+      }
+      if (btlAttemptFoeRun(foeRunRoll)) return;
+    } else {
+      battleAct(*b, *a, btlField, mb, lg, b == &btlYou ? yourPercent : foePercent,
+                bSide);
+      btlNarrate(*b, *a, lg);
+      if (lg.damage && !lg.hurtSelf)
+        btlLungeUntil[b == &btlYou ? 0 : 1] = now + BTL_LUNGE_MS + BTL_LUNGE_MS;
+      if (lg.switchRequest == BSWITCH_TARGET)
+        btlReplaceFirstAvailable(aSide);
+      else if (lg.switchRequest == BSWITCH_USER)
+        btlReplaceFirstAvailable(bSide);
+    }
   }
   // whoever actually lost health flinches, whichever side dealt it
   if (btlYou.hp < hp0You) btlHitUntil[0] = now + BTL_HIT_MS;
@@ -5688,8 +5712,6 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
   // Persist deaths and either queue replacements or finish the battle. The
   // replacement itself remains deferred until the faint message is dismissed.
   btlHandleFaints();
-  if (btlWild && !btlLink && !btlOver)
-    btlAttemptFoeRun((uint8_t)random(100));
 }
 
 static void btlHpBar(int x, int y, int w, const Combatant &c, uint16_t shown) {
@@ -6647,10 +6669,8 @@ bool btlAttemptRun(uint8_t roll) {
   sfxPlay(SFX_DENY);
   btlMenu = 0;
   btlMsgCount = 0;
-  btlYou.hp = 0;
   btlSay("%s", T(S_BTL_RUN_FAILED));
-  btlSay(T(S_BTL_FAINT), displayCombatantName(btlYou));
-  btlHandleFaints();
+  btlResolve(MOVE_NONE, 100, BMECH_NONE);
   return false;
 }
 

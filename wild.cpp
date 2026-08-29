@@ -48,10 +48,13 @@ uint8_t wildFoeEscapeChance(uint16_t hp, uint16_t maxHp, bool angry) {
   uint32_t scaledHp = (uint32_t)hp * 100U;
   uint8_t chance = 0;
   if (scaledHp <= (uint32_t)maxHp * 10U) {
-    chance = 30;
+    chance = 10;
+  } else if (scaledHp <= (uint32_t)maxHp * 20U) {
+    uint32_t aboveTen = scaledHp - (uint32_t)maxHp * 10U;
+    chance = (uint8_t)(10U + aboveTen * 10U / ((uint32_t)maxHp * 10U));
   } else if (scaledHp <= (uint32_t)maxHp * 40U) {
     uint32_t belowForty = (uint32_t)maxHp * 40U - scaledHp;
-    chance = (uint8_t)(10U + belowForty * 20U / ((uint32_t)maxHp * 30U));
+    chance = (uint8_t)(10U + belowForty * 10U / ((uint32_t)maxHp * 20U));
   }
   if (angry) chance = (uint8_t)(chance + WILD_ANGRY_ESCAPE_BONUS);
   return chance;

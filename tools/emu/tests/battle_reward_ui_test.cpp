@@ -47,11 +47,11 @@ extern bool btlHard;
 extern int8_t btlTrainer;
 extern bool btlLink;
 extern uint8_t btlSquadN, btlEnteredMask, btlWildMechanic;
-extern uint8_t btlMenu, btlItemPage;
+extern uint8_t btlMenu, btlItemPage, btlMsgCount;
 extern bool btlTapDebounceArmed;
 extern int8_t btlSquadSource[];
 extern uint32_t btlWinUntil;
-extern bool btlCaptureAnimating, btlCaptureSuccess;
+extern bool btlCaptureAnimating, btlCaptureSuccess, btlCaptureCuePlayed;
 extern uint32_t btlCaptureStartedAt;
 extern ItemKey btlCaptureItem;
 extern ThrowGestureDetector btlThrowDetector;
@@ -75,6 +75,12 @@ static void check(bool ok, const char *what) {
 
 static bool screenIs(const char *name) {
   return std::strcmp(SCREEN_NAME[uiCurrentScreen()], name) == 0;
+}
+
+static MoveId findMove(const char *name) {
+  for (MoveId id = 1; id < moveCount(); id++)
+    if (!std::strcmp(moveEntry(id).name, name)) return id;
+  return MOVE_NONE;
 }
 
 int main() {
@@ -299,15 +305,54 @@ int main() {
   gymRegion = 0;
   startTrainerBattle(0, false);
   check(battleOpen && btlSquadN == 1, "a one-member gym battle starts");
-  check(!btlAttemptRun(99) && btlOver && !btlWon && !pet.isDead(),
-        "a gym defeat ends the battle without killing the active pet");
-  btlYou.hp = btlYou.maxHp;
+  for (MoveId &move : btlFoe.moves) move = MOVE_NONE;
+  uint16_t hpBeforeRun = btlYou.hp;
+  check(!btlAttemptRun(99) && !btlOver && !pet.isDead() && btlYou.hp == hpBeforeRun,
+        "a failed gym escape consumes the turn without forcing a defeat");
   btlWild = true;
+  check(!btlAttemptRun(99) && !btlOver && !pet.isDead() && btlYou.hp == hpBeforeRun,
+        "a failed wild escape also leaves death to normal enemy damage");
+  MoveId tackle = findMove("TACKLE");
+  btlYou.maxHp = btlYou.hp = 1000;
+  btlFoe.moves[0] = tackle;
+  check(tackle && !btlAttemptRun(99) && !btlOver && !pet.isDead() &&
+        btlYou.hp > 0 && btlYou.hp < 1000,
+        "the opponent takes its normal action after a failed escape");
+
+  btlCaptureAnimating = true;
+  btlCaptureSuccess = false;
+  btlCaptureCuePlayed = false;
+  btlCaptureStartedAt = 1000;
+  btlCaptureItem = masterBall ? masterBall->key : ITEM_KEY_NONE;
+  btlFoe.angry = false;
+  btlFoe.maxHp = 100;
+  btlFoe.hp = 40;
+  for (MoveId &move : btlFoe.moves) move = MOVE_NONE;
+  btlFoe.moves[0] = tackle;
+  btlYou.maxHp = btlYou.hp = 1000;
   btlOver = false;
-  btlWon = false;
+  btlMsgCount = 0;
   battleOpen = true;
-  check(!btlAttemptRun(99) && btlOver && !btlWon && pet.isDead(),
-        "the same defeat still kills the active pet in a wild encounter");
+  randomSeed(23);  // The first 0..99 roll is 1, inside the angry 15% escape band.
+  btlUpdateCapture(btlCaptureStartedAt + 4250);
+  check(!btlCaptureAnimating && btlOver && !pet.isDead() && btlYou.hp == 1000,
+        "a wild foe escaping after a failed capture uses its action instead of attacking");
+
+  btlCaptureAnimating = true;
+  btlCaptureSuccess = false;
+  btlCaptureCuePlayed = false;
+  btlCaptureStartedAt = 1000;
+  btlCaptureItem = masterBall ? masterBall->key : ITEM_KEY_NONE;
+  btlFoe.angry = false;
+  btlFoe.hp = 40;
+  btlYou.hp = 1000;
+  btlOver = false;
+  btlMsgCount = 0;
+  battleOpen = true;
+  randomSeed(1);  // The first 0..99 roll is 38, outside the angry escape band.
+  btlUpdateCapture(btlCaptureStartedAt + 4250);
+  check(!btlCaptureAnimating && !btlOver && !pet.isDead() && btlYou.hp < 1000,
+        "a wild foe that stays after a failed capture still attacks normally");
 
   std::puts(bad ? "FAILURES" : "capture is settled and stored through the reward flow");
   return bad ? 1 : 0;

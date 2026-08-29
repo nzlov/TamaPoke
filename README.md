@@ -349,7 +349,12 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
   settlement page. After breaking free, the creature enters a non-stacking Angry
   state for the rest of the battle: its angry animation keeps playing, its five
   non-HP battle stats rise by 5%, and its escape chance gains 5 percentage points.
-  HP is unchanged; it returns to its battle position before UI resumes.
+  The base escape chance is 10% at 40% HP, rises linearly to 20% at 20% HP,
+  then falls linearly to 10% at 10% HP and remains there below 10% HP. HP is
+  unchanged; it returns to its battle position before UI resumes. A wild creature
+  that chooses to flee uses its action to do so instead of also attacking.
+- A failed escape consumes the player's turn and lets the opponent act normally.
+  The active creature only faints if actual battle damage reduces its HP to zero.
 - Gym and linked battles select from exactly the six cultivation slots.
 
 ### Three ways a creature leaves

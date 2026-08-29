@@ -17,6 +17,7 @@
 #include "trainers.h"
 #include "quiz.h"
 #include <chrono>
+#include <cstring>
 #include <thread>
 #include <string>
 #include <deque>
@@ -107,6 +108,12 @@ static void click(int x, int y) {
 static void directBattleTap(int x, int y) {
   std::this_thread::sleep_for(std::chrono::milliseconds(310));
   battleTap(x, y);
+}
+
+static MoveId findMove(const char *name) {
+  for (MoveId id = 1; id < moveCount(); id++)
+    if (!std::strcmp(moveEntry(id).name, name)) return id;
+  return MOVE_NONE;
 }
 
 static bool answerActiveQuiz() {
@@ -598,7 +605,7 @@ int main(int argc, char **argv) {
   if (btlYou.level != 14) { printf("FAIL: easy mode did not cap the level\n"); return 1; }
   printf("PASS: easy mode caps the level as well\n");
 
-  // ---- failed escape, persistent team death, revive, and burial
+  // ---- failed escape turn, persistent team death, revive, and burial
   battleOpen = false; btlMenu = 0; btlMsgCount = 0;
   for (int i = 0; i < PARTY_SLOTS; i++) party.releaseAt(i);
   for (int i = 0; i < BOX_SLOTS; i++) party.boxReleaseAt(i);
@@ -637,11 +644,25 @@ int main(int argc, char **argv) {
   printf("PASS: a low-HP wild foe can escape without killing the player's pet\n");
   directBattleTap(0, 0);
   startBattle(150, 100);
-  if (btlAttemptRun(99) || !pet.isDead() || btlOver || btlSwapWho != 0) {
-    printf("FAIL: a failed escape did not kill the active pet and queue its reserve\n");
+  btlWild = true;
+  MoveId tackle = findMove("TACKLE");
+  if (!tackle) {
+    printf("FAIL: death test could not find TACKLE\n"); return 1;
+  }
+  for (MoveId &move : btlFoe.moves) move = MOVE_NONE;
+  uint16_t hpBeforeRun = btlYou.hp;
+  if (btlAttemptRun(99) || pet.isDead() || btlOver || btlYou.hp != hpBeforeRun) {
+    printf("FAIL: a failed escape killed the active pet without an enemy attack\n");
     return 1;
   }
-  printf("PASS: a failed escape kills the active pet but continues with a reserve\n");
+  printf("PASS: a failed escape consumes the turn without forcing death\n");
+  btlYou.hp = 1;
+  btlFoe.moves[0] = tackle;
+  if (btlAttemptRun(99) || !pet.isDead() || btlOver || btlSwapWho != 0) {
+    printf("FAIL: the enemy attack after a failed escape did not queue the dead pet's reserve\n");
+    return 1;
+  }
+  printf("PASS: a real enemy attack after a failed escape can still kill the active pet\n");
   directBattleTap(0, 0);                     // faint text -> reserve enters
   directBattleTap(0, 0);                     // clear GO text
   if (btlSquadAt != 1 || btlYou.dex != reserve.dex) {
@@ -667,11 +688,15 @@ int main(int argc, char **argv) {
   printf("PASS: a battle item revives a dead team member persistently\n");
   while (btlMsgCount && !btlOver) directBattleTap(0, 0);
 
+  btlYou.hp = 1;
+  btlFoe.moves[0] = tackle;
   if (btlAttemptRun(99) || !party.slots[reserveSlot].dead() || btlOver) {
-    printf("FAIL: the reserve's failed escape did not persist its death\n"); return 1;
+    printf("FAIL: enemy damage after the reserve's failed escape did not persist its death\n"); return 1;
   }
   directBattleTap(0, 0);                     // reserve faints -> revived pet enters
   directBattleTap(0, 0);                     // clear GO text
+  btlYou.hp = 1;
+  btlFoe.moves[0] = tackle;
   if (btlSquadAt != 0 || btlAttemptRun(99) || !pet.isDead() || !btlOver) {
     printf("FAIL: battle did not end only after every team member died\n"); return 1;
   }
