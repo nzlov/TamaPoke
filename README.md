@@ -486,7 +486,9 @@ one available special mechanic: a Z-Move, Dynamax, or Mega Evolution.
 - Dynamax works for every species except Zacian, Zamazenta and Eternatus. An
   eligible Gigantamax species uses its Gigantamax state only when that individual
   has the persistent Gigantamax Factor. Eligible wild individuals have an
-  independent **5%** chance to carry it, and Max Soup can grant it later.
+  independent **5%** chance to carry it, and Max Soup can grant it later. The
+  profile marks the factor with a **G-MAX** badge; in battle, Gigantamax currently
+  shares Dynamax's HP, duration and Max Move rules.
 - Mega Evolution is limited to species with an official Mega form. The standard,
   X, Y and Z stones are distinct and select that exact branch. The untransformed
   Pokemon has one shared normal/shiny appearance; the branch appears only after

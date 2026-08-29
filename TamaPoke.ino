@@ -4469,6 +4469,14 @@ void renderCardProfile() {
     gfx->print(species);
   }
 
+  if (pet.gigantamaxFactor) {
+    gfx->fillRoundRect(318, 86, 78, 28, 8, UI_BAR_BAD);
+    gfx->drawRoundRect(318, 86, 78, 28, 8, UI_INK);
+    gfx->setTextColor(UI_BG_DAY);
+    gfx->setTextSize(2);
+    uiDrawCenteredIn("G-MAX", 318, 86, 78, 28);
+  }
+
   // retrato grande animado
   if (pmd.loaded) drawPmdAct(PMD_IDLE, CX, 206, millis(), true, false, 4);
 

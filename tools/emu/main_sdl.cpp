@@ -363,6 +363,11 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   }
   else if (!strcmp(screen, "battle"))      { cardOpen = true; cardPage = 1; }
   else if (!strcmp(screen, "profile")){ cardOpen = true; cardPage = 0; }
+  else if (!strcmp(screen, "profilegmax")) {
+    pet.gigantamaxFactor = true;
+    cardOpen = true;
+    cardPage = 0;
+  }
   else if (!strcmp(screen, "natureinfo") || !strcmp(screen, "naturetraining")) {
     pet.nature = !strcmp(screen, "naturetraining") ? NATURE_BASHFUL
                                                     : NATURE_ADAMANT;
