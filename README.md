@@ -64,7 +64,7 @@ content without recompiling the firmware:
 | UI (`.tui`) | UI strings, layout metrics and fonts; Simplified Chinese is `ui-zh-CN.tui` | At least one |
 | Moves (`.tmove`) | Move mechanics, learnsets, type chart, names and descriptions | Yes |
 | Region (`.tregion`) | Species data, names and descriptions, animated/alternate-color sprites, thumbnails, trainers, gyms and badges | At least one |
-| Questions (`.tquiz`) | Locale-indexed multiple-choice questions; records are read directly by random index | No; arithmetic is the fallback only when enabled |
+| Questions (`.tquiz`) | Locale-indexed multiple-choice questions; records are read directly by random index | Optional |
 
 The installer reads `web/packs/index.json` and checks each selection's
 dependencies against both the packages already on the device and those selected
@@ -119,9 +119,9 @@ pack drives the initial page, with English used when that choice cannot be loade
 |---|---|---|
 | <img src="docs/screens/main.png" width="240"> | <img src="docs/screens/egg.png" width="240"> | <img src="docs/screens/moves.png" width="240"> |
 
-The egg carries a **region pill** — pick whether it hatches from Kanto, Johto,
-Hoenn or all three. Switching keeps the rarity it was granted and remembers each
-region's answer, so it cannot be flipped to farm a legendary.
+The egg carries a **region pill** for Kanto, Johto, Hoenn, Sinnoh or all installed
+regions. Switching keeps the rarity it was granted and remembers each region's
+answer.
 
 ### Battling
 
@@ -135,13 +135,11 @@ number, then plays both actions in speed order with move, impact, HP, status,
 field, end-of-turn, faint and replacement beats before accepting the next input.
 Contact moves carry the attacker into striking range, while non-contact attacks
 travel across the field with distinct Fire, Water, Electric and other type effects.
-Every local move opens a question before it acts:
-damaging moves scale their final damage by the answer stage, while status and
-healing moves take full effect after any correct answer and fail entirely after
-a wrong answer or timeout. The AI always acts at 100%. In LAN battles each player
-answers on their own device, the percentage travels with that move, and the host
-remains authoritative. Keepalive frames prevent a long global question timer from
-being mistaken for a dropped peer.
+When questions are enabled, every local move opens one before it acts: damaging
+moves scale their final damage by the answer stage, while status and healing
+moves take full effect after a correct answer. With questions disabled, moves
+run directly at 100%. In LAN battles each player uses their own question settings,
+the percentage travels with that move, and the host remains authoritative.
 
 ### Four regions
 
@@ -173,7 +171,7 @@ way. Same reasoning that makes Hoenn Emerald throughout.
 Running on hardware. Implemented: installed species + shinies animated from
 regional packs; six persistent cultivation slots and a 24-slot Box; the full
 life cycle
-(starter egg → evolution → farewell/release/runaway); bred-Pokédex with
+(starter or egg → care → evolution → farewell/release/runaway); bred-Pokédex with
 gallery; turn-based trainer, wild and LAN battles; wild capture and shared item
 inventory; battle stats (IVs + training); retention hooks (streak / bond /
 medals / name); biome + real-time backgrounds; three training minigames;
@@ -181,8 +179,6 @@ care/battle questions backed by indexed banks or configurable arithmetic;
 animated bath; RTC offline progression; battery (AXP2101), PWR key and
 anti-burn-in dimming; **sound (ES8311)**; **7 UI languages (English default)**;
 **starter choice on first run**; and a one-click **web installer**.
-
-Pending: the 24–48 hour soak test. See **Roadmap**.
 
 ## Game manual (the actual numbers)
 
@@ -264,15 +260,16 @@ the answering side keeps the link alive, and the host settles once both actions 
   button beats both: a creature you sent to bed stays there.
 
 ### Eggs & who you get
-- **First ever pet:** you pick a starter — **Bulbasaur / Charmander / Squirtle**.
+- **First ever pet:** choose one of the three starters from the selected installed
+  region.
 - Hatch the egg: tap it **3×** (or wait — it hatches on its own).
-- A safety egg rolls a **rarity tier** over the ~79 base forms that come from eggs:
+- A safety egg rolls a **rarity tier** within the installed region pool:
 
-| Tier | Base chance | # species |
-|---|---|---|
-| ✨ Legendary | ~3 %\* | 5 |
-| 🔵 Rare | ~27 % | 27 |
-| ⚪ Common | the rest | 47 |
+| Tier | Base chance |
+|---|---|
+| ✨ Legendary | ~3 %\* |
+| 🔵 Rare | ~27 % |
+| ⚪ Common | the rest |
 
   \* Legendaries only start appearing once you've **registered ≥ 25** Pokémon.
 - A daily **streak** and high **bond** push rare/legendary odds higher.
@@ -287,15 +284,14 @@ the answering side keeps the link alive, and the host settles once both actions 
 
 - Swipe down and open **Breeding**. Move two living, hatched parents from the
   cultivation team or Box into its two dedicated slots. Opposite-sex parents
-  must share an Egg Group; Ditto follows the original exception, while the
-  Undiscovered group cannot breed.
+  share an Egg Group; Ditto follows the original exception.
 - **Start** schedules one birth after a random **1–2 real hours**. RTC/offline
   catch-up continues the timer while the device is off. Both parents are frozen
   in the centre and cannot be removed or replaced until the offspring is ready.
 - The offspring is the base form of the female/non-Ditto parent's family, with
   the original Nidoran, Volbeat/Illumise and Manaphy/Phione exceptions. It is
   collected directly as a level-one creature rather than as another waiting egg.
-- Gen-IX automatic inheritance applies without held items: nature and gender are
+- The centre uses Gen-IX inheritance: nature and gender are
   rolled anew; three distinct positions from TamaPoke's four IVs come from either
   parent and the fourth is rolled at 8–31; compatible Egg Moves can come from
   either parent's active or reserve list. A normal ability slot passes 80% of the
@@ -320,8 +316,8 @@ such as CROBAT, STEELIX, BLISSEY, KINGDRA, SCIZOR and PORYGON2 stay linked even
 though they live outside their source species' region. Branching lines in the
 installed catalogue are represented, including Gloom,
 Poliwhirl, Slowpoke, Eevee, Tyrogue, Wurmple, Kirlia, Nincada, Snorunt,
-Clamperl and Burmy. Every target is evolution-only rather than also hatching
-straight from an egg.
+Clamperl and Burmy. Egg pools contain their base forms, and these targets are
+reached through evolution.
 
 `gen_dex_data.py --link` is the rule rather than a one-off edit: it fills in any
 evolution whose target has since joined the table, and only ever touches rows
@@ -354,8 +350,7 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
   full; Release always asks for confirmation.
 - Box cells and embedded cultivation-member cards use the same 2× thumbnails,
   vertically centred in each row.
-- A **runaway does not join.** It's the one ending with a cost, and letting a
-  neglected pet come back on the team would remove it.
+- A **runaway leaves the roster permanently**.
 - A wild capture uses a free cultivation slot first, then a free Box slot. If both
   are full, the player explicitly chooses a replacement or lets it go; nothing
   is overwritten silently.
@@ -381,7 +376,7 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
   items on normal and four on hard. When rewards exceed five visible rows, the
   middle list scrolls vertically while the title and Back action stay fixed.
   A successful capture adds the caught creature to that same page and stores it
-  automatically. Only a full collection continues to the replace-or-release picker.
+  automatically. A full collection continues to the replace-or-release picker.
 - Selecting a capture ball arms the board's QMI8658 motion sensor for three seconds.
   Keep hold of the device, flick it forward by roughly 60 degrees, and hold the
   final pose briefly; returning immediately to the start is rejected as a shake.
@@ -397,8 +392,8 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
   then falls linearly to 10% at 10% HP and remains there below 10% HP. HP is
   unchanged; it returns to its battle position before UI resumes. A wild creature
   that chooses to flee uses its action to do so instead of also attacking.
-- A failed escape consumes the player's turn and lets the opponent act normally.
-  The active creature only faints if actual battle damage reduces its HP to zero.
+- A failed escape consumes the player's turn and lets the opponent act normally;
+  battle damage then determines whether the active creature faints.
 - Gym and linked battles select from exactly the six cultivation slots.
 
 ### Three ways a creature leaves
@@ -428,9 +423,8 @@ empty roster receives a safety egg.
   and alternate-color form supplied by the installed region packs. Browse **one installed
   region at a time**, swiping horizontally to page within it.
 - **Region:** the pill under a waiting egg picks which generation it comes from —
-  **Kanto / Johto / Hoenn / Sinnoh / All**. A first egg gives that region's starter.
-  A region whose **region pack is not on the card** shows as locked and is kept
-  out of the egg pool. A partial data-pack install is a supported state.
+  **Kanto / Johto / Hoenn / Sinnoh / All**. A first egg gives that region's starter,
+  and installed region packs define the available choices and egg pool.
 
 ### Battle stats & IVs
 Every creature has four **IVs** — ATK / DEF / SPD / VIT:
@@ -495,15 +489,11 @@ and the chosen gender persists in the party and box. The UI shows a compact gend
 icon, and region packs can provide female normal and shiny sprite variants; when
 a variant is absent, the base sprite is used.
 
-Creatures learn their natural level-up moves as they grow. Other compatible moves
-come from attributed **Move Stones** rather than a TM picker, so a young creature
-cannot equip arbitrary late-game attacks from its species table. A creature may
-qualify for farewell after three cultivated days and caps at 100.
-
-The move table carries the **cheap early attacks** —
-SCRATCH, PECK, POISON STING, BUBBLE, ABSORB, SPARK, FURY ATTACK and the rest. Before
-them, ~15 % of species reached level 15 with no attacking move at all and were
-quietly depending on non-level-up moves to fill the gap.
+Creatures learn their natural level-up moves as they grow and use attributed
+**Move Stones** for other compatible moves. In wild and trainer battles, each
+participating creature can also observe one compatible opposing move per battle;
+the chance scales from 0% to 30% with bond, and a successful observation can be
+used immediately before being added to its learned moves after battle.
 
 **Gym wins train too**: each gym raises one random IV for the current creature.
 Changing difficulty or rematching cannot claim it twice for that creature, but
@@ -514,8 +504,8 @@ one available special mechanic: a Z-Move, Dynamax, or Mega Evolution.
 
 - A Z-Crystal works for any species that has a damaging move; the move's type
   determines the generic Z-Move.
-- Dynamax works for every species except Zacian, Zamazenta and Eternatus. An
-  eligible Gigantamax species uses its Gigantamax state only when that individual
+- Dynamax works for eligible species. An eligible Gigantamax species uses its
+  Gigantamax state when that individual
   has the persistent Gigantamax Factor. Eligible wild individuals have an
   independent **5%** chance to carry it, and Max Soup can grant it later. The
   profile marks the factor with a **G-MAX** badge. During Gigantamax, a damaging
@@ -523,11 +513,11 @@ one available special mechanic: a Z-Move, Dynamax, or Mega Evolution.
   G-Max Move; it is never added to the learned move slots. Urshifu selects
   G-Max One Blow from a Dark source move and G-Max Rapid Flow from a Water source
   move. Other damaging types remain generic Max Moves and status moves become
-  Max Guard, so a species without a matching learned attack cannot use its
-  signature move. The battle menu uses localized transformed move names and
+  Max Guard. A matching learned attack activates the signature move. The battle
+  menu uses localized transformed move names and
   marks generic and signature transformations with separate **MAX** and
   **G-MAX** tags.
-- Mega Evolution is limited to species with an official Mega form. The standard,
+- Mega Evolution supports species with an official Mega form. The standard,
   X, Y and Z stones are distinct and select that exact branch. The untransformed
   Pokemon has one shared normal/shiny appearance; the branch appears only after
   Mega Evolution.
@@ -547,7 +537,7 @@ All 1,025 current species carry their canonical normal slot(s) and hidden slot
 in the regional packs. The ability belongs to the individual: eggs and trainer
 Pokemon receive one available normal slot uniformly, while a hard wild encounter
 has an exact **5%** chance to use its hidden slot when that species has one.
-Normal wild encounters never grant hidden abilities. Existing saves migrate to
+Normal wild encounters use a normal slot. Existing saves migrate to
 a deterministic normal slot, and the chosen slot survives evolution, cultivation,
 Box storage, backup/restore, capture, and LAN transfer. Mega Evolution replaces
 the active ability when the official form data publishes one.
@@ -572,17 +562,14 @@ Species-exclusive battle forms are real combat state for Castform, Cherrim,
 Darmanitan, Aegislash, Wishiwashi, Minior, Mimikyu, Cramorant, Eiscue, Morpeko,
 and Palafin. Their weather, HP, move, hit, end-of-round, and re-entry triggers
 change types or battle stats as appropriate. King's Shield and Aura Wheel are
-append-only catalogue entries so saved move IDs remain stable. The remaining
-**79** catalogue abilities require held items, doubles/allies, or other mechanics
-outside the current single-battle model and are kept visible without fabricated
-approximations.
+append-only catalogue entries so saved move IDs remain stable.
 
 ### Battle weather and terrain
 
 Trainer and LAN battles start with a clear field. A wild battle instead rolls
 the foe biome's persistent environment: **50% clear, 30% primary weather, 10%
-secondary weather, and 10% thunderstorm**. Cave and snow biomes cannot roll a
-thunderstorm, so their secondary-weather chance is 20%.
+secondary weather, and 10% thunderstorm**. Cave and snow biomes assign 20% to
+secondary weather.
 
 | Biome | Primary | Secondary |
 |---|---|---|
@@ -642,20 +629,6 @@ come from the same place. Everything below is about changing it afterwards.
 
 A region is decided by the **base** species, and evolutions follow wherever they
 lead — a Kanto run still reaches Crobat and Blissey.
-
-| | Training a win is worth |
-|---|---|
-| Easy | **3–5** points, **+1 per 3 leaders** deeper into the ladder |
-| Hard | **6–10** points, same ladder bonus |
-| Which stat | **random**, but only among stats **not already at their ceiling** |
-| Who gets it | the **displayed creature**, and only if it was in the squad |
-
-A random stat that landed on a maxed one would silently evaporate, so it never
-picks one; and the IV-bound ceiling above still applies, so a win can never push a
-stat past what its IV allows. Box members are frozen until exchanged into a
-cultivation slot, and battling already costs the displayed creature energy —
-that, not a cooldown, is what rate-limits rematching. A fully trained creature
-is told so.
 
 ## Hardware
 
@@ -775,74 +748,15 @@ compiled into an indexed `.tquiz` and added to the generated web catalogue. The
 browser question-bank editor provides the same binary format without requiring the
 Python pipeline.
 
-## How to play
+## Controls
 
-On first run you **choose a starter** (Bulbasaur / Charmander / Squirtle). After
-that you start with an **egg**. Tap it 3 times or wait and it hatches. From then
-on, care for your companion:
-
-**Four stats** that decay: **FOOD**, **JOY**, **ENE** (energy), **HYG** (hygiene).
-If one bottoms out it counts as a *slip-up*.
-
-**Buttons (bottom arc, icons):**
-- 🍎 **Feed** → food menu: 3 berries (each species has a hidden favourite that
-  gives a bonus) and a candy (+happiness but it fattens; weight makes it sluggish).
-- ⚽ **Play** → the pokeball minigame (joy only).
-- 🌙 **Light** → sleep/wake (recovers energy, dims the screen). While asleep,
-  needs decay much slower (rest).
-- 🫧 **Bath** → a foam scene that cleans up the poops.
-
-**Touch gestures:**
-- **Tap the name** at the top = the **menu** (Lead / Pokédex / Settings /
-  Release or Farewell, Power off). Power off opens a confirmation and saves the
-  current cultivation snapshot before asking the PMU to shut down. The current
-  Lead row reads **Leading** and is disabled. Close the menu by tapping anywhere
-  outside the panel or with any swipe.
-- Tap the occupied-slot indicators above the name to open the Box.
-- Tap the creature = pet it (+happiness, bond).
-- Horizontal swipe = switch between the occupied cultivation slots.
-- Vertical swipe up = open the **stat card** (4 pages: Profile / Battle / Moves /
-  Progress; swipe between them; tapping the nature on Profile opens a localized
-  temperament and stat-effect explanation; on Battle the "Train strength" button
-  opens the bag).
-- Swipe down = open the **bag / battle centre / badges / breeding** navigation page.
-
-**Physical PWR button:** short = screen on/off · long (4 s) = full power-off
-(the RTC stays alive, so time passes even while it's off). The PMU handles the
-hardware long-press shutdown.
-
-## Decisions: you choose, and you watch
-
-Evolution, Farewell and Release **don't happen on their own**; a button or menu
-row opens their confirmation dialog:
-
-- **Evolution** (red button): *Evolve* (epic animation: halo, rays, sparkles and
-  a **flicker between the old and new form**) or *Keep form* (re-offered next level).
-- **Farewell** (menu, final form + 3 cultivated days): a warm rising-heart scene,
-  then +1 point to both wild rare odds, or +2 at level 100. Before qualification,
-  the same menu row is the neutral **Release** action.
-- **Runaway** (dark button, total neglect for 1 h): a somber "feels abandoned"
-  ending in the rain — caring for the creature cancels it.
-
-  **It does not ask, and that is the point** -- a creature you have to authorise
-  to leave is not really at stake. What it must never be is the price of going
-  to bed, so **the screen being off between midnight and 06:00 puts the creature to
-  sleep**, and sleep floors the stats at FOOD 30 / JOY 35 / HYG 45 with the
-  neglect check skipped entirely. A night costs you a hungry, grubby creature at
-  breakfast instead of an empty one.
-
-  **Both halves are needed.** The screen alone would pause the game every time
-  you pocketed the device, and the creature is meant to get hungry during the
-  day. The hour alone would send it to bed while you were still playing. Set the
-  clock in **SETTINGS** (or `RTCSET`); a board whose clock was never set simply
-  never auto-sleeps, which fails safe -- it keeps draining and the light button
-  still works by hand.
-
-  This was a real loss: a player left the board running overnight and came back
-  to a Dratini that had gone. The live tick was the only drain path with no
-  floor -- offline floors at 15, sleep at 30/35/45 -- so a board left *running*
-  was punished where a board switched *off* was not. `night_test` runs ten
-  simulated hours and fails if that ever comes back.
+- The bottom arc opens feeding, ball/defence training, sleep and bath actions.
+- Tap the companion to pet it; tap its name for Lead, Pokédex, Settings,
+  Release/Farewell and power-off actions; tap the slot indicators to open the Box.
+- Swipe horizontally between occupied cultivation slots, up for the four-page stat
+  card, and down for the bag, battle centre, badges and breeding navigation page.
+- Short-press the physical PWR button to toggle the screen; hold it for four seconds
+  to power off while the RTC continues tracking time.
 
 ## Runtime data packs
 
@@ -856,22 +770,19 @@ row opens their confirmation dialog:
   PMD sprites, thumbnails, region metadata, trainers, regional battle configuration
   and badges.
 - **Questions (`.tquiz`)** — language spans, fixed-width random-access indexes and
-  variable-size question records. Only the selected index row and question record
-  are read from the microSD; the whole bank is never loaded into memory.
+  variable-size question records, read on demand from the microSD.
 
 Sprites are read lazily from the region pack into PSRAM. OpenType faces and their
-bounded glyph cache also live in PSRAM; neither fonts nor sprites are embedded in
-the firmware. There is no embedded or
-loose-file pet-sprite fallback; missing required packs lead to the small built-in
-USB recovery screen instead of starting with incomplete catalogue data.
+bounded glyph cache also live in PSRAM. Package validation directs incomplete
+installations to the built-in USB recovery screen.
 
 ## Pokédex and species data
 
 `tools/dex_data.py` is the source for name, slug, type (accent colour +
 background biome), evolution line with gen-1 levels, rarities and starters.
 `tools/dex_stats.py` has the base stats and `tools/dex_types.py` the typings and
-type chart (both from PokéAPI). Note these are **current** values, not Gen 1 ones —
-Pidgeot has 101 Speed here, not the 91 it had in Red/Blue. The generator emits
+type chart (both from PokéAPI). These use **current** values; for example, Pidgeot
+has 101 Speed. The generator emits
 these records into region packs; `dex.h` contains only the stable runtime ABI and
 limits. The pet's identity is its Pokédex number (persisted in NVS).
 
@@ -885,15 +796,8 @@ Every species carries its real **typing** (one or two of the 18 types) and the g
 ships the full **18×18 effectiveness chart** in the move pack, generated from
 `tools/dex_types.py`.
 
-The chart is the **current (Gen 6+) one, not Gen 1's**, which is a deliberate call:
-
-- Gen 1's chart shipped real bugs — Ghost moves did literally nothing to Psychic —
-  and Psychic was resisted only by Psychic, so it ran away with every fight.
-- The base stats here were **already** pulled from PokéAPI at current values, so
-  modern stats with an ancient chart was the inconsistent pairing.
-- **Fairy earns its keep:** Dragonite has the highest Attack in the dex, and before
-  Gen 6 Dragon was resisted only by Steel. Dragon → Fairy is **0×**, so Clefable
-  hard-walls the strongest thing you can hatch.
+The chart uses the **current Gen 6+ rules**, including Steel and Fairy typings and
+Fairy's immunity to Dragon.
 
 Seven of the original 151 differ from their Gen 1 typing: Magnemite and Magneton gained Steel
 (Gen 2), and Clefairy, Clefable, Jigglypuff, Wigglytuff and Mr. Mime gained Fairy
@@ -911,7 +815,7 @@ by its nature modifier and then its gender modifier (see
 - SPEED ← the **reaction test** (~2 reactions = one score step)
 - DEFENSE ← the ball game (~2 rallies = one score step)
 - STRENGTH ← the training bag (~4 hits = one score step)
-- VIT (vitality, from the base HP stat) — not trainable
+- VIT (vitality) derives from the base HP stat
 
 ### Moves
 
@@ -944,17 +848,16 @@ uses these eight learned moves:
   **10** in that pool; when selected, its stored move is chosen only from the defeated
   wild creature's distinct active and reserve moves.
 
-The **MOVES** page swaps a selected learned move into one of the four active slots;
-it never exposes compatible but unlearned moves.
+The **MOVES** page manages the eight learned moves and swaps a selected move into
+one of the four active slots.
 
 Moves remain part of each creature's complete state. They continue with it
 between cultivation slots and freeze only while that creature is in the Box.
 
 **Special attack and defence** come off the species' own `bSpA`/`bSpD` base stats
 (Alakazam is 50 Attack but 135 Special Attack), reusing the physical IV and
-training rather than rolling their own: special attack runs off the ATK IV and
-training, special defence off the DEF IV and training. So the physical/special
-split lives on the species, not the individual — no extra IVs to roll.
+training: special attack runs off the ATK IV and training, and special defence
+runs off the DEF IV and training. The physical/special split lives on the species.
 
 The IV also sets **how far each stat can be trained at all** (77–100), so a
 well-rolled individual has a genuinely higher ceiling, not just a head start.
@@ -990,13 +893,12 @@ Runaway. Farewell adds +1 point to the wild shiny odds (+2 at level 100), Runawa
 subtracts 2, and Release is neutral; the shared bonus is clamped to 0–15.
 
 Wild shiny odds start at exactly 1/4096. One roll controls both the alternate
-sprite and persistent particles; its IV floor is 20 and does not clamp values
-above 31. Endings remove the creature instead of banking it, and create a safety
-egg only if team and Box are both empty.
+sprite and persistent particles, and its IV floor is 20. Endings remove the
+creature from the roster; an empty team and Box receive a safety egg.
 
 **Languages:** the supplied pack set includes English (default), Spanish, French,
-German, Italian, Portuguese and Simplified Chinese. The firmware does not hardcode
-that list: only installed `.tui` packs appear in settings.
+German, Italian, Portuguese and Simplified Chinese. Settings list the installed
+`.tui` packs.
 
 ## Backgrounds: biome + real time
 
@@ -1041,16 +943,6 @@ runaway-ready state) · `WIPE` (factory reset → new game) · `BEEP` (audio tes
 `QUIZSET <time> <ops> <terms> <operandDigits> <answerDigits> <decimals> <fractionDigits> <flags> <parenthesisDepth> <choiceWeight> <questionTypes>`, where `questionTypes` is a bit mask: multiple choice `1`, arithmetic `2`.
 
 To test fast: lower `PET_TICK_MS`, `MINUTES_PER_LEVEL` and `FAREWELL_AGE_MIN` in `pet.h`.
-
-## Roadmap
-
-- **Soak test** 24–48 h (instrumentation ready: `HEALTH` command/heartbeat).
-
-*(Done: 3D-printed case [published on MakerWorld](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi); repo public with the browser installer + one-click sprite bundle.)*
-
-## Community forks
-
-- **[TamaPoke — Expanded](https://github.com/ShadowEnemyx/TamaPoke/tree/tamapoke-expanded-update)** by **ShadowEnemy** — a substantial community fork (different author/branch): a full **type-matchup battle system**, all **151 + shinies** with a **Pokédex / collection box** and daily goals, **6 UI languages**, **ES8311 sound**, starter choice and a one-click web installer. Worth a look. 🎮
 
 ## Credits
 
