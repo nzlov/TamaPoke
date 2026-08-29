@@ -9,7 +9,7 @@ constexpr Lang LANG_RECOVERY = 0xFF;
 extern Lang gLang;  // idioma activo (definido en i18n.cpp)
 
 // IDs de cadena. El orden debe coincidir con la tabla STRINGS de i18n.cpp.
-enum StrId : uint8_t {
+enum StrId : uint16_t {
   // estado del bicho (statusMsg)
   S_EVOLVING, S_EATING, S_LIKES, S_HUNGRY, S_NEEDS_BATH,
   S_EXHAUSTED, S_SAD, S_CHUBBY, S_IS_SHINY, S_HAPPY,
@@ -167,6 +167,8 @@ enum StrId : uint8_t {
   S_ITEM_DISCARD_Q_FMT, S_CONFIRM,
   // persistent mutually-exclusive battle lead (append-only)
   S_LEAD, S_LEADING,
+  // attributed move-stone dialogs (append-only)
+  S_STONE_CONFIRM_FMT, S_STONE_INCOMPATIBLE_FMT, S_STONE_KNOWN_FMT, S_OK,
   STR_COUNT
 };
 

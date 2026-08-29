@@ -283,13 +283,11 @@ void Pet::importState(const PartyMon &m) {
   trMinAtk = m.trMinAtk; trMinDef = m.trMinDef; trMinSpe = m.trMinSpe;
   memcpy(gymIvRewards, m.gymIvRewards, sizeof(gymIvRewards));
   for (int i = 0; i < MOVE_SLOTS; i++) moves[i] = m.moves[i];
+  for (int i = 0; i < RESERVE_MOVE_SLOTS; i++) reserveMoves[i] = m.reserveMoves[i];
   ageMinutes = m.stateVersion ? m.ageMinutes
                               : (uint32_t)(m.level ? m.level - 1 : 0) * MINUTES_PER_LEVEL;
   raisedMinutes = m.stateVersion >= 3 ? m.raisedMinutes : ageMinutes;
   lastLearnLevel = m.stateVersion ? m.lastLearnLevel : (uint8_t)m.level;
-  learnQCount = m.learnQCount > sizeof(learnQueue) / sizeof(learnQueue[0])
-                  ? sizeof(learnQueue) / sizeof(learnQueue[0]) : m.learnQCount;
-  memcpy(learnQueue, m.learnQueue, sizeof(learnQueue));
   medals = m.medals;
   fullness = m.fullness; joy = m.joy; energy = m.energy; hygiene = m.hygiene;
   poops = m.poops; weight = m.weight;
@@ -338,10 +336,11 @@ void Pet::exportState(PartyMon &out) const {
   out.setDead(dead);
   out.gender = gender;
   for (int i = 0; i < MOVE_SLOTS; i++) out.moves[i] = moves[i];
+  for (int i = 0; i < RESERVE_MOVE_SLOTS; i++) out.reserveMoves[i] = reserveMoves[i];
   memcpy(out.gymIvRewards, gymIvRewards, sizeof(gymIvRewards));
   strncpy(out.nick, nick, sizeof(out.nick) - 1);
   out.nick[sizeof(out.nick) - 1] = 0;
-  out.stateVersion = 5;
+  out.stateVersion = 6;
   out.fullness = fullness; out.joy = joy; out.energy = energy; out.hygiene = hygiene;
   out.poops = poops; out.weight = weight;
   out.berryKnown = berryKnown ? 1 : 0;
@@ -356,8 +355,6 @@ void Pet::exportState(PartyMon &out) const {
   out.mistakeCooldown = mistakeCooldown; out.neglectTicks = neglectTicks;
   out.bondToday = bondToday; out.trainingTicks = trainingTicks;
   out.lastLearnLevel = lastLearnLevel;
-  memcpy(out.learnQueue, learnQueue, sizeof(out.learnQueue));
-  out.learnQCount = learnQCount;
   memcpy(out.eggByRegion, eggByRegion, sizeof(out.eggByRegion));
 }
 
@@ -755,137 +752,59 @@ uint8_t Pet::moveCount() const {
   return n;
 }
 
+uint8_t Pet::learnedMoveCount() const {
+  uint8_t n = moveCount();
+  for (int i = 0; i < RESERVE_MOVE_SLOTS; i++)
+    if (reserveMoves[i]) n++;
+  return n;
+}
+
 bool Pet::knowsMove(MoveId mv) const {
   if (!mv) return false;
   for (int i = 0; i < MOVE_SLOTS; i++)
     if (moves[i] == mv) return true;
+  for (int i = 0; i < RESERVE_MOVE_SLOTS; i++)
+    if (reserveMoves[i] == mv) return true;
   return false;
 }
 
-// Picks a sensible default set, best first.
-//
-// NOT "the newest four": 1907 of the 2281 learnset entries sit at level 0 and
-// another 237 at level 1, so for most species level orders nothing and taking
-// the last four in table order is arbitrary -- it handed a level 100 Charizard
-// GROWL and LEER. So score instead: attacks over status, stronger over weaker,
-// STAB ahead of equal power, and a bonus for the handful of moves that really
-// are gated behind a level, since those are meant to be upgrades.
-// TMs unlock at one level, for everything.
-//
-// This replaced a power/2 curve, which was impossible for a player to predict
-// (SURF at 45, ROCK SLIDE at 37) and dribbled unlocks out one at a time so none
-// of them felt like anything. A single number is explainable in one sentence and
-// lands on a seam the game already has: the first five leaders sit at 14-43, so
-// you fight the early ladder on what your species actually learns, and TMs
-// arrive as you enter the back half. A creature may qualify for farewell after
-// three cultivated days and caps at 100.
-//
-// It only works because dex_moves.py now carries the cheap early attacks --
-// SCRATCH, PECK, POISON STING, BUBBLE and the rest. Without those, gating TMs
-// this hard would leave young creatures with nothing at all, which is exactly
-// what the power/2 version was papering over.
-#define TM_LEVEL 40
-
-static uint8_t tmLevelFor(const MoveEntry &m) {
-  (void)m;
-  return TM_LEVEL;
+bool Pet::canLearnStone(MoveId mv) const {
+  return !isEgg() && ceremony == CER_NONE && speciesCanLearnMove(speciesId, mv);
 }
 
-// THE single answer, used by relearnFromLevel(), by the STAB fallback and by
-// the move picker in the sketch. Three call sites once had three opinions.
-uint8_t moveUnlockLevel(SpeciesId dex, uint16_t idx) {
-  uint8_t at = learnLevel(dex, idx);
-  if (learnMethod(dex, idx) == LM_LEVEL_UP) return at;
-  MoveId mv = learnMove(dex, idx);
-  if (!mv || mv >= ::moveCount()) return 255;
-  return tmLevelFor(moveEntry(mv));       // a TM: no natural level, so the gate
+bool Pet::placeLearnedMove(MoveId mv) {
+  if (!moveValid(mv) || knowsMove(mv)) return false;
+  for (MoveId &slot : moves)
+    if (!slot) { slot = mv; return true; }
+  for (MoveId &slot : reserveMoves)
+    if (!slot) { slot = mv; return true; }
+  uint8_t replace = (uint8_t)random(LEARNED_MOVE_SLOTS);
+  if (replace < MOVE_SLOTS) moves[replace] = mv;
+  else reserveMoves[replace - MOVE_SLOTS] = mv;
+  return true;
+}
+
+bool Pet::teachMove(MoveId mv) {
+  if (!canLearnStone(mv) || knowsMove(mv) || !placeLearnedMove(mv)) return false;
+  save();
+  return true;
 }
 
 void Pet::relearnFromLevel() {
-  for (int i = 0; i < MOVE_SLOTS; i++) moves[i] = 0;
+  for (MoveId &move : moves) move = MOVE_NONE;
+  for (MoveId &move : reserveMoves) move = MOVE_NONE;
+  lastLearnLevel = 0;
   if (isEgg()) return;
-  const DexEntry &d = dexEntry(speciesId);
   uint8_t lvl = level();
   uint16_t n = learnCount(speciesId);
-  int16_t score[MOVE_SLOTS] = { 0, 0, 0, 0 };
-  // Two passes. Level-up moves (level >= 1) are what a creature grows into, so
-  // they fill the set first; TMs (level 0, no gate) only top up the slots left
-  // over. Without this a just-hatched pet opens with FIRE BLAST and SOLAR BEAM,
-  // because every TM is legal at level 1.
-  for (int pass = 0; pass < 2; pass++) {
-  bool tmPass = (pass == 1);
   for (uint16_t i = 0; i < n; i++) {
-    uint8_t at = learnLevel(speciesId, i);
-    if (at > lvl) continue;
-    if (tmPass != (learnMethod(speciesId, i) != LM_LEVEL_UP)) continue;
-    MoveId mv = learnMove(speciesId, i);
-    if (!mv || mv >= ::moveCount() || knowsMove(mv)) continue;
-    const MoveEntry &m = moveEntry(mv);
-    // A TM carries no level requirement in the data, which is true of the games
-    // but wrong here: with only one or two level-up moves early on, the spare
-    // slots were filled with the strongest TMs in the table and a NEWBORN opened
-    // with SURF, BLIZZARD and OUTRAGE. That, not the damage formula, is why a
-    // level 1 Squirtle could beat Brock.
-    //
-    // So a TM is gated by its own power: roughly power/2, which puts the 40s
-    // around level 20 and the 110s out past 50 where a creature is genuinely
-    // built. Level-up moves are untouched -- they already have real gates.
-    if (tmPass && lvl < tmLevelFor(m)) continue;
-    int16_t sc = (m.cat == MC_STATUS) ? 10 : (int16_t)m.power + 20;
-    // STAB outweighs raw power, or every species defaults to the same two
-    // generic sledgehammers and the roster loses its identity.
-    if (m.cat != MC_STATUS && (m.type == d.type1 || m.type == d.type2)) sc += 40;
-    if (m.effect == EF_RECHARGE) sc -= 35;   // a free turn for the opponent
-    if (m.effect == EF_RECOIL) sc -= 20;
-    sc += at;
-    if (sc < 1) sc = 1;
-    int slot = -1;
-    for (int s = 0; s < MOVE_SLOTS; s++)
-      if (sc > score[s]) { slot = s; break; }
-    if (slot < 0) continue;
-    for (int s = MOVE_SLOTS - 1; s > slot; s--) {
-      score[s] = score[s - 1];
-      moves[s] = moves[s - 1];
-    }
-    score[slot] = sc;
-    moves[slot] = mv;
+    if (learnMethod(speciesId, i) != LM_LEVEL_UP || learnLevel(speciesId, i) > lvl)
+      continue;
+    placeLearnedMove(learnMove(speciesId, i));
   }
-  if (moveCount() >= MOVE_SLOTS) break;   // level-up moves already filled it
-  }
-  // Guarantee one same-type move. Machamp's only Fighting options are weak or
-  // recoil-laden, so pure scoring left it with four generic attacks and nothing
-  // that reads as a Machamp. If the set came out with no STAB, the weakest slot
-  // gives way to the best same-type attack the species can actually learn.
-  for (int i = 0; i < MOVE_SLOTS; i++) {
-    if (!moves[i]) continue;
-    const MoveEntry &m = moveEntry(moves[i]);
-    if (m.cat != MC_STATUS && (m.type == d.type1 || m.type == d.type2)) return;
-  }
-  MoveId best = 0;
-  int16_t bestSc = 0;
-  for (uint16_t i = 0; i < n; i++) {
-    uint8_t at = learnLevel(speciesId, i);
-    if (at > lvl) continue;
-    MoveId mv = learnMove(speciesId, i);
-    if (!mv || mv >= ::moveCount()) continue;
-    const MoveEntry &m = moveEntry(mv);
-    if (m.cat == MC_STATUS || (m.type != d.type1 && m.type != d.type2)) continue;
-    // The same TM gate as above. This fallback used to ignore it, which is how
-    // a level 1 Squirtle ended up holding SURF: it had no Water move, so the
-    // guarantee reached past every check and handed it the best one in the
-    // table. A creature with no STAB it can legally use simply has none yet.
-    if (learnMethod(speciesId, i) != LM_LEVEL_UP && lvl < tmLevelFor(m)) continue;
-    int16_t sc = (int16_t)m.power;
-    if (m.effect == EF_RECHARGE) sc -= 35;
-    if (m.effect == EF_RECOIL) sc -= 20;
-    if (sc > bestSc) { bestSc = sc; best = mv; }
-  }
-  if (best) moves[MOVE_SLOTS - 1] = best;
+  lastLearnLevel = lvl;
 }
 
-// Queues every level-up move unlocked since the last check. A free slot is
-// filled silently -- the games do not ask when there is room either -- and only
-// a full moveset produces an offer the player has to answer.
 void Pet::checkLearnGates() {
   if (isEgg() || ceremony != CER_NONE) return;
   uint8_t lvl = level();
@@ -895,55 +814,10 @@ void Pet::checkLearnGates() {
     uint8_t at = learnLevel(speciesId, i);
     if (learnMethod(speciesId, i) != LM_LEVEL_UP ||
         at <= lastLearnLevel || at > lvl) continue;
-    MoveId mv = learnMove(speciesId, i);
-    if (!mv || mv >= ::moveCount() || knowsMove(mv)) continue;
-    int freeSlot = -1;
-    for (int s = 0; s < MOVE_SLOTS; s++)
-      if (!moves[s]) { freeSlot = s; break; }
-    if (freeSlot >= 0) { moves[freeSlot] = mv; continue; }
-    if (learnQCount >= sizeof(learnQueue) / sizeof(learnQueue[0])) continue;
-    bool dup = false;
-    for (uint8_t q = 0; q < learnQCount; q++)
-      if (learnQueue[q] == mv) dup = true;
-    if (!dup) learnQueue[learnQCount++] = mv;
+    placeLearnedMove(learnMove(speciesId, i));
   }
   lastLearnLevel = lvl;
   pendingSave = true;
-}
-
-static void popLearn(MoveId *q, uint8_t &n) {
-  if (!n) return;
-  for (uint8_t i = 0; i + 1 < n; i++) q[i] = q[i + 1];
-  q[--n] = 0;
-}
-
-void Pet::acceptLearn(uint8_t slot) {
-  if (!learnQCount || slot >= MOVE_SLOTS) return;
-  moves[slot] = learnQueue[0];
-  popLearn(learnQueue, learnQCount);
-  save();
-}
-
-void Pet::declineLearn() {
-  popLearn(learnQueue, learnQCount);
-  save();
-}
-
-uint8_t Pet::pendingLearnables(MoveId *out, uint8_t max) const {
-  if (isEgg() || !out || !max) return 0;
-  uint8_t lvl = level(), w = 0;
-  uint16_t n = learnCount(speciesId);
-  for (uint16_t i = 0; i < n && w < max; i++) {
-    if (learnMethod(speciesId, i) == LM_LEVEL_UP && learnLevel(speciesId, i) > lvl) continue;
-    if (moveUnlockLevel(speciesId, i) > lvl) continue;
-    MoveId mv = learnMove(speciesId, i);
-    if (knowsMove(mv)) continue;
-    bool dup = false;                     // do not offer the same move twice
-    for (uint8_t j = 0; j < w; j++)
-      if (out[j] == mv) { dup = true; break; }
-    if (!dup) out[w++] = mv;
-  }
-  return w;
 }
 
 // Tirada de un IV: 8-31. El suelo en 8 es deliberado — en los juegos un 0 es
@@ -1065,10 +939,10 @@ void Pet::hatch() {
   newMedal = 0;
   nick[0] = 0;
   registerSpecies(speciesId, shiny);  // criado = registrado en la pokedex
-  // Start empty: checkLearnGates() fills the level-1 moves. Seeding from TMs
-  // instead would hand a newborn FIRE BLAST, which no level 1 creature knows.
-  for (int i = 0; i < MOVE_SLOTS; i++) moves[i] = 0;
-  learnQCount = 0;
+  // Start empty: checkLearnGates() fills natural level-1 moves in active slots
+  // first, then reserves.
+  for (MoveId &move : moves) move = MOVE_NONE;
+  for (MoveId &move : reserveMoves) move = MOVE_NONE;
   lastLearnLevel = 0;
   checkLearnGates();
   checkMedals();     // por si nace ya en forma final (legendario)
@@ -1442,6 +1316,7 @@ void Pet::save() {
   prefs.putUChar("tminsp", trMinSpe);
   prefs.putBytes("giv", gymIvRewards, sizeof(gymIvRewards));
   prefs.putBytes("mvs", moves, sizeof(moves));
+  prefs.putBytes("rsvm", reserveMoves, sizeof(reserveMoves));
   prefs.putUChar("mvlv", lastLearnLevel);
   prefs.putUChar("avtr", avatar);
   prefs.putUChar("reg", region);
@@ -1567,8 +1442,13 @@ void Pet::load() {
   if (prefs.getBytesLength("mvs") == sizeof(moves)) {
     prefs.getBytes("mvs", moves, sizeof(moves));
   }
+  if (prefs.getBytesLength("rsvm") == sizeof(reserveMoves)) {
+    prefs.getBytes("rsvm", reserveMoves, sizeof(reserveMoves));
+  }
   for (int i = 0; i < MOVE_SLOTS; i++)
     if (moves[i] >= ::moveCount()) moves[i] = 0;
+  for (int i = 0; i < RESERVE_MOVE_SLOTS; i++)
+    if (reserveMoves[i] >= ::moveCount()) reserveMoves[i] = 0;
   lastLearnLevel = prefs.getUChar("mvlv", 0);
   frozen = prefs.getBool("froz", false);
   dead = prefs.getBool("dead", false) && speciesId >= 1;
@@ -1582,7 +1462,6 @@ void Pet::load() {
   if (avatar >= AVATAR_COUNT) avatar = 0;
   badges = prefs.getUShort("badg", 0);
   badgesHard = prefs.getUShort("badh", 0);
-  learnQCount = 0;      // rebuilt from lastLearnLevel by the next tick
   checkLearnGates();
   if (speciesId >= 1) registerSpecies(speciesId, shiny);
 }

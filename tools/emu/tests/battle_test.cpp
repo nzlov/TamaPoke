@@ -495,6 +495,7 @@ int main() {
      "Shield Dust suppresses a move's secondary ailment");
 
   Combatant syncAtk = norm, syncDef = zard;
+  syncAtk.ability = ABILITY_NONE;
   syncDef.ability = ABILITY_SYNCHRONIZE;
   battleAct(syncAtk, syncDef, field, secondary, lg);
   ck(syncDef.ailment == AIL_POISON && syncAtk.ailment == AIL_POISON,
@@ -750,6 +751,7 @@ int main() {
 
   Combatant poisonTouch = norm, touchTarget = norm;
   poisonTouch.ability = ABILITY_POISON_TOUCH;
+  touchTarget.ability = ABILITY_NONE;
   bool poisonTouchTriggered = false;
   for (uint32_t seed = 1; seed <= 128 && !poisonTouchTriggered; seed++) {
     g_seed = seed;

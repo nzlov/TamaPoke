@@ -78,6 +78,7 @@ uint8_t learnableList(MoveId *out, uint8_t max);
 #define MOVE_PICK_PER_PAGE 5
 #define MOVE_PICK_Y(i) (76 + (i) * 58)
 extern uint8_t cardPage;
+extern uint16_t gRegionArt;
 
 // handleTouch() self-gates to 50 Hz off millis(), so real time must pass
 // between polls; a tight loop() spin would be swallowed by that gate.
@@ -157,14 +158,22 @@ int main(int argc, char **argv) {
   if (argc > 1) emuSetTimeScale((uint32_t)atoi(argv[1]));
   printf("--- time scale x%u ---\n", emuTimeScale());
   setup();
+  // This suite checks touch routing, while sprite availability is covered by
+  // swipe_test. Keep first boot selectable with the empty-art pack fixture.
+  gRegionArt = 0xFFFF;
   pump(4);
   quiz.config.choiceWeight = 0;
 
   if (!pet.awaitingStarter()) { printf("FAIL: not on the starter screen\n"); return 1; }
   printf("on starter screen, awaitingStarter=1\n");
 
-  // First boot is two steps now: the region, then its starters. Pick KANTO so
-  // row 0 below is Bulbasaur, exactly as it was before the region step existed.
+  // First boot chooses a language, then a region, then a starter. The dedicated
+  // language suite owns its content assertions; this touch journey selects row 0.
+  click(149, 131);
+  pump(2);
+  if (!pet.awaitingStarter()) { printf("FAIL: the language tap chose a starter\n"); return 1; }
+
+  // Pick KANTO so row 0 below is Bulbasaur.
   click(233, 108 + 30);
   pump(2);
   if (pet.region != 0) { printf("FAIL: region tap did not land\n"); return 1; }
@@ -205,13 +214,9 @@ int main(int argc, char **argv) {
   // and the menu's STATS row -> the stats card page. Both changed index
   // mappings inside existing handlers, which is where an off-by-one would hide.
   if (pet.isEgg()) pet.dbgHatchAs(6, false);
+  pet.ageMinutes = 99 * MINUTES_PER_LEVEL;
+  pet.relearnFromLevel();
   pump(4);
-
-  // The learn prompt is MODAL -- it swallows every tap until answered -- so a
-  // creature with moves waiting will ignore the icons. That is correct
-  // behaviour, and it started firing here as soon as dex_moves.py gained the
-  // cheap early attacks: a level 1 creature now actually has things to learn.
-  while (pet.hasLearnOffer()) pet.declineLearn();
   pump(2);
   int tbx, tby; uiButtonAt(3, &tbx, &tby, nullptr);   // ask, do not hardcode:
   click(tbx, tby);                       // the dumbbell, the 4th of 4
@@ -294,41 +299,25 @@ int main(int argc, char **argv) {
            pet.moves[2] ? moveEntry(pet.moves[2]).name : "-");
     if (!ok) return 1;
   }
-  // ---- level-up learn prompt: accept into a slot, and decline.
-  // Past level 36, so LEER@15 / FLAMETHROWER@34 / WING ATTACK@36 are all in
-  // range and more of them exist than there are slots.
-  pet.ageMinutes = 40 * MINUTES_PER_LEVEL;
-  pet.relearnFromLevel();
-  pet.lastLearnLevel = 0;
-  pet.learnQCount = 0;
-  pet.checkLearnGates();
-  if (!pet.hasLearnOffer()) { printf("FAIL: no learn offer was queued\n"); return 1; }
-  printf("PASS: crossing gates with a full moveset queues an offer\n");
-
-  MoveId offered = pet.learnOffer(), was2 = pet.moves[2];
-  click(233, 104 + 2 * 56 + 10);          // LEARN_ROW_Y(2)
-  if (pet.moves[2] != offered) {
-    printf("FAIL: accepting did not put %s in slot 2 (got %s)\n",
-           moveEntry(offered).name, pet.moves[2] ? moveEntry(pet.moves[2]).name : "-");
-    return 1;
+  // A reserve move can be selected, and the displaced battle move moves into
+  // that exact reserve slot rather than disappearing.
+  MoveId reserveBefore = pet.reserveMoves[0], activeBefore = pet.moves[2];
+  cardPage = 2;
+  click(233, 212);
+  click(233, 346);
+  n = learnableList(all, sizeof(all) / sizeof(all[0]));
+  page = row = -1;
+  for (uint8_t i = 0; i < n; i++)
+    if (all[i] == reserveBefore) { page = i / MOVE_PICK_PER_PAGE; row = i % MOVE_PICK_PER_PAGE; }
+  if (page < 0) { printf("FAIL: reserve move is absent from picker\n"); return 1; }
+  movePickPage = page;
+  click(233, MOVE_PICK_Y(row) + 10);
+  if (pet.moves[2] != reserveBefore || pet.reserveMoves[0] != activeBefore) {
+    printf("FAIL: choosing a reserve did not swap active and reserve slots\n"); return 1;
   }
-  printf("PASS: accepting replaces the chosen slot (%s -> %s)\n",
-         was2 ? moveEntry(was2).name : "-", moveEntry(offered).name);
+  printf("PASS: picker swaps a learned reserve into the battle set\n");
 
-  if (pet.hasLearnOffer()) {
-    MoveId before[MOVE_SLOTS];
-    for (int i = 0; i < MOVE_SLOTS; i++) before[i] = pet.moves[i];
-    MoveId skipped = pet.learnOffer();
-    click(233, 334 + 20);                 // LEARN_SKIP_Y
-    bool same = true;
-    for (int i = 0; i < MOVE_SLOTS; i++) if (pet.moves[i] != before[i]) same = false;
-    if (!same || pet.knowsMove(skipped)) {
-      printf("FAIL: declining changed the moveset\n"); return 1;
-    }
-    printf("PASS: declining %s leaves the moveset untouched\n", moveEntry(skipped).name);
-  }
   // ---- battle: drive a whole fight through the real tap handler
-  while (pet.hasLearnOffer()) pet.declineLearn();
   pet.ageMinutes = 50 * MINUTES_PER_LEVEL;
   pet.relearnFromLevel();
   startBattle(9, 50);
@@ -402,7 +391,6 @@ int main(int argc, char **argv) {
   pet.dbgHatchAs(9, false);                   // a stable favourable matchup for Brock
   pet.ageMinutes = 100 * MINUTES_PER_LEVEL;
   pet.relearnFromLevel();
-  while (pet.hasLearnOffer()) pet.declineLearn();
   bool hadBadge = pet.hasBadge(0, 0, false);
   startTrainerBattle(0, false);
   if (!battleOpen) { printf("FAIL: trainer battle did not start\n"); return 1; }
@@ -711,7 +699,6 @@ int main(int argc, char **argv) {
   moveInfoOpen = movePickOpen = spdOpen = false;
   bagOpen = playerOpen = lanOpen = galleryOpen = false;
   kbOpen = clockOpen = gymOpen = boxOpen = pickOpen = false;
-  while (pet.hasLearnOffer()) pet.declineLearn();
   reviveBefore = inventory.count(revive->key);
   click(74 + 75, 346 + 24);
   if (pet.isDead() || inventory.count(revive->key) != reviveBefore - 1) {

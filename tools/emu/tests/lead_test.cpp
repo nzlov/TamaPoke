@@ -35,7 +35,6 @@ int main() {
   setup();
   if (pet.awaitingStarter()) pet.chooseStarter(1);
   if (pet.isEgg()) pet.dbgHatchAs(1, false);
-  while (pet.hasLearnOffer()) pet.declineLearn();
 
   party.captureActive(pet, false);
   PartyMon second = party.slots[party.activeIndex()];

@@ -25,6 +25,9 @@ static void show(Pet &p, const char *when) {
   printf("%-22s %-11s L%-3u :", when, dexEntry(p.speciesId).name, p.level());
   for (int i = 0; i < MOVE_SLOTS; i++)
     printf(" %s", p.moves[i] ? moveEntry(p.moves[i]).name : "-");
+  printf(" | reserve:");
+  for (int i = 0; i < RESERVE_MOVE_SLOTS; i++)
+    printf(" %s", p.reserveMoves[i] ? moveEntry(p.reserveMoves[i]).name : "-");
   printf("\n");
 }
 
@@ -36,7 +39,7 @@ static void pending(Pet &p) {
   buf[0] = 0;
   for (uint16_t i = 0; i < n; i++) {
     uint8_t at = learnLevel(p.speciesId, i);
-    if (at == 0 || at > p.level()) continue;      // TMs are on-demand, skip
+    if (learnMethod(p.speciesId, i) != LM_LEVEL_UP || at > p.level()) continue;
     MoveId mv = learnMove(p.speciesId, i);
     if (p.knowsMove(mv)) continue;
     miss++;
@@ -59,12 +62,6 @@ int main() {
     const char *note = "";
     if (p.canEvolveNow()) { p.evolve(); note = " (evolved)"; }
     p.checkLearnGates();
-    while (p.hasLearnOffer()) {          // accept every offer into the last slot
-      printf("%-22s   OFFER %s -> replacing %s\n", "",
-             moveEntry(p.learnOffer()).name,
-             p.moves[MOVE_SLOTS-1] ? moveEntry(p.moves[MOVE_SLOTS-1]).name : "-");
-      p.acceptLearn(MOVE_SLOTS - 1);
-    }
     char when[40];
     snprintf(when, sizeof(when), "level %u%s", lvl, note);
     show(p, when);

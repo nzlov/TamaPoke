@@ -719,8 +719,9 @@ static bool loadMovePack(uint8_t packIndex) {
     bool battleBoost = row[3] == ITEM_EFFECT_BATTLE_STAGE;
     bool mechanicItem = row[3] == ITEM_EFFECT_BATTLE_MECHANIC;
     bool catchItem = row[3] == ITEM_EFFECT_CATCH;
-    if (!key || row[2] < ITEM_CATEGORY_BALL || row[2] > ITEM_CATEGORY_MECHANIC ||
-        row[3] < ITEM_EFFECT_CATCH || row[3] > ITEM_EFFECT_GIGANTAMAX_FACTOR ||
+    bool moveStone = row[3] == ITEM_EFFECT_TEACH_MOVE;
+    if (!key || row[2] < ITEM_CATEGORY_BALL || row[2] > ITEM_CATEGORY_MOVE_STONE ||
+        row[3] < ITEM_EFFECT_CATCH || row[3] > ITEM_EFFECT_TEACH_MOVE ||
         !row[4] || row[4] > 4 || row[10] > ITEM_STACK_LIMIT ||
         (catchItem && (row[2] != ITEM_CATEGORY_BALL ||
                        (itemParam <= 0 && itemParam != ITEM_CATCH_GUARANTEED))) ||
@@ -740,6 +741,8 @@ static bool loadMovePack(uint8_t packIndex) {
                           row[8] || row[9] || row[10])) ||
         (row[3] == ITEM_EFFECT_GIGANTAMAX_FACTOR &&
          (row[2] != ITEM_CATEGORY_EVOLUTION || row[5] || itemParam || row[10])) ||
+        (moveStone && (row[2] != ITEM_CATEGORY_MOVE_STONE || row[5] ||
+                       itemParam || row[10])) ||
         !validString(itemNames, itemNamesSize, nameOffset)) {
       free(rawItems); free(itemNames); free(itemLocalizedNames); free(itemLocales); free(items);
       free(locales); free(localizedNames); free(localizedTypeNames);
@@ -1682,6 +1685,14 @@ uint8_t learnLevel(SpeciesId species, uint16_t index) {
 LearnMethod learnMethod(SpeciesId species, uint16_t index) {
   if (index >= learnCount(species)) return LM_LEVEL_UP;
   return (LearnMethod)gLearnEntries[gLearnOffsets[species] + index].method;
+}
+
+bool speciesCanLearnMove(SpeciesId species, MoveId move) {
+  if (!moveValid(move)) return false;
+  uint16_t count = learnCount(species);
+  for (uint16_t i = 0; i < count; i++)
+    if (learnMove(species, i) == move) return true;
+  return false;
 }
 
 uint8_t uiLocaleCount() { ensureContent(); return gUiCount; }

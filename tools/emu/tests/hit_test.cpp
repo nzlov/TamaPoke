@@ -98,7 +98,6 @@ int main(){
   if (pet.isEgg()) pet.dbgHatchAs(6,false);
   pet.ageMinutes = 50UL*MINUTES_PER_LEVEL;
   pet.relearnFromLevel();
-  while (pet.hasLearnOffer()) pet.declineLearn();
   quiz.config.choiceWeight = 0;
 
   ck(!strcmp(rareMark(false), "") && !strcmp(rareMark(true), "*"),
@@ -295,7 +294,6 @@ int main(){
     uiSleepButton(&lx, &ly);
     if (pet.awaitingStarter()) pet.chooseStarter(4);
     if (pet.isEgg()) pet.dbgHatchAs(6, false);
-    while (pet.hasLearnOffer()) pet.declineLearn();
     if (!pet.sleeping) pet.toggleLight();
     ck(pet.sleeping, "the pet is asleep");
     // the bath icon must NOT wake it
@@ -398,7 +396,6 @@ int main(){
     battleOpen = false;
     if (pet.awaitingStarter()) pet.chooseStarter(4);
     if (pet.isEgg()) pet.dbgHatchAs(147, false);
-    while (pet.hasLearnOffer()) pet.declineLearn();
     if (pet.sleeping) pet.toggleLight();
     pet.dbgRunawayReady();
     ck(pet.canRunawayNow(), "total neglect really does make it ready to leave");

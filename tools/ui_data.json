@@ -261,7 +261,11 @@
         "Tirar %u x %s?",
         "CONFIRMAR",
         "PRIMERO",
-        "PRIMERO ACTIVO"
+        "PRIMERO ACTIVO",
+        "Ensenar %s a %s?",
+        "%s no puede aprender %s.",
+        "%s ya conoce %s.",
+        "OK"
       ],
       "medalNames": [
         "Nv.10",
@@ -585,7 +589,11 @@
         "Discard %u x %s?",
         "CONFIRM",
         "LEAD",
-        "LEADING"
+        "LEADING",
+        "Teach %s to %s?",
+        "%s cannot learn %s.",
+        "%s already knows %s.",
+        "OK"
       ],
       "medalNames": [
         "Lv.10",
@@ -909,7 +917,11 @@
         "Jeter %u x %s ?",
         "CONFIRMER",
         "EN TETE",
-        "EN TETE ACTUELLEMENT"
+        "EN TETE ACTUELLEMENT",
+        "Apprendre %s a %s ?",
+        "%s ne peut pas apprendre %s.",
+        "%s connait deja %s.",
+        "OK"
       ],
       "medalNames": [
         "Niv.10",
@@ -1233,7 +1245,11 @@
         "%u x %s wegwerfen?",
         "BESTATIGEN",
         "ANFUEHRER",
-        "IST ANFUEHRER"
+        "IST ANFUEHRER",
+        "%s an %s lehren?",
+        "%s kann %s nicht lernen.",
+        "%s kennt %s bereits.",
+        "OK"
       ],
       "medalNames": [
         "Lv.10",
@@ -1557,7 +1573,11 @@
         "Scartare %u x %s?",
         "CONFERMA",
         "PRIMO",
-        "PRIMO ATTIVO"
+        "PRIMO ATTIVO",
+        "Insegnare %s a %s?",
+        "%s non puo imparare %s.",
+        "%s conosce gia %s.",
+        "OK"
       ],
       "medalNames": [
         "Lv.10",
@@ -1881,7 +1901,11 @@
         "Descartar %u x %s?",
         "CONFIRMAR",
         "PRIMEIRO",
-        "PRIMEIRO ATIVO"
+        "PRIMEIRO ATIVO",
+        "Ensinar %s a %s?",
+        "%s nao pode aprender %s.",
+        "%s ja conhece %s.",
+        "OK"
       ],
       "medalNames": [
         "Niv.10",
@@ -2211,7 +2235,11 @@
         "丢弃%u个%s？",
         "确定",
         "首发",
-        "已首发"
+        "已首发",
+        "%s：让%s学习？",
+        "%s无法学习%s。",
+        "%s已经学会%s。",
+        "确定"
       ],
       "medalNames": [
         "10级",

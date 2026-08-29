@@ -449,20 +449,15 @@ and the chosen gender persists in the party and box. The UI shows a compact gend
 icon, and region packs can provide female normal and shiny sprite variants; when
 a variant is absent, the base sprite is used.
 
-**TMs unlock at level 40**, all of them, and nothing before. A TM carries no level
-requirement in the data — true of the games, wrong here, because a young creature
-has few level-up moves and the spare slots were filled with the strongest TMs in the
-table. A **level 1 Squirtle opened with SURF and BLIZZARD and could beat Brock.**
+Creatures learn their natural level-up moves as they grow. Other compatible moves
+come from attributed **Move Stones** rather than a TM picker, so a young creature
+cannot equip arbitrary late-game attacks from its species table. A creature may
+qualify for farewell after three cultivated days and caps at 100.
 
-One number rather than a curve: the first five leaders sit at **14–43**, so you
-fight the early ladder on what your species actually learns, and TMs arrive as you
-enter the back half. A creature may qualify for farewell after three cultivated
-days and caps at 100.
-
-That only works because the move table now carries the **cheap early attacks** —
+The move table carries the **cheap early attacks** —
 SCRATCH, PECK, POISON STING, BUBBLE, ABSORB, SPARK, FURY ATTACK and the rest. Before
 them, ~15 % of species reached level 15 with no attacking move at all and were
-quietly leaning on TMs to fill the gap.
+quietly depending on non-level-up moves to fill the gap.
 
 **Gym wins train too**: each gym raises one random IV for the current creature.
 Changing difficulty or rematching cannot claim it twice for that creature, but
@@ -790,7 +785,8 @@ row opens their confirmation dialog:
 - **UI (`.tui`)** — one installed language per pack: strings, layout metrics
   and either a compact bitmap face or a hinted OpenType subset with package-defined
   pixel sizes. The language list is discovered at boot.
-- **Moves (`.tmove`)** — stable move IDs, mechanics, learnsets/TMs, type chart,
+- **Moves (`.tmove`)** — stable move IDs, mechanics, learnsets and Move Stone
+  compatibility, type chart,
   names and localized descriptions.
 - **Regions (`.tregion`)** — species records, localized names and descriptions,
   PMD sprites, thumbnails, region metadata, trainers, regional battle configuration
@@ -855,23 +851,28 @@ by its nature modifier and then its gender modifier (see
 
 ### Moves
 
-Each creature knows up to **4 moves**, from a pool of 77. Two kinds:
+Each creature keeps **4 active moves and 4 reserve moves**. Battle selection uses
+only these eight learned moves:
 
 - **Level-up moves** are gated: Charizard learns FLAMETHROWER at 34, WING ATTACK
   at 36, DRAGON RAGE at 54. A hatchling starts with **only** what its species
-  knows at level 1 — a Charmander opens with GROWL alone, and the other three
-  slots stay empty. Crossing a gate fills an empty slot silently; with all four
-  full you get a **prompt** asking which to forget (or to skip it). Offers queue,
-  so coming back to a pet that aged two weeks offline asks one at a time.
+  knows at level 1. Crossing a gate fills active slots first, then reserve slots;
+  when all eight are full, one learned move is replaced at random.
   Evolving keeps the moves it already has, and the new form's gates take over —
   moves it would have learned *below* your current level are not backfilled,
   same as the real games.
-- **TMs** have no level gate and are chosen on demand, from the **MOVES** page of
-  the stats card (swipe across, then tap a slot).
+- The bag has one attributed **Move Stone** item type. Each stone stores one move,
+  and only stones storing the same move stack together. A stone can be used only
+  when the current species' complete original learnset contains that move. The bag
+  asks for confirmation when compatible and explains the refusal when incompatible
+  or already known. A successful stone follows the same active-then-reserve fill
+  order and random replacement rule.
+- Each wild victory still grants one weighted ordinary drop. Move Stone has weight
+  **10** in that pool; when selected, its stored move is chosen only from the defeated
+  wild creature's distinct active and reserve moves.
 
-Levels come from FireRed/LeafGreen, the Kanto games that still gate properly.
-A move that is *also* a TM keeps its level gate — otherwise every gated move
-would come free, since most of them were sold as TMs at some point.
+The **MOVES** page swaps a selected learned move into one of the four active slots;
+it never exposes compatible but unlearned moves.
 
 Moves remain part of each creature's complete state. They continue with it
 between cultivation slots and freeze only while that creature is in the Box.

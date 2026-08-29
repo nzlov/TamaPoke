@@ -7,6 +7,7 @@
 #include "dex.h"
 #include "moves.h"
 #include <cstdio>
+#include <cstring>
 
 uint32_t g_seed = 0xC0FFEE;
 FakeSerial Serial;
@@ -27,113 +28,94 @@ static void ck(bool ok, const char *what) {
   printf("%s  %s\n", ok ? "PASS" : "FAIL", what);
   if (!ok) bad++;
 }
-static void dump(const char *tag, const MoveId *mv) {
+static void dump(const char *tag, const MoveId *mv, uint8_t count) {
   printf("     %s:", tag);
-  for (int i = 0; i < MOVE_SLOTS; i++)
+  for (uint8_t i = 0; i < count; i++)
     printf(" %s", mv[i] ? moveEntry(mv[i]).name : "-");
   printf("\n");
 }
 
 int main() {
-  // --- a level-100 Charizard should know four real, distinct moves
+  // A mature creature fills four battle slots and then four reserves using
+  // natural level-up moves only.
   Pet p;
   p.dbgHatchAs(6, false);
   p.ageMinutes = 5940;                 // level 100
   p.relearnFromLevel();
-  dump("Charizard L100", p.moves);
-  ck(p.moveCount() == 4, "L100 Charizard knows 4 moves");
+  dump("Charizard active ", p.moves, MOVE_SLOTS);
+  dump("Charizard reserve", p.reserveMoves, RESERVE_MOVE_SLOTS);
+  ck(p.moveCount() == 4, "L100 Charizard has 4 battle moves");
+  ck(p.learnedMoveCount() == 8, "and 4 reserve moves");
   bool distinct = true, valid = true;
-  for (int i = 0; i < MOVE_SLOTS; i++) {
-    if (p.moves[i] >= moveCount()) valid = false;
-    for (int j = i + 1; j < MOVE_SLOTS; j++)
-      if (p.moves[i] && p.moves[i] == p.moves[j]) distinct = false;
+  MoveId learned[LEARNED_MOVE_SLOTS] = {};
+  for (int i = 0; i < MOVE_SLOTS; i++) learned[i] = p.moves[i];
+  for (int i = 0; i < RESERVE_MOVE_SLOTS; i++)
+    learned[MOVE_SLOTS + i] = p.reserveMoves[i];
+  for (int i = 0; i < LEARNED_MOVE_SLOTS; i++) {
+    if (!moveValid(learned[i])) valid = false;
+    for (int j = i + 1; j < LEARNED_MOVE_SLOTS; j++)
+      if (learned[i] && learned[i] == learned[j]) distinct = false;
   }
   ck(distinct, "no duplicate moves");
   ck(valid, "every move is a valid runtime move ID");
 
-  // --- a freshly hatched pet knows fewer, and never more than it should
+  bool naturalOnly = true;
+  for (MoveId move : learned) {
+    bool natural = false;
+    for (uint16_t i = 0; i < learnCount(6); i++)
+      if (learnMove(6, i) == move && learnMethod(6, i) == LM_LEVEL_UP &&
+          learnLevel(6, i) <= p.level()) natural = true;
+    if (!natural) naturalOnly = false;
+  }
+  ck(naturalOnly, "automatic learning excludes TM, tutor and egg entries");
+
+  // A hatchling receives only its natural level-1 entries.
   Pet baby;
   baby.dbgHatchAs(6, false);
   baby.ageMinutes = 0;                 // level 1
   baby.relearnFromLevel();
-  dump("Charizard L1  ", baby.moves);
+  dump("Charizard L1", baby.moves, MOVE_SLOTS);
   ck(baby.moveCount() >= 1, "a level 1 pet still knows at least one move");
-  ck(baby.moveCount() <= 4, "never exceeds 4 slots");
+  ck(baby.learnedMoveCount() <= LEARNED_MOVE_SLOTS, "never exceeds 8 learned slots");
 
-  // every known move must actually be learnable at or below its level
   bool legal = true;
   for (int i = 0; i < MOVE_SLOTS; i++) {
     if (!baby.moves[i]) continue;
     bool found = false;
     for (uint8_t k = 0; k < learnCount(6); k++)
-      if (learnMove(6, k) == baby.moves[i] && learnLevel(6, k) <= 1) found = true;
+      if (learnMove(6, k) == baby.moves[i] && learnMethod(6, k) == LM_LEVEL_UP &&
+          learnLevel(6, k) <= 1) found = true;
     if (!found) legal = false;
   }
-  ck(legal, "a level 1 pet knows nothing it has not learned yet");
+  ck(legal, "a level 1 pet knows only natural level-1 moves");
 
-  // --- a default set must be mostly attacks, not a pile of stat-lowering
-  // status moves. This is what caught GROWL/LEER on a level 100 Charizard.
-  for (int dex : { 6, 9, 3, 65, 68, 25, 143, 150 }) {
-    Pet q;
-    q.dbgHatchAs(dex, false);
-    q.ageMinutes = 5940;
-    q.relearnFromLevel();
-    int atk = 0, stab = 0;
-    for (int i = 0; i < MOVE_SLOTS; i++) {
-      if (!q.moves[i]) continue;
-      const MoveEntry &m = moveEntry(q.moves[i]);
-      if (m.cat != MC_STATUS) atk++;
-      if (m.type == dexEntry(dex).type1 || m.type == dexEntry(dex).type2) stab++;
+  // A move stone uses the complete species learnset as compatibility metadata.
+  MoveId stoneMove = MOVE_NONE;
+  for (uint16_t i = 0; i < learnCount(6); i++) {
+    MoveId move = learnMove(6, i);
+    if (learnMethod(6, i) != LM_LEVEL_UP && !p.knowsMove(move)) {
+      stoneMove = move;
+      break;
     }
-    printf("     %-11s atk=%d stab=%d :", dexEntry(dex).name, atk, stab);
-    for (int i = 0; i < MOVE_SLOTS; i++)
-      printf(" %s", q.moves[i] ? moveEntry(q.moves[i]).name : "-");
-    printf("\n");
-    if (atk < 3) { printf("FAIL  %s has fewer than 3 attacks\n", dexEntry(dex).name); bad++; }
-    if (stab < 1) { printf("FAIL  %s has no same-type move\n", dexEntry(dex).name); bad++; }
   }
-  ck(true, "default sets are attack-led with STAB (see above)");
+  ck(moveValid(stoneMove) && p.canLearnStone(stoneMove),
+     "a non-level move in the species learnset is stone-compatible");
+  MoveId before[LEARNED_MOVE_SLOTS];
+  memcpy(before, learned, sizeof(before));
+  ck(p.teachMove(stoneMove), "a compatible move stone teaches its move");
+  ck(p.learnedMoveCount() == LEARNED_MOVE_SLOTS && p.knowsMove(stoneMove),
+     "a full learned set stays at 8 and contains the new move");
+  uint8_t retained = 0;
+  for (MoveId move : before) if (p.knowsMove(move)) retained++;
+  ck(retained == LEARNED_MOVE_SLOTS - 1,
+     "teaching into a full set randomly replaces exactly one learned move");
+  ck(!p.teachMove(stoneMove), "the same move cannot be learned twice");
 
-  // --- learn candidates are offered, and never ones already known
-  MoveId cand[8];
-  uint8_t n = p.pendingLearnables(cand, 8);
-  bool alreadyKnown = false;
-  for (uint8_t i = 0; i < n; i++)
-    if (p.knowsMove(cand[i])) alreadyKnown = true;
-  printf("     L100 learnables not yet known: %u\n", n);
-  ck(!alreadyKnown, "pendingLearnables never offers a known move");
-
-  // The MOVE PICKER had its own gate and so its own opinion: it checked
-  // learnLevel() alone, and a TM is stored as level 0, so a level 22 Charmeleon
-  // was offered FIRE BLAST (110 power). Found by hand on the board, exactly
-  // like the level 1 Squirtle holding SURF -- the same bug in the one path that
-  // fix never reached. moveUnlockLevel() is the single answer now.
-  {
-    int zero = 0, tooEarly = 0;
-    for (int16_t d = 1; d <= dexCount(); d++)
-      for (uint8_t i = 0; i < learnCount(d); i++) {
-        uint8_t at = moveUnlockLevel(d, i);
-        if (at == 0) zero++;
-        if (learnLevel(d, i) == 0 && at < 20) tooEarly++;
-      }
-    ck(zero == 0, "no learnset entry anywhere unlocks at level 0");
-    ck(tooEarly == 0, "and no TM is reachable before a creature is built");
-
-    const int16_t CHARMELEON = 5;
-    bool early = false, late = false, ember1 = false, flame34 = false;
-    for (uint8_t i = 0; i < learnCount(CHARMELEON); i++) {
-      MoveId mv = learnMove(CHARMELEON, i);
-      if (mv >= moveCount()) continue;
-      uint8_t at = moveUnlockLevel(CHARMELEON, i);
-      if (!strcmp(moveEntry(mv).name, "FIRE BLAST")) { early = at <= 22; late = at >= 40; }
-      if (!strcmp(moveEntry(mv).name, "EMBER")) ember1 = (at == 1);
-      if (!strcmp(moveEntry(mv).name, "FLAMETHROWER")) flame34 = (at == 34);
-    }
-    ck(!early, "a level 22 Charmeleon is NOT offered FIRE BLAST");
-    ck(late, "it waits for the TM level like every other TM");
-    ck(ember1 && flame34,
-       "while its real level-up moves keep their real levels (EMBER 1, FLAMETHROWER 34)");
-  }
+  MoveId incompatible = MOVE_NONE;
+  for (MoveId move = 1; move < moveCount(); move++)
+    if (!speciesCanLearnMove(6, move)) { incompatible = move; break; }
+  ck(moveValid(incompatible) && !p.canLearnStone(incompatible) &&
+     !p.teachMove(incompatible), "an incompatible move stone is rejected");
 
   printf("%s\n", bad ? "FAILURES" : "all good");
   return bad ? 1 : 0;

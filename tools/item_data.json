@@ -279,5 +279,17 @@
     "dailyMin": 0,
     "names": {"en-US": "MAX SOUP", "zh-CN": "极巨汤"},
     "descriptions": {"en-US": "Gives an eligible Pokemon the Gigantamax Factor.", "zh-CN": "让符合条件的宝可梦获得超极巨化因子。"}
+  },
+  {
+    "key": 1701,
+    "category": 9,
+    "effect": 10,
+    "rarity": 2,
+    "flags": 0,
+    "param": 0,
+    "dropWeight": 10,
+    "dailyMin": 0,
+    "names": {"en-US": "MOVE STONE", "zh-CN": "技能石"},
+    "descriptions": {"en-US": "Teaches the move stored in this stone to a compatible Pokemon.", "zh-CN": "让能够学习的宝可梦学会石中记录的技能。"}
   }
 ]

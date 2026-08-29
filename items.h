@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include "moves.h"
 
 // Item identities belong to the move pack. The firmware only carries an
 // opaque key while executing one of these generic effect opcodes.
@@ -20,6 +21,7 @@ enum ItemCategory : uint8_t {
   ITEM_CATEGORY_TRAINING,
   ITEM_CATEGORY_BATTLE_BOOST,
   ITEM_CATEGORY_MECHANIC,
+  ITEM_CATEGORY_MOVE_STONE,
 };
 
 enum ItemEffect : uint8_t {
@@ -32,6 +34,7 @@ enum ItemEffect : uint8_t {
   ITEM_EFFECT_BATTLE_STAGE,
   ITEM_EFFECT_BATTLE_MECHANIC,
   ITEM_EFFECT_GIGANTAMAX_FACTOR,
+  ITEM_EFFECT_TEACH_MOVE,
 };
 
 enum ItemStatMask : uint8_t {
@@ -68,6 +71,14 @@ struct ItemEntry {
   uint8_t dailyMin = 0;
 };
 
+// A catalogue key plus the per-instance move carried by a move stone. Ordinary
+// items keep MOVE_NONE, so existing item identities remain unchanged.
+struct ItemRef {
+  ItemKey key = ITEM_KEY_NONE;
+  MoveId move = MOVE_NONE;
+  explicit operator bool() const { return key != ITEM_KEY_NONE; }
+};
+
 struct Combatant;
 struct PartyMon;
 class Pet;
@@ -76,8 +87,10 @@ class Pet;
 // effect without assigning meaning to any concrete item key.
 bool itemCanApplyToCombatant(const ItemEntry &item, const Combatant &target);
 bool itemApplyToCombatant(const ItemEntry &item, Combatant &target);
-bool itemCanApplyToPet(const ItemEntry &item, const Pet &target);
-bool itemApplyToPet(const ItemEntry &item, Pet &target);
+bool itemCanApplyToPet(const ItemEntry &item, const Pet &target,
+                       MoveId move = MOVE_NONE);
+bool itemApplyToPet(const ItemEntry &item, Pet &target,
+                    MoveId move = MOVE_NONE);
 bool itemUsableOutsideBattle(const ItemEntry &item);
 bool itemCanApplyToPartyMon(const ItemEntry &item, const PartyMon &target);
 bool itemApplyToPartyMon(const ItemEntry &item, PartyMon &target);

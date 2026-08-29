@@ -492,6 +492,17 @@ static void drawItemIcon(const ItemEntry &item, int16_t cx, int16_t cy,
     return;
   }
 
+  if (item.effect == ITEM_EFFECT_TEACH_MOVE) {
+    gfx->fillTriangle(cx, y(-11), x(-10), y(1), cx, y(11), purple);
+    gfx->fillTriangle(cx, y(-11), x(10), y(1), cx, y(11), blue);
+    gfx->drawLine(cx, y(-11), x(-10), y(1), ink);
+    gfx->drawLine(x(-10), y(1), cx, y(11), ink);
+    gfx->drawLine(cx, y(11), x(10), y(1), ink);
+    gfx->drawLine(x(10), y(1), cx, y(-11), ink);
+    gfx->fillCircle(cx, cy, 3 * s, white);
+    return;
+  }
+
   if (item.effect == ITEM_EFFECT_BATTLE_MECHANIC) {
     if (item.flags == ITEM_MECHANIC_Z_MOVE) {
       gfx->fillTriangle(cx, y(-11), x(-9), cy, cx, y(11), yellow);
@@ -653,6 +664,7 @@ enum BagView : uint8_t {
 };
 uint8_t bagView = BAG_VIEW_LIST;
 ItemKey bagSelectedKey = ITEM_KEY_NONE;
+MoveId bagSelectedMove = MOVE_NONE;
 uint8_t bagDiscardAmount = 1;
 UiScrollView bagScroll;
 #define BAG_LIST_Y 82
@@ -663,6 +675,14 @@ UiScrollView bagScroll;
 #define BAG_ACTION_W 280
 #define BAG_ACTION_Y(i) (148 + (i) * 58)
 #define BAG_ACTION_H 48
+MoveId bagDetailMove = MOVE_NONE;
+enum BagStoneDialog : uint8_t {
+  BAG_STONE_DIALOG_NONE = 0,
+  BAG_STONE_DIALOG_CONFIRM,
+  BAG_STONE_DIALOG_INCOMPATIBLE,
+  BAG_STONE_DIALOG_KNOWN,
+};
+BagStoneDialog bagStoneDialog = BAG_STONE_DIALOG_NONE;
 
 #define DEAD_BTN_Y 346
 #define DEAD_BTN_W 150
@@ -740,12 +760,11 @@ bool sackNewHi = false;
 // training submenu (the 5th icon): routes to the trainer for each stat.
 bool trainOpen = false;
 
-// move picker, opened from the MOVES card page. Most learnsets are level 0, so
-// a level-up "you learned a move" prompt would almost never fire -- the moveset
-// is edited on demand instead.
+// Move picker: battle slots can only trade with this creature's four active and
+// four reserve learned moves.
 bool movePickOpen = false;
 bool moveInfoOpen = false;
-uint8_t movePickSlot = 0;   // which of the 4 slots is being replaced
+uint8_t movePickSlot = 0;   // which of the 4 battle slots is being changed
 uint8_t movePickParty = 0;  // 0 = the live pet, else the party slot + 1
 uint8_t movePickPage = 0;
 void renderMoveInfo();
@@ -759,11 +778,6 @@ int drawWrappedTextWindow(const char *text, int x, int y, int width,
 #define MOVE_CHIP_H 18
 #define MOVE_PICK_PER_PAGE 5
 #define MOVE_PICK_Y(i) (76 + (i) * 58)
-// level-up learn prompt: modal, and deliberately without a timeout -- it
-// decides what the creature is for the rest of its life, and once banked into
-// the party, forever.
-#define LEARN_ROW_Y(i) (104 + (i) * 56)
-#define LEARN_SKIP_Y 334
 
 // ---------- battle ----------
 // The move menu is a 2x2 grid rather than four stacked rows: the round panel
@@ -781,7 +795,7 @@ static void btlResetTapDebounce() {
 enum : uint8_t {
   SCR_QUIZ = 0, SCR_LANGUAGE, SCR_STARTER, SCR_REGION, SCR_GALLERY, SCR_DEXPICK, SCR_MOVEPICK, SCR_BOX,
   SCR_KEYBOARD, SCR_CARD, SCR_PLAYER, SCR_CLOCK, SCR_GYM, SCR_GYMPICK,
-  SCR_LAN, SCR_PICK, SCR_BATTLE, SCR_WIN, SCR_LEARN, SCR_TRAIN, SCR_MENU,
+  SCR_LAN, SCR_PICK, SCR_BATTLE, SCR_WIN, SCR_TRAIN, SCR_MENU,
   SCR_GAME, SCR_MAIN, SCR_BAG, SCR_COUNT
 };
 extern const char *const SCREEN_NAME[SCR_COUNT];   // const is internal linkage in C++
@@ -818,7 +832,7 @@ uint32_t pmdActTotalMs(const PmdAct &action);
 const char *const SCREEN_NAME[SCR_COUNT] = {
   "quiz", "language", "starter", "region", "gallery", "dexpick", "movepick", "box",
   "keyboard", "card", "player", "clock", "gym", "gympick",
-  "lan", "pick", "battle", "win", "learn", "train", "menu",
+  "lan", "pick", "battle", "win", "train", "menu",
   "minigame", "main", "bag"
 };
 
@@ -840,18 +854,18 @@ bool btlNewBadge = false;
 uint32_t btlWinUntil = 0;   // the win screen is up
 uint16_t btlRewardTraining[3] = { 0, 0, 0 };
 static constexpr uint8_t BTL_REWARD_ITEM_MAX = 4;
-ItemKey btlRewardItems[BTL_REWARD_ITEM_MAX] = {};
+ItemRef btlRewardItems[BTL_REWARD_ITEM_MAX] = {};
 uint8_t btlRewardItemCount = 0;
 UiScrollView btlRewardScroll;
 
 static void btlResetRewardSummary() {
   btlRewardTraining[0] = btlRewardTraining[1] = btlRewardTraining[2] = 0;
-  for (ItemKey &item : btlRewardItems) item = ITEM_KEY_NONE;
+  for (ItemRef &item : btlRewardItems) item = ItemRef();
   btlRewardItemCount = 0;
   btlRewardScroll.reset();
 }
 
-static void btlRememberRewardItem(ItemKey item) {
+static void btlRememberRewardItem(ItemRef item) {
   if (item && btlRewardItemCount < BTL_REWARD_ITEM_MAX)
     btlRewardItems[btlRewardItemCount++] = item;
 }
@@ -1953,6 +1967,8 @@ void onSwipeV(int dir) {
       return;
     }
     bagDetailKey = ITEM_KEY_NONE;
+    bagDetailMove = MOVE_NONE;
+    bagStoneDialog = BAG_STONE_DIALOG_NONE;
     bagView = bagView == BAG_VIEW_DETAIL || bagView == BAG_VIEW_TARGET
                 ? BAG_VIEW_ACTIONS : BAG_VIEW_LIST;
     return;
@@ -2008,6 +2024,48 @@ void onSwipeV(int dir) {
   }
 }
 
+// This is the only item store. Battle actions query and consume the same
+// Inventory directly; there is no carried subset or second battle bag.
+static void itemRefName(ItemRef ref, char *out, size_t size) {
+  const ItemEntry *item = itemByKey(ref.key);
+  if (!out || !size) return;
+  if (item && item->effect == ITEM_EFFECT_TEACH_MOVE && moveValid(ref.move))
+    snprintf(out, size, "%s: %s", itemName(ref.key), moveName(ref.move));
+  else
+    snprintf(out, size, "%s", item ? itemName(ref.key) : "?");
+}
+
+static void drawBagStoneDialog() {
+  if (bagStoneDialog == BAG_STONE_DIALOG_NONE || !moveValid(bagSelectedMove)) return;
+  const char *petName = displaySpeciesName(pet.speciesId, pet.nick);
+  char message[96];
+  if (bagStoneDialog == BAG_STONE_DIALOG_CONFIRM)
+    snprintf(message, sizeof(message), T(S_STONE_CONFIRM_FMT),
+             moveName(bagSelectedMove), petName);
+  else if (bagStoneDialog == BAG_STONE_DIALOG_KNOWN)
+    snprintf(message, sizeof(message), T(S_STONE_KNOWN_FMT),
+             petName, moveName(bagSelectedMove));
+  else
+    snprintf(message, sizeof(message), T(S_STONE_INCOMPATIBLE_FMT),
+             petName, moveName(bagSelectedMove));
+  gfx->fillRoundRect(73, 156, 320, 188, 16, UI_WHITE);
+  gfx->drawRoundRect(73, 156, 320, 188, 16, UI_INK);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  drawWrappedText(message, 91, 176, 284, 2);
+  gfx->fillRoundRect(CHOICE_BTN_X, CHOICE_BTN1_Y, CHOICE_BTN_W, CHOICE_BTN_H,
+                     12, UI_BAR_OK);
+  gfx->setTextColor(UI_WHITE);
+  uiDrawCenteredIn(bagStoneDialog == BAG_STONE_DIALOG_CONFIRM ? T(S_YES) : T(S_OK),
+                   CHOICE_BTN_X, CHOICE_BTN1_Y, CHOICE_BTN_W, CHOICE_BTN_H);
+  if (bagStoneDialog == BAG_STONE_DIALOG_CONFIRM) {
+    gfx->fillRoundRect(CHOICE_BTN_X, CHOICE_BTN2_Y, CHOICE_BTN_W, CHOICE_BTN_H,
+                       12, UI_TRACK);
+    gfx->setTextColor(UI_INK);
+    uiDrawCenteredIn(T(S_NO), CHOICE_BTN_X, CHOICE_BTN2_Y, CHOICE_BTN_W, CHOICE_BTN_H);
+  }
+}
+
 static bool bagTargetCanApply(const ItemEntry &item, uint8_t slot) {
   if (slot >= PARTY_SLOTS) return false;
   if (slot == party.activeIndex()) return itemCanApplyToPet(item, pet);
@@ -2029,7 +2087,7 @@ static void drawBagList() {
   gfx->setTextSize(3);
   gfx->setCursor(uiCenterX(T(S_BAG)), 42);
   gfx->print(T(S_BAG));
-  uint8_t stackCount = inventory.stackCount();
+  uint16_t stackCount = inventory.stackCount();
   int contentHeight = stackCount ? stackCount * BAG_ROW_STEP - 8 : 0;
   bagScroll.configure(BAG_LIST_Y, BAG_LIST_H, contentHeight, BAG_ROW_STEP);
   if (!stackCount) {
@@ -2038,7 +2096,7 @@ static void drawBagList() {
     gfx->setCursor(uiCenterX(T(S_ITEM_EMPTY)), 220);
     gfx->print(T(S_ITEM_EMPTY));
   }
-  for (uint8_t index = 0; index < stackCount; index++) {
+  for (uint16_t index = 0; index < stackCount; index++) {
     const InventoryStack *stack = inventory.stackAt(index);
     if (!stack) continue;
     const ItemEntry *item = itemByKey(stack->key);
@@ -2049,11 +2107,15 @@ static void drawBagList() {
     gfx->drawRoundRect(70, y, 326, BAG_ROW_H, 10, UI_INK);
     drawItemIcon(*item, 94, y + BAG_ROW_H / 2);
     gfx->setTextColor(UI_INK);
-    gfx->setTextSize(2);
-    gfx->setCursor(114, y + 13);
-    gfx->print(itemName(item->key));
+    bool attributedStone = item->effect == ITEM_EFFECT_TEACH_MOVE && moveValid(stack->move);
+    gfx->setTextSize(attributedStone ? 1 : 2);
+    gfx->setCursor(114, y + (attributedStone ? 17 : 13));
+    char label[64];
+    itemRefName(stack->ref(), label, sizeof(label));
+    gfx->print(label);
     char count[8];
     snprintf(count, sizeof(count), "x%u", stack->count);
+    gfx->setTextSize(2);
     gfx->setCursor(uiRightX(count, 382), y + 13);
     gfx->print(count);
   }
@@ -2077,18 +2139,26 @@ static void drawBagDetail(const ItemEntry &item) {
   gfx->setTextSize(3);
   gfx->setCursor(uiCenterX(itemName(item.key)), 130);
   gfx->print(itemName(item.key));
+  if (item.effect == ITEM_EFFECT_TEACH_MOVE && moveValid(bagSelectedMove)) {
+    gfx->setTextColor(dexEntry(pet.speciesId).accent);
+    gfx->setTextSize(2);
+    gfx->setCursor(uiCenterX(moveName(bagSelectedMove)), 158);
+    gfx->print(moveName(bagSelectedMove));
+  }
   char meta[32];
   char rarity[5] = "****";
   rarity[item.rarity < 4 ? item.rarity : 4] = 0;
-  snprintf(meta, sizeof(meta), "x%u  %s", inventory.count(item.key), rarity);
+  snprintf(meta, sizeof(meta), "x%u  %s",
+           inventory.count(item.key, bagSelectedMove), rarity);
   gfx->setTextColor(UI_BAR_WARN);
   gfx->setTextSize(2);
-  gfx->setCursor(uiCenterX(meta), 168);
+  gfx->setCursor(uiCenterX(meta), item.effect == ITEM_EFFECT_TEACH_MOVE ? 184 : 168);
   gfx->print(meta);
   const char *description = itemDescription(item.key, uiActiveLocaleCode());
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
-  drawWrappedText(description ? description : "?", 76, 208, 314, 7);
+  drawWrappedText(description ? description : "?", 76,
+                  item.effect == ITEM_EFFECT_TEACH_MOVE ? 218 : 208, 314, 7);
   gfx->setTextColor(UI_MUTED);
   gfx->setCursor(uiCenterX(T(S_BACK)), 408);
   gfx->print(T(S_BACK));
@@ -2099,7 +2169,7 @@ static void drawBagActions(const ItemEntry &item) {
   gfx->fillRoundRect(73, 124, 320, 224, 16, UI_WHITE);
   gfx->drawRoundRect(73, 124, 320, 224, 16, UI_INK);
   const char *labels[3] = { T(S_ITEM_VIEW), T(S_USE), T(S_ITEM_DISCARD) };
-  bool canUse = bagHasUsableTarget(item);
+  bool canUse = item.effect == ITEM_EFFECT_TEACH_MOVE || bagHasUsableTarget(item);
   for (uint8_t row = 0; row < 3; row++) {
     uint16_t fill = row == 1 && !canUse ? UI_TRACK : UI_BG_DAY;
     gfx->fillRoundRect(BAG_ACTION_X, BAG_ACTION_Y(row), BAG_ACTION_W,
@@ -2170,7 +2240,7 @@ static void drawBagQuantity(const ItemEntry &item) {
   uiDrawCenteredIn("+", 298, 218, 72, 52);
   char amount[12];
   snprintf(amount, sizeof(amount), "%u/%u", bagDiscardAmount,
-           inventory.count(item.key));
+           inventory.count(item.key, bagSelectedMove));
   gfx->setTextSize(2);
   uiDrawCenteredIn(amount, 168, 218, 130, 52);
   gfx->fillRoundRect(133, 282, 200, 52, 12, UI_BAR_BAD);
@@ -2181,8 +2251,10 @@ static void drawBagQuantity(const ItemEntry &item) {
 static void drawBagConfirm(const ItemEntry &item) {
   drawBagList();
   char question[96];
+  char selectedName[64];
+  itemRefName({ item.key, bagSelectedMove }, selectedName, sizeof(selectedName));
   snprintf(question, sizeof(question), T(S_ITEM_DISCARD_Q_FMT),
-           bagDiscardAmount, itemName(item.key));
+           bagDiscardAmount, selectedName);
   gfx->fillRoundRect(73, 156, 320, 188, 16, UI_WHITE);
   gfx->drawRoundRect(73, 156, 320, 188, 16, UI_INK);
   gfx->setTextColor(UI_INK);
@@ -2205,9 +2277,11 @@ static void drawBagConfirm(const ItemEntry &item) {
 void renderBag() {
   const ItemEntry *item = itemByKey(bagSelectedKey);
   if (bagView != BAG_VIEW_LIST &&
-      (!item || !inventory.count(bagSelectedKey))) {
+      (!item || !inventory.count(bagSelectedKey, bagSelectedMove))) {
     bagView = BAG_VIEW_LIST;
     bagSelectedKey = bagDetailKey = ITEM_KEY_NONE;
+    bagSelectedMove = bagDetailMove = MOVE_NONE;
+    bagStoneDialog = BAG_STONE_DIALOG_NONE;
   }
   if (bagView == BAG_VIEW_DETAIL && item) drawBagDetail(*item);
   else if (bagView == BAG_VIEW_ACTIONS && item) drawBagActions(*item);
@@ -2215,19 +2289,42 @@ void renderBag() {
   else if (bagView == BAG_VIEW_QUANTITY && item) drawBagQuantity(*item);
   else if (bagView == BAG_VIEW_CONFIRM && item) drawBagConfirm(*item);
   else drawBagList();
+  drawBagStoneDialog();
   gfx->flush();
 }
 
 static void bagReturnToList() {
   bagView = BAG_VIEW_LIST;
   bagSelectedKey = bagDetailKey = ITEM_KEY_NONE;
+  bagSelectedMove = bagDetailMove = MOVE_NONE;
+  bagStoneDialog = BAG_STONE_DIALOG_NONE;
   bagDiscardAmount = 1;
 }
 
 void bagTap(int16_t x, int16_t y) {
   const ItemEntry *item = itemByKey(bagSelectedKey);
+  bool button1 = x >= CHOICE_BTN_X && x <= CHOICE_BTN_X + CHOICE_BTN_W &&
+                 y >= CHOICE_BTN1_Y && y <= CHOICE_BTN1_Y + CHOICE_BTN_H;
+  bool button2 = x >= CHOICE_BTN_X && x <= CHOICE_BTN_X + CHOICE_BTN_W &&
+                 y >= CHOICE_BTN2_Y && y <= CHOICE_BTN2_Y + CHOICE_BTN_H;
+  if (bagStoneDialog != BAG_STONE_DIALOG_NONE) {
+    if (bagStoneDialog == BAG_STONE_DIALOG_CONFIRM && button1 && item &&
+        itemApplyToPet(*item, pet, bagSelectedMove) &&
+        inventory.consume(item->key, 1, bagSelectedMove)) {
+      bagStoneDialog = BAG_STONE_DIALOG_NONE;
+      if (!inventory.count(item->key, bagSelectedMove)) bagReturnToList();
+      sfxPlay(SFX_TAP);
+      return;
+    }
+    if (button1 || button2) {
+      bagStoneDialog = BAG_STONE_DIALOG_NONE;
+      sfxPlay(SFX_TAP);
+    }
+    return;
+  }
   if (bagView == BAG_VIEW_DETAIL) {
     bagDetailKey = ITEM_KEY_NONE;
+    bagDetailMove = MOVE_NONE;
     bagView = BAG_VIEW_ACTIONS;
     sfxPlay(SFX_TAP);
     return;
@@ -2239,14 +2336,21 @@ void bagTap(int16_t x, int16_t y) {
           y < top || y > top + BAG_ACTION_H) continue;
       if (row == 0) {
         bagDetailKey = item->key;
+        bagDetailMove = bagSelectedMove;
         bagView = BAG_VIEW_DETAIL;
       } else if (row == 1) {
-        if (!bagHasUsableTarget(*item)) { sfxPlay(SFX_DENY); return; }
-        party.captureActive(pet, false);
-        bagView = BAG_VIEW_TARGET;
+        if (item->effect == ITEM_EFFECT_TEACH_MOVE) {
+          bagStoneDialog = pet.knowsMove(bagSelectedMove) ? BAG_STONE_DIALOG_KNOWN
+              : pet.canLearnStone(bagSelectedMove) ? BAG_STONE_DIALOG_CONFIRM
+                                                   : BAG_STONE_DIALOG_INCOMPATIBLE;
+        } else {
+          if (!bagHasUsableTarget(*item)) { sfxPlay(SFX_DENY); return; }
+          party.captureActive(pet, false);
+          bagView = BAG_VIEW_TARGET;
+        }
       } else {
         bagDiscardAmount = 1;
-        bagView = inventory.count(item->key) > 1
+        bagView = inventory.count(item->key, bagSelectedMove) > 1
                     ? BAG_VIEW_QUANTITY : BAG_VIEW_CONFIRM;
       }
       sfxPlay(SFX_TAP);
@@ -2265,7 +2369,7 @@ void bagTap(int16_t x, int16_t y) {
       bool applied = slot == party.activeIndex()
           ? itemApplyToPet(*item, pet)
           : itemApplyToPartyMon(*item, party.slots[slot]);
-      if (!applied || !inventory.consume(item->key)) {
+      if (!applied || !inventory.consume(item->key, 1, bagSelectedMove)) {
         sfxPlay(SFX_DENY);
         return;
       }
@@ -2279,7 +2383,7 @@ void bagTap(int16_t x, int16_t y) {
     return;
   }
   if (bagView == BAG_VIEW_QUANTITY && item) {
-    uint8_t count = inventory.count(item->key);
+    uint8_t count = inventory.count(item->key, bagSelectedMove);
     if (x >= 96 && x <= 168 && y >= 218 && y <= 270) {
       if (bagDiscardAmount > 1) bagDiscardAmount--;
     } else if (x >= 298 && x <= 370 && y >= 218 && y <= 270) {
@@ -2291,28 +2395,28 @@ void bagTap(int16_t x, int16_t y) {
     return;
   }
   if (bagView == BAG_VIEW_CONFIRM && item) {
-    bool yes = x >= CHOICE_BTN_X && x <= CHOICE_BTN_X + CHOICE_BTN_W &&
-               y >= CHOICE_BTN1_Y && y <= CHOICE_BTN1_Y + CHOICE_BTN_H;
-    bool no = x >= CHOICE_BTN_X && x <= CHOICE_BTN_X + CHOICE_BTN_W &&
-              y >= CHOICE_BTN2_Y && y <= CHOICE_BTN2_Y + CHOICE_BTN_H;
-    if (yes && inventory.consume(item->key, bagDiscardAmount)) {
+    if (button1 && inventory.consume(item->key, bagDiscardAmount, bagSelectedMove)) {
       bagReturnToList();
       sfxPlay(SFX_TAP);
-    } else if (no) {
-      bagView = inventory.count(item->key) > 1
+    } else if (button2) {
+      bagView = inventory.count(item->key, bagSelectedMove) > 1
                   ? BAG_VIEW_QUANTITY : BAG_VIEW_ACTIONS;
       sfxPlay(SFX_TAP);
     }
     return;
   }
-  uint8_t stackCount = inventory.stackCount();
-  for (uint8_t index = 0; index < stackCount; index++) {
+  uint16_t stackCount = inventory.stackCount();
+  for (uint16_t index = 0; index < stackCount; index++) {
     const InventoryStack *stack = inventory.stackAt(index);
     if (!stack) continue;
     int top = bagScroll.contentY(index * BAG_ROW_STEP);
     if (!bagScroll.fullyVisible(top, BAG_ROW_H)) continue;
     if (x >= 70 && x <= 396 && y >= top && y <= top + BAG_ROW_H) {
       bagSelectedKey = stack->key;
+      bagSelectedMove = stack->move;
+      bagDetailKey = ITEM_KEY_NONE;
+      bagDetailMove = MOVE_NONE;
+      bagStoneDialog = BAG_STONE_DIALOG_NONE;
       bagView = BAG_VIEW_ACTIONS;
       sfxPlay(SFX_TAP);
       return;
@@ -2325,7 +2429,7 @@ void bagTap(int16_t x, int16_t y) {
 }
 
 static const ItemEntry *availableReviveItem() {
-  for (uint8_t i = 0; i < inventory.stackCount(); i++) {
+  for (uint16_t i = 0; i < inventory.stackCount(); i++) {
     const InventoryStack *stack = inventory.stackAt(i);
     const ItemEntry *item = stack ? itemByKey(stack->key) : nullptr;
     if (item && item->effect == ITEM_EFFECT_REVIVE && stack->count) return item;
@@ -2485,6 +2589,7 @@ void onSwipe(int dir) {
     if (bagView == BAG_VIEW_LIST) bagOpen = false;
     else if (bagView == BAG_VIEW_DETAIL || bagView == BAG_VIEW_TARGET) {
       bagDetailKey = ITEM_KEY_NONE;
+      bagDetailMove = MOVE_NONE;
       bagView = BAG_VIEW_ACTIONS;
     } else {
       bagReturnToList();
@@ -2594,6 +2699,8 @@ bool navMenuTap(int16_t x, int16_t y) {
       bagOpen = true;
       bagView = BAG_VIEW_LIST;
       bagSelectedKey = bagDetailKey = ITEM_KEY_NONE;
+      bagSelectedMove = bagDetailMove = MOVE_NONE;
+      bagStoneDialog = BAG_STONE_DIALOG_NONE;
       bagDiscardAmount = 1;
       bagScroll.reset();
     } else if (i == 1) {
@@ -2759,20 +2866,6 @@ void onTap(int16_t x, int16_t y) {
     gymOpen = false;
     return;
   }
-  if (pet.hasLearnOffer()) {
-    for (int i = 0; i < MOVE_SLOTS; i++) {
-      int ry = LEARN_ROW_Y(i);
-      if (x < 70 || x > 396 || y < ry || y > ry + MOVE_ROW_H) continue;
-      sfxPlay(SFX_TAP);
-      pet.acceptLearn(i);
-      return;
-    }
-    if (x >= 70 && x <= 396 && y >= LEARN_SKIP_Y && y <= LEARN_SKIP_Y + 44) {
-      sfxPlay(SFX_TAP);
-      pet.declineLearn();
-    }
-    return;   // modal: nothing else on screen responds until it is answered
-  }
   if (trainOpen) {
     bool inPanel = (x >= TRAIN_X && x <= TRAIN_X + TRAIN_W &&
                     y >= TRAIN_Y && y <= TRAIN_Y + TRAIN_H);
@@ -2828,12 +2921,24 @@ void onTap(int16_t x, int16_t y) {
       if (x < 70 || x > 396 || y < ry || y > ry + MOVE_ROW_H) continue;
       sfxPlay(SFX_TAP);
       // Swapping for a move already in another slot would silently duplicate
-      // it, so trade the two slots instead of overwriting.
-      MoveId *tgt = pickTargetMoves();
+      // it, so trade its active or reserve slot with the selected battle slot.
+      MoveId *active = pickTargetMoves();
+      MoveId *reserve = pickTargetReserveMoves();
+      MoveId chosen = all[idx];
       for (int s = 0; s < MOVE_SLOTS; s++)
-        if (tgt[s] == all[idx] && s != movePickSlot) tgt[s] = tgt[movePickSlot];
-      tgt[movePickSlot] = all[idx];
-      if (movePickParty) party.save(); else pet.flushSave();
+        if (active[s] == chosen && s != movePickSlot) {
+          active[s] = active[movePickSlot];
+          active[movePickSlot] = chosen;
+          chosen = MOVE_NONE;
+          break;
+        }
+      for (int s = 0; chosen && s < RESERVE_MOVE_SLOTS; s++)
+        if (reserve[s] == chosen) {
+          reserve[s] = active[movePickSlot];
+          active[movePickSlot] = chosen;
+          break;
+        }
+      if (movePickParty) party.save(); else pet.saveNow();
       movePickOpen = false;
       return;
     }
@@ -3202,7 +3307,6 @@ uint8_t uiCurrentScreen() {
   if (pickOpen) return SCR_PICK;
   if (lanOpen) return SCR_LAN;
   if (gymOpen) return gymPick ? SCR_GYMPICK : SCR_GYM;
-  if (pet.hasLearnOffer()) return SCR_LEARN;
   if (gameOpen || sackOpen || spdOpen) return SCR_GAME;
   if (trainOpen) return SCR_TRAIN;
   if (menuOpen) return SCR_MENU;
@@ -3334,10 +3438,6 @@ void render() {
   }
   if (navMenuOpen) {
     renderNavMenu();
-    return;
-  }
-  if (pet.hasLearnOffer()) {
-    renderLearn();
     return;
   }
   if (cardOpen) {
@@ -4339,40 +4439,24 @@ void renderCardMoves() {
   gfx->print(T(S_MOVE_TAP));
 }
 
-// Every move the species can learn by this level, so a slot can be swapped for
-// anything legal -- not just the handful a level-up would have offered.
-uint8_t learnableFor(int16_t dex, uint8_t lvl, MoveId *out, uint8_t max) {
-  if (dex < 1 || dex > dexCount()) return 0;
-  uint16_t n = learnCount(dex);
-  uint8_t w = 0;
-  for (uint16_t i = 0; i < n && w < max; i++) {
-    // moveUnlockLevel(), NOT learnLevel(): a TM is stored as level 0 and would
-    // otherwise clear this check at level 1. That is how a level 22 Charmeleon
-    // came to be offered FIRE BLAST -- the same class of bug as the level 1
-    // Squirtle with SURF, in the one path that fix did not reach.
-    if (moveUnlockLevel(dex, i) > lvl) continue;
-    MoveId mv = learnMove(dex, i);
-    if (!mv || mv >= moveCount()) continue;
-    bool dup = false;
-    for (uint8_t j = 0; j < w; j++)
-      if (out[j] == mv) { dup = true; break; }
-    if (!dup) out[w++] = mv;
-  }
-  return w;
-}
-
-// The picker targets either the live pet or a banked member. A banked one keeps
-// its frozen level, so it can only relearn what it could have known back then.
 uint8_t learnableList(MoveId *out, uint8_t max) {
-  if (movePickParty) {
-    const PartyMon &m = party.slots[movePickParty - 1];
-    return learnableFor(m.dex, (uint8_t)m.level, out, max);
-  }
-  return pet.isEgg() ? 0 : learnableFor(pet.speciesId, pet.level(), out, max);
+  if (!out || !max) return 0;
+  MoveId *active = pickTargetMoves();
+  MoveId *reserve = pickTargetReserveMoves();
+  uint8_t count = 0;
+  for (uint8_t i = 0; i < MOVE_SLOTS && count < max; i++)
+    if (active[i]) out[count++] = active[i];
+  for (uint8_t i = 0; i < RESERVE_MOVE_SLOTS && count < max; i++)
+    if (reserve[i]) out[count++] = reserve[i];
+  return count;
 }
 
 MoveId *pickTargetMoves() {
   return movePickParty ? party.slots[movePickParty - 1].moves : pet.moves;
+}
+MoveId *pickTargetReserveMoves() {
+  return movePickParty ? party.slots[movePickParty - 1].reserveMoves
+                       : pet.reserveMoves;
 }
 int16_t pickTargetDex() {
   return movePickParty ? party.slots[movePickParty - 1].dex : pet.speciesId;
@@ -5502,12 +5586,16 @@ static void btlGrantWildRewards() {
     btlRewardTraining[1] += party.slots[i].trDef - before[i][1];
     btlRewardTraining[2] += party.slots[i].trSpe - before[i][2];
   }
+  MoveId foeMoves[LEARNED_MOVE_SLOTS] = {};
+  for (uint8_t i = 0; i < MOVE_SLOTS; i++) foeMoves[i] = btlWildMon.moves[i];
+  for (uint8_t i = 0; i < RESERVE_MOVE_SLOTS; i++)
+    foeMoves[MOVE_SLOTS + i] = btlWildMon.reserveMoves[i];
   uint8_t dropCount = wildWeightedDropCount(
       btlHard, (uint8_t)random(100));
   for (uint8_t i = 0; i < dropCount; i++) {
-    ItemKey drop = inventory.grantWeightedDrop(
-        (uint32_t)random(0x7FFFFFFF), btlRewardItems,
-        btlRewardItemCount);
+    ItemRef drop = inventory.grantWeightedDrop(
+        (uint32_t)random(0x7FFFFFFF), foeMoves, LEARNED_MOVE_SLOTS,
+        btlRewardItems, btlRewardItemCount);
     btlRememberRewardItem(drop);
   }
 }
@@ -5532,7 +5620,7 @@ void btlFinish(bool won) {
   if (btlWon && btlTrainer >= 0) { btlWinUntil = millis() + 60000; return; }
   if (btlWon && btlWild) {
     btlGrantWildRewards();
-    ItemKey mechanicDrop = inventory.grantMechanicReward(
+    ItemRef mechanicDrop = inventory.grantMechanicReward(
         (ItemMechanicKind)btlWildMechanic, btlWildMegaForm);
     btlRememberRewardItem(mechanicDrop);
     btlWinUntil = millis() + 60000;
@@ -5969,8 +6057,10 @@ void renderWin() {
       uiDrawCenteredIn(line, 83, y, 300, rewardRowH);
     }
     for (uint8_t i = 0; i < btlRewardItemCount; i++) {
-      const ItemEntry *item = itemByKey(btlRewardItems[i]);
-      snprintf(line, sizeof(line), T(S_ITEM_FOUND_FMT), itemName(btlRewardItems[i]));
+      const ItemEntry *item = itemByKey(btlRewardItems[i].key);
+      char rewardName[64];
+      itemRefName(btlRewardItems[i], rewardName, sizeof(rewardName));
+      snprintf(line, sizeof(line), T(S_ITEM_FOUND_FMT), rewardName);
       int y = btlRewardScroll.contentY(row * rewardRowStep);
       row++;
       if (!btlRewardScroll.fullyVisible(y, rewardRowH)) continue;
@@ -6068,7 +6158,7 @@ static bool btlWarehouseEffect(const ItemEntry &item) {
 
 static uint8_t btlWarehouseCount() {
   uint8_t count = 0;
-  for (uint8_t i = 0; i < inventory.stackCount(); i++) {
+  for (uint16_t i = 0; i < inventory.stackCount(); i++) {
     const InventoryStack *stack = inventory.stackAt(i);
     const ItemEntry *item = stack ? itemByKey(stack->key) : nullptr;
     if (item && btlWarehouseEffect(*item)) count++;
@@ -6077,7 +6167,7 @@ static uint8_t btlWarehouseCount() {
 }
 
 static const InventoryStack *btlWarehouseAt(uint8_t index) {
-  for (uint8_t i = 0; i < inventory.stackCount(); i++) {
+  for (uint16_t i = 0; i < inventory.stackCount(); i++) {
     const InventoryStack *stack = inventory.stackAt(i);
     const ItemEntry *item = stack ? itemByKey(stack->key) : nullptr;
     if (!item || !btlWarehouseEffect(*item)) continue;
@@ -7858,33 +7948,6 @@ static int regionPickTap(int16_t x, int16_t y, uint8_t mode) {
     }
   }
   return -1;
-}
-
-// ---------- level-up learn prompt ----------
-void renderLearn() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
-  MoveId mv = pet.learnOffer();
-  char head[96];
-  const char *nm = displaySpeciesName(pet.speciesId, pet.nick);
-  snprintf(head, sizeof(head), T(S_LEARN_Q), nm);
-  gfx->setTextColor(UI_INK);
-  gfx->setTextSize(1);
-  gfx->setCursor(uiCenterX(head), 48);
-  gfx->print(head);
-  gfx->setTextColor(dexEntry(pet.speciesId).accent);
-  gfx->setTextSize(3);
-  gfx->setCursor(uiCenterX(moveName(mv)), 66);
-  gfx->print(moveName(mv));
-
-  for (int i = 0; i < MOVE_SLOTS; i++) drawMoveRow(LEARN_ROW_Y(i), pet.moves[i], false, pet.speciesId);
-
-  gfx->fillRoundRect(70, LEARN_SKIP_Y, 326, 44, 12, UI_TRACK);
-  gfx->drawRoundRect(70, LEARN_SKIP_Y, 326, 44, 12, UI_INK);
-  gfx->setTextColor(UI_INK);
-  gfx->setTextSize(2);
-  uiDrawCenteredIn(T(S_LEARN_SKIP), 70, LEARN_SKIP_Y, 326, 44);
-  gfx->flush();
 }
 
 // pagina 2: medallas con etiqueta descriptiva

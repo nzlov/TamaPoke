@@ -186,15 +186,6 @@ void Party::sanitize(PartyMon &m, bool boxed) {
   // loaded catalogue is availability, not the persistence boundary.
   if (m.dex > CONTENT_MAX_SPECIES) { m = PartyMon(); return; }
   for (MoveId &move : m.moves) if (!moveValid(move)) move = MOVE_NONE;
-  if (m.learnQCount > sizeof(m.learnQueue) / sizeof(m.learnQueue[0]))
-    m.learnQCount = sizeof(m.learnQueue) / sizeof(m.learnQueue[0]);
-  uint8_t queued = 0;
-  for (uint8_t i = 0; i < m.learnQCount; i++)
-    if (m.learnQueue[i] != MOVE_NONE && moveValid(m.learnQueue[i]))
-      m.learnQueue[queued++] = m.learnQueue[i];
-  for (uint8_t i = queued; i < sizeof(m.learnQueue) / sizeof(m.learnQueue[0]); i++)
-    m.learnQueue[i] = MOVE_NONE;
-  m.learnQCount = queued;
   for (uint8_t &reward : m.gymIvRewards)
     if (reward > GYM_IV_REWARD_HP &&
         reward != GYM_IV_REWARD_LEGACY_CLAIMED) reward = 0;
@@ -205,7 +196,8 @@ void Party::sanitize(PartyMon &m, bool boxed) {
   if (m.dex <= 0) m.state = 0;
   m.nick[sizeof(m.nick) - 1] = 0;
   uint8_t version = m.stateVersion;
-  if (version != 1 && version != 2 && version != 3 && version != 4 && version != 5) {
+  if (version != 1 && version != 2 && version != 3 && version != 4 &&
+      version != 5 && version != 6) {
     m.fullness = m.joy = m.energy = 80; m.hygiene = 100;
     m.ageMinutes = (uint32_t)(m.level ? m.level - 1 : 0) * MINUTES_PER_LEVEL;
     m.lastLearnLevel = (uint8_t)(m.level > MAX_LEVEL ? MAX_LEVEL : m.level);
@@ -240,7 +232,26 @@ void Party::sanitize(PartyMon &m, bool boxed) {
     m.setAbilitySlot(slot);
   }
   if (m.dex <= 0) m.setAbilitySlot(ABILITY_SLOT_UNKNOWN);
-  m.stateVersion = 5;
+  if (version < 6) {
+    // GLUE: v5 stored pending level-up offers at this exact offset. Preserve up
+    // to four real offers as learned reserves, then retire the queue metadata.
+    uint8_t count = m.legacyLearnQCount > RESERVE_MOVE_SLOTS
+        ? RESERVE_MOVE_SLOTS : m.legacyLearnQCount;
+    for (uint8_t i = count; i < RESERVE_MOVE_SLOTS; i++)
+      m.reserveMoves[i] = MOVE_NONE;
+  }
+  for (MoveId &move : m.reserveMoves) if (!moveValid(move)) move = MOVE_NONE;
+  for (uint8_t i = 0; i < LEARNED_MOVE_SLOTS; i++) {
+    MoveId &move = i < MOVE_SLOTS ? m.moves[i] : m.reserveMoves[i - MOVE_SLOTS];
+    if (!move) continue;
+    for (uint8_t j = 0; j < i; j++) {
+      MoveId known = j < MOVE_SLOTS ? m.moves[j] : m.reserveMoves[j - MOVE_SLOTS];
+      if (known == move) { move = MOVE_NONE; break; }
+    }
+  }
+  for (MoveId &move : m.legacyLearnQueueTail) move = MOVE_NONE;
+  m.legacyLearnQCount = 0;
+  m.stateVersion = 6;
   auto sanitizeTraining = [](uint8_t &training, uint8_t &floor, uint8_t iv) {
     uint8_t cap = Pet::trMaxFor(iv);
     if (floor > cap) floor = cap;

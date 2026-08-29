@@ -60,7 +60,7 @@ static void check(const char *name, bool *open, uint8_t *page){
   if (*page != 1) { printf("FAIL  %-10s did not advance a page (page=%u)\n", name, *page); bad++; return; }
   printf("PASS  %-10s pages on a horizontal swipe\n", name);
 }
-uint8_t learnableFor(int16_t dex, uint8_t lvl, MoveId *out, uint8_t max);
+uint8_t learnableList(MoveId *out, uint8_t max);
 
 int main(){
   setup();
@@ -68,7 +68,6 @@ int main(){
   if (pet.awaitingStarter()) pet.chooseStarter(4);
   if (pet.isEgg()) pet.dbgHatchAs(6,false);
   pet.ageMinutes = 60UL*60; pet.relearnFromLevel();
-  while (pet.hasLearnOffer()) pet.declineLearn();
   for (int i=1;i<PARTY_SLOTS;i++){ PartyMon m; m.dex=9+i; m.level=40;
     m.ageMinutes=39UL*MINUTES_PER_LEVEL;
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20; party.replaceAt(i,m); }
@@ -304,24 +303,25 @@ int main(){
     gRegionArt = 0xFFFF;                       // leave it as we found it
   }
 
-  // The rule lives in moveUnlockLevel() and moves_test pins it -- but the
-  // PICKER has to actually ask it. It once kept its own copy of the check,
-  // which IS the bug, so this drives the screen's own list, not the rule.
+  // The picker must expose exactly this creature's learned active and reserve
+  // moves, never the rest of its species learnset.
   {
-    MoveId l[64];
-    uint8_t n = learnableFor(5, 22, l, sizeof(l) / sizeof(l[0]));    // a Charmeleon at 22
-    bool blast = false, ember = false;
-    for (uint8_t i = 0; i < n; i++) {
-      if (!strcmp(moveEntry(l[i]).name, "FIRE BLAST")) blast = true;
-      if (!strcmp(moveEntry(l[i]).name, "EMBER")) ember = true;
+    MoveId l[LEARNED_MOVE_SLOTS];
+    uint8_t n = learnableList(l, LEARNED_MOVE_SLOTS);
+    bool allLearned = n == pet.learnedMoveCount();
+    for (uint8_t i = 0; i < n; i++) if (!pet.knowsMove(l[i])) allLearned = false;
+    if (!allLearned) { printf("FAIL  picker     includes an unlearned move\n"); bad++; }
+    else printf("PASS  picker     contains exactly active and reserve moves\n");
+    MoveId compatibleButUnknown = MOVE_NONE;
+    for (uint16_t i = 0; i < learnCount(pet.speciesId); i++) {
+      MoveId move = learnMove(pet.speciesId, i);
+      if (!pet.knowsMove(move)) { compatibleButUnknown = move; break; }
     }
-    if (blast) { printf("FAIL  picker     offers a level 22 Charmeleon FIRE BLAST\n"); bad++; }
-    else printf("PASS  picker     no FIRE BLAST for a level 22 Charmeleon\n");
-    if (!ember) { printf("FAIL  picker     lost the moves it really knows\n"); bad++; }
-    else printf("PASS  picker     still offers what it really knows\n");
-    if (learnableFor(5, 40, l, sizeof(l) / sizeof(l[0])) <= n) {
-      printf("FAIL  picker     TMs never arrive at all\n"); bad++;
-    } else printf("PASS  picker     and the TMs arrive once it is built\n");
+    bool leaked = false;
+    for (uint8_t i = 0; i < n; i++) if (l[i] == compatibleButUnknown) leaked = true;
+    if (!moveValid(compatibleButUnknown) || leaked) {
+      printf("FAIL  picker     exposes a compatible but unlearned move\n"); bad++;
+    } else printf("PASS  picker     hides compatible moves until learned\n");
   }
 
   printf("%s\n", bad?"FAILURES":"every paged screen pages");

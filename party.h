@@ -14,7 +14,9 @@
 // advance until they return to the cultivation team.
 #define BOX_SLOTS 24
 #define BOX_PAGE_SLOTS 6
-#define MOVE_SLOTS 4    // the same four every trainer gets in the real games
+#define MOVE_SLOTS 4
+#define RESERVE_MOVE_SLOTS 4
+#define LEARNED_MOVE_SLOTS (MOVE_SLOTS + RESERVE_MOVE_SLOTS)
 
 class Pet;
 
@@ -66,9 +68,10 @@ struct PartyMon {
   // Appended to preserve every previous field offset in the raw NVS record.
   NatureId nature = NATURE_UNKNOWN;
   // Full cultivation state. v0 identifies a migrated combat-only record; v1
-  // predates permanent training floors, and v2 predates wild sparkle and
-  // player-raised time; v3 predates persisted gender, and v4 predates ability.
-  uint8_t stateVersion = 5;
+  // predates permanent training floors, v2 predates wild sparkle and
+  // player-raised time, v3 predates persisted gender, v4 predates ability, and
+  // v5 predates four reserve move slots.
+  uint8_t stateVersion = 6;
   uint8_t fullness = 80, joy = 80, energy = 80, hygiene = 100;
   uint8_t poops = 0, weight = 0;
   uint8_t berryKnown = 0;
@@ -96,8 +99,12 @@ struct PartyMon {
   uint16_t trainingTicks = 0;
   uint8_t lastLearnLevel = 0;
   uint8_t trMinDef = 0;
-  MoveId learnQueue[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-  uint8_t learnQCount = 0;
+  // v6 reuses the first half of the former eight-entry pending-learn queue for
+  // reserve moves. The tail and count byte remain at their old offsets so the
+  // complete record and every later field stay byte-compatible.
+  MoveId reserveMoves[RESERVE_MOVE_SLOTS] = { 0, 0, 0, 0 };
+  MoveId legacyLearnQueueTail[4] = { 0, 0, 0, 0 };
+  uint8_t legacyLearnQCount = 0;
   uint8_t trMinSpe = 0;
   int16_t eggByRegion[CONTENT_MAX_REGIONS + 1] = { 0 };
   // Appended so pre-death six-slot records remain a byte-exact prefix and can

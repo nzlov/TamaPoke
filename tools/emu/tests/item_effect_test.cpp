@@ -39,8 +39,9 @@ int main() {
   const ItemEntry *training = effect(ITEM_EFFECT_TRAINING_FLOOR);
   const ItemEntry *boost = effect(ITEM_EFFECT_BATTLE_STAGE);
   const ItemEntry *maxSoup = effect(ITEM_EFFECT_GIGANTAMAX_FACTOR);
-  CHECK(heal && cure && revive && training && boost && maxSoup);
-  if (!heal || !cure || !revive || !training || !boost || !maxSoup) return 1;
+  const ItemEntry *stone = effect(ITEM_EFFECT_TEACH_MOVE);
+  CHECK(heal && cure && revive && training && boost && maxSoup && stone);
+  if (!heal || !cure || !revive || !training || !boost || !maxSoup || !stone) return 1;
 
   Combatant target;
   target.maxHp = 100;
@@ -82,6 +83,14 @@ int main() {
   CHECK(!itemCanApplyToPet(*training, pet));
   CHECK(itemCanApplyToPet(*maxSoup, pet));
   CHECK(itemApplyToPet(*maxSoup, pet) && pet.gigantamaxFactor);
+  MoveId compatible = learnMove(pet.speciesId, 0);
+  CHECK(moveValid(compatible) && itemCanApplyToPet(*stone, pet, compatible));
+  CHECK(itemApplyToPet(*stone, pet, compatible) && pet.knowsMove(compatible));
+  CHECK(!itemCanApplyToPet(*stone, pet, compatible));
+  MoveId incompatible = MOVE_NONE;
+  for (MoveId move = 1; move < moveCount(); move++)
+    if (!speciesCanLearnMove(pet.speciesId, move)) { incompatible = move; break; }
+  CHECK(moveValid(incompatible) && !itemCanApplyToPet(*stone, pet, incompatible));
   pet.speciesId = 7;
   pet.gigantamaxFactor = false;
   CHECK(!itemCanApplyToPet(*maxSoup, pet) && !itemApplyToPet(*maxSoup, pet));

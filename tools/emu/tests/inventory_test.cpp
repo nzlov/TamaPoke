@@ -148,7 +148,7 @@ int main() {
   ck(loaded.count(dailyKey) == INVENTORY_STACK_MAX,
      "opaque-key inventory survives a reload");
 
-  ItemKey firstWeightedDrop = ITEM_KEY_NONE;
+  ItemRef firstWeightedDrop;
   for (uint16_t i = 0; i < itemCount(); i++) {
     const ItemEntry *item = itemAt(i);
     if (item->dropWeight && loaded.count(item->key) < INVENTORY_STACK_MAX) {
@@ -156,15 +156,17 @@ int main() {
       break;
     }
   }
-  ck(firstWeightedDrop, "a weighted drop grants one non-full pack item");
-  ItemKey excludedDrops[2] = { firstWeightedDrop, ITEM_KEY_NONE };
-  ItemKey secondWeightedDrop = loaded.grantWeightedDrop(0, excludedDrops, 1);
-  ck(secondWeightedDrop && secondWeightedDrop != firstWeightedDrop,
+  ck((bool)firstWeightedDrop, "a weighted drop grants one non-full pack item");
+  ItemRef excludedDrops[2] = { firstWeightedDrop, ItemRef() };
+  ItemRef secondWeightedDrop = loaded.grantWeightedDrop(
+      0, nullptr, 0, excludedDrops, 1);
+  ck(secondWeightedDrop && secondWeightedDrop.key != firstWeightedDrop.key,
      "an independent weighted drop can exclude the first reward");
   excludedDrops[1] = secondWeightedDrop;
-  ItemKey thirdWeightedDrop = loaded.grantWeightedDrop(0, excludedDrops, 2);
-  ck(thirdWeightedDrop && thirdWeightedDrop != firstWeightedDrop &&
-     thirdWeightedDrop != secondWeightedDrop,
+  ItemRef thirdWeightedDrop = loaded.grantWeightedDrop(
+      0, nullptr, 0, excludedDrops, 2);
+  ck(thirdWeightedDrop && thirdWeightedDrop.key != firstWeightedDrop.key &&
+     thirdWeightedDrop.key != secondWeightedDrop.key,
      "a bonus weighted drop excludes both earlier rewards");
 
   bool mechanicRewards = true;
@@ -179,21 +181,80 @@ int main() {
     }
     if (!expected) { mechanicRewards = false; continue; }
     uint8_t beforeReward = loaded.count(expected->key);
-    ItemKey granted = loaded.grantMechanicReward((ItemMechanicKind)kind);
-    if (granted != expected->key || loaded.count(expected->key) != beforeReward + 1)
+    ItemRef granted = loaded.grantMechanicReward((ItemMechanicKind)kind);
+    if (granted.key != expected->key || granted.move != MOVE_NONE ||
+        loaded.count(expected->key) != beforeReward + 1)
       mechanicRewards = false;
   }
   ck(mechanicRewards, "each wild mechanic grants its one corresponding reward item");
 
   bool megaVariants = true;
   for (uint8_t form = MEGA_FORM_STANDARD; form <= MEGA_FORM_Z; form++) {
-    ItemKey granted = loaded.grantMechanicReward(ITEM_MECHANIC_MEGA,
+    ItemRef granted = loaded.grantMechanicReward(ITEM_MECHANIC_MEGA,
                                                  (MegaFormKind)form);
-    const ItemEntry *item = itemByKey(granted);
+    const ItemEntry *item = itemByKey(granted.key);
     if (!item || item->flags != ITEM_MECHANIC_MEGA || item->param != form)
       megaVariants = false;
   }
   ck(megaVariants, "wild Mega rewards preserve the exact standard/X/Y/Z stone");
+
+  const ItemEntry *stone = nullptr;
+  uint8_t stoneItems = 0;
+  for (uint16_t i = 0; i < itemCount(); i++)
+    if (itemAt(i)->effect == ITEM_EFFECT_TEACH_MOVE) {
+      stone = itemAt(i);
+      stoneItems++;
+    }
+  ck(stoneItems == 1 && stone && stone->category == ITEM_CATEGORY_MOVE_STONE &&
+     stone->dropWeight,
+     "the pack exposes one weighted attributed move stone");
+  MoveId foeMoves[2] = { 1, 2 };
+  uint32_t stoneStart = 0;
+  for (uint16_t i = 0; stone && i < itemCount(); i++) {
+    const ItemEntry *item = itemAt(i);
+    if (item == stone) break;
+    if (item->dropWeight && item->effect != ITEM_EFFECT_TEACH_MOVE &&
+        loaded.count(item->key) < INVENTORY_STACK_MAX)
+      stoneStart += item->dropWeight;
+  }
+  ItemRef stoneDrop = stone
+      ? loaded.grantWeightedDrop(stoneStart, foeMoves, 2) : ItemRef();
+  ck(stoneDrop.key == (stone ? stone->key : ITEM_KEY_NONE) &&
+     (stoneDrop.move == foeMoves[0] || stoneDrop.move == foeMoves[1]),
+     "a move-stone drop carries only one of the foe's learned moves");
+  if (stoneDrop) {
+    uint8_t sameBefore = loaded.count(stoneDrop.key, stoneDrop.move);
+    MoveId other = stoneDrop.move == foeMoves[0] ? foeMoves[1] : foeMoves[0];
+    uint16_t stacksBefore = loaded.stackCount();
+    bool stacked = loaded.add(stoneDrop.key, 1, stoneDrop.move);
+    bool separate = loaded.add(stoneDrop.key, 1, other);
+    ck(stacked && loaded.count(stoneDrop.key, stoneDrop.move) == sameBefore + 1,
+       "stones for the same move stack together");
+    ck(separate && loaded.count(stoneDrop.key, other) == 1 &&
+       loaded.stackCount() == stacksBefore + 1,
+       "stones for different moves use separate stacks");
+    Inventory reloadedStones;
+    reloadedStones.begin();
+    ck(reloadedStones.count(stoneDrop.key, stoneDrop.move) == sameBefore + 1 &&
+       reloadedStones.count(stoneDrop.key, other) == 1,
+       "each attributed stone stack survives an inventory reload");
+  }
+
+  // The previous inventory blob stored 32 ordinary key/count stacks with no
+  // move attribute. Its exact padded shape must remain readable.
+  struct LegacyStack { ItemKey key; uint8_t count; };
+  static_assert(sizeof(LegacyStack) == 4, "legacy stack fixture must be byte-exact");
+  LegacyStack old[32] = {};
+  old[0].key = dailyKey;
+  old[0].count = 7;
+  Preferences seed;
+  seed.begin("tamapoke", false);
+  seed.putBytes("items", old, sizeof(old));
+  seed.end();
+  Inventory migrated;
+  migrated.begin();
+  ck(migrated.count(dailyKey) == 7,
+     "the pre-attribute 32-stack inventory migrates without losing ordinary items");
 
   printf("%s\n", bad ? "FAILURES" : "all good");
   return bad ? 1 : 0;

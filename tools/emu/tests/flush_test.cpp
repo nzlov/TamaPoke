@@ -67,7 +67,6 @@ int main(){
   if (pet.awaitingStarter()) pet.chooseStarter(4);
   if (pet.isEgg()) pet.dbgHatchAs(6,false);
   pet.ageMinutes = 60UL*60;
-  while (pet.hasLearnOffer()) pet.declineLearn();
 
   clearAll(); check("main");
   clearAll(); trainOpen=true;    check("train");

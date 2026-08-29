@@ -30,7 +30,6 @@ int main(){
   if (pet.isEgg()) pet.dbgHatchAs(6,false);
   pet.ageMinutes = 50UL*MINUTES_PER_LEVEL;
   pet.relearnFromLevel();
-  while (pet.hasLearnOffer()) pet.declineLearn();
 
   startBattle(9, 50);
   ck(battleOpen, "battle starts");

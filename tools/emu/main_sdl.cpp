@@ -152,11 +152,12 @@ extern BattleField btlField;
 extern int8_t btlTrainer;
 extern uint32_t btlWinUntil;
 extern uint16_t btlRewardTraining[3];
-extern ItemKey btlRewardItems[4];
+extern ItemRef btlRewardItems[4];
 extern uint8_t btlRewardItemCount;
 void startTrainerBattle(uint8_t idx, bool hard);
 void onTap(int16_t x, int16_t y);   // the first-boot shots tap their way in
 void onSwipeV(int dir);
+void bagTap(int16_t x, int16_t y);
 void refreshUiFont();
 extern bool gymOpen, playerOpen, navMenuOpen;
 extern bool galleryDirty;
@@ -222,6 +223,7 @@ extern uint32_t gameOverUntil, sackOverUntil, spdOverUntil;
 extern uint8_t gameScore, gameMisses, sackGain, spdGain;
 extern uint16_t sackHits, spdHits;
 extern ItemKey bagSelectedKey, bagDetailKey, btlPendingItem;
+extern MoveId bagSelectedMove, bagDetailMove;
 extern uint8_t bagView, bagDiscardAmount, boxSel, btlItemPage, btlSquadN;
 extern Combatant btlSquad[];
 #define PANEL 466
@@ -288,7 +290,6 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   // The learn prompt is modal and would cover whatever screen was asked for.
   // It started firing for every shot once dex_moves.py gained the cheap early
   // attacks, because a creature now genuinely has moves waiting.
-  while (pet.hasLearnOffer()) pet.declineLearn();
   // First-boot shots advance through the same language and region taps as the
   // player. The language page itself is left untouched for its screenshot.
   if (strcmp(screen, "language") &&
@@ -340,7 +341,6 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   else if (!strcmp(screen, "evolvecta")) {
     pet.dbgHatchAs(1, false);
     pet.ageMinutes = 19UL * MINUTES_PER_LEVEL;
-    while (pet.hasLearnOffer()) pet.declineLearn();
   }
   else if (!strcmp(screen, "farewellcta")) {
     pet.dbgHatchAs(3, false);
@@ -348,14 +348,12 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.ageMinutes = 73UL * MINUTES_PER_LEVEL;
     pet.raisedMinutes = FAREWELL_AGE_MIN;
     menuOpen = true;
-    while (pet.hasLearnOffer()) pet.declineLearn();
   }
   else if (!strcmp(screen, "runawaycta")) {
     pet.dbgHatchAs(3, false);
     expireShotCelebrations();
     pet.ageMinutes = 49UL * MINUTES_PER_LEVEL;
     pet.dbgRunawayReady();
-    while (pet.hasLearnOffer()) pet.declineLearn();
   }
   else if (!strcmp(screen, "battle"))      { cardOpen = true; cardPage = 1; }
   else if (!strcmp(screen, "profile")){ cardOpen = true; cardPage = 0; }
@@ -402,7 +400,6 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   else if (!strcmp(screen, "choicefarewell")) {
     pet.dbgHatchAs(3, false);
     pet.raisedMinutes = FAREWELL_AGE_MIN;
-    while (pet.hasLearnOffer()) pet.declineLearn();
     choiceKind = 3; choiceUntil = millis() + 5000;
   }
   else if (!strcmp(screen, "bath")) startBathAnimation(millis());
@@ -466,7 +463,8 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
       const ItemEntry *item = itemAt(i);
       if (!item) continue;
       inventory.add(item->key, (uint8_t)(i + 3));
-      if (!selected && itemUsableOutsideBattle(*item)) selected = item;
+      if (!selected && item->effect != ITEM_EFFECT_TEACH_MOVE &&
+          itemUsableOutsideBattle(*item)) selected = item;
     }
     if (strcmp(screen, "bag")) {
       for (uint16_t i = 0; i < itemCount(); i++) {
@@ -476,7 +474,9 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
       if (selected) inventory.add(selected->key, 3);
     }
     bagSelectedKey = selected ? selected->key : ITEM_KEY_NONE;
+    bagSelectedMove = MOVE_NONE;
     bagDetailKey = !strcmp(screen, "bagdetail") ? bagSelectedKey : ITEM_KEY_NONE;
+    bagDetailMove = MOVE_NONE;
     bagDiscardAmount = !strcmp(screen, "bagconfirm") ? 2 : 1;
     if (!strcmp(screen, "bagactions")) bagView = 1;
     else if (!strcmp(screen, "bagdetail")) bagView = 2;
@@ -496,6 +496,35 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
       bagSelectedKey = ITEM_KEY_NONE;
     }
     bagOpen = true;
+  }
+  else if (!strcmp(screen, "stoneconfirm") ||
+           !strcmp(screen, "stoneincompatible")) {
+    const ItemEntry *stone = nullptr;
+    for (uint16_t i = 0; i < itemCount(); i++) {
+      const ItemEntry *item = itemAt(i);
+      if (item && item->effect == ITEM_EFFECT_TEACH_MOVE) { stone = item; break; }
+    }
+    MoveId move = MOVE_NONE;
+    for (MoveId candidate = 1; candidate < moveCount(); candidate++) {
+      bool compatible = speciesCanLearnMove(pet.speciesId, candidate);
+      if ((!strcmp(screen, "stoneconfirm") && compatible && !pet.knowsMove(candidate)) ||
+          (!strcmp(screen, "stoneincompatible") && !compatible)) {
+        move = candidate;
+        break;
+      }
+    }
+    if (!stone || !moveValid(move)) {
+      fprintf(stderr, "move-stone screenshot fixture has no suitable move\n");
+      return 1;
+    }
+    inventory.add(stone->key, 1, move);
+    bagSelectedKey = stone->key;
+    bagSelectedMove = move;
+    bagDetailKey = ITEM_KEY_NONE;
+    bagDetailMove = MOVE_NONE;
+    bagView = 1;
+    bagOpen = true;
+    bagTap(233, 230);
   }
   else if (!strcmp(screen, "capture") || !strcmp(screen, "reward") ||
            !strcmp(screen, "rewardscroll")) {
@@ -518,12 +547,12 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     for (uint16_t i = 0; i < itemCount() && btlRewardItemCount < 3; i++) {
       const ItemEntry *item = itemAt(i);
       if (!item || !item->dropWeight) continue;
-      btlRewardItems[btlRewardItemCount++] = item->key;
+      btlRewardItems[btlRewardItemCount++] = { item->key, MOVE_NONE };
     }
     for (uint16_t i = 0; i < itemCount() && btlRewardItemCount < 4; i++) {
       const ItemEntry *item = itemAt(i);
       if (!item || item->effect != ITEM_EFFECT_BATTLE_MECHANIC) continue;
-      btlRewardItems[btlRewardItemCount++] = item->key;
+      btlRewardItems[btlRewardItemCount++] = { item->key, MOVE_NONE };
       break;
     }
     btlWinUntil = 60000;

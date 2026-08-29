@@ -42,7 +42,6 @@ int main(){
   pet.gymIvRewards[0]=GYM_IV_REWARD_DEF;
   pet.gymIvRewards[71]=GYM_IV_REWARD_LEGACY_CLAIMED;
   pet.relearnFromLevel();
-  while (pet.hasLearnOffer()) pet.declineLearn();
   pet.rename("SCORCH");
   pet.avatar = 6;        // past the old four, so a stale & 3 mask would break it
   pet.badges = 0x00BF; pet.badgesHard = 0x000A;
@@ -61,7 +60,8 @@ int main(){
     if(i==2) m.trainingTicks=(uint16_t)(29u<<8)|17u;
     m.gymIvRewards[i]=GYM_IV_REWARD_ATK;
     snprintf(m.nick,sizeof(m.nick),"P%d",i);
-    m.moves[0]=1+i; m.moves[1]=9; party.replaceAt(i,m); }
+    m.moves[0]=1+i; m.moves[1]=9; m.reserveMoves[0]=20+i;
+    party.replaceAt(i,m); }
   for (int i=0;i<BOX_SLOTS;i++){ PartyMon m; m.dex=1+i*3; m.level=10+i;
     m.ageMinutes=(uint32_t)(m.level-1)*MINUTES_PER_LEVEL;
     m.nature=(NatureId)((i+5)%NATURE_COUNT);
@@ -69,7 +69,8 @@ int main(){
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=11;
     m.trMinSpe=30;
     if(i==7) m.trainingTicks=(uint16_t)(31u<<8)|23u;
-    m.gymIvRewards[i]=GYM_IV_REWARD_SPE; party.box[i]=m; }
+    m.gymIvRewards[i]=GYM_IV_REWARD_SPE; m.reserveMoves[1]=40+i;
+    party.box[i]=m; }
   party.box[0].setAbilitySlot(ABILITY_SLOT_HIDDEN);
   party.boxSave();
   // renameTrainer() persists, and save() writes every field -- so this is also
@@ -165,7 +166,9 @@ int main(){
      "and the only extra bit is the live creature re-registering itself");
   bool moves = true;
   for (int i=0;i<MOVE_SLOTS;i++) if (p2.moves[i]!=pet.moves[i]) moves=false;
-  ck(moves, "and the moveset");
+  for (int i=0;i<RESERVE_MOVE_SLOTS;i++)
+    if (p2.reserveMoves[i]!=pet.reserveMoves[i]) moves=false;
+  ck(moves, "and all active and reserve moves");
 
   ck(q2.count()==PARTY_SLOTS, "the whole party is back");
   bool party_ok = true;
@@ -177,7 +180,8 @@ int main(){
   for (int i=1;i<PARTY_SLOTS;i++){
     const PartyMon &m = q2.slots[i];
     if (m.dex != 20+i*7 || m.level != 40+i) party_ok = false;
-    if (m.moves[0] != 1+i || m.moves[1] != 9) party_ok = false;
+    if (m.moves[0] != 1+i || m.moves[1] != 9 || m.reserveMoves[0] != 20+i)
+      party_ok = false;
     if (m.gymIvRewards[i] != GYM_IV_REWARD_ATK) party_ok = false;
     if (m.nature != (NatureId)(i%NATURE_COUNT)) party_ok = false;
     if (m.gender != ((i&1)?GENDER_FEMALE:GENDER_MALE)) party_ok = false;
@@ -194,6 +198,10 @@ int main(){
   ck(q2.slots[2].trainingTicks==((uint16_t)(29u<<8)|17u),
      "and both cultivation-state training counters survive");
   ck(q2.boxCount()==BOX_SLOTS, "the box comes back full");
+  bool boxReserves = true;
+  for (int i=0;i<BOX_SLOTS;i++)
+    if (q2.box[i].reserveMoves[1] != 40+i) boxReserves = false;
+  ck(boxReserves, "with every boxed reserve move");
   ck(q2.box[7].dex==1+7*3 && q2.box[7].level==17, "with the right creatures in it");
   ck(q2.box[7].gymIvRewards[7]==GYM_IV_REWARD_SPE,
      "with each banked creature's gym IV bytes");

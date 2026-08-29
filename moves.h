@@ -79,3 +79,4 @@ uint16_t learnCount(SpeciesId species);
 MoveId learnMove(SpeciesId species, uint16_t index);
 uint8_t learnLevel(SpeciesId species, uint16_t index);
 LearnMethod learnMethod(SpeciesId species, uint16_t index);
+bool speciesCanLearnMove(SpeciesId species, MoveId move);

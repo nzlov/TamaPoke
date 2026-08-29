@@ -26,7 +26,6 @@ extern uint8_t cardPage;
 int main() {
   setup();
   pet.dbgHatchAs(6, false);
-  while (pet.hasLearnOffer()) pet.declineLearn();
 
   cardOpen = true;
   cardPage = 0;

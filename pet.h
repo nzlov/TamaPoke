@@ -58,8 +58,6 @@ enum : uint16_t {
 };
 #define MED_COUNT 8
 
-uint8_t moveUnlockLevel(SpeciesId dex, uint16_t idx);
-
 // ---------------------------------------------------------------------------
 // Which regions have their sprite pack on the microSD.
 //
@@ -193,25 +191,17 @@ public:
   uint16_t spaStat() const;
   uint16_t spdStat() const;
 
-  // The four known moves (0 = empty slot). relearnFromLevel() builds the initial
-  // set, after which the player can choose replacements.
+  // Four battle moves plus four learned reserves. Battle code sees only moves;
+  // the card swaps a reserve into that active set before combat.
   MoveId moves[MOVE_SLOTS] = { 0, 0, 0, 0 };
+  MoveId reserveMoves[RESERVE_MOVE_SLOTS] = { 0, 0, 0, 0 };
   uint8_t moveCount() const;
+  uint8_t learnedMoveCount() const;
   bool knowsMove(MoveId mv) const;
-  // The newest MOVE_SLOTS moves this species has learned by its current level,
-  // newest last. Used on hatch, on a fresh save, and to backfill empty slots.
+  bool canLearnStone(MoveId mv) const;
+  bool teachMove(MoveId mv);
+  // Rebuilds natural level-up moves for generated opponents and migrations.
   void relearnFromLevel();
-  // The level at which `dex` may legally use learnset entry `i`. A level-up
-  // move carries its own; a level-0 entry is a TM/tutor/egg move, which the
-  // data gives no level at all, and those unlock together at TM_LEVEL.
-  //
-  // It is a free function, not a Pet method, because the move PICKER needs the
-  // identical answer for an inactive team member. Having its own gate is what let
-  // a level 22 Charmeleon be offered FIRE BLAST.
-
-  // Moves reachable at this level that are not already known, for the learn
-  // prompt. Returns how many were written into out (at most max).
-  uint8_t pendingLearnables(MoveId *out, uint8_t max) const;
 
   // Player-wide, like the streak and the Pokedex: badges outlive the creature
   // that earned them, so newEgg() must never clear this.
@@ -307,18 +297,10 @@ public:
     return n;
   }
 
-  // Level-up learning. lastLearnLevel is the highest level whose gates have
-  // been handled, so a move declined once is not offered forever, and the
-  // offline catch-up -- which can cross a dozen levels in one go -- queues its
-  // offers instead of firing a dozen dialogs at boot.
+  // Level-up learning. New moves fill battle slots, then reserves; once all
+  // eight are occupied, one learned slot is replaced at random.
   uint8_t lastLearnLevel = 0;
-  MoveId learnQueue[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-  uint8_t learnQCount = 0;
   void checkLearnGates();
-  bool hasLearnOffer() const { return learnQCount > 0; }
-  MoveId learnOffer() const { return learnQCount ? learnQueue[0] : 0; }
-  void acceptLearn(uint8_t slot);   // put the pending move into slot 0..3
-  void declineLearn();
   // tope de entrenamiento que permite un IV: 77 (IV 8) .. 100 (IV 31)
   static uint8_t trMaxFor(uint8_t iv) { return 70 + (30 * (uint16_t)iv) / 31; }
   uint8_t trMaxAtk() const { return trMaxFor(ivAtk); }
@@ -473,6 +455,7 @@ private:
   void trainingTick(bool resting);
   void checkMedals();
   void tick();
+  bool placeLearnedMove(MoveId mv);
   void applyAutoSleep();
   void hatch();
   void registerSpecies(int16_t dex, bool color);

@@ -284,8 +284,36 @@ int main(){
        "the pre-gender Box also avoids guessing from missing content");
     migrated.save(); migrated.boxSave();
     Party again; again.begin();
-    ck(again.slots[3].gender == first && again.slots[3].stateVersion == 5,
+    ck(again.slots[3].gender == first && again.slots[3].stateVersion == 6,
        "the deferred gender remains eligible for migration after reload");
+  }
+
+  // v5 used the first eight words at the move-reserve offset as a pending
+  // learning queue. The first four queued moves become reserves in v6; the
+  // retired tail and queue count must not remain live state.
+  {
+    Preferences seed; seed.begin("tamapoke", false); seed.clear();
+    PartyMon oldParty[PARTY_SLOTS];
+    oldParty[0] = mk(6, 52);
+    oldParty[0].stateVersion = 5;
+    oldParty[0].moves[0] = 1;
+    oldParty[0].reserveMoves[0] = 2;
+    oldParty[0].reserveMoves[1] = 3;
+    oldParty[0].legacyLearnQueueTail[0] = 4;
+    oldParty[0].legacyLearnQCount = 2;
+    seed.putBytes("team1", oldParty, sizeof(oldParty));
+    seed.putUShort("rostv", 2);
+    seed.putUChar("active", 0);
+    seed.end();
+    Party migrated; migrated.begin();
+    ck(migrated.slots[0].moves[0] == 1 &&
+       migrated.slots[0].reserveMoves[0] == 2 &&
+       migrated.slots[0].reserveMoves[1] == 3,
+       "v5 pending moves migrate into the four reserve slots");
+    ck(migrated.slots[0].legacyLearnQueueTail[0] == MOVE_NONE &&
+       migrated.slots[0].legacyLearnQCount == 0 &&
+       migrated.slots[0].stateVersion == 6,
+       "the retired learning queue metadata is cleared after migration");
   }
 
   // A regional pack can be temporarily absent while its creature records are

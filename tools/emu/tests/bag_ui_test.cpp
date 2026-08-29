@@ -87,7 +87,6 @@ int main() {
   setup();
   if (pet.awaitingStarter()) pet.chooseStarter(1);
   if (pet.isEgg()) pet.dbgHatchAs(1, false);
-  while (pet.hasLearnOffer()) pet.declineLearn();
 
   emptyBag();
   for (uint16_t i = 0; i < itemCount(); i++) {

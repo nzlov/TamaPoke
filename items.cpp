@@ -77,19 +77,23 @@ bool itemApplyToCombatant(const ItemEntry &item, Combatant &target) {
   }
 }
 
-bool itemCanApplyToPet(const ItemEntry &item, const Pet &target) {
+bool itemCanApplyToPet(const ItemEntry &item, const Pet &target, MoveId move) {
   if (item.effect == ITEM_EFFECT_GIGANTAMAX_FACTOR)
     return !target.isEgg() && !target.gigantamaxFactor &&
            battleGigantamaxEligible(target.speciesId);
+  if (item.effect == ITEM_EFFECT_TEACH_MOVE)
+    return target.canLearnStone(move) && !target.knowsMove(move);
   TrainingStat stat = TRAINING_ATK;
   return itemTrainingStat(item, stat) && target.canRaiseTrainingFloor(stat);
 }
 
-bool itemApplyToPet(const ItemEntry &item, Pet &target) {
+bool itemApplyToPet(const ItemEntry &item, Pet &target, MoveId move) {
   if (item.effect == ITEM_EFFECT_GIGANTAMAX_FACTOR) {
-    if (!itemCanApplyToPet(item, target)) return false;
+    if (!itemCanApplyToPet(item, target, move)) return false;
     return target.giveGigantamaxFactor();
   }
+  if (item.effect == ITEM_EFFECT_TEACH_MOVE)
+    return itemCanApplyToPet(item, target, move) && target.teachMove(move);
   TrainingStat stat = TRAINING_ATK;
   return itemTrainingStat(item, stat) &&
          target.raiseTrainingFloor(stat, (uint8_t)item.param);
@@ -97,7 +101,8 @@ bool itemApplyToPet(const ItemEntry &item, Pet &target) {
 
 bool itemUsableOutsideBattle(const ItemEntry &item) {
   return item.effect == ITEM_EFFECT_TRAINING_FLOOR ||
-         item.effect == ITEM_EFFECT_GIGANTAMAX_FACTOR;
+         item.effect == ITEM_EFFECT_GIGANTAMAX_FACTOR ||
+         item.effect == ITEM_EFFECT_TEACH_MOVE;
 }
 
 bool itemCanApplyToPartyMon(const ItemEntry &item, const PartyMon &target) {

@@ -26,7 +26,6 @@ int main() {
   setup();
   if (pet.awaitingStarter()) pet.chooseStarter(4);
   if (pet.isEgg()) pet.dbgHatchAs(6, false);
-  while (pet.hasLearnOffer()) pet.declineLearn();
 
   menuOpen = true;
   onTap(233, 343);  // fifth menu row

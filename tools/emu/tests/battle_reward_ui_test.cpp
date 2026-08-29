@@ -59,7 +59,7 @@ extern bool btlThrowArmed;
 extern uint32_t btlThrowStartedAt;
 extern ItemKey btlThrowItem;
 extern uint16_t btlRewardTraining[3];
-extern ItemKey btlRewardItems[4];
+extern ItemRef btlRewardItems[4];
 extern uint8_t btlRewardItemCount;
 extern UiScrollView btlRewardScroll;
 void btlUpdateCapture(uint32_t now);
@@ -116,8 +116,9 @@ int main() {
   check(btlRewardTraining[0] + btlRewardTraining[1] + btlRewardTraining[2] > 0,
         "the settlement snapshot records the awarded training attributes");
   check((btlRewardItemCount == 1 || btlRewardItemCount == 2) &&
-        btlRewardItems[0] != ITEM_KEY_NONE &&
-        (btlRewardItemCount == 1 || btlRewardItems[0] != btlRewardItems[1]),
+        btlRewardItems[0].key != ITEM_KEY_NONE &&
+        (btlRewardItemCount == 1 ||
+         btlRewardItems[0].key != btlRewardItems[1].key),
         "a normal wild victory records one base reward and at most one distinct bonus");
   gfx->frameReady = false;
   render();
@@ -132,18 +133,18 @@ int main() {
   battleOpen = true;
   btlFinish(true);
   check((btlRewardItemCount == 3 || btlRewardItemCount == 4) &&
-        btlRewardItems[0] != ITEM_KEY_NONE &&
-        btlRewardItems[1] != ITEM_KEY_NONE &&
-        btlRewardItems[0] != btlRewardItems[1] &&
+        btlRewardItems[0].key != ITEM_KEY_NONE &&
+        btlRewardItems[1].key != ITEM_KEY_NONE &&
+        btlRewardItems[0].key != btlRewardItems[1].key &&
         (btlRewardItemCount == 3 ||
-         (btlRewardItems[2] != btlRewardItems[0] &&
-          btlRewardItems[2] != btlRewardItems[1])),
+         (btlRewardItems[2].key != btlRewardItems[0].key &&
+          btlRewardItems[2].key != btlRewardItems[1].key)),
         "a hard wild victory records two base rewards, an optional distinct bonus, and its mechanic reward");
   btlRewardTraining[0] = btlRewardTraining[1] = btlRewardTraining[2] = 1;
   btlRewardItemCount = 0;
   for (uint16_t i = 0; i < itemCount() && btlRewardItemCount < 4; i++) {
     const ItemEntry *item = itemAt(i);
-    if (item) btlRewardItems[btlRewardItemCount++] = item->key;
+    if (item) btlRewardItems[btlRewardItemCount++] = { item->key, MOVE_NONE };
   }
   gfx->frameReady = false;
   render();

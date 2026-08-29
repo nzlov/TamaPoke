@@ -241,7 +241,8 @@ def validate(path: Path, expected: dict) -> None:
             battle_boost = effect == 7
             battle_mechanic = effect == 8
             catch_item = effect == 1
-            if not key or not 1 <= category <= 8 or not 1 <= effect <= 9 or \
+            move_stone = effect == 10
+            if not key or not 1 <= category <= 9 or not 1 <= effect <= 10 or \
                     not 1 <= rarity <= 4 or daily > 99 or reserved:
                 raise ValueError("invalid item record")
             if training_item and (category != 6 or flags not in (1, 2, 16) or param <= 0):
@@ -257,6 +258,8 @@ def validate(path: Path, expected: dict) -> None:
                 raise ValueError("invalid battle mechanic item")
             if effect == 9 and (category != 5 or flags or param or daily):
                 raise ValueError("invalid Max Soup item")
+            if move_stone and (category != 9 or flags or param or daily):
+                raise ValueError("invalid move stone item")
             keys.append(key)
         if len(keys) != len(set(keys)):
             raise ValueError("duplicate item key")
