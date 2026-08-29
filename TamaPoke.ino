@@ -3548,7 +3548,7 @@ uint8_t uiCurrentScreen() {
   if (moveInfoOpen) return SCR_MOVEPICK;
   if (galleryOpen) return galleryPick ? SCR_DEXPICK : SCR_GALLERY;
   if (movePickOpen) return SCR_MOVEPICK;
-  if (btlWinUntil) return SCR_WIN;
+  if (btlWinUntil && !btlTurnAnimating) return SCR_WIN;
   if (bagOpen) return SCR_BAG;
   if (boxOpen) return SCR_BOX;
   if (kbOpen) return SCR_KEYBOARD;
@@ -7122,7 +7122,8 @@ void renderBattle() {
     gfx->drawRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, UI_INK);
     if (btlTurnShowingRound) {
       char roundLabel[40];
-      snprintf(roundLabel, sizeof(roundLabel), T(S_BTL_ROUND_FMT), btlTurnNumber);
+      battleRoundLabel(roundLabel, sizeof(roundLabel), btlTurnNumber,
+                       T(S_BTL_ROUND_FMT));
       gfx->setTextColor(UI_BAR_WARN);
       gfx->setTextSize(3);
       uiDrawCenteredIn(roundLabel, BTL_GRID_X, BTL_GRID_Y,

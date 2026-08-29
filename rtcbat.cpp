@@ -17,18 +17,33 @@ bool rtcBegin() {
 }
 
 uint32_t rtcEpoch() {
-  if (!rtcOk) return 0;
+  if (!rtcOk || !rtc.isClockIntegrityGuaranteed()) return 0;
   RTC_DateTime t = rtc.getDateTime();
-  if (t.getYear() < 2025 || t.getYear() > 2120) return 0;  // sin hora valida
-  struct tm tmv = {};
-  tmv.tm_year = t.getYear() - 1900;
-  tmv.tm_mon = t.getMonth() - 1;
-  tmv.tm_mday = t.getDay();
-  tmv.tm_hour = t.getHour();
-  tmv.tm_min = t.getMinute();
-  tmv.tm_sec = t.getSecond();
-  time_t e = mktime(&tmv);  // TZ por defecto = UTC, consistente con gmtime_r
-  return e > 0 ? (uint32_t)e : 0;
+  uint16_t year = t.getYear();
+  uint8_t month = t.getMonth();
+  uint8_t day = t.getDay();
+  uint8_t hour = t.getHour();
+  uint8_t minute = t.getMinute();
+  uint8_t second = t.getSecond();
+  if (year < 2025 || year > 2099 || month < 1 || month > 12 ||
+      hour > 23 || minute > 59 || second > 59) return 0;
+  static const uint8_t DAYS[] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
+  auto leap = [](uint16_t value) {
+    return value % 4 == 0 && (value % 100 != 0 || value % 400 == 0);
+  };
+  uint8_t days = DAYS[month - 1];
+  if (month == 2 && leap(year)) days++;
+  if (day < 1 || day > days) return 0;
+  uint32_t elapsedDays = 0;
+  for (uint16_t value = 1970; value < year; value++)
+    elapsedDays += leap(value) ? 366 : 365;
+  for (uint8_t value = 1; value < month; value++) {
+    elapsedDays += DAYS[value - 1];
+    if (value == 2 && leap(year)) elapsedDays++;
+  }
+  elapsedDays += day - 1;
+  return elapsedDays * 86400UL + (uint32_t)hour * 3600UL +
+         (uint32_t)minute * 60UL + second;
 }
 
 void rtcSetEpoch(uint32_t e) {

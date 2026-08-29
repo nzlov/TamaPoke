@@ -96,14 +96,20 @@ void Pet::syncClockFrom(uint32_t nowEpoch, uint32_t seenEpoch, bool persist) {
   if (!persist) backgroundMode = true;
   lastSeenEpoch = nowEpoch;
   if (nowEpoch == 0) { backgroundMode = wasBackground; return; }
-  uint32_t mins = (seenEpoch && nowEpoch > seenEpoch) ? (nowEpoch - seenEpoch) / 60 : 0;
+  uint32_t elapsed = (seenEpoch && nowEpoch > seenEpoch) ? nowEpoch - seenEpoch : 0;
+  constexpr uint32_t MAX_OFFLINE_SECONDS = 14UL * 24 * 60 * 60;
+  if (elapsed > MAX_OFFLINE_SECONDS) {
+    Serial.printf("RTC jump ignored: %u seconds\n", elapsed);
+    if (persist) save();
+    backgroundMode = wasBackground;
+    return;
+  }
+  uint32_t mins = elapsed / 60;
   if (mins < 2 || ceremony != CER_NONE || starterPick || dead) {
     if (persist) save();  // primera vez, sin tiempo que aplicar o aun eligiendo inicial
     backgroundMode = wasBackground;
     return;
   }
-  if (mins > 14UL * 24 * 60) mins = 14UL * 24 * 60;  // tope: 2 semanas
-
   for (uint32_t i = 0; i < mins; i++) {
     advanceAgeMinute();
     if (isEgg()) {

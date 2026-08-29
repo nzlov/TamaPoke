@@ -6,6 +6,7 @@
 #include "pet.h"
 #include "party.h"
 #include "battle.h"
+#include "i18n.h"
 #include <cstdio>
 
 uint32_t g_seed = 47;
@@ -23,12 +24,17 @@ void startBattle(int16_t dex, uint8_t lvl);
 void commitBattleMove(uint8_t moveSlot, uint8_t percent);
 void battleTap(int16_t x, int16_t y);
 void btlUpdateTurnPresentation(uint32_t now);
+uint8_t uiCurrentScreen();
+bool uiScreenContinuous(uint8_t screen);
 extern Pet pet;
 extern Combatant btlYou, btlFoe;
-extern bool battleOpen, btlTurnAnimating, btlTurnShowingRound;
+extern bool battleOpen, btlTurnAnimating, btlTurnShowingRound, btlOver, btlWon;
+extern bool btlHard, btlPetIn;
+extern int8_t btlTrainer;
+extern uint8_t btlRegion;
 extern uint8_t btlMenu, btlMsgCount, btlTurnBeatCount, btlTurnBeatAt;
 extern uint16_t btlTurnNumber, btlHpShown[2];
-extern uint32_t btlTurnBeatStartedAt, btlLungeUntil[2];
+extern uint32_t btlTurnBeatStartedAt, btlLungeUntil[2], btlWinUntil;
 enum : uint8_t { BTL_ACTION_NONE = 0, BTL_ACTION_MELEE, BTL_ACTION_RANGED };
 struct BtlTurnBeat {
   char text[96];
@@ -70,6 +76,13 @@ int main() {
   }
   check(meleeMove && specialMove,
         "the fixture provides contact and special moves for animation coverage");
+  char roundLabel[40];
+  battleRoundLabel(roundLabel, sizeof(roundLabel), 7, "10级");
+  check(!strcmp(roundLabel, "TURN 7"),
+        "a pre-turn UI pack cannot show its level-10 medal as the round number");
+  battleRoundLabel(roundLabel, sizeof(roundLabel), 7, T(S_BTL_ROUND_FMT));
+  check(strstr(roundLabel, "7") != nullptr,
+        "the active UI pack formats the actual round number");
   btlYou.moves[0] = meleeMove;
 
   commitBattleMove(0, 100);
@@ -104,5 +117,25 @@ int main() {
   check(btlTurnBeats[0].moveStyle == BTL_ACTION_RANGED &&
         btlTurnBeats[0].moveType == moveEntry(specialMove).type,
         "a special move keeps its type on the ranged effect beat");
+
+  btlUpdateTurnPresentation(secondRoundEnd + 60000);
+  startBattle(9, 50);
+  btlTrainer = 0;
+  btlRegion = 0;
+  btlHard = false;
+  btlPetIn = false;
+  btlYou.moves[0] = meleeMove;
+  btlYou.base[SI_SPE] = 60000;
+  btlFoe.base[SI_SPE] = 1;
+  btlFoe.hp = 1;
+  btlHpShown[1] = 1;
+  commitBattleMove(0, 100);
+  check(btlOver && btlWon && btlWinUntil && btlTurnAnimating,
+        "a winning exchange keeps its queued presentation before the victory page");
+  check(uiScreenContinuous(uiCurrentScreen()),
+        "the winning presentation remains on a continuously rendered screen");
+  btlUpdateTurnPresentation(btlTurnBeatStartedAt + 60000);
+  check(!btlTurnAnimating && btlWinUntil,
+        "the winning action finishes and leaves the victory page ready");
   return failures ? 1 : 0;
 }

@@ -84,6 +84,19 @@ int main(){
   }
 
   {
+    Pet p; ready(p);
+    p.fullness=p.joy=p.energy=p.hygiene=80;
+    p.dbgSetSeen(1000);
+    p.syncClock(1000 + 15UL*24*60*60);
+    ck(p.fullness==80 && p.joy==80 && p.energy==80 && p.hygiene==80 &&
+       p.trAtk==100 && p.trDef==100 && p.trSpe==100,
+       "an RTC jump beyond the supported window rebases without draining care");
+    p.syncClock(1000 + 15UL*24*60*60 + 120*60);
+    ck(p.fullness==15 && p.joy==15 && p.energy==15 && p.hygiene==15,
+       "normal offline catch-up resumes from the rebased RTC value");
+  }
+
+  {
     Pet p; ready(p); p.trAtk=p.trDef=p.trSpe=50; p.sleeping=true;
     p.dbgSetSeen(1000);
     p.syncClock(1000 + 120*60);

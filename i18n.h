@@ -175,6 +175,8 @@ enum StrId : uint16_t {
 };
 
 const char *T(StrId id);       // texto en el idioma activo
+void battleRoundLabel(char *out, size_t size, uint16_t round,
+                      const char *format);
 const char *medalName(int i);  // banner de medalla (MED_COUNT)
 const char *medalLabel(int i); // etiqueta corta de medalla
 const char *medalDesc(int i);  // descripcion larga de medalla

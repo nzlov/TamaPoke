@@ -195,7 +195,8 @@ A quick reference to how the game really works (values straight from the code).
 - **Level caps at 100**, reached 4 days 3 hours after level 1. Once a final form
   has actually been cultivated by this player for 3 days, the menu's Release
   row becomes Farewell. A wild creature's pre-capture age does not count.
-- It keeps **aging while powered off** (the RTC runs), catching up to **2 weeks** max.
+- It keeps **aging while powered off** (the RTC runs), catching up for gaps of up to
+  **2 weeks**. Larger RTC discontinuities are rebased without draining care stats.
 
 ### The four stats (0–100)
 Needs: **FOOD**, **JOY**, **ENE** (energy), **HYG** (hygiene). Start 80 / 80 / 80 / 100.

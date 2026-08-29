@@ -10,6 +10,15 @@ static constexpr uint16_t MEDAL_DESC_BASE = STR_COUNT + MED_COUNT * 2;
 static constexpr uint16_t NATURE_DESC_BASE = STR_COUNT + MED_COUNT * 3;
 
 const char *T(StrId id) { return uiString((uint16_t)id); }
+void battleRoundLabel(char *out, size_t size, uint16_t round,
+                      const char *format) {
+  if (!out || !size) return;
+  // GLUE: UI packs installed before S_BTL_ROUND_FMT place the first medal name
+  // at this positional ID. Remove the fallback once pre-turn UI packs are no
+  // longer supported.
+  if (!format || !strstr(format, "%u")) format = "TURN %u";
+  snprintf(out, size, format, round);
+}
 const char *medalName(int i) {
   return i >= 0 && i < MED_COUNT ? uiString(MEDAL_NAME_BASE + i) : "?";
 }
