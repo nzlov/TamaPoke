@@ -28,6 +28,7 @@ void onSwipeV(int dir);
 extern Pet pet;
 extern Party party;
 extern Inventory inventory;
+extern Arduino_Canvas *gfx;
 extern bool bagOpen;
 extern uint8_t bagView, bagDiscardAmount;
 extern ItemKey bagSelectedKey, bagDetailKey;
@@ -102,6 +103,20 @@ int main() {
   onSwipeV(-1);
   check(bagOpen && bagView == BAG_VIEW_LIST && bagScroll.offset() > 0,
         "swiping up scrolls the bag instead of closing it");
+  bool scrollFramesValid = true;
+  while (bagScroll.canScrollDown()) {
+    onSwipeV(-1);
+    gfx->frameReady = false;
+    gfx->fullBlackClears = 0;
+    render();
+    size_t lit = 0;
+    for (size_t pixel = 0; pixel < 466UL * 466UL; pixel++)
+      if (gfx->buffer()[pixel] != RGB565_BLACK) lit++;
+    if (!gfx->frameReady || gfx->fullBlackClears || lit < 10000)
+      scrollFramesValid = false;
+  }
+  check(scrollFramesValid,
+        "every scrolled bag frame flushes without a black intermediate frame");
 
   const ItemEntry *usable = fieldItem();
   check(usable != nullptr, "the content pack provides a field-use item");

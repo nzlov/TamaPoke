@@ -459,7 +459,8 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   else if (!strcmp(screen, "moves"))   { cardOpen = true; cardPage = 2; }
   else if (!strcmp(screen, "moveinfo")) { movePickSlot = 0; moveInfoOpen = true; }
   else if (!strcmp(screen, "movepick")) { movePickOpen = true; }
-  else if (!strcmp(screen, "bag") || !strcmp(screen, "bagactions") ||
+  else if (!strcmp(screen, "bag") || !strcmp(screen, "bagscroll") ||
+           !strcmp(screen, "bagactions") ||
            !strcmp(screen, "bagdetail") || !strcmp(screen, "bagtarget") ||
            !strcmp(screen, "bagquantity") || !strcmp(screen, "bagconfirm")) {
     const ItemEntry *selected = nullptr;
@@ -470,7 +471,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
       if (!selected && item->effect != ITEM_EFFECT_TEACH_MOVE &&
           itemUsableOutsideBattle(*item)) selected = item;
     }
-    if (strcmp(screen, "bag")) {
+    if (strcmp(screen, "bag") && strcmp(screen, "bagscroll")) {
       for (uint16_t i = 0; i < itemCount(); i++) {
         const ItemEntry *item = itemAt(i);
         while (item && inventory.consume(item->key)) {}
@@ -501,7 +502,8 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     }
     bagOpen = true;
   }
-  else if (!strcmp(screen, "stonetarget") ||
+  else if (!strcmp(screen, "stonedetail") ||
+           !strcmp(screen, "stonetarget") ||
            !strcmp(screen, "stoneconfirm") ||
            !strcmp(screen, "stoneincompatible")) {
     const ItemEntry *stone = nullptr;
@@ -512,7 +514,8 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     MoveId move = MOVE_NONE;
     for (MoveId candidate = 1; candidate < moveCount(); candidate++) {
       bool compatible = speciesCanLearnMove(pet.speciesId, candidate);
-      if (((!strcmp(screen, "stonetarget") || !strcmp(screen, "stoneconfirm")) &&
+      if (((!strcmp(screen, "stonedetail") || !strcmp(screen, "stonetarget") ||
+            !strcmp(screen, "stoneconfirm")) &&
            compatible && !pet.knowsMove(candidate)) ||
           (!strcmp(screen, "stoneincompatible") && !compatible)) {
         move = candidate;
@@ -530,7 +533,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     bagDetailMove = MOVE_NONE;
     bagView = 1;
     bagOpen = true;
-    bagTap(233, 230);
+    bagTap(233, !strcmp(screen, "stonedetail") ? 172 : 230);
     if (!strcmp(screen, "stonetarget")) {
       PartyMon second = pet.toPartyMon();
       second.dex = 25;
@@ -539,7 +542,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
       for (MoveId &known : second.reserveMoves) known = MOVE_NONE;
       party.replaceAt(party.activeIndex() == 0 ? 1 : 0, second);
     }
-    if (strcmp(screen, "stonetarget")) {
+    if (strcmp(screen, "stonedetail") && strcmp(screen, "stonetarget")) {
       uint8_t slot = party.activeIndex();
       bagTap(78 + (slot % 2) * 160 + 75, 82 + (slot / 2) * 84 + 35);
     }
@@ -963,7 +966,7 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.checkLearnGates();
   }
   render();
-  if (!strcmp(screen, "rewardscroll")) {
+  if (!strcmp(screen, "rewardscroll") || !strcmp(screen, "bagscroll")) {
     onSwipeV(-1);
     onSwipeV(-1);
     render();

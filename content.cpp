@@ -1606,7 +1606,10 @@ bool regionPackAvailable(uint8_t index) {
 }
 
 uint16_t moveCount() { ensureContent(); return gMoveCount; }
-bool moveValid(MoveId id) { ensureContent(); return id < gMoveCount && gMovesTable && gMovesTable[id].name; }
+bool moveValid(MoveId id) {
+  ensureContent();
+  return id != MOVE_NONE && id < gMoveCount && gMovesTable && gMovesTable[id].name;
+}
 const MoveEntry &moveEntry(MoveId id) { return moveValid(id) ? gMovesTable[id] : MISSING_MOVE; }
 bool abilitySlotValid(AbilitySlot slot) {
   return slot >= ABILITY_SLOT_ONE && slot <= ABILITY_SLOT_HIDDEN;

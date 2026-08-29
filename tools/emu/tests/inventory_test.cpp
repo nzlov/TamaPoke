@@ -247,6 +247,8 @@ int main() {
   LegacyStack old[32] = {};
   old[0].key = dailyKey;
   old[0].count = 7;
+  old[1].key = stone ? stone->key : ITEM_KEY_NONE;
+  old[1].count = 1;
   Preferences seed;
   seed.begin("tamapoke", false);
   seed.putBytes("items", old, sizeof(old));
@@ -255,6 +257,8 @@ int main() {
   migrated.begin();
   ck(migrated.count(dailyKey) == 7,
      "the pre-attribute 32-stack inventory migrates without losing ordinary items");
+  ck(!stone || migrated.count(stone->key, MOVE_NONE) == 0,
+     "a legacy move stone without an attributed move is discarded");
 
   printf("%s\n", bad ? "FAILURES" : "all good");
   return bad ? 1 : 0;

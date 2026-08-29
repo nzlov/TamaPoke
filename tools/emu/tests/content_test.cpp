@@ -63,6 +63,7 @@ int main() {
   ck(contentBegin() && contentReady(), "the installed pack set is bootable");
   ck(contentPackCount() >= 3, "UI, move and region packs were discovered");
   ck(contentMechanicsHash() != 0, "loaded mechanics have a stable link hash");
+  ck(!moveValid(MOVE_NONE), "the empty move slot is not a usable move");
 
   int8_t english = uiFindLocale("en-US"), chinese = uiFindLocale("zh-CN");
   ck(english >= 0 && chinese >= 0, "languages come from installed UI packs");
@@ -84,7 +85,7 @@ int main() {
      "English names use the canonical pack fallback");
   for (SpeciesId species = 1; englishDescriptions && species <= dexCount(); species++)
     englishDescriptions = speciesDescription(species, "en-US") != nullptr;
-  for (MoveId move = 0; englishDescriptions && move < moveCount(); move++)
+  for (MoveId move = 1; englishDescriptions && move < moveCount(); move++)
     englishDescriptions = moveDescription(move, "en-US") != nullptr;
   ck(englishDescriptions, "species and move descriptions load from their own packs");
   ck(growl && dragonDance && recover &&
@@ -137,7 +138,7 @@ int main() {
   for (SpeciesId species = 1; chineseGlyphs && species <= dexCount(); species++)
     chineseGlyphs = fontCovers(speciesName(species)) &&
                     fontCovers(speciesDescription(species, "zh-CN"));
-  for (MoveId move = 0; chineseGlyphs && move < moveCount(); move++)
+  for (MoveId move = 1; chineseGlyphs && move < moveCount(); move++)
     chineseGlyphs = fontCovers(moveName(move)) &&
                     fontCovers(moveDescription(move, "zh-CN"));
   for (uint16_t item = 0; chineseGlyphs && item < itemCount(); item++) {

@@ -2391,7 +2391,12 @@ static void drawBagDetail(const ItemEntry &item) {
   gfx->setTextSize(2);
   gfx->setCursor(uiCenterX(meta), item.effect == ITEM_EFFECT_TEACH_MOVE ? 184 : 168);
   gfx->print(meta);
-  const char *description = itemDescription(item.key, uiActiveLocaleCode());
+  const char *description = item.effect == ITEM_EFFECT_TEACH_MOVE &&
+                            moveValid(bagSelectedMove)
+      ? moveDescription(bagSelectedMove, uiActiveLocaleCode())
+      : itemDescription(item.key, uiActiveLocaleCode());
+  if (!description)
+    description = itemDescription(item.key, uiActiveLocaleCode());
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
   drawWrappedText(description ? description : "?", 76,
