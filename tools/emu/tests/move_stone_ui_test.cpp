@@ -4,6 +4,7 @@
 #include "content.h"
 #include "inventory.h"
 #include "items.h"
+#include "party.h"
 #include "pet.h"
 #include <cstdio>
 
@@ -23,6 +24,7 @@ void render();
 void bagTap(int16_t x, int16_t y);
 extern Arduino_Canvas *gfx;
 extern Pet pet;
+extern Party party;
 extern Inventory inventory;
 extern bool bagOpen;
 extern ItemKey bagSelectedKey, bagDetailKey;
@@ -35,6 +37,7 @@ enum BagStoneDialog : uint8_t {
   BAG_STONE_DIALOG_KNOWN,
 };
 extern BagStoneDialog bagStoneDialog;
+extern uint8_t bagStoneTarget;
 
 static int bad = 0;
 static void check(bool ok, const char *what) {
@@ -64,8 +67,13 @@ static void openStone(const ItemEntry &stone, MoveId move) {
   bagDetailKey = ITEM_KEY_NONE;
   bagDetailMove = MOVE_NONE;
   bagStoneDialog = BAG_STONE_DIALOG_NONE;
+  bagStoneTarget = PARTY_SLOTS;
   bagView = 1;
   bagOpen = true;
+}
+
+static void tapSlot(uint8_t slot) {
+  bagTap(78 + (slot % 2) * 160 + 75, 82 + (slot / 2) * 84 + 35);
 }
 
 int main() {
@@ -81,6 +89,12 @@ int main() {
   if (!moveValid(compatible)) return 1;
   openStone(*stone, compatible);
   bagTap(233, 230);
+  check(bagView == 3 && bagStoneDialog == BAG_STONE_DIALOG_NONE,
+        "using a move stone opens the six-slot pet chooser");
+  gfx->frameReady = false;
+  render();
+  check(gfx->frameReady, "the move-stone pet chooser flushes to the panel");
+  tapSlot(party.activeIndex());
   check(bagStoneDialog == BAG_STONE_DIALOG_CONFIRM &&
         !pet.knowsMove(compatible) && inventory.count(stone->key, compatible) == 1,
         "using a compatible stone asks before learning or consuming it");
@@ -92,17 +106,34 @@ int main() {
         inventory.count(stone->key, compatible) == 0,
         "confirming teaches the move and consumes exactly that stone stack");
 
+  uint8_t reserveSlot = party.activeIndex() == 0 ? 1 : 0;
+  PartyMon reserve = pet.toPartyMon();
+  for (MoveId &move : reserve.moves) move = MOVE_NONE;
+  for (MoveId &move : reserve.reserveMoves) move = MOVE_NONE;
+  party.replaceAt(reserveSlot, reserve);
   openStone(*stone, compatible);
   bagTap(233, 230);
+  tapSlot(party.activeIndex());
   check(bagStoneDialog == BAG_STONE_DIALOG_KNOWN &&
         inventory.count(stone->key, compatible) == 1,
         "an already-known move opens an explanation and is not consumed");
+  bagTap(233, 242);
+  tapSlot(reserveSlot);
+  check(bagStoneDialog == BAG_STONE_DIALOG_CONFIRM,
+        "the same stone can target a compatible reserve cultivation pet");
+  bagTap(233, 242);
+  check(Pet::knowsLearnedMove(party.slots[reserveSlot].moves,
+                              party.slots[reserveSlot].reserveMoves,
+                              compatible) &&
+        inventory.count(stone->key, compatible) == 0,
+        "confirming teaches only the selected reserve pet and consumes the stone");
 
   MoveId incompatible = findMove(false);
   check(moveValid(incompatible), "the fixture finds an incompatible move");
   if (moveValid(incompatible)) {
     openStone(*stone, incompatible);
     bagTap(233, 230);
+    tapSlot(party.activeIndex());
     check(bagStoneDialog == BAG_STONE_DIALOG_INCOMPATIBLE &&
           !pet.knowsMove(incompatible) &&
           inventory.count(stone->key, incompatible) == 1,

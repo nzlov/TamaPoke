@@ -92,5 +92,7 @@ bool itemCanApplyToPet(const ItemEntry &item, const Pet &target,
 bool itemApplyToPet(const ItemEntry &item, Pet &target,
                     MoveId move = MOVE_NONE);
 bool itemUsableOutsideBattle(const ItemEntry &item);
-bool itemCanApplyToPartyMon(const ItemEntry &item, const PartyMon &target);
-bool itemApplyToPartyMon(const ItemEntry &item, PartyMon &target);
+bool itemCanApplyToPartyMon(const ItemEntry &item, const PartyMon &target,
+                            MoveId move = MOVE_NONE);
+bool itemApplyToPartyMon(const ItemEntry &item, PartyMon &target,
+                         MoveId move = MOVE_NONE);

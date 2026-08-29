@@ -760,11 +760,17 @@ uint8_t Pet::learnedMoveCount() const {
 }
 
 bool Pet::knowsMove(MoveId mv) const {
+  return knowsLearnedMove(moves, reserveMoves, mv);
+}
+
+bool Pet::knowsLearnedMove(const MoveId (&active)[MOVE_SLOTS],
+                           const MoveId (&reserve)[RESERVE_MOVE_SLOTS],
+                           MoveId mv) {
   if (!mv) return false;
   for (int i = 0; i < MOVE_SLOTS; i++)
-    if (moves[i] == mv) return true;
+    if (active[i] == mv) return true;
   for (int i = 0; i < RESERVE_MOVE_SLOTS; i++)
-    if (reserveMoves[i] == mv) return true;
+    if (reserve[i] == mv) return true;
   return false;
 }
 
@@ -773,14 +779,20 @@ bool Pet::canLearnStone(MoveId mv) const {
 }
 
 bool Pet::placeLearnedMove(MoveId mv) {
-  if (!moveValid(mv) || knowsMove(mv)) return false;
-  for (MoveId &slot : moves)
+  return placeInLearnedMoves(moves, reserveMoves, mv);
+}
+
+bool Pet::placeInLearnedMoves(MoveId (&active)[MOVE_SLOTS],
+                              MoveId (&reserve)[RESERVE_MOVE_SLOTS],
+                              MoveId mv) {
+  if (!moveValid(mv) || knowsLearnedMove(active, reserve, mv)) return false;
+  for (MoveId &slot : active)
     if (!slot) { slot = mv; return true; }
-  for (MoveId &slot : reserveMoves)
+  for (MoveId &slot : reserve)
     if (!slot) { slot = mv; return true; }
   uint8_t replace = (uint8_t)random(LEARNED_MOVE_SLOTS);
-  if (replace < MOVE_SLOTS) moves[replace] = mv;
-  else reserveMoves[replace - MOVE_SLOTS] = mv;
+  if (replace < MOVE_SLOTS) active[replace] = mv;
+  else reserve[replace - MOVE_SLOTS] = mv;
   return true;
 }
 

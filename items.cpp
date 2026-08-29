@@ -105,10 +105,14 @@ bool itemUsableOutsideBattle(const ItemEntry &item) {
          item.effect == ITEM_EFFECT_TEACH_MOVE;
 }
 
-bool itemCanApplyToPartyMon(const ItemEntry &item, const PartyMon &target) {
+bool itemCanApplyToPartyMon(const ItemEntry &item, const PartyMon &target,
+                            MoveId move) {
   if (target.empty() || target.isEgg()) return false;
   if (item.effect == ITEM_EFFECT_GIGANTAMAX_FACTOR)
     return !target.gigantamaxFactor() && battleGigantamaxEligible(target.dex);
+  if (item.effect == ITEM_EFFECT_TEACH_MOVE)
+    return speciesCanLearnMove(target.dex, move) &&
+           !Pet::knowsLearnedMove(target.moves, target.reserveMoves, move);
   TrainingStat stat = TRAINING_ATK;
   if (!itemTrainingStat(item, stat)) return false;
   // GLUE: reserve cultivation members live as PartyMon records while the active
@@ -122,12 +126,14 @@ bool itemCanApplyToPartyMon(const ItemEntry &item, const PartyMon &target) {
   }
 }
 
-bool itemApplyToPartyMon(const ItemEntry &item, PartyMon &target) {
-  if (!itemCanApplyToPartyMon(item, target)) return false;
+bool itemApplyToPartyMon(const ItemEntry &item, PartyMon &target, MoveId move) {
+  if (!itemCanApplyToPartyMon(item, target, move)) return false;
   if (item.effect == ITEM_EFFECT_GIGANTAMAX_FACTOR) {
     target.setGigantamaxFactor(true);
     return true;
   }
+  if (item.effect == ITEM_EFFECT_TEACH_MOVE)
+    return Pet::placeInLearnedMoves(target.moves, target.reserveMoves, move);
   TrainingStat stat = TRAINING_ATK;
   if (!itemTrainingStat(item, stat)) return false;
   uint8_t *floor = nullptr, *training = nullptr, cap = 0;

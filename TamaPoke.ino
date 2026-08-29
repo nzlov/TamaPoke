@@ -683,6 +683,7 @@ enum BagStoneDialog : uint8_t {
   BAG_STONE_DIALOG_KNOWN,
 };
 BagStoneDialog bagStoneDialog = BAG_STONE_DIALOG_NONE;
+uint8_t bagStoneTarget = PARTY_SLOTS;
 
 #define DEAD_BTN_Y 346
 #define DEAD_BTN_W 150
@@ -1969,6 +1970,7 @@ void onSwipeV(int dir) {
     bagDetailKey = ITEM_KEY_NONE;
     bagDetailMove = MOVE_NONE;
     bagStoneDialog = BAG_STONE_DIALOG_NONE;
+    bagStoneTarget = PARTY_SLOTS;
     bagView = bagView == BAG_VIEW_DETAIL || bagView == BAG_VIEW_TARGET
                 ? BAG_VIEW_ACTIONS : BAG_VIEW_LIST;
     return;
@@ -2036,8 +2038,12 @@ static void itemRefName(ItemRef ref, char *out, size_t size) {
 }
 
 static void drawBagStoneDialog() {
-  if (bagStoneDialog == BAG_STONE_DIALOG_NONE || !moveValid(bagSelectedMove)) return;
-  const char *petName = displaySpeciesName(pet.speciesId, pet.nick);
+  if (bagStoneDialog == BAG_STONE_DIALOG_NONE ||
+      !moveValid(bagSelectedMove) || bagStoneTarget >= PARTY_SLOTS) return;
+  const PartyMon &target = party.slots[bagStoneTarget];
+  int16_t dex = bagStoneTarget == party.activeIndex() ? pet.speciesId : target.dex;
+  const char *nick = bagStoneTarget == party.activeIndex() ? pet.nick : target.nick;
+  const char *petName = dex > 0 ? displaySpeciesName(dex, nick) : T(S_EGG_HDR);
   char message[96];
   if (bagStoneDialog == BAG_STONE_DIALOG_CONFIRM)
     snprintf(message, sizeof(message), T(S_STONE_CONFIRM_FMT),
@@ -2068,9 +2074,19 @@ static void drawBagStoneDialog() {
 
 static bool bagTargetCanApply(const ItemEntry &item, uint8_t slot) {
   if (slot >= PARTY_SLOTS) return false;
-  if (slot == party.activeIndex()) return itemCanApplyToPet(item, pet);
+  MoveId move = item.effect == ITEM_EFFECT_TEACH_MOVE
+                  ? bagSelectedMove : MOVE_NONE;
+  if (slot == party.activeIndex()) return itemCanApplyToPet(item, pet, move);
   return !party.slots[slot].empty() &&
-         itemCanApplyToPartyMon(item, party.slots[slot]);
+         itemCanApplyToPartyMon(item, party.slots[slot], move);
+}
+
+static bool bagTargetKnowsMove(uint8_t slot) {
+  if (slot >= PARTY_SLOTS || party.slots[slot].empty()) return false;
+  if (slot == party.activeIndex()) return pet.knowsMove(bagSelectedMove);
+  const PartyMon &target = party.slots[slot];
+  return Pet::knowsLearnedMove(target.moves, target.reserveMoves,
+                               bagSelectedMove);
 }
 
 static bool bagHasUsableTarget(const ItemEntry &item) {
@@ -2195,8 +2211,10 @@ static void drawBagTargets(const ItemEntry &item) {
     int y = 82 + (slot / 2) * 84;
     const PartyMon &m = party.slots[slot];
     bool usable = bagTargetCanApply(item, slot);
-    gfx->fillRoundRect(x, y, 150, 70, 10, usable ? UI_WHITE : UI_TRACK);
-    gfx->drawRoundRect(x, y, 150, 70, 10, usable ? UI_INK : UI_MUTED);
+    bool selectable = item.effect == ITEM_EFFECT_TEACH_MOVE
+                        ? !m.empty() : usable;
+    gfx->fillRoundRect(x, y, 150, 70, 10, selectable ? UI_WHITE : UI_TRACK);
+    gfx->drawRoundRect(x, y, 150, 70, 10, selectable ? UI_INK : UI_MUTED);
     if (m.empty()) {
       gfx->setTextColor(UI_MUTED);
       gfx->setTextSize(2);
@@ -2206,8 +2224,8 @@ static void drawBagTargets(const ItemEntry &item) {
     int16_t dex = slot == party.activeIndex() ? pet.speciesId : m.dex;
     const char *nick = slot == party.activeIndex() ? pet.nick : m.nick;
     const uint8_t *th = dex > 0 ? thumbs.get(dex) : nullptr;
-    if (th) drawThumb(th, x - 12, y - 5, 2, !usable);
-    gfx->setTextColor(usable ? UI_INK : UI_MUTED);
+    if (th) drawThumb(th, x - 12, y - 5, 2, !selectable);
+    gfx->setTextColor(selectable ? UI_INK : UI_MUTED);
     gfx->setTextSize(1);
     gfx->setCursor(x + 54, y + 20);
     gfx->print(dex > 0 ? displaySpeciesName(dex, nick) : T(S_EGG_HDR));
@@ -2282,6 +2300,7 @@ void renderBag() {
     bagSelectedKey = bagDetailKey = ITEM_KEY_NONE;
     bagSelectedMove = bagDetailMove = MOVE_NONE;
     bagStoneDialog = BAG_STONE_DIALOG_NONE;
+    bagStoneTarget = PARTY_SLOTS;
   }
   if (bagView == BAG_VIEW_DETAIL && item) drawBagDetail(*item);
   else if (bagView == BAG_VIEW_ACTIONS && item) drawBagActions(*item);
@@ -2298,6 +2317,7 @@ static void bagReturnToList() {
   bagSelectedKey = bagDetailKey = ITEM_KEY_NONE;
   bagSelectedMove = bagDetailMove = MOVE_NONE;
   bagStoneDialog = BAG_STONE_DIALOG_NONE;
+  bagStoneTarget = PARTY_SLOTS;
   bagDiscardAmount = 1;
 }
 
@@ -2308,9 +2328,17 @@ void bagTap(int16_t x, int16_t y) {
   bool button2 = x >= CHOICE_BTN_X && x <= CHOICE_BTN_X + CHOICE_BTN_W &&
                  y >= CHOICE_BTN2_Y && y <= CHOICE_BTN2_Y + CHOICE_BTN_H;
   if (bagStoneDialog != BAG_STONE_DIALOG_NONE) {
+    bool applied = false;
     if (bagStoneDialog == BAG_STONE_DIALOG_CONFIRM && button1 && item &&
-        itemApplyToPet(*item, pet, bagSelectedMove) &&
-        inventory.consume(item->key, 1, bagSelectedMove)) {
+        bagStoneTarget < PARTY_SLOTS) {
+      applied = bagStoneTarget == party.activeIndex()
+          ? itemApplyToPet(*item, pet, bagSelectedMove)
+          : itemApplyToPartyMon(*item, party.slots[bagStoneTarget],
+                                bagSelectedMove);
+    }
+    if (applied && inventory.consume(item->key, 1, bagSelectedMove)) {
+      if (bagStoneTarget == party.activeIndex()) party.captureActive(pet, true);
+      else party.save();
       bagStoneDialog = BAG_STONE_DIALOG_NONE;
       if (!inventory.count(item->key, bagSelectedMove)) bagReturnToList();
       sfxPlay(SFX_TAP);
@@ -2339,15 +2367,11 @@ void bagTap(int16_t x, int16_t y) {
         bagDetailMove = bagSelectedMove;
         bagView = BAG_VIEW_DETAIL;
       } else if (row == 1) {
-        if (item->effect == ITEM_EFFECT_TEACH_MOVE) {
-          bagStoneDialog = pet.knowsMove(bagSelectedMove) ? BAG_STONE_DIALOG_KNOWN
-              : pet.canLearnStone(bagSelectedMove) ? BAG_STONE_DIALOG_CONFIRM
-                                                   : BAG_STONE_DIALOG_INCOMPATIBLE;
-        } else {
-          if (!bagHasUsableTarget(*item)) { sfxPlay(SFX_DENY); return; }
-          party.captureActive(pet, false);
-          bagView = BAG_VIEW_TARGET;
-        }
+        if (item->effect != ITEM_EFFECT_TEACH_MOVE &&
+            !bagHasUsableTarget(*item)) { sfxPlay(SFX_DENY); return; }
+        party.captureActive(pet, false);
+        bagStoneTarget = PARTY_SLOTS;
+        bagView = BAG_VIEW_TARGET;
       } else {
         bagDiscardAmount = 1;
         bagView = inventory.count(item->key, bagSelectedMove) > 1
@@ -2365,6 +2389,15 @@ void bagTap(int16_t x, int16_t y) {
       int left = 78 + (slot % 2) * 160;
       int top = 82 + (slot / 2) * 84;
       if (x < left || x > left + 150 || y < top || y > top + 70) continue;
+      if (item->effect == ITEM_EFFECT_TEACH_MOVE) {
+        if (party.slots[slot].empty()) { sfxPlay(SFX_DENY); return; }
+        bagStoneTarget = slot;
+        bagStoneDialog = bagTargetKnowsMove(slot) ? BAG_STONE_DIALOG_KNOWN
+            : bagTargetCanApply(*item, slot) ? BAG_STONE_DIALOG_CONFIRM
+                                             : BAG_STONE_DIALOG_INCOMPATIBLE;
+        sfxPlay(SFX_TAP);
+        return;
+      }
       if (!bagTargetCanApply(*item, slot)) { sfxPlay(SFX_DENY); return; }
       bool applied = slot == party.activeIndex()
           ? itemApplyToPet(*item, pet)
@@ -2417,6 +2450,7 @@ void bagTap(int16_t x, int16_t y) {
       bagDetailKey = ITEM_KEY_NONE;
       bagDetailMove = MOVE_NONE;
       bagStoneDialog = BAG_STONE_DIALOG_NONE;
+      bagStoneTarget = PARTY_SLOTS;
       bagView = BAG_VIEW_ACTIONS;
       sfxPlay(SFX_TAP);
       return;
@@ -2701,6 +2735,7 @@ bool navMenuTap(int16_t x, int16_t y) {
       bagSelectedKey = bagDetailKey = ITEM_KEY_NONE;
       bagSelectedMove = bagDetailMove = MOVE_NONE;
       bagStoneDialog = BAG_STONE_DIALOG_NONE;
+      bagStoneTarget = PARTY_SLOTS;
       bagDiscardAmount = 1;
       bagScroll.reset();
     } else if (i == 1) {

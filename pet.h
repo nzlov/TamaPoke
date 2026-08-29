@@ -198,6 +198,12 @@ public:
   uint8_t moveCount() const;
   uint8_t learnedMoveCount() const;
   bool knowsMove(MoveId mv) const;
+  static bool knowsLearnedMove(const MoveId (&active)[MOVE_SLOTS],
+                               const MoveId (&reserve)[RESERVE_MOVE_SLOTS],
+                               MoveId mv);
+  static bool placeInLearnedMoves(MoveId (&active)[MOVE_SLOTS],
+                                  MoveId (&reserve)[RESERVE_MOVE_SLOTS],
+                                  MoveId mv);
   bool canLearnStone(MoveId mv) const;
   bool teachMove(MoveId mv);
   // Rebuilds natural level-up moves for generated opponents and migrations.
