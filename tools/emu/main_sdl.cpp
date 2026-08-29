@@ -156,11 +156,11 @@ extern ItemRef btlRewardItems[4];
 extern uint8_t btlRewardItemCount;
 void startTrainerBattle(uint8_t idx, bool hard);
 void onTap(int16_t x, int16_t y);   // the first-boot shots tap their way in
+void onSwipe(int dir);
 void onSwipeV(int dir);
 void bagTap(int16_t x, int16_t y);
 void refreshUiFont();
 extern bool gymOpen, playerOpen, navMenuOpen;
-extern bool galleryDirty;
 extern uint8_t galleryRegion;
 extern uint8_t gymRegion;
 extern bool gymPick, galleryPick;
@@ -370,16 +370,12 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
   }
   else if (!strcmp(screen, "medals")) { cardOpen = true; cardPage = 3; }
   else if (!strcmp(screen, "progress")){cardOpen = true; cardPage = 4; }
-  else if (!strcmp(screen, "gallery")) {
-    // The grid is static and guarded by galleryDirty, so setting galleryOpen
-    // alone leaves the screenshot black -- the real UI sets both.
+  else if (!strcmp(screen, "gallery") || !strcmp(screen, "gallerypage2")) {
     galleryOpen = true;
-    galleryDirty = true;
     for (int d = 1; d <= 200; d++) pet.dbgHatchAs(d, false);
   }
   else if (!strcmp(screen, "gallery2")) {   // the second region
     galleryOpen = true;
-    galleryDirty = true;
     galleryRegion = 1;
     for (int d = 1; d <= 200; d++) pet.dbgHatchAs(d, false);
   }
@@ -722,7 +718,8 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
       usleep(280000);
     }
   }
-  else if (!strcmp(screen, "gyms") || !strcmp(screen, "battlecenter")) { gymOpen = true; }
+  else if (!strcmp(screen, "gyms") || !strcmp(screen, "battlecenter") ||
+           !strcmp(screen, "gympage2")) { gymOpen = true; }
   else if (!strcmp(screen, "wildfight") || !strcmp(screen, "wilditems")) {
     // Use two installed fixture sprites so the capture is visually complete;
     // wild mechanics themselves are exercised by wild_test.
@@ -827,8 +824,10 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
       elapsed = 600UL + 650UL + 350UL + 1350UL + 700UL + 600UL + 50UL;
     if (!angryScene) btlCaptureStartedAt = millis() - elapsed;
   }
-  else if (!strcmp(screen, "gympick")) { gymOpen = true; gymPick = true; }
-  else if (!strcmp(screen, "dexpick")) {
+  else if (!strcmp(screen, "gympick") || !strcmp(screen, "gympickpage2")) {
+    gymOpen = true; gymPick = true;
+  }
+  else if (!strcmp(screen, "dexpick") || !strcmp(screen, "dexpickpage2")) {
     for (int d = 1; d <= 200; d++) pet.dbgHatchAs(d, false);
     galleryOpen = true; galleryPick = true;
   }
@@ -966,6 +965,11 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     pet.checkLearnGates();
   }
   render();
+  if (!strcmp(screen, "gallerypage2") || !strcmp(screen, "gympage2") ||
+      !strcmp(screen, "gympickpage2") || !strcmp(screen, "dexpickpage2")) {
+    onSwipe(-1);
+    render();
+  }
   if (!strcmp(screen, "rewardscroll") || !strcmp(screen, "bagscroll")) {
     onSwipeV(-1);
     onSwipeV(-1);

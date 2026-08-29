@@ -24,7 +24,7 @@ extern bool cardOpen, natureInfoOpen, galleryOpen, clockOpen, kbOpen, menuOpen,
 extern bool trainOpen, movePickOpen, battleOpen, gymOpen, playerOpen, boxOpen, pickOpen;
 extern bool bagOpen, navMenuOpen;
 extern uint8_t cardPage, gymPage, playerPage, movePickPage, boxPage, pickPage;
-extern int galleryPage; extern bool galleryDirty; extern uint8_t galleryDetail;
+extern int galleryPage; extern uint8_t galleryDetail;
 extern uint8_t galleryRegion;
 extern uint8_t gymRegion;
 extern bool gymPick, galleryPick;

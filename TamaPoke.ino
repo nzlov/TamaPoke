@@ -47,8 +47,6 @@
 
 #if defined(ESP32)
 #include <esp_heap_caps.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
 // FreeType's CFF glyph interpreter needs more than Arduino's default 8 KiB
 // loop-task stack while rendering the Chinese OpenType font.
 SET_LOOP_TASK_STACK_SIZE(32 * 1024);
@@ -71,31 +69,6 @@ public:
 
   TamaCanvas(int16_t width, int16_t height, Arduino_CO5300 *output)
       : Arduino_Canvas(width, height, output), display(output) {}
-
-#if defined(ARDUINO) && defined(ESP32)
-  bool begin(int32_t speed = GFX_NOT_DEFINED) override {
-    if (!Arduino_Canvas::begin(speed)) return false;
-
-    size_t bytes = (size_t)width() * height() * sizeof(uint16_t);
-    spareFramebuffer = (uint16_t *)heap_caps_aligned_alloc(
-        16, bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    frameQueue = xQueueCreate(1, sizeof(uint16_t *));
-    frameDone = xSemaphoreCreateBinary();
-    displayMutex = xSemaphoreCreateMutex();
-    if (!spareFramebuffer || !frameQueue || !frameDone || !displayMutex) {
-      disableAsyncDisplay();
-      return true;
-    }
-    xSemaphoreGive(frameDone);
-    if (xTaskCreatePinnedToCore(displayTaskEntry, "display", 4096, this, 1,
-                                &displayTaskHandle, 0) != pdPASS) {
-      disableAsyncDisplay();
-      return true;
-    }
-    asyncDisplayReady = true;
-    return true;
-  }
-#endif
 
   static uint8_t packScale(uint8_t requested) {
     uint8_t height = uiFontLineHeight();
@@ -244,33 +217,14 @@ public:
   }
 
   void setPanelBrightness(uint8_t brightness) {
-#if defined(ARDUINO) && defined(ESP32)
-    if (asyncDisplayReady) xSemaphoreTake(displayMutex, portMAX_DELAY);
-#endif
     display->setBrightness(brightness);
-#if defined(ARDUINO) && defined(ESP32)
-    if (asyncDisplayReady) xSemaphoreGive(displayMutex);
-#endif
   }
 
-#if defined(ARDUINO) && defined(ESP32)
+#if defined(ARDUINO)
   void flush(bool forceFlush = false) override {
-    if (!asyncDisplayReady) {
-      uint32_t started = perfNowUs();
-      Arduino_Canvas::flush(forceFlush);
-      perfRecord(PERF_FLUSH, perfNowUs() - started);
-      return;
-    }
-
-    // GLUE: Arduino_Canvas exposes only a blocking full-frame flush. Swapping
-    // a completed PSRAM frame into a display task keeps touch sampling on the
-    // loop task; remove this bridge when the library provides async flushing.
-    xSemaphoreTake(frameDone, portMAX_DELAY);
-    uint16_t *completed = _framebuffer;
-    _framebuffer = spareFramebuffer;
-    spareFramebuffer = completed;
-    if (xQueueSend(frameQueue, &completed, portMAX_DELAY) != pdTRUE)
-      xSemaphoreGive(frameDone);
+    uint32_t started = perfNowUs();
+    Arduino_Canvas::flush(forceFlush);
+    perfRecord(PERF_FLUSH, perfNowUs() - started);
   }
 #else
   void flush() {
@@ -281,57 +235,6 @@ public:
 #endif
 
 private:
-#if defined(ARDUINO) && defined(ESP32)
-  static void displayTaskEntry(void *argument) {
-    static_cast<TamaCanvas *>(argument)->displayTask();
-  }
-
-  void displayTask() {
-    uint16_t *completed = nullptr;
-    while (xQueueReceive(frameQueue, &completed, portMAX_DELAY) == pdTRUE) {
-      uint32_t started = perfNowUs();
-      xSemaphoreTake(displayMutex, portMAX_DELAY);
-      _output->draw16bitRGBBitmap(_output_x, _output_y, completed,
-                                  width(), height());
-      xSemaphoreGive(displayMutex);
-      perfRecord(PERF_FLUSH, perfNowUs() - started);
-      xSemaphoreGive(frameDone);
-    }
-    vTaskDelete(nullptr);
-  }
-
-  void disableAsyncDisplay() {
-    if (displayTaskHandle) {
-      vTaskDelete(displayTaskHandle);
-      displayTaskHandle = nullptr;
-    }
-    if (frameQueue) {
-      vQueueDelete(frameQueue);
-      frameQueue = nullptr;
-    }
-    if (frameDone) {
-      vSemaphoreDelete(frameDone);
-      frameDone = nullptr;
-    }
-    if (displayMutex) {
-      vSemaphoreDelete(displayMutex);
-      displayMutex = nullptr;
-    }
-    if (spareFramebuffer) {
-      free(spareFramebuffer);
-      spareFramebuffer = nullptr;
-    }
-    asyncDisplayReady = false;
-  }
-
-  uint16_t *spareFramebuffer = nullptr;
-  QueueHandle_t frameQueue = nullptr;
-  SemaphoreHandle_t frameDone = nullptr;
-  SemaphoreHandle_t displayMutex = nullptr;
-  TaskHandle_t displayTaskHandle = nullptr;
-  bool asyncDisplayReady = false;
-#endif
-
   Arduino_CO5300 *display;
 
   static uint16_t blend565(uint16_t background, uint16_t foreground, uint8_t alpha) {
@@ -436,7 +339,7 @@ private:
   bool fontVector = false;
 };
 
-// Two complete PSRAM frames keep drawing separate from the panel transfer.
+// A complete PSRAM framebuffer is submitted only after the frame is finished.
 TamaCanvas *gfx = new TamaCanvas(LCD_WIDTH, LCD_HEIGHT, panel);
 
 void refreshUiFont() { gfx->setPackFont(contentHasUi()); }
@@ -677,7 +580,6 @@ PmdMon galleryPmd;  // sprite grande de la vista detalle de la galeria (PMD/TPK2
 
 // galeria pokedex
 bool galleryOpen = false;
-bool galleryDirty = false;
 // 16 to a page, and the Pokedex is browsed ONE REGION AT A TIME. Three
 // generations flat is 25 pages of swiping to reach Hoenn, which is not a
 // Pokedex, it is a scroll. A vertical swipe changes region and a horizontal one
@@ -1680,8 +1582,8 @@ void loop() {
     printHealthReport();
   }
 
-  // Keep the animation rate bounded even though panel transfer now runs on the
-  // display task; rendering and sprite decoding still consume loop-task time.
+  // Keep the animation rate bounded: rendering, sprite decoding and the
+  // synchronous panel transfer all consume loop-task time.
   uint8_t screen = uiCurrentScreen();
   bool renderDue = uiRenderDirty || screen != uiLastRenderedScreen ||
                    uiScreenContinuous(screen);
@@ -1850,7 +1752,6 @@ void handleSerial() {
   } else if (line == "GAL") {
     galleryOpen = !galleryOpen;
     galleryDetail = 0;
-    galleryDirty = true;
     if (!galleryOpen) galleryPmd.unload();
     Serial.println("DONE");
   } else if (line == "EGGS") {
@@ -2165,6 +2066,7 @@ void handleTouch() {
 void openClock();  // prototipo
 
 void onSwipeV(int dir) {
+  uiRenderDirty = true;
   if (quiz.active) {
     if (!quiz.answered) {
       if (dir < 0 && quiz.scrollLine < quiz.maxScrollLine) quiz.scrollLine++;
@@ -2225,10 +2127,9 @@ void onSwipeV(int dir) {
   if (sackOpen) { leaveSack(); return; }
   if (spdOpen) { leaveSpeed(); return; }
   if (galleryOpen) {
-    if (galleryDetail) { galleryDetail = 0; galleryPmd.unload(); galleryDirty = true; return; }
+    if (galleryDetail) { galleryDetail = 0; galleryPmd.unload(); return; }
     galleryRegion = (uint8_t)((galleryRegion + (dir > 0 ? 1 : GAL_REGIONS - 1)) % GAL_REGIONS);
     galleryPage = 0;
-    galleryDirty = true;
     sfxPlay(SFX_TAP);
     return;
   }
@@ -2807,6 +2708,7 @@ void gymHeaderRects(int *pillTop, int *pillBot, int *rowTop) {
 
 // deslizar: dir +1 = hacia la derecha
 void onSwipe(int dir) {
+  uiRenderDirty = true;
   if (quizBlocking()) return;
   if (moveInfoOpen) { moveInfoOpen = false; return; }
   if (btlWinUntil) return;
@@ -2906,7 +2808,6 @@ void onSwipe(int dir) {
   if (galleryDetail) {  // en detalle: volver a la rejilla
     galleryDetail = 0;
     galleryPmd.unload();
-    galleryDirty = true;
     return;
   }
   int np = galleryPage - dir;  // deslizar a la izquierda avanza pagina
@@ -2917,10 +2818,7 @@ void onSwipe(int dir) {
     return;
   }
   if (np > GAL_PAGES - 1) np = GAL_PAGES - 1;
-  if (np != galleryPage) {
-    galleryPage = np;
-    galleryDirty = true;
-  }
+  galleryPage = np;
 }
 
 bool petNavTap(int16_t x, int16_t y) {
@@ -3160,7 +3058,7 @@ void onTap(int16_t x, int16_t y) {
       sfxPlay(SFX_TAP);
       menuOpen = false;
       if (i == 0) { party.setLead(party.activeIndex()); }
-      else if (i == 1) { galleryOpen = true; galleryPick = true; galleryPage = 0; rpickPage = 0; galleryDetail = 0; galleryDirty = true; }
+      else if (i == 1) { galleryOpen = true; galleryPick = true; galleryPage = 0; rpickPage = 0; galleryDetail = 0; }
       else if (i == 2) { openClock(); }
       else if (i == 3) {
         if (!pet.canExitNow()) { sfxPlay(SFX_DENY); return; }
@@ -3212,7 +3110,6 @@ void onTap(int16_t x, int16_t y) {
         galleryRegion = (uint8_t)r;
         galleryPage = 0;
         galleryDetail = 0;
-        galleryDirty = true;
         galleryPick = false;
         sfxPlay(SFX_TAP);
       } else if (y > 380) {
@@ -3710,8 +3607,7 @@ void render() {
   }
   int h = sceneHour();
   gNight = pet.sleeping || h < 6 || h >= 20;
-  // drawScene covers the complete drawing frame; the display task owns the
-  // previous completed frame until its panel transfer finishes.
+  // drawScene covers the complete frame before it is submitted to the panel.
   drawScene(pet.isEgg() ? 0 : dexEntry(pet.speciesId).biome, millis(), gNight);
 
   if (pet.ceremony) {
@@ -4146,8 +4042,7 @@ void drawGameScene() {
 }
 
 void renderGame() {
-  // drawGameScene covers the complete drawing frame while the display task
-  // transfers the previous completed frame.
+  // drawGameScene covers the complete frame before it is submitted.
   bool night = sceneHour() < 6 || sceneHour() >= 20;
   uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
 
@@ -7097,8 +6992,7 @@ void renderBattle() {
     return;
   }
   btlEaseBars();
-  // Paint the complete battle frame; the display task still owns the previous
-  // completed frame until the CO5300 transfer ends.
+  // Paint the complete battle frame before submitting it to the CO5300.
   drawBattleBack(0, 2, 254);
   drawBattleFieldEffects(now);
   // the lower band stays flat so the move grid and the HP text keep their
@@ -9542,9 +9436,6 @@ void renderGallery() {
     return;
   }
 
-  if (!galleryDirty) return;  // la rejilla es estatica
-  galleryDirty = false;
-
   beginRoundFrame(UI_BG_DAY);
   // the region's own name and its own tally: "how much of Johto have I seen"
   // is the question you are actually asking here
@@ -9597,7 +9488,6 @@ void galleryTap(int16_t x, int16_t y) {
   if (galleryDetail) {  // volver a la rejilla
     galleryDetail = 0;
     galleryPmd.unload();
-    galleryDirty = true;
     return;
   }
   if (y < 72) {  // tocar la cabecera = salir

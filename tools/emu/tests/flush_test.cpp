@@ -18,6 +18,7 @@ void FakeESP::restart(){exit(0);}
 int FakeSerial::available(){return 0;}
 String FakeSerial::readStringUntil(char){return String("");}
 void setup(); void loop(); void render(); void renderBootSplash();
+void onSwipe(int dir);
 void battleTap(int16_t x, int16_t y);
 uint8_t uiCurrentScreen();
 bool uiScreenContinuous(uint8_t screen);
@@ -106,6 +107,22 @@ int main(){
   if (!initialBagFrame || idleBagFrame || !dirtyBagFrame) {
     printf("FAIL  static screen scheduler does not honor dirty state\n"); bad++;
   } else printf("PASS  static screen redraws once, idles, then redraws when dirty\n");
+
+  // A page mutation owns its redraw. Requiring the touch dispatcher to mark
+  // the screen dirty leaves every static paged screen blank or stale when the
+  // same navigation action comes from another input path.
+  clearAll(); cardOpen = true; cardPage = 0; uiRenderDirty = true;
+  lastRender = millis() - 101; loop();
+  gfx->frameReady = false;
+  gfx->fullBlackClears = 0;
+  onSwipe(-1);
+  lastRender = millis() - 101; loop();
+  size_t pageInk = 0;
+  for (size_t i = 0; i < 466UL * 466UL; i++)
+    if (gfx->buffer()[i] != RGB565_BLACK) pageInk++;
+  if (cardPage != 1 || !gfx->frameReady || gfx->fullBlackClears || pageInk < 10000) {
+    printf("FAIL  horizontal page change does not submit a complete non-black frame\n"); bad++;
+  } else printf("PASS  horizontal page change submits a complete non-black frame\n");
 
   clearAll(); check("main");
   clearAll(); trainOpen=true;    check("train");
