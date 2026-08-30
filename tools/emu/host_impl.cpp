@@ -14,11 +14,11 @@ bool sdDirty = false;
 SdThumbs thumbs;
 
 bool PmdMon::load(int16_t dexNum, bool shiny, uint8_t gender, bool mega,
-                  MegaFormKind megaForm) {
+                  MegaFormKind megaForm, bool gigantamax) {
   if (!dexValid(dexNum)) return false;
   unload();
   uint32_t size = 0;
-  if (!contentLoadSprite((SpeciesId)dexNum, shiny, gender, mega, megaForm,
+  if (!contentLoadSprite((SpeciesId)dexNum, shiny, gender, mega, megaForm, gigantamax,
                          &blob, &size, &displayScale) ||
       displayScale < 2 || displayScale > 6) {
     unload();

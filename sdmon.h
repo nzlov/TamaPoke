@@ -35,7 +35,8 @@ struct PmdMon {
   PmdAct acts[PMD_STORAGE_ACTS];
 
   bool load(int16_t dexNum, bool shiny = false, uint8_t gender = 0,
-            bool mega = false, MegaFormKind megaForm = MEGA_FORM_NONE);
+            bool mega = false, MegaFormKind megaForm = MEGA_FORM_NONE,
+            bool gigantamax = false);
   void unload();
   bool has(uint8_t a) const { return loaded && a < PMD_STORAGE_ACTS && acts[a].frames > 0; }
 };

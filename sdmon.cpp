@@ -34,7 +34,7 @@ static void recoverPackUploads() {
 }
 
 bool PmdMon::load(int16_t dexNum, bool shiny, uint8_t gender, bool mega,
-                  MegaFormKind megaForm) {
+                  MegaFormKind megaForm, bool gigantamax) {
   // int16_t, NOT uint8_t. The dex reached 386 and this did not follow, so
   // everything from 256 up wrapped into Kanto: MARSHTOMP (258) opened
   // p002.bin and drew an IVYSAUR. Evolution and trainer species IDs were hit by
@@ -42,7 +42,7 @@ bool PmdMon::load(int16_t dexNum, bool shiny, uint8_t gender, bool mega,
   if (!dexValid(dexNum)) return false;
   unload();
   uint32_t size = 0;
-  if (!contentLoadSprite((SpeciesId)dexNum, shiny, gender, mega, megaForm,
+  if (!contentLoadSprite((SpeciesId)dexNum, shiny, gender, mega, megaForm, gigantamax,
                          &blob, &size, &displayScale) ||
       displayScale < 2 || displayScale > 6 ||
       size < 7 || size > 3UL * 1024 * 1024 || memcmp(blob, "TPK2", 4) != 0) {

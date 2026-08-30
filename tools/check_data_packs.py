@@ -33,7 +33,7 @@ REQUIRED_SECTIONS = {
     5: {b"ITEM", b"INAM", b"ILNM", b"ILOC"},
     6: {b"TYPS", b"TSTR", b"TLNM", b"CHRT", b"ABIL", b"ANAM", b"ALNM", b"ALOC"},
 }
-OPTIONAL_SECTIONS = {2: {b"MFSP", b"MFBL"}, 5: {b"IICO"}}
+OPTIONAL_SECTIONS = {2: {b"MFSP", b"MFBL", b"GFBL"}, 5: {b"IICO"}}
 
 QLOC = struct.Struct("<16sII")
 QIDX = struct.Struct("<III")
@@ -247,17 +247,30 @@ def validate(path: Path, expected: dict) -> None:
                 raise ValueError("invalid regional Mega form record")
             previous_key = (species, form)
         gmax_count = section_counts[b"GMAX"]
-        gmax_record = struct.Struct("<HBB")
+        gmax_record = struct.Struct("<HBBBBIIII")
         if len(sections[b"GMAX"]) != gmax_count * gmax_record.size:
             raise ValueError("invalid regional Gigantamax table")
         previous_species = 0
+        gmax_blob = sections.get(b"GFBL", b"")
         for offset in range(0, len(sections[b"GMAX"]), gmax_record.size):
-            gmax_species, first_move, second_move = gmax_record.unpack_from(
+            (gmax_species, first_move, second_move, display_scale, reserved,
+             normal_at, normal_size, shiny_at, shiny_size) = gmax_record.unpack_from(
                 sections[b"GMAX"], offset)
             if gmax_species <= previous_species or not first_move or \
-                    (second_move and second_move <= first_move):
+                    (second_move and second_move <= first_move) or reserved or \
+                    normal_at > len(gmax_blob) or normal_size > len(gmax_blob) - normal_at or \
+                    shiny_at > len(gmax_blob) or shiny_size > len(gmax_blob) - shiny_at or \
+                    (not normal_size and (shiny_size or display_scale)):
                 raise ValueError("invalid regional Gigantamax move references")
+            normal = gmax_blob[normal_at:normal_at + normal_size]
+            shiny = gmax_blob[shiny_at:shiny_at + shiny_size]
+            if display_scale != pmd_pair_display_scale(normal, shiny):
+                raise ValueError("Gigantamax sprite display scale does not match Idle bounds")
             previous_species = gmax_species
+        if bool(gmax_blob) != any(
+                gmax_record.unpack_from(sections[b"GMAX"], offset)[6]
+                for offset in range(0, len(sections[b"GMAX"]), gmax_record.size)):
+            raise ValueError("orphan or missing regional Gigantamax sprite blob")
         sprite_record = struct.Struct("<HIIIIIIIIB")
         sprite_count = section_counts[b"SPRI"]
         if not sprite_count or len(sections[b"SPRI"]) != sprite_count * sprite_record.size:

@@ -562,11 +562,11 @@ one available special mechanic: a Z-Move, Dynamax, or Mega Evolution.
   Max Guard, so a species without a matching learned attack cannot use its
   signature move. The battle menu uses localized transformed move names and
   marks generic and signature transformations with separate **MAX** and
-  **G-MAX** tags.
+  **G-MAX** tags. Gigantamax uses its distinct form sprite in battle.
 - Mega Evolution is limited to species with an official Mega form. The standard,
   X, Y and Z stones are distinct and select that exact branch. The untransformed
   Pokemon has one shared normal/shiny appearance; the branch appears only after
-  Mega Evolution.
+  Mega Evolution. Every supported Mega branch uses its distinct form sprite.
 
 All 33 signature G-Max Move mappings apply their battle effects, including
 residual damage, status, trapping, screens, hazards, Gravity, critical-hit stages,
@@ -765,28 +765,33 @@ catalogue layout.
 
 ### Generate and load the data packs yourself
 
-All sprites come from **[PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)**
-(CC BY-NC). The fixed-revision PNG/XML sources used by the game are stored under
-`tools/pokemon_art/pmd/`; each available normal, shiny, female and Mega source
-directory is referenced by `tools/pokemon_data.json`. `pack_pmd.py` converts those
-local sources without network access, and `gen_data_packs.py` combines the generated
+Most sprites come from **[PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)**
+(CC BY-NC). Its fixed-revision PNG/XML sources are stored under
+`tools/pokemon_art/pmd/`. Independently generated transparent four-view sheets in
+`tools/pokemon_art/ai/` fill all 48 missing base species, all 57 missing Mega forms
+and all 32 Gigantamax forms. `pack_pmd.py` and `pack_ai_art.py` convert those local
+sources without network access, and `gen_data_packs.py` combines the generated
 TPK2/TPTH files with UI, species, move, description, trainer, battle and badge data.
+Optional four-frame action atlases replace derived fallback motion when present.
 No regional intermediate bundle is created. Newly packed sprites
 also carry rear Idle/Hurt/Attack actions, so the player's battle Pokemon faces
 away from the player. A missing rear action falls back to the matching front
-action. Missing Mega, shiny Mega, or Gigantamax community art falls back to that
-individual's available base normal/shiny sprite and remains listed in a coverage
-report; the generator never invents a form image.
+action. Missing shiny form art preserves the individual's available base shiny
+sprite instead of substituting the normal-colour form.
 
 ```bash
 python3 tools/pack_pmd.py --report base-sprite-coverage.json
 python3 tools/pack_pmd.py --mega --mega-report mega-sprite-coverage.json
 # Mega outputs are pmNNN-{standard,x,y,z}[-shiny].bin
+python3 tools/pack_ai_art.py # missing base, Mega and Gigantamax sources -> TPK2
 python3 tools/make_thumbs.py    # Pokédex thumbnails (from the PMD sprites) -> thumbs.bin
 python3 tools/fetch_species_descriptions.py # fill missing descriptions in pokemon_data.json
 python3 tools/gen_data_packs.py # web/packs/*.{tui,tbattle,tmove,titem,tregion,tquiz} + index.json
 python3 tools/check_data_packs.py
 ```
+
+These packs use content ABI 8; firmware and regional packs must be updated
+together when upgrading from an older ABI.
 
 The checked-in Chinese font subset already covers every string, species, move,
 type and regional description in the catalogue. When localized content gains
@@ -1017,17 +1022,19 @@ To test fast: lower `PET_TICK_MS`, `MINUTES_PER_LEVEL` and `FAREWELL_AGE_MIN` in
 
 ## Credits
 
-All sprites: [PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)
-(community, CC BY-NC). Base stats: [PokéAPI](https://pokeapi.co). Pokémon is a ™ of
+Most sprites: [PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)
+(community, CC BY-NC); catalogue gaps use the documented generated turnarounds.
+Base stats: [PokéAPI](https://pokeapi.co). Pokémon is a ™ of
 Nintendo / Game Freak / The Pokémon Company. Non-commercial, personal-use project.
 Full list in [`CREDITS.md`](CREDITS.md).
 
 ## License
 
 - **Source code** (firmware + tooling): **[MIT](LICENSE)**.
-- **Sprites & names**: © Nintendo / Game Freak / The Pokémon Company; pixel art
-  from [PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab) (CC BY-NC 4.0).
-  **Non-commercial use only.**
+- **Sprites & names**: © Nintendo / Game Freak / The Pokémon Company; community
+  pixel art from [PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)
+  (CC BY-NC 4.0), **non-commercial use only**. Independently generated gap art is
+  documented in [`CREDITS.md`](CREDITS.md); no rights are claimed over the designs.
 - **3D-printed case**: remix of *"Pokeball"* by **yoyothechicken**
   ([MakerWorld #839922](https://makerworld.com/es/models/839922-pokeball)),
   licensed **CC BY-NC-SA**, and shared here under the same terms.

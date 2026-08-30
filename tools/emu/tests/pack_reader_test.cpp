@@ -34,7 +34,7 @@ int main() {
   bool sequential = seekCount == 5;
   ContentPackInfo info{};
   bool contentVersion = contentReadPackInfo(PACK_READER_FIXTURE, info) &&
-      info.contentVersion == 0x4DBB5FEEu;
+      info.contentVersion == 0xF1F8BA73u;
   FILE *source = fopen(PACK_READER_FIXTURE, "rb");
   __real_fseek(source, 0, SEEK_END);
   long size = ftell(source);
@@ -62,11 +62,11 @@ int main() {
       mutationIs(52, CONTENT_PACK_DIRECTORY_INVALID) &&
       mutationIs(raw.size() - 1, CONTENT_PACK_CHECKSUM_MISMATCH);
   uint8_t savedAbi = raw[4];
-  raw[4] = 6;
+  raw[4] = 7;
   FILE *oldPack = fopen(badPath.c_str(), "wb");
   bool oldWritten = oldPack && fwrite(raw.data(), 1, raw.size(), oldPack) == raw.size();
   if (oldPack) fclose(oldPack);
-  bool abi6Rejected = oldWritten &&
+  bool abi7Rejected = oldWritten &&
       contentValidatePackFile(badPath.c_str()) == CONTENT_PACK_ABI_MISMATCH;
   raw[4] = savedAbi;
   remove(badPath.c_str());
@@ -83,9 +83,9 @@ int main() {
          sequential ? "PASS" : "FAIL");
   printf("%s  pack validation reports the failing format stage\n",
          precise ? "PASS" : "FAIL");
-  printf("%s  ABI 6 region packs are rejected by the ABI 7 schema\n",
-         abi6Rejected ? "PASS" : "FAIL");
+  printf("%s  ABI 7 region packs are rejected by the ABI 8 schema\n",
+         abi7Rejected ? "PASS" : "FAIL");
   printf("%s  startup discovers packs without rescanning payload CRC\n",
          discoverySkipsCrc ? "PASS" : "FAIL");
-  return ok && contentVersion && sequential && precise && abi6Rejected && discoverySkipsCrc ? 0 : 1;
+  return ok && contentVersion && sequential && precise && abi7Rejected && discoverySkipsCrc ? 0 : 1;
 }

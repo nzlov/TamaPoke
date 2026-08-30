@@ -357,6 +357,7 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
     learn_record = struct.Struct("<HBB")
     breeding_record = struct.Struct("<HHHHIH")
     mega_record = struct.Struct("<HBBBBBBBBHH")
+    gmax_record = struct.Struct("<HBBBBIIII")
     sprite_record = struct.Struct("<HIIIIIIIIB")
     trainer_record = struct.Struct("<BBBBII" + "HB" * 6)
     badge_record = struct.Struct("<BBBBII")
@@ -369,8 +370,7 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
         mega_source_count = sum(
             (sprite_dir / f"pm{int(form['species']):03d}-{form.get('form', 'standard')}.bin").exists()
             for form in MEGA_DATA
-            if lo <= int(form["species"]) <= hi and
-            form.get("art", {}).get("normal")
+            if lo <= int(form["species"]) <= hi
         )
         if normal_count == 0 and mega_source_count == 0 and not allow_empty_art:
             raise FileNotFoundError(
@@ -459,16 +459,6 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
                     stats["specialDefense"], stats["speed"], form["abilityId"],
                     form["learnsetSpecies"],
                 ))
-        gigantamax = bytearray()
-        for row in rows:
-            move_ids = GIGANTAMAX_BY_SPECIES.get(row["id"], [])
-            if row["gigantamax"] != bool(move_ids) or len(move_ids) > 2:
-                raise ValueError(f"species {row['id']}: invalid Gigantamax move references")
-            if move_ids:
-                gigantamax.extend(struct.pack(
-                    "<HBB", row["id"], *(move_ids + [0] * (2 - len(move_ids)))
-                ))
-
         region = struct.pack(
             "<B16sHHB16H",
             region_id, region_name.encode("ascii")[:15].ljust(16, b"\0"),
@@ -541,7 +531,7 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
         form_ids = {"standard": 0, "x": 1, "y": 2, "z": 3}
         for form in MEGA_DATA:
             species = int(form["species"])
-            if not lo <= species <= hi or not form.get("art", {}).get("normal"):
+            if not lo <= species <= hi:
                 continue
             form_name = form.get("form", "standard")
             normal_path = sprite_dir / f"pm{species:03d}-{form_name}.bin"
@@ -556,6 +546,28 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
             mega_sprites.extend(shiny)
             mega_sprite_index.extend(mega_sprite_record.pack(
                 species, form_ids[form_name], pmd_pair_display_scale(normal, shiny),
+                normal_at, len(normal), shiny_at, len(shiny),
+            ))
+        gigantamax = bytearray()
+        gmax_sprites = bytearray()
+        for row in rows:
+            number = row["id"]
+            move_ids = GIGANTAMAX_BY_SPECIES.get(number, [])
+            if row["gigantamax"] != bool(move_ids) or len(move_ids) > 2:
+                raise ValueError(f"species {number}: invalid Gigantamax move references")
+            if not move_ids:
+                continue
+            normal_path = sprite_dir / f"pg{number:03d}.bin"
+            normal = normal_path.read_bytes() if normal_path.exists() else b""
+            shiny_path = sprite_dir / f"pgs{number:03d}.bin"
+            shiny = shiny_path.read_bytes() if normal and shiny_path.exists() else b""
+            normal_at = len(gmax_sprites)
+            gmax_sprites.extend(normal)
+            shiny_at = len(gmax_sprites)
+            gmax_sprites.extend(shiny)
+            scale = pmd_pair_display_scale(normal, shiny) if normal else 0
+            gigantamax.extend(gmax_record.pack(
+                number, *(move_ids + [0] * (2 - len(move_ids))), scale, 0,
                 normal_at, len(normal), shiny_at, len(shiny),
             ))
         thumbs = thumbs_path.read_bytes() if thumbs_path.exists() else b""
@@ -578,7 +590,7 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
             ("BRSP", bytes(breeding_records), len(rows)),
             ("BEMV", bytes(egg_moves), len(egg_moves) // 2),
             ("MEGA", bytes(mega_forms), len(mega_forms) // mega_record.size),
-            ("GMAX", bytes(gigantamax), len(gigantamax) // 4),
+            ("GMAX", bytes(gigantamax), len(gigantamax) // gmax_record.size),
             ("NAME", names_blob, len(rows)),
             ("LNAM", localized_names, len(rows)),
             ("REGN", region, 1),
@@ -600,6 +612,8 @@ def build_region_packs(manifest: list[dict], sprite_dir: Path,
                 ("MFBL", bytes(mega_sprites),
                  len(mega_sprite_index) // mega_sprite_record.size),
             ])
+        if gmax_sprites:
+            sections.append(("GFBL", bytes(gmax_sprites), len(gigantamax) // gmax_record.size))
         blob = pack(KIND_REGION, f"region-{region_name.lower()}", mechanics_hash, sections)
         path.write_bytes(blob)
         append_region_manifest(manifest, path, region_name, lo, hi, battle)

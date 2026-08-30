@@ -7,7 +7,7 @@
 #include "items.h"
 #include "moves.h"
 
-constexpr uint16_t CONTENT_PACK_ABI = 7;
+constexpr uint16_t CONTENT_PACK_ABI = 8;
 constexpr uint8_t CONTENT_MAX_UI_LOCALES = 16;
 constexpr uint8_t CONTENT_MAX_QUIZ_OPTIONS = 4;
 constexpr uint16_t CONTENT_MAX_QUESTION_ID_BYTES = 40;
@@ -231,8 +231,8 @@ bool packedTypeColorIsLight(uint8_t type);
 
 // The caller owns the returned PSRAM/malloc buffer and frees it with free().
 bool contentLoadSprite(SpeciesId species, bool shiny, uint8_t gender, bool mega,
-                       MegaFormKind megaForm, uint8_t **out, uint32_t *size,
-                       uint8_t *displayScale);
+                       MegaFormKind megaForm, bool gigantamax, uint8_t **out,
+                       uint32_t *size, uint8_t *displayScale);
 bool contentLoadThumbs(uint8_t **out, uint32_t *size);
 
 // Serial/Web diagnostics. The text is one line per installed pack and ends in

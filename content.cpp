@@ -23,7 +23,7 @@
 namespace {
 
 constexpr uint8_t MAX_PACKS = 32;
-constexpr uint8_t MAX_SECTIONS = 24;
+constexpr uint8_t MAX_SECTIONS = 25;
 constexpr uint16_t COMMON_SIZE = 48;
 constexpr uint16_t SECTION_SIZE = 16;
 constexpr uint8_t MAX_PET_PACKS = CONTENT_MAX_REGIONS;
@@ -69,6 +69,10 @@ struct BreedingRuntime {
 struct GigantamaxRuntime {
   SpeciesId species = SPECIES_NONE;
   GmaxMoveId moves[2] = { GMAX_MOVE_NONE, GMAX_MOVE_NONE };
+  uint8_t spriteScale = 0;
+  uint8_t spritePack = 0xFF;
+  uint32_t spriteAt = 0, spriteSize = 0;
+  uint32_t shinySpriteAt = 0, shinySpriteSize = 0;
 };
 
 struct RegionPackRuntime {
@@ -1058,7 +1062,7 @@ static bool loadRegionPack(uint8_t packIndex) {
       breedingSection->size != breedingSection->count * 14u ||
       !eggMoveSection || eggMoveSection->size != eggMoveSection->count * 2u ||
       !megaSection || megaSection->size != megaSection->count * 14u ||
-      !gmaxSection || gmaxSection->size != gmaxSection->count * 4u) {
+      !gmaxSection || gmaxSection->size != gmaxSection->count * 22u) {
     free(specs); free(names); free(regions); return false;
   }
   uint16_t maxSpecies = 0;
@@ -1307,6 +1311,7 @@ static bool loadRegionPack(uint8_t packIndex) {
   }
   free(rawMega);
 
+  const SectionRef *gmaxSpriteBlob = findSection(pack, "GFBL");
   uint32_t gmaxSize = 0, gmaxCount = 0;
   uint8_t *rawGmax = readSection(pack, "GMAX", &gmaxSize, &gmaxCount);
   if (!rawGmax || gmaxCount > gGigantamaxCapacity - gGigantamaxCount) {
@@ -1314,21 +1319,39 @@ static bool loadRegionPack(uint8_t packIndex) {
   }
   SpeciesId previousGmax = SPECIES_NONE;
   for (uint32_t i = 0; i < gmaxCount; i++) {
-    const uint8_t *row = rawGmax + i * 4u;
+    const uint8_t *row = rawGmax + i * 22u;
     SpeciesId species = rd16(row);
     GmaxMoveId firstMove = row[2], secondMove = row[3];
+    uint8_t displayScale = row[4];
+    uint32_t normalAt = rd32(row + 6), normalSize = rd32(row + 10);
+    uint32_t shinyAt = rd32(row + 14), shinySize = rd32(row + 18);
     if (!species || species >= gDexCapacity || gSprites[species].pack != runtimePack ||
         (i && species <= previousGmax) || !firstMove || firstMove > gGmaxMoveCount ||
         secondMove > gGmaxMoveCount ||
+        row[5] ||
+        (normalSize && !gmaxSpriteBlob) ||
+        (normalSize && (displayScale < 2 || displayScale > 6)) ||
+        (!normalSize && (displayScale || shinySize)) ||
+        (gmaxSpriteBlob &&
+         (normalAt > gmaxSpriteBlob->size || normalSize > gmaxSpriteBlob->size - normalAt ||
+          shinyAt > gmaxSpriteBlob->size || shinySize > gmaxSpriteBlob->size - shinyAt)) ||
         (secondMove && (secondMove == firstMove ||
                         gGmaxMoves[secondMove - 1u].sourceType ==
-                            gGmaxMoves[firstMove - 1u].sourceType))) {
+                        gGmaxMoves[firstMove - 1u].sourceType))) {
       rollback(); free(touched); free(rawGmax); free(names); return false;
     }
     GigantamaxRuntime &entry = gGigantamaxSpecies[gGigantamaxCount++];
     entry.species = species;
     entry.moves[0] = firstMove;
     entry.moves[1] = secondMove;
+    if (normalSize) {
+      entry.spriteScale = displayScale;
+      entry.spritePack = packIndex;
+      entry.spriteAt = gmaxSpriteBlob->offset + normalAt;
+      entry.spriteSize = normalSize;
+      entry.shinySpriteAt = gmaxSpriteBlob->offset + shinyAt;
+      entry.shinySpriteSize = shinySize;
+    }
     previousGmax = species;
   }
   free(rawGmax);
@@ -2214,11 +2237,28 @@ bool spriteAvailable(SpeciesId species) {
          gSprites[species].normalSize != 0;
 }
 bool contentLoadSprite(SpeciesId species, bool shiny, uint8_t gender, bool mega,
-                       MegaFormKind megaForm, uint8_t **out, uint32_t *size,
-                       uint8_t *displayScale) {
+                       MegaFormKind megaForm, bool gigantamax, uint8_t **out,
+                       uint32_t *size, uint8_t *displayScale) {
   if (!out || !size || !displayScale) return false;
   *out = nullptr; *size = 0; *displayScale = 0;
   if (!spriteAvailable(species)) return false;
+  if (gigantamax) {
+    const GigantamaxRuntime *form = nullptr;
+    for (uint16_t i = 0; i < gGigantamaxCount; i++)
+      if (gGigantamaxSpecies[i].species == species) { form = &gGigantamaxSpecies[i]; break; }
+    uint32_t offset = shiny && form ? form->shinySpriteAt
+                                    : form ? form->spriteAt : 0;
+    uint32_t length = shiny && form ? form->shinySpriteSize
+                                    : form ? form->spriteSize : 0;
+    if (form && length && form->spriteScale && form->spritePack < gPackCount) {
+      uint8_t *data = (uint8_t *)contentAlloc(length);
+      if (!data || !readRange(gPacks[form->spritePack], offset, data, length)) {
+        free(data); return false;
+      }
+      *out = data; *size = length; *displayScale = form->spriteScale;
+      return true;
+    }
+  }
   if (mega) {
     const MegaFormEntry *form = megaFormFor(species, megaForm);
     uint32_t offset = shiny && form ? form->shinySpriteAt

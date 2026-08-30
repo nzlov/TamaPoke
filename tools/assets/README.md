@@ -9,19 +9,22 @@ chino `.tui`, no una fuente incorporada al firmware. Se regenera con
 
 ## El flujo real
 
-Los archivos TPK2/TPTH son entradas intermedias derivadas de PMD SpriteCollab.
+Los archivos TPK2/TPTH son entradas intermedias derivadas de PMD SpriteCollab
+o de las láminas independientes de cuatro vistas en `pokemon_art/ai/`.
 No se copian sueltos a la microSD: `gen_data_packs.py` los incorpora al paquete
 regional `.tregion` correspondiente.
 
 | Formato | Script | Fuente | Qué es |
 |---|---|---|---|
 | **TPK2** `pNNN.bin` / `psNNN.bin` / `pmNNN-form[-shiny].bin` | `pack_pmd.py` | [PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab) (CC BY-NC) | Animaciones multi-acción, incluidas las vistas traseras de batalla cuando existen — usadas en **todo**: pantalla principal, combate y **Pokédex / galería** |
+| **TPK2** `pNNN.bin` / `pmNNN-form.bin` / `pgNNN.bin` | `pack_ai_art.py` | Láminas de `pokemon_art/ai/`, generadas para TamaPoke | Animaciones para todos los huecos base, Mega y Gigantamax; usa atlas de acciones cuando existen y movimiento derivado como respaldo |
 | **TPTH** `thumbs.bin` | `make_thumbs.py` | (deriva de los TPK2) | Miniaturas 40×40 de la galería |
 | **TIC1** `*.ticon` | `fetch_item_icons.py` | [PokeAPI/sprites](https://github.com/PokeAPI/sprites/tree/master/sprites/items) | Iconos de objetos 24×24/30×30; caché local opcional incluida en `items-core.titem` |
 
 ```bash
 python3 tools/pack_pmd.py --report base-sprite-coverage.json
 python3 tools/pack_pmd.py --mega --mega-report mega-sprite-coverage.json
+python3 tools/pack_ai_art.py
 python3 tools/make_thumbs.py  # -> tools/sdcard/mons/thumbs.bin
 python3 tools/fetch_item_icons.py # -> tools/item_icon_cache/*.ticon
 python3 tools/gen_data_packs.py # lee las entradas directamente y genera web/packs/*.tregion
@@ -57,6 +60,11 @@ romper nada.
 `tools/pokemon_art/pmd/`. `pack_pmd.py` los convierte sin red a los `.bin`
 intermedios de `tools/sdcard/mons/`; los artefactos desplegables son los
 paquetes de `web/packs/`.
+
+`tools/pokemon_art/ai/turnarounds/` contiene 137 láminas transparentes de cuatro
+vistas. Los atlas opcionales de `tools/pokemon_art/ai/actions/` son cuadrículas
+4×4: cuatro acciones por archivo y cuatro fotogramas por acción. `pack_ai_art.py`
+valida el catálogo completo, prefiere esos fotogramas y convierte todo sin red.
 
 `fetch_item_icons.py` guarda los PNG y TIC1 derivados en `tools/item_icon_cache/`,
 también ignorado por Git. Si no existe esa caché, el paquete de movimientos se

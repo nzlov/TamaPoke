@@ -28,8 +28,8 @@ int main() {
   const MegaFormEntry *charizardY = megaFormFor(6, MEGA_FORM_Y);
   ck(charizardX && charizardX->spriteSize,
      "the Kanto region pack provides Mega Charizard X art");
-  ck(charizardY && !charizardY->spriteSize,
-     "Mega Charizard Y is represented even when upstream art is unavailable");
+  ck(charizardY && charizardY->spriteSize,
+     "the Kanto region pack provides Mega Charizard Y art");
 
   PmdMon normal, megaX;
   bool normalOk = normal.load(6, false, GENDER_NONE, false);
@@ -45,16 +45,14 @@ int main() {
      "available Mega art includes player-facing-back battle actions");
   normal.unload(); megaX.unload();
 
-  PmdMon charizardNormal, charizardYFallback;
-  bool yFallbackOk = charizardNormal.load(6, false, GENDER_NONE, false) &&
-                     charizardYFallback.load(6, false, GENDER_NONE, true,
-                                             MEGA_FORM_Y);
-  bool yFallbackSame = yFallbackOk &&
-      charizardNormal.palCount == charizardYFallback.palCount &&
-      !std::memcmp(charizardNormal.pal, charizardYFallback.pal,
+  PmdMon charizardNormal, charizardY;
+  bool yOk = charizardNormal.load(6, false, GENDER_NONE, false) &&
+             charizardY.load(6, false, GENDER_NONE, true, MEGA_FORM_Y);
+  bool ySame = yOk && charizardNormal.palCount == charizardY.palCount &&
+      !std::memcmp(charizardNormal.pal, charizardY.pal,
                    charizardNormal.palCount * sizeof(uint16_t));
-  ck(yFallbackSame, "a missing Mega Y sprite safely falls back to base artwork");
-  charizardNormal.unload(); charizardYFallback.unload();
+  ck(yOk && !ySame, "Mega Charizard Y uses distinct form artwork");
+  charizardNormal.unload(); charizardY.unload();
 
   PmdMon charizardBaseShiny, charizardXMegaNormal, charizardXShinyFallback;
   bool shinyFallbackOk = charizardBaseShiny.load(6, true, GENDER_NONE, false) &&
@@ -73,16 +71,17 @@ int main() {
   charizardBaseShiny.unload(); charizardXMegaNormal.unload();
   charizardXShinyFallback.unload();
 
-  PmdMon venusaurNormal, venusaurFallback;
-  bool fallbackOk = venusaurNormal.load(3, false, GENDER_NONE, false) &&
-                    venusaurFallback.load(3, false, GENDER_NONE, true,
-                                          MEGA_FORM_STANDARD);
-  bool fallbackSame = fallbackOk &&
-      venusaurNormal.palCount == venusaurFallback.palCount &&
-      !std::memcmp(venusaurNormal.pal, venusaurFallback.pal,
+  PmdMon venusaurNormal, venusaurMega;
+  bool venusaurOk = venusaurNormal.load(3, false, GENDER_NONE, false) &&
+                    venusaurMega.load(3, false, GENDER_NONE, true,
+                                      MEGA_FORM_STANDARD);
+  bool venusaurSame = venusaurOk &&
+      venusaurNormal.palCount == venusaurMega.palCount &&
+      !std::memcmp(venusaurNormal.pal, venusaurMega.pal,
                    venusaurNormal.palCount * sizeof(uint16_t));
-  ck(fallbackSame, "a missing Mega form safely falls back to base artwork");
-  venusaurNormal.unload(); venusaurFallback.unload();
+  ck(venusaurOk && !venusaurSame,
+     "Mega Venusaur uses distinct form artwork");
+  venusaurNormal.unload(); venusaurMega.unload();
 
   PmdMon alakazamNormal, alakazamShiny;
   bool shinyOk = alakazamNormal.load(65, false, GENDER_NONE, true,

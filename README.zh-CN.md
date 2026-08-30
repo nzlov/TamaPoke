@@ -430,8 +430,10 @@ Z 招式、极巨化或超级进化。
   水属性变为超极巨流水连击。其他属性攻击仍变为通用极巨招式，变化招式变为极巨防壁；
   因此当前技能组没有匹配属性攻击时，不能使用专属超极巨招式。战斗菜单显示变换后的
   本地化招式名，并分别使用 **MAX** 与 **G-MAX** 标签标记普通极巨招式和专属超极巨招式。
+  超极巨化会在战斗中使用对应形态的独立精灵图。
 - 超级进化仅限官方拥有超级形态的物种。普通、X、Y、Z 超级石相互区分，并精确决定
-  进化分支；未进化时 X/Y/Z 共用同一套普通或异色外观，仅在超级进化后分化。
+  进化分支；未进化时 X/Y/Z 共用同一套普通或异色外观，仅在超级进化后分化。所有受支持
+  的 Mega 分支都会使用对应形态的独立精灵图。
 
 全部 33 条专属超极巨招式映射都会结算对应战斗效果，包括持续伤害、异常状态、束缚、
 墙、入场陷阱、重力、会心等级、回复、无视特性和贯穿守住。超极巨特大金币每成功命中
@@ -589,24 +591,27 @@ tools/emu/tamapoke-emu --scale 2 --fast 60
 
 ### 自行生成并加载数据包
 
-所有精灵来自 **[PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)**
-（CC BY-NC）。游戏实际使用的固定版本 PNG/XML 源文件保存在
-`tools/pokemon_art/pmd/`，`tools/pokemon_data.json` 显式引用每个可用的普通、异色、
-雌性和 Mega 源目录。`pack_pmd.py` 无需联网即可转换这些本地源文件，
+大部分精灵来自 **[PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)**
+（CC BY-NC），其固定版本 PNG/XML 源文件保存在 `tools/pokemon_art/pmd/`。
+`tools/pokemon_art/ai/` 中独立生成的透明四视图补齐 48 个基础物种、57 个 Mega 形态和
+32 个超极巨化形态的全部缺口。`pack_pmd.py` 与 `pack_ai_art.py` 无需联网即可转换本地源文件，
 `gen_data_packs.py` 再把生成的 TPK2/TPTH 与 UI、物种、招式、说明、训练家、战斗和
-徽章数据合并，不生成地区中间包。新打包的精灵还
+徽章数据合并；存在四帧动作图集时优先使用真实动作帧，否则保留派生动作回退。不生成地区中间包。新打包的精灵还
 包含背面待机、受伤和攻击动作，因此玩家一侧在战斗中背对玩家；缺少某个背面动作时
-回退到相应正面动作。上游缺失的 Mega、Mega 异色或超极巨化图片会回退到该个体可用的
-普通/异色基础图，并明确列入覆盖报告，不会伪造形态图。
+回退到相应正面动作。缺少异色形态图时会保留该个体可用的基础异色外观，不会误用普通
+配色的形态图。
 
 ```bash
 python3 tools/pack_pmd.py --report base-sprite-coverage.json
 python3 tools/pack_pmd.py --mega --mega-report mega-sprite-coverage.json
 # Mega 输出名为 pmNNN-{standard,x,y,z}[-shiny].bin
+python3 tools/pack_ai_art.py # 缺失基础、Mega、超极巨四视图 -> TPK2
 python3 tools/make_thumbs.py    # 从 PMD 精灵生成图鉴缩略图 -> thumbs.bin
 python3 tools/gen_data_packs.py # web/packs/*.{tui,tbattle,tmove,titem,tregion,tquiz} + index.json
 python3 tools/check_data_packs.py
 ```
+
+这些数据包使用内容 ABI 8；从旧 ABI 升级时必须同时更新固件与地区包。
 
 仓库内的中文字体子集已覆盖目录中的所有字符串、物种、招式、属性和地区说明。新增本地化
 字符后，先用 FontTools 从 Noto Sans CJK SC Medium 重建字体，再重新生成数据包：
@@ -788,17 +793,19 @@ IV 也决定每项数值可训练的上限（77–100），高 IV 不只起点�
 
 ## 致谢
 
-全部精灵来自社区项目 [PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)
-（CC BY-NC）；基础数值来自 [PokéAPI](https://pokeapi.co)。Pokémon 是 Nintendo /
+大部分精灵来自社区项目 [PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)
+（CC BY-NC）；缺口形态使用仓库内记录来源的独立生成四视图，基础数值来自
+[PokéAPI](https://pokeapi.co)。Pokémon 是 Nintendo /
 Game Freak / The Pokémon Company 的商标。本项目仅供非商业个人使用。完整列表见
 [`CREDITS.md`](CREDITS.md)。
 
 ## 许可证
 
 - **源代码**（固件与工具）：**[MIT](LICENSE)**。
-- **精灵与名称：** © Nintendo / Game Freak / The Pokémon Company；像素画来自
+- **精灵与名称：** © Nintendo / Game Freak / The Pokémon Company；社区像素画来自
   [PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)（CC BY-NC 4.0），
-  **仅限非商业使用**。
+  **仅限非商业使用**。独立生成的缺口素材记录在 [`CREDITS.md`](CREDITS.md) 中，项目不主张
+  对角色设计拥有权利。
 - **3D 打印外壳：** 基于 **yoyothechicken** 的 *“Pokeball”*
   （[MakerWorld #839922](https://makerworld.com/es/models/839922-pokeball)）改作，采用
   **CC BY-NC-SA**，并以相同条款分享。

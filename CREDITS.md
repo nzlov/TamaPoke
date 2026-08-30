@@ -24,7 +24,8 @@ This project is not affiliated with or endorsed by any of those companies.
 
 | Resource | Source | Use in the project |
 |---|---|---|
-| **All sprites** (idle, walk, sleep, eat, hurt, attack…) | [PMD Sprite Collaboration (PMDCollab/SpriteCollab)](https://github.com/PMDCollab/SpriteCollab) | Mystery-Dungeon-style animated sprites used everywhere: main screen, stat card, minigame, and the Pokédex grid + detail view |
+| **Community sprites** (idle, walk, sleep, eat, hurt, attack…) | [PMD Sprite Collaboration (PMDCollab/SpriteCollab)](https://github.com/PMDCollab/SpriteCollab) | Mystery-Dungeon-style animated sprites used everywhere: main screen, stat card, minigame, and the Pokédex grid + detail view |
+| **Catalogue-gap turnarounds** | Generated for TamaPoke with OpenAI's built-in image-generation tool | Transparent four-view sources for 48 missing base species, 57 Mega forms and 32 Gigantamax forms; converted offline into deterministic TPK2 animations by `tools/pack_ai_art.py` |
 | **Base stats, learnsets and Pokédex flavor text** | [PokéAPI](https://pokeapi.co) | Real stats, level-up moves and the newest available main-series description per supported language for the current 1025-species catalogue |
 | **Simplified-Chinese Pokédex text** | [The official Pokémon Website in China](https://dex.pokemon.cn/play/pokedex) | Official Chinese descriptions used when PokéAPI has no `zh-hans` entry |
 | **Simplified-Chinese species and move names** | [42arch/pokemon-dataset-zh](https://github.com/42arch/pokemon-dataset-zh) | Committed authoring data in `tools/pokemon_data.json` and `tools/move_data.json`, emitted as localized-name sections in region and move packs — © 2024 42arch, **MIT**; the source dataset credits 52Poké Wiki |
@@ -43,6 +44,11 @@ The fixed-revision PNG/XML subset used by TamaPoke is kept in
 used for per-artist attribution. `pokemon_data.json` records every source path;
 the generated `tools/sdcard/mons/*.bin` files remain ignored intermediates.
 Neither the source subset nor derived packs may be redistributed commercially.
+
+The independently generated turnaround sheets are kept under
+`tools/pokemon_art/ai/`. Their provenance and conversion workflow are documented
+there. They do not inherit SpriteCollab attribution or licensing, and no claim
+is made over the underlying Pokémon character designs.
 
 The optional PokeAPI item sprites follow the same local-generation rule. The
 PokeAPI/sprites licence file says that all image contents remain copyright The

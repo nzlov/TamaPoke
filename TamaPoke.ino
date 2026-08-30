@@ -5219,13 +5219,15 @@ static void btlSyncSprite(uint8_t who, const Combatant &c) {
   uint8_t megaKey = mega && c.megaForm != MEGA_FORM_NONE
       ? (uint8_t)(c.megaForm + 1) : 0;
   int32_t key = ((int32_t)c.dex << 16) | ((int32_t)megaKey << 12) |
+                (c.gigantamax ? (1 << 11) : 0) |
                 ((int32_t)c.form << 5) |
                 (c.shiny ? 4 : 0) | ((uint8_t)c.gender & 3);
   if (btlPmdKey[who] == key && btlPmd[who].loaded) return;
   btlPmd[who].unload();
   btlPmdKey[who] = 0;
   if (c.dex < 1 || c.dex > dexCount()) return;
-  if (btlPmd[who].load(c.dex, c.shiny, c.gender, mega, c.megaForm))
+  if (btlPmd[who].load(c.dex, c.shiny, c.gender, mega, c.megaForm,
+                       c.gigantamax))
     btlPmdKey[who] = key;
 }
 

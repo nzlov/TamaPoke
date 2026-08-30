@@ -23,11 +23,11 @@ raw = common.pack(
     header_size, 1, b"reader-test".ljust(20, b"\0"),
 )
 raw += section.pack(b"TEST", header_size, len(payload), 1) + payload
-assert pack_content_version(raw) == 0x4DBB5FEE
+assert pack_content_version(raw) == 0xF1F8BA73
 changed_revision = bytearray(raw)
 changed_revision[16] ^= 1
-assert pack_content_version(changed_revision) == 0x4DBB5FEE
+assert pack_content_version(changed_revision) == 0xF1F8BA73
 changed_mechanics = bytearray(raw)
 changed_mechanics[20] ^= 1
-assert pack_content_version(changed_mechanics) != 0x4DBB5FEE
+assert pack_content_version(changed_mechanics) != 0xF1F8BA73
 Path(sys.argv[1]).write_bytes(raw)
