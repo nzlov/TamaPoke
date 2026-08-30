@@ -53,6 +53,7 @@ int main(){
   rare.shiny = 1;
   rare.sparkle = 1;
   rare.gigantamaxFactor = 1;
+  rare.moveUses[0] = 81;
   A.addMon(rare); A.addMon(mon(9,50,"SHELL"));
   B.addMon(mon(65,50,"SPOON"));
   A.start();
@@ -72,6 +73,9 @@ int main(){
      "a wire creature restores at full health");
   ck(back.shiny && back.gigantamaxFactor && back.ability==A.mine[0].ability,
      "the restored combatant keeps its rare state and ability");
+  ck(back.moveUses[0] == 81 &&
+     battleMoveFor(back, back.moves[0]).levelPowerBonus == 2,
+     "move progress and its derived power survive on the wire");
 
   LinkMon legacy = mon(7, 30, "LEGACY");
   legacy.sparkle = 1;

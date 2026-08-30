@@ -24,7 +24,8 @@ const SaveField SAVE_FIELDS[] = {
   { "abil", SK_U8 },
   { "giv", SK_BYTES },
   // moves
-  { "mvs", SK_BYTES },  { "rsvm", SK_BYTES }, { "mvlv", SK_U8 },
+  { "mvs", SK_BYTES },  { "rsvm", SK_BYTES },
+  { "mvuse", SK_BYTES }, { "rvuse", SK_BYTES }, { "mvlv", SK_U8 },
   // flags
   { "bk", SK_BOOL },    { "shy", SK_BOOL },   { "spkl", SK_BOOL },
   { "gmax", SK_BOOL },

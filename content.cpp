@@ -1800,6 +1800,31 @@ bool moveValid(MoveId id) {
   return id != MOVE_NONE && id < gMoveCount && gMovesTable && gMovesTable[id].name;
 }
 const MoveEntry &moveEntry(MoveId id) { return moveValid(id) ? gMovesTable[id] : MISSING_MOVE; }
+bool moveTracksProgress(MoveId id) {
+  return moveValid(id) && moveEntry(id).power != 0;
+}
+uint8_t moveLevelFromProgress(uint64_t progress) {
+  uint8_t level = 0;
+  uint64_t threshold = 3;
+  while (progress >= threshold) {
+    level++;
+    if (threshold > UINT64_MAX / 3u) break;
+    threshold *= 3u;
+  }
+  return level;
+}
+uint8_t moveLevel(MoveId id, uint64_t progress) {
+  return moveTracksProgress(id) ? moveLevelFromProgress(progress) : 0;
+}
+uint8_t movePowerBonus(MoveId id, uint64_t progress) {
+  uint8_t level = moveLevel(id, progress);
+  return (uint8_t)((level + 2u) / 3u);
+}
+uint64_t moveProgressAfterUse(MoveId id, uint64_t progress, bool knockout) {
+  if (!moveTracksProgress(id)) return 0;
+  uint8_t gain = knockout ? 6 : 1;
+  return progress > UINT64_MAX - gain ? UINT64_MAX : progress + gain;
+}
 bool abilitySlotValid(AbilitySlot slot) {
   return slot >= ABILITY_SLOT_ONE && slot <= ABILITY_SLOT_HIDDEN;
 }

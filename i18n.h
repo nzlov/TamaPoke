@@ -181,6 +181,7 @@ enum StrId : uint16_t {
   S_TASK_NORMAL, S_TASK_HARD, S_TASK_CONFIRM_FMT, S_TASK_NONE,
   S_TASK_HARD_AT_FMT, S_TASK_DONE, S_TASK_HARD_BETTER,
   S_TASK_MYSTERY,
+  S_MOVE_LEVEL,       // move proficiency, e.g. "Lv.%u"
   STR_COUNT
 };
 

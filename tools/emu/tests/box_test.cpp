@@ -284,7 +284,7 @@ int main(){
        "the pre-gender Box also avoids guessing from missing content");
     migrated.save(); migrated.boxSave();
     Party again; again.begin();
-    ck(again.slots[3].gender == first && again.slots[3].stateVersion == 6,
+    ck(again.slots[3].gender == first && again.slots[3].stateVersion == 7,
        "the deferred gender remains eligible for migration after reload");
   }
 
@@ -312,7 +312,7 @@ int main(){
        "v5 pending moves migrate into the four reserve slots");
     ck(migrated.slots[0].legacyLearnQueueTail[0] == MOVE_NONE &&
        migrated.slots[0].legacyLearnQCount == 0 &&
-       migrated.slots[0].stateVersion == 6,
+       migrated.slots[0].stateVersion == 7,
        "the retired learning queue metadata is cleared after migration");
   }
 

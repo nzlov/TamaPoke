@@ -37,7 +37,10 @@ static void fill(Combatant &c, int16_t dex, uint8_t lvl, uint16_t hp,
 void combatantFromPet(Combatant &c, const Pet &p) {
   fill(c, p.speciesId, p.level(), p.vitStat(), p.atkStat(), p.defStat(),
        p.spaStat(), p.spdStat(), p.speStat(), p.bond);
-  for (int i = 0; i < MOVE_SLOTS; i++) c.moves[i] = p.moves[i];
+  for (int i = 0; i < MOVE_SLOTS; i++) {
+    c.moves[i] = p.moves[i];
+    c.moveUses[i] = p.moveUses[i];
+  }
   c.shiny = p.shiny;
   c.ability = speciesAbility(p.speciesId, p.abilitySlot);
   battleInitializeForm(c);
@@ -50,7 +53,10 @@ void combatantFromPet(Combatant &c, const Pet &p) {
 void combatantFromParty(Combatant &c, const PartyMon &m) {
   fill(c, m.dex, (uint8_t)m.level, party.vitOf(m), party.atkOf(m), party.defOf(m),
        party.spaOf(m), party.spdOf(m), party.speOf(m), m.bond);
-  for (int i = 0; i < MOVE_SLOTS; i++) c.moves[i] = m.moves[i];
+  for (int i = 0; i < MOVE_SLOTS; i++) {
+    c.moves[i] = m.moves[i];
+    c.moveUses[i] = m.moveUses[i];
+  }
   c.shiny = m.shiny != 0 || m.sparkle != 0;
   c.ability = speciesAbility(m.dex, m.abilitySlot());
   battleInitializeForm(c);
@@ -316,6 +322,7 @@ BattleMove battleMoveFor(const Combatant &attacker, MoveId move,
                          BattleMechanic requested) {
   BattleMove result = battleMove(move);
   if (!result.valid()) return result;
+  result.levelPowerBonus = movePowerBonus(move, attacker.moveUseCount(move));
   if ((result.entry.fieldFlags & MF_AURA_WHEEL) &&
       attacker.form == BFORM_MORPEKO_HANGRY) {
     result.entry.type = T_DARK;
@@ -734,7 +741,8 @@ uint16_t battleDamage(const Combatant &atk, const Combatant &def,
     D = (uint16_t)((uint32_t)D * 3u / 4u);
   if (!D) D = 1;
 
-  uint32_t dmg = (2UL * atk.level / 5 + 2) * m.power * A / D / 50 + 2;
+  uint16_t power = (uint16_t)m.power + move.levelPowerBonus;
+  uint32_t dmg = (2UL * atk.level / 5 + 2) * power * A / D / 50 + 2;
   dmg = dmg * move.abilityPowerPercent / 100u;
   if (crit) dmg *= combatantHasAbility(atk, ABILITY_SNIPER) ? 3u : 2u;
   if ((effectiveField.weather == BWEATHER_SUN && m.type == T_FIRE) ||
@@ -1562,11 +1570,13 @@ static void battleActImpl(Combatant &atk, Combatant &def, BattleField &field,
                       combatantHasAbility(atk, ABILITY_MEGA_SOL));
   if (!firingCharge && !sunnyCharge && move.valid() && move.entry.effect == EF_CHARGE) {
     atk.charging = move.source;
+    log.moveUsed = true;
     log.charged = true;
     return;
   }
 
   if (!move.valid()) { log.skipped = true; return; }
+  log.moveUsed = !firingCharge;
   atk.lastMove = move.source;
   if (exclusiveAbility(atk, 681, ABILITY_STANCE_CHANGE)) {
     BattleForm next = (move.entry.fieldFlags & MF_STANCE_SHIELD)

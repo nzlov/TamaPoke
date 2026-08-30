@@ -42,6 +42,14 @@ int main(){
   pet.gymIvRewards[0]=GYM_IV_REWARD_DEF;
   pet.gymIvRewards[71]=GYM_IV_REWARD_LEGACY_CLAIMED;
   pet.relearnFromLevel();
+  MoveId progressMove = MOVE_NONE;
+  uint8_t progressSlot = 0;
+  for (uint8_t i = 0; i < MOVE_SLOTS; i++)
+    if (pet.moves[i] != 2 && pet.moves[i] != 9 &&
+        moveTracksProgress(pet.moves[i])) {
+      progressMove = pet.moves[i]; progressSlot = i; break;
+    }
+  pet.moveUses[progressSlot] = 81;
   pet.rename("SCORCH");
   player.avatar = 6;        // past the old four, so a stale & 3 mask would break it
   player.badges = 0x00BF; player.badgesHard = 0x000A;
@@ -62,6 +70,8 @@ int main(){
     snprintf(m.nick,sizeof(m.nick),"P%d",i);
     m.moves[0]=1+i; m.moves[1]=9; m.reserveMoves[0]=20+i;
     party.replaceAt(i,m); }
+  party.slots[1].moves[3] = progressMove;
+  party.slots[1].moveUses[3] = 27;
   for (int i=0;i<BOX_SLOTS;i++){ PartyMon m; m.dex=1+i*3; m.level=10+i;
     m.ageMinutes=(uint32_t)(m.level-1)*MINUTES_PER_LEVEL;
     m.nature=(NatureId)((i+5)%NATURE_COUNT);
@@ -72,6 +82,8 @@ int main(){
     m.gymIvRewards[i]=GYM_IV_REWARD_SPE; m.reserveMoves[1]=40+i;
     party.box[i]=m; }
   party.box[0].setAbilitySlot(ABILITY_SLOT_HIDDEN);
+  party.box[0].moves[3] = progressMove;
+  party.box[0].moveUses[3] = 9;
   party.boxSave();
   // renameTrainer() persists, and save() writes every field -- so this is also
   // what commits everything set above. save() itself is private on purpose.
@@ -167,6 +179,9 @@ int main(){
   for (int i=0;i<RESERVE_MOVE_SLOTS;i++)
     if (p2.reserveMoves[i]!=pet.reserveMoves[i]) moves=false;
   ck(moves, "and all active and reserve moves");
+  ck(progressMove && p2.moveUses[progressSlot] == 81 &&
+     p2.moveLevel(progressMove) == 4,
+     "and the active creature's per-move progress");
 
   ck(q2.count()==PARTY_SLOTS, "the whole party is back");
   bool party_ok = true;
@@ -190,6 +205,8 @@ int main(){
   ck(q2.slots[2].shiny && q2.slots[2].sparkle,
      "and a banked color-only creature is normalized to combined rare");
   ck(q2.slots[1].dead(), "and a party creature's death state is restored");
+  ck(q2.slots[1].moveUseCount(progressMove) == 27,
+     "and a banked party move keeps its own progress");
   ck(q2.slots[3].shiny && q2.slots[3].sparkle &&
      q2.slots[3].raisedMinutes==303,
      "and a banked sparkle-only creature migrates without losing cultivation time");
@@ -214,6 +231,8 @@ int main(){
      "with each banked creature's gender");
   ck(q2.box[0].abilitySlot()==ABILITY_SLOT_HIDDEN,
      "with each banked creature's ability slot");
+  ck(q2.box[0].moveUseCount(progressMove) == 9,
+     "with boxed move progress intact");
 
   // --- a restore must not leave anything of whatever was there before
   {

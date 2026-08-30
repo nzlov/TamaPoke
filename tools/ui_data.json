@@ -288,7 +288,8 @@
         "Dificil desde Nv.%u",
         "TAREA COMPLETADA",
         "La recompensa dificil es mejor. Entregar igualmente?",
-        "ADIVINA QUIEN SOY"
+        "ADIVINA QUIEN SOY",
+        "Lv.%u"
       ],
       "medalNames": [
         "Nv.10",
@@ -639,7 +640,8 @@
         "Hard from Lv.%u",
         "TASK COMPLETED",
         "Hard rewards are better. Submit anyway?",
-        "GUESS WHO I AM"
+        "GUESS WHO I AM",
+        "Lv.%u"
       ],
       "medalNames": [
         "Lv.10",
@@ -990,7 +992,8 @@
         "Difficile des Niv.%u",
         "MISSION TERMINEE",
         "La recompense difficile est meilleure. Confier quand meme ?",
-        "DEVINE QUI JE SUIS"
+        "DEVINE QUI JE SUIS",
+        "Lv.%u"
       ],
       "medalNames": [
         "Niv.10",
@@ -1341,7 +1344,8 @@
         "Schwer ab Lv.%u",
         "AUFGABE ERLEDIGT",
         "Die schwere Belohnung ist besser. Trotzdem abgeben?",
-        "RATE, WER ICH BIN"
+        "RATE, WER ICH BIN",
+        "Lv.%u"
       ],
       "medalNames": [
         "Lv.10",
@@ -1692,7 +1696,8 @@
         "Difficile da Lv.%u",
         "INCARICO COMPLETATO",
         "La ricompensa difficile e migliore. Consegnare comunque?",
-        "INDOVINA CHI SONO"
+        "INDOVINA CHI SONO",
+        "Lv.%u"
       ],
       "medalNames": [
         "Lv.10",
@@ -2043,7 +2048,8 @@
         "Dificil desde Niv.%u",
         "TAREFA CONCLUIDA",
         "A recompensa dificil e melhor. Entregar mesmo assim?",
-        "ADIVINHA QUEM SOU"
+        "ADIVINHA QUEM SOU",
+        "Lv.%u"
       ],
       "medalNames": [
         "Niv.10",
@@ -2400,7 +2406,8 @@
         "%u级起为困难战利品",
         "目标完成",
         "困难战利品更好，仍要提交？",
-        "猜猜我是谁"
+        "猜猜我是谁",
+        "Lv.%u"
       ],
       "medalNames": [
         "10级",

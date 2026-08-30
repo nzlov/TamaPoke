@@ -22,6 +22,21 @@ int FakeSerial::available() { return 0; }
 String FakeSerial::readStringUntil(char) { return String(""); }
 void sfxPlay(uint8_t) {}
 
+struct PartyMonV6Fixture { uint8_t raw[256]; };
+struct BreedingV6Fixture {
+  PartyMonV6Fixture parents[2];
+  PartyMonV6Fixture offspring;
+  uint32_t readyEpoch;
+  uint8_t status;
+  uint8_t reserved[3];
+};
+
+static PartyMonV6Fixture asV6(const PartyMon &mon) {
+  PartyMonV6Fixture old = {};
+  memcpy(old.raw, &mon, sizeof(old.raw));
+  return old;
+}
+
 int main() {
   Pet active;
   active.begin();
@@ -63,7 +78,9 @@ int main() {
   seed.begin("tamapoke", false);
   seed.putBool("init", true);
   seed.putUShort("savev", SAVE_STATE_VERSION_LEGACY);
-  seed.putBytes("team1", old, sizeof(old));
+  PartyMonV6Fixture oldTeam[PARTY_SLOTS] = {};
+  for (uint8_t i = 0; i < PARTY_SLOTS; i++) oldTeam[i] = asV6(old[i]);
+  seed.putBytes("team1", oldTeam, sizeof(oldTeam));
   seed.putUChar("active", 0);
   seed.putUInt("seen", 2000);
   seed.putUShort("rostv", 2);
@@ -75,7 +92,7 @@ int main() {
   migratedRoster.attach(migratedPet);
   migratedRoster.syncClock(migratedPet, 2000);
   bool migrated = migratedPet.fullness == 70 && nvs().count("team2") == 1 &&
-                  seed.getUShort("rostv", 0) == 6;
+                  seed.getUShort("rostv", 0) == 7;
   std::printf("%s  separate team1/seen save migrates to team2\n",
               migrated ? "PASS" : "FAIL");
   ok = ok && migrated;
@@ -86,12 +103,12 @@ int main() {
     uint32_t seenEpoch;
     uint8_t active;
     uint8_t reserved[3];
-    PartyMon slots[PARTY_SLOTS];
+    PartyMonV6Fixture slots[PARTY_SLOTS];
   } oldSnapshot = {};
   oldSnapshot.magic = 0x33534B54UL;
   oldSnapshot.seenEpoch = 3000;
-  oldSnapshot.slots[0] = old[0];
-  oldSnapshot.slots[0].gymIvRewards[0] = GYM_IV_REWARD_DEF;
+  old[0].gymIvRewards[0] = GYM_IV_REWARD_DEF;
+  oldSnapshot.slots[0] = asV6(old[0]);
   seed.putBool("init", true);
   seed.putUShort("savev", SAVE_STATE_VERSION_LEGACY);
   seed.putUShort("badg", 0x0005);
@@ -106,9 +123,9 @@ int main() {
   v3Roster.attach(v3Pet);
   bool v3Migrated = v3Player.badges == 0x0005 &&
                     v3Pet.gymIvRewardAt(0, 0) == GYM_IV_REWARD_DEF &&
-                    seed.getUShort("rostv", 0) == 6 &&
+                    seed.getUShort("rostv", 0) == 7 &&
                     seed.getBytesLength("team2") > sizeof(oldSnapshot);
-  std::printf("%s  v3 roster and legacy player keys migrate to v6 snapshot\n",
+  std::printf("%s  v3 roster and legacy player keys migrate to v7 snapshot\n",
               v3Migrated ? "PASS" : "FAIL");
   ok = ok && v3Migrated;
 
@@ -120,11 +137,11 @@ int main() {
     uint8_t lead;
     uint8_t reserved[2];
     uint8_t player[612];
-    PartyMon slots[PARTY_SLOTS];
+    PartyMonV6Fixture slots[PARTY_SLOTS];
   } v4Snapshot = {};
   v4Snapshot.magic = 0x34534B54UL;
   v4Snapshot.seenEpoch = 4000;
-  v4Snapshot.slots[0] = old[0];
+  v4Snapshot.slots[0] = asV6(old[0]);
   seed.putBool("init", true);
   seed.putUShort("savev", SAVE_STATE_VERSION);
   seed.putBytes("team2", &v4Snapshot, sizeof(v4Snapshot));
@@ -138,7 +155,7 @@ int main() {
   bool v4Migrated = v4Pet.speciesId == 1 &&
                     v4Roster.breeding.status == BREEDING_IDLE &&
                     v4Roster.breeding.parents[0].empty() &&
-                    seed.getUShort("rostv", 0) == 6;
+                    seed.getUShort("rostv", 0) == 7;
   std::printf("%s  v4 roster migrates with an empty breeding center\n",
               v4Migrated ? "PASS" : "FAIL");
   ok = ok && v4Migrated;
@@ -151,13 +168,13 @@ int main() {
     uint8_t lead;
     uint8_t reserved[2];
     uint8_t player[612];
-    PartyMon slots[PARTY_SLOTS];
-    BreedingCenterState breeding;
+    PartyMonV6Fixture slots[PARTY_SLOTS];
+    BreedingV6Fixture breeding;
   } v5Snapshot = {};
   v5Snapshot.magic = 0x35534B54UL;
   v5Snapshot.seenEpoch = 5000;
-  v5Snapshot.slots[0] = old[0];
-  v5Snapshot.breeding.parents[0] = old[0];
+  v5Snapshot.slots[0] = asV6(old[0]);
+  v5Snapshot.breeding.parents[0] = asV6(old[0]);
   seed.putBool("init", true);
   seed.putUShort("savev", SAVE_STATE_VERSION);
   seed.putBytes("team2", &v5Snapshot, sizeof(v5Snapshot));
@@ -171,9 +188,44 @@ int main() {
   bool v5Migrated = v5Pet.speciesId == 1 &&
                     v5Roster.breeding.parents[0].dex == 1 &&
                     v5Pet.playerProgress().dailyTasks.day == 0 &&
-                    seed.getUShort("rostv", 0) == 6;
+                    seed.getUShort("rostv", 0) == 7;
   std::printf("%s  v5 roster gains empty daily tasks without losing state\n",
               v5Migrated ? "PASS" : "FAIL");
   ok = ok && v5Migrated;
+
+  nvs().clear();
+  struct RosterSnapshotV6 {
+    uint32_t magic;
+    uint32_t seenEpoch;
+    uint8_t active;
+    uint8_t lead;
+    uint8_t reserved[2];
+    PlayerSnapshot player;
+    PartyMonV6Fixture slots[PARTY_SLOTS];
+    BreedingV6Fixture breeding;
+  } v6Snapshot = {};
+  PartyMon v6Mon = old[0];
+  v6Mon.stateVersion = 6;
+  v6Mon.moves[0] = 1;
+  v6Snapshot.magic = 0x36534B54UL;
+  v6Snapshot.seenEpoch = 6000;
+  v6Snapshot.slots[0] = asV6(v6Mon);
+  seed.putBool("init", true);
+  seed.putUShort("savev", SAVE_STATE_VERSION);
+  seed.putBytes("team2", &v6Snapshot, sizeof(v6Snapshot));
+  seed.putUShort("rostv", 6);
+
+  Pet v6Pet;
+  v6Pet.begin();
+  Party v6Roster;
+  v6Roster.begin();
+  v6Roster.attach(v6Pet);
+  bool v6Migrated = v6Pet.speciesId == 1 &&
+                    v6Pet.moves[0] == 1 && v6Pet.moveUseCount(1) == 0 &&
+                    seed.getUShort("rostv", 0) == 7 &&
+                    seed.getBytesLength("team2") > sizeof(v6Snapshot);
+  std::printf("%s  v6 roster gains zeroed move progress in v7\n",
+              v6Migrated ? "PASS" : "FAIL");
+  ok = ok && v6Migrated;
   return ok ? 0 : 1;
 }

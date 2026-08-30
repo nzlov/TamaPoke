@@ -130,6 +130,7 @@ struct Combatant {
   uint8_t nativeType1 = T_NORMAL, nativeType2 = T_NONE;
   AbilityKey ability = ABILITY_NONE;
   MoveId moves[MOVE_SLOTS] = { 0, 0, 0, 0 };
+  uint64_t moveUses[MOVE_SLOTS] = { 0, 0, 0, 0 };
   // One move observed from an NPC opponent. It exists only for this battle and
   // deliberately stays outside the four-slot save and LAN protocol ABIs.
   MoveId observedMove = MOVE_NONE;
@@ -168,6 +169,20 @@ struct Combatant {
   char name[12] = "";
 
   bool fainted() const { return hp == 0; }
+  uint64_t moveUseCount(MoveId move) const {
+    for (uint8_t i = 0; i < MOVE_SLOTS; i++)
+      if (moves[i] == move) return moveUses[i];
+    return 0;
+  }
+  bool recordMoveUse(MoveId move, bool knockout) {
+    if (!moveTracksProgress(move)) return false;
+    for (uint8_t i = 0; i < MOVE_SLOTS; i++) {
+      if (moves[i] != move) continue;
+      moveUses[i] = moveProgressAfterUse(move, moveUses[i], knockout);
+      return true;
+    }
+    return false;
+  }
 };
 
 // The move which actually reaches the resolver. Normal moves are copied from
@@ -180,6 +195,7 @@ struct BattleMove {
   GmaxMoveId gmaxMove = GMAX_MOVE_NONE;
   GmaxEffect gmaxEffect = GMAX_EFFECT_NONE;
   uint8_t abilityPowerPercent = 100;
+  uint8_t levelPowerBonus = 0;
 
   bool valid() const { return source != MOVE_NONE; }
 };
@@ -223,6 +239,7 @@ struct TurnLog {
   uint8_t bonusRewardItems = 0;
   bool restoreLastItem = false;
   bool statsWeakened = false;
+  bool moveUsed = false;  // actually began; misses count, prevented turns do not
   BattleSwitchRequest switchRequest = BSWITCH_NONE;
 };
 

@@ -7,6 +7,33 @@
 
 Party party;
 
+uint64_t PartyMon::moveUseCount(MoveId move) const {
+  for (uint8_t i = 0; i < MOVE_SLOTS; i++)
+    if (moves[i] == move) return moveUses[i];
+  for (uint8_t i = 0; i < RESERVE_MOVE_SLOTS; i++)
+    if (reserveMoves[i] == move) return reserveMoveUses[i];
+  return 0;
+}
+
+uint8_t PartyMon::moveLevel(MoveId move) const {
+  return ::moveLevel(move, moveUseCount(move));
+}
+
+bool PartyMon::recordMoveUse(MoveId move, bool knockout) {
+  if (!moveTracksProgress(move)) return false;
+  for (uint8_t i = 0; i < MOVE_SLOTS; i++) {
+    if (moves[i] != move) continue;
+    moveUses[i] = moveProgressAfterUse(move, moveUses[i], knockout);
+    return true;
+  }
+  for (uint8_t i = 0; i < RESERVE_MOVE_SLOTS; i++) {
+    if (reserveMoves[i] != move) continue;
+    reserveMoveUses[i] = moveProgressAfterUse(move, reserveMoveUses[i], knockout);
+    return true;
+  }
+  return false;
+}
+
 struct LegacyPartyMonV1 {
   int16_t dex;
   uint16_t level;
@@ -35,13 +62,54 @@ struct LegacyPartyMonV3 {
 static_assert(sizeof(LegacyPartyMonV3) == 164,
               "combat-only party layout must stay byte-exact");
 
-constexpr uint16_t ROSTER_VERSION = 6;
+// GLUE: v6 is the final 256-byte PartyMon layout. Its raw prefix is copied into
+// v7 so every old roster and Box page gains zeroed move progress. Remove only
+// when v6 saves are no longer supported.
+struct LegacyPartyMonV6 {
+  uint8_t raw[256];
+};
+static_assert(sizeof(LegacyPartyMonV6) == 256,
+              "v6 party layout must stay byte-exact");
+
+static void upgradeMon(PartyMon &out, const LegacyPartyMonV6 &old) {
+  out = PartyMon();
+  memcpy(&out, old.raw, sizeof(old.raw));
+}
+
+template <size_t N>
+static void upgradeMons(PartyMon (&out)[N], const LegacyPartyMonV6 (&old)[N]) {
+  for (size_t i = 0; i < N; i++) upgradeMon(out[i], old[i]);
+}
+
+struct LegacyBreedingCenterV6 {
+  LegacyPartyMonV6 parents[2];
+  LegacyPartyMonV6 offspring;
+  uint32_t readyEpoch;
+  uint8_t status;
+  uint8_t reserved[3];
+};
+static_assert(sizeof(LegacyBreedingCenterV6) == 776,
+              "v6 breeding layout must stay byte-exact");
+
+static BreedingCenterState upgradeBreeding(const LegacyBreedingCenterV6 &old) {
+  BreedingCenterState current;
+  for (uint8_t i = 0; i < 2; i++) upgradeMon(current.parents[i], old.parents[i]);
+  upgradeMon(current.offspring, old.offspring);
+  current.readyEpoch = old.readyEpoch;
+  current.status = old.status;
+  memcpy(current.reserved, old.reserved, sizeof(current.reserved));
+  return current;
+}
+
+constexpr uint16_t ROSTER_VERSION = 7;
+constexpr uint16_t ROSTER_VERSION_WITHOUT_MOVE_PROGRESS = 6;
 constexpr uint16_t ROSTER_VERSION_WITHOUT_TASKS = 5;
 constexpr uint16_t ROSTER_VERSION_WITHOUT_BREEDING = 4;
 constexpr uint16_t ROSTER_VERSION_WITHOUT_PLAYER = 3;
 constexpr uint16_t ROSTER_VERSION_WITH_SEPARATE_CLOCK = 2;
 constexpr uint16_t ROSTER_VERSION_WITHOUT_DEATH = 1;
-constexpr uint32_t ROSTER_SNAPSHOT_MAGIC = 0x36534B54UL;  // "TKS6"
+constexpr uint32_t ROSTER_SNAPSHOT_MAGIC = 0x37534B54UL;  // "TKS7"
+constexpr uint32_t ROSTER_SNAPSHOT_MAGIC_V6 = 0x36534B54UL;  // "TKS6"
 constexpr uint32_t ROSTER_SNAPSHOT_MAGIC_V5 = 0x35534B54UL;  // "TKS5"
 constexpr uint32_t ROSTER_SNAPSHOT_MAGIC_V4 = 0x34534B54UL;  // "TKS4"
 constexpr uint32_t ROSTER_SNAPSHOT_MAGIC_V3 = 0x33534B54UL;  // "TKS3"
@@ -65,6 +133,22 @@ static_assert(sizeof(RosterSnapshot) ==
                   12 + sizeof(PlayerSnapshot) + sizeof(PartyMon) * PARTY_SLOTS +
                       sizeof(BreedingCenterState),
               "roster snapshot header must stay byte-exact");
+
+struct RosterSnapshotV6 {
+  uint32_t magic;
+  uint32_t seenEpoch;
+  uint8_t active;
+  uint8_t lead;
+  uint8_t reserved[2];
+  PlayerSnapshot player;
+  LegacyPartyMonV6 slots[PARTY_SLOTS];
+  LegacyBreedingCenterV6 breeding;
+};
+static_assert(sizeof(RosterSnapshotV6) ==
+                  12 + sizeof(PlayerSnapshot) +
+                      sizeof(LegacyPartyMonV6) * PARTY_SLOTS +
+                      sizeof(LegacyBreedingCenterV6),
+              "v6 roster snapshot must stay byte-exact");
 
 struct PlayerSnapshotV5 {
   uint8_t dexReg[(CONTENT_MAX_SPECIES + 7) / 8] = { 0 };
@@ -99,8 +183,8 @@ struct RosterSnapshotV5 {
   uint8_t lead;
   uint8_t reserved[2];
   PlayerSnapshotV5 player;
-  PartyMon slots[PARTY_SLOTS];
-  BreedingCenterState breeding;
+  LegacyPartyMonV6 slots[PARTY_SLOTS];
+  LegacyBreedingCenterV6 breeding;
 };
 
 struct RosterSnapshotV4 {
@@ -110,10 +194,11 @@ struct RosterSnapshotV4 {
   uint8_t lead;
   uint8_t reserved[2];
   PlayerSnapshotV5 player;
-  PartyMon slots[PARTY_SLOTS];
+  LegacyPartyMonV6 slots[PARTY_SLOTS];
 };
 static_assert(sizeof(RosterSnapshotV4) ==
-                  12 + sizeof(PlayerSnapshotV5) + sizeof(PartyMon) * PARTY_SLOTS,
+                  12 + sizeof(PlayerSnapshotV5) +
+                      sizeof(LegacyPartyMonV6) * PARTY_SLOTS,
               "v4 roster snapshot must remain readable");
 
 static PlayerSnapshot upgradePlayerSnapshot(const PlayerSnapshotV5 &old) {
@@ -128,9 +213,10 @@ struct RosterSnapshotV3 {
   uint8_t active;
   uint8_t lead;
   uint8_t reserved[2];
-  PartyMon slots[PARTY_SLOTS];
+  LegacyPartyMonV6 slots[PARTY_SLOTS];
 };
-static_assert(sizeof(RosterSnapshotV3) == 12 + sizeof(PartyMon) * PARTY_SLOTS,
+static_assert(sizeof(RosterSnapshotV3) ==
+                  12 + sizeof(LegacyPartyMonV6) * PARTY_SLOTS,
               "v3 roster snapshot must stay byte-exact");
 
 // GLUE: these keys belong only to schema-v1 import. Once team2 and the current
@@ -141,7 +227,8 @@ static const char *const LEGACY_SAVE_KEYS[] = {
   "dexn", "eggT2", "crack", "mist", "sleep", "lend", "seen", "bond",
   "nick", "froz", "dead", "ivat", "ivdf", "ivsp", "ivhp", "tatk",
   "tdef", "tspe", "tminat", "tmindf", "tminsp", "nat", "gndr", "abil",
-  "giv", "mvs", "rsvm", "mvlv", "bk", "shy", "spkl", "gmax", "eshy",
+  "giv", "mvs", "rsvm", "mvuse", "rvuse", "mvlv", "bk", "shy", "spkl",
+  "gmax", "eshy",
   "stpk", "evop", "slpa", "rtpn", "tnam", "avtr", "badg", "reg",
   "eggR", "badgX", "badhX", "badh", "dexreg", "dexsh", "strk", "bstrk",
   "wrbon", "cday", "medal", "tmedal", "mstone", "ghi", "shi", "qhi",
@@ -219,6 +306,7 @@ void Party::begin() {
   // GLUE: v1/v2 stored team, active slot and RTC baseline in separate keys.
   // Remove this branch when split roster saves are no longer supported.
   bool snapshotLoaded = (rosterVersion == ROSTER_VERSION ||
+                         rosterVersion == ROSTER_VERSION_WITHOUT_MOVE_PROGRESS ||
                          rosterVersion == ROSTER_VERSION_WITHOUT_TASKS ||
                          rosterVersion == ROSTER_VERSION_WITHOUT_BREEDING ||
                          rosterVersion == ROSTER_VERSION_WITHOUT_PLAYER) &&
@@ -257,6 +345,7 @@ void Party::begin() {
                           !playerSnapshotLoaded);
   if (rosterUpgradePending &&
       rosterVersion != ROSTER_VERSION_WITHOUT_PLAYER &&
+      rosterVersion != ROSTER_VERSION_WITHOUT_MOVE_PROGRESS &&
       rosterVersion != ROSTER_VERSION_WITHOUT_TASKS &&
       rosterVersion != ROSTER_VERSION_WITHOUT_BREEDING) {
     saveTeam();
@@ -274,12 +363,20 @@ static void loadRosterMons(Preferences &prefs, const char *key,
     prefs.getBytes(key, out, sizeof(out));
     return;
   }
-  constexpr size_t OLD_MON_SIZE = sizeof(PartyMon) - sizeof(uint32_t);
-  if (stored != OLD_MON_SIZE * N) return;
-  uint8_t raw[OLD_MON_SIZE * N];
+  if (stored == sizeof(LegacyPartyMonV6) * N) {
+    LegacyPartyMonV6 old[N];
+    prefs.getBytes(key, old, sizeof(old));
+    upgradeMons(out, old);
+    return;
+  }
+  constexpr size_t PRE_DEATH_MON_SIZE = 252;
+  if (stored != PRE_DEATH_MON_SIZE * N) return;
+  uint8_t raw[PRE_DEATH_MON_SIZE * N];
   prefs.getBytes(key, raw, sizeof(raw));
-  for (size_t i = 0; i < N; i++)
-    memcpy(&out[i], raw + i * OLD_MON_SIZE, OLD_MON_SIZE);
+  for (size_t i = 0; i < N; i++) {
+    out[i] = PartyMon();
+    memcpy(&out[i], raw + i * PRE_DEATH_MON_SIZE, PRE_DEATH_MON_SIZE);
+  }
 }
 
 void Party::loadRoster() {
@@ -311,16 +408,30 @@ bool Party::loadSnapshot() {
     loadBox();
     return true;
   }
+  if (stored == sizeof(RosterSnapshotV6)) {
+    RosterSnapshotV6 snapshot;
+    if (prefs.getBytes("team2", &snapshot, sizeof(snapshot)) != sizeof(snapshot) ||
+        snapshot.magic != ROSTER_SNAPSHOT_MAGIC_V6) return false;
+    upgradeMons(slots, snapshot.slots);
+    active = snapshot.active;
+    lead = snapshot.lead;
+    savedSeenEpoch = snapshot.seenEpoch;
+    savedPlayer = snapshot.player;
+    breeding = upgradeBreeding(snapshot.breeding);
+    playerSnapshotLoaded = true;
+    loadBox();
+    return true;
+  }
   if (stored == sizeof(RosterSnapshotV5)) {
     RosterSnapshotV5 snapshot;
     if (prefs.getBytes("team2", &snapshot, sizeof(snapshot)) != sizeof(snapshot) ||
         snapshot.magic != ROSTER_SNAPSHOT_MAGIC_V5) return false;
-    memcpy(slots, snapshot.slots, sizeof(slots));
+    upgradeMons(slots, snapshot.slots);
     active = snapshot.active;
     lead = snapshot.lead;
     savedSeenEpoch = snapshot.seenEpoch;
     savedPlayer = upgradePlayerSnapshot(snapshot.player);
-    breeding = snapshot.breeding;
+    breeding = upgradeBreeding(snapshot.breeding);
     playerSnapshotLoaded = true;
     loadBox();
     return true;
@@ -329,7 +440,7 @@ bool Party::loadSnapshot() {
     RosterSnapshotV4 snapshot;
     if (prefs.getBytes("team2", &snapshot, sizeof(snapshot)) != sizeof(snapshot) ||
         snapshot.magic != ROSTER_SNAPSHOT_MAGIC_V4) return false;
-    memcpy(slots, snapshot.slots, sizeof(slots));
+    upgradeMons(slots, snapshot.slots);
     active = snapshot.active;
     lead = snapshot.lead;
     savedSeenEpoch = snapshot.seenEpoch;
@@ -343,7 +454,7 @@ bool Party::loadSnapshot() {
   RosterSnapshotV3 snapshot;
   if (prefs.getBytes("team2", &snapshot, sizeof(snapshot)) != sizeof(snapshot) ||
       snapshot.magic != ROSTER_SNAPSHOT_MAGIC_V3) return false;
-  memcpy(slots, snapshot.slots, sizeof(slots));
+  upgradeMons(slots, snapshot.slots);
   active = snapshot.active;
   lead = snapshot.lead;
   savedSeenEpoch = snapshot.seenEpoch;
@@ -359,7 +470,10 @@ void Party::sanitize(PartyMon &m, bool boxed) {
   // A save remains valid when its regional pack is temporarily absent. The
   // loaded catalogue is availability, not the persistence boundary.
   if (m.dex > CONTENT_MAX_SPECIES) { m = PartyMon(); return; }
-  for (MoveId &move : m.moves) if (!moveValid(move)) move = MOVE_NONE;
+  for (uint8_t i = 0; i < MOVE_SLOTS; i++) {
+    if (!moveValid(m.moves[i])) m.moves[i] = MOVE_NONE;
+    if (!moveTracksProgress(m.moves[i])) m.moveUses[i] = 0;
+  }
   for (uint8_t &reward : m.gymIvRewards)
     if (reward > GYM_IV_REWARD_HP &&
         reward != GYM_IV_REWARD_LEGACY_CLAIMED) reward = 0;
@@ -371,7 +485,7 @@ void Party::sanitize(PartyMon &m, bool boxed) {
   m.nick[sizeof(m.nick) - 1] = 0;
   uint8_t version = m.stateVersion;
   if (version != 1 && version != 2 && version != 3 && version != 4 &&
-      version != 5 && version != 6) {
+      version != 5 && version != 6 && version != 7) {
     m.fullness = m.joy = m.energy = 80; m.hygiene = 100;
     m.ageMinutes = (uint32_t)(m.level ? m.level - 1 : 0) * MINUTES_PER_LEVEL;
     m.lastLearnLevel = (uint8_t)(m.level > MAX_LEVEL ? MAX_LEVEL : m.level);
@@ -414,18 +528,23 @@ void Party::sanitize(PartyMon &m, bool boxed) {
     for (uint8_t i = count; i < RESERVE_MOVE_SLOTS; i++)
       m.reserveMoves[i] = MOVE_NONE;
   }
-  for (MoveId &move : m.reserveMoves) if (!moveValid(move)) move = MOVE_NONE;
+  for (uint8_t i = 0; i < RESERVE_MOVE_SLOTS; i++) {
+    if (!moveValid(m.reserveMoves[i])) m.reserveMoves[i] = MOVE_NONE;
+    if (!moveTracksProgress(m.reserveMoves[i])) m.reserveMoveUses[i] = 0;
+  }
   for (uint8_t i = 0; i < LEARNED_MOVE_SLOTS; i++) {
     MoveId &move = i < MOVE_SLOTS ? m.moves[i] : m.reserveMoves[i - MOVE_SLOTS];
+    uint64_t &uses = i < MOVE_SLOTS ? m.moveUses[i]
+                                    : m.reserveMoveUses[i - MOVE_SLOTS];
     if (!move) continue;
     for (uint8_t j = 0; j < i; j++) {
       MoveId known = j < MOVE_SLOTS ? m.moves[j] : m.reserveMoves[j - MOVE_SLOTS];
-      if (known == move) { move = MOVE_NONE; break; }
+      if (known == move) { move = MOVE_NONE; uses = 0; break; }
     }
   }
   for (MoveId &move : m.legacyLearnQueueTail) move = MOVE_NONE;
   m.legacyLearnQCount = 0;
-  m.stateVersion = 6;
+  m.stateVersion = 7;
   auto sanitizeTraining = [](uint8_t &training, uint8_t &floor, uint8_t iv) {
     uint8_t cap = Pet::trMaxFor(iv);
     if (floor > cap) floor = cap;
@@ -479,6 +598,7 @@ void Party::attach(Pet &pet) {
   if (playerSnapshotLoaded) pet.playerProgress().restore(savedPlayer);
   if (rosterUpgradePending) {
     saveTeam();
+    boxSave();
     prefs.putUShort("rostv", ROSTER_VERSION);
     rosterUpgradePending = false;
   }
@@ -835,12 +955,14 @@ void Party::setDeadAt(uint8_t i, bool dead) {
 bool Party::retainObservedMove(uint8_t i, Pet &pet, MoveId move) {
   if (i >= PARTY_SLOTS || slots[i].empty()) return false;
   if (i == active) {
-    if (!Pet::placeInLearnedMoves(pet.moves, pet.reserveMoves, move)) return false;
+    if (!Pet::placeInLearnedMoves(pet.moves, pet.reserveMoves, move,
+                                  pet.moveUses, pet.reserveMoveUses)) return false;
     captureActive(pet, true);
     return true;
   }
   PartyMon &mon = slots[i];
-  if (!Pet::placeInLearnedMoves(mon.moves, mon.reserveMoves, move)) return false;
+  if (!Pet::placeInLearnedMoves(mon.moves, mon.reserveMoves, move,
+                                mon.moveUses, mon.reserveMoveUses)) return false;
   saveTeam();
   return true;
 }

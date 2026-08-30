@@ -78,7 +78,7 @@ struct PartyMon {
   // predates permanent training floors, v2 predates wild sparkle and
   // player-raised time, v3 predates persisted gender, v4 predates ability, and
   // v5 predates four reserve move slots.
-  uint8_t stateVersion = 6;
+  uint8_t stateVersion = 7;
   uint8_t fullness = 80, joy = 80, energy = 80, hygiene = 100;
   uint8_t poops = 0, weight = 0;
   uint8_t berryKnown = 0;
@@ -117,6 +117,10 @@ struct PartyMon {
   // Appended so pre-death six-slot records remain a byte-exact prefix and can
   // be migrated without remapping cultivation or permanent training floors.
   uint32_t state = 0;
+  // Parallel to the active and reserve move arrays. Only raw usage progress is
+  // durable; level and power bonus are derived when battle or UI reads it.
+  uint64_t moveUses[MOVE_SLOTS] = { 0, 0, 0, 0 };
+  uint64_t reserveMoveUses[RESERVE_MOVE_SLOTS] = { 0, 0, 0, 0 };
 
   bool empty() const { return dex == 0; }
   bool isEgg() const { return dex < 0; }
@@ -139,11 +143,16 @@ struct PartyMon {
             ((uint32_t)(abilitySlotValid(slot) ? slot : ABILITY_SLOT_UNKNOWN)
              << PARTY_MON_ABILITY_SHIFT);
   }
+  uint64_t moveUseCount(MoveId move) const;
+  uint8_t moveLevel(MoveId move) const;
+  bool recordMoveUse(MoveId move, bool knockout);
 };
 static_assert(offsetof(PartyMon, state) == 252,
               "the pre-death roster record must remain a byte-exact prefix");
-static_assert(sizeof(PartyMon) == 256,
-              "death state must remain the final roster field");
+static_assert(offsetof(PartyMon, moveUses) == 256,
+              "move progress must append to the v6 roster record");
+static_assert(sizeof(PartyMon) == 320,
+              "the v7 roster record must remain byte-exact");
 static_assert(sizeof(PartyMon) * PARTY_SLOTS <= 4096,
               "one roster page must stay within the backup/NVS blob bound");
 

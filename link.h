@@ -32,7 +32,7 @@
 // whole handshake without a radio, and a deliberately lossy transport exercises
 // all of the above. Only the radio itself is unverifiable here.
 
-#define LINK_PROTO 11       // bump on ANY wire change; a mismatch is refused
+#define LINK_PROTO 12       // bump on ANY wire change; a mismatch is refused
 #define LINK_MAX_PAYLOAD 200
 #define LINK_NAME_LEN 12
 
@@ -91,6 +91,7 @@ struct LinkMon {
   uint16_t maxHp;
   uint16_t base[SI_COUNT];
   MoveId moves[MOVE_SLOTS];
+  uint64_t moveUses[MOVE_SLOTS];
   uint8_t shiny;
   uint8_t sparkle;  // legacy mirror retained for packet compatibility
   uint8_t gender;
@@ -115,6 +116,7 @@ struct LinkResult {
   uint16_t hostDmg, guestDmg;
   uint8_t hostIdx, guestIdx;   // which squad member is out on each side
   uint8_t flags;
+  uint8_t moveProgressFlags;  // used/knockout bits for host and guest actions
   uint8_t hostType1, hostType2, guestType1, guestType2;
   BattleMechanic hostActive, guestActive;
   MegaFormKind hostMegaForm, guestMegaForm;
@@ -154,6 +156,10 @@ struct LinkResult {
 constexpr uint8_t LINK_RESULT_FAINT = 0x04;
 constexpr uint8_t LINK_RESULT_HOST_FIRST = 0x08;
 constexpr uint8_t LINK_RESULT_GUEST_REPLENISH = 0x10;
+constexpr uint8_t LINK_PROGRESS_HOST_USED = 1u << 0;
+constexpr uint8_t LINK_PROGRESS_GUEST_USED = 1u << 1;
+constexpr uint8_t LINK_PROGRESS_HOST_KNOCKOUT = 1u << 2;
+constexpr uint8_t LINK_PROGRESS_GUEST_KNOCKOUT = 1u << 3;
 static_assert(sizeof(LinkResult) <= 0xFFu,
               "LinkResult must fit the one-byte protocol length");
 

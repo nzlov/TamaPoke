@@ -44,7 +44,10 @@ void linkMonFrom(LinkMon &out, const Combatant &c) {
   out.level = c.level;
   out.maxHp = c.maxHp;
   for (int i = 0; i < SI_COUNT; i++) out.base[i] = c.base[i];
-  for (int i = 0; i < MOVE_SLOTS; i++) out.moves[i] = c.moves[i];
+  for (int i = 0; i < MOVE_SLOTS; i++) {
+    out.moves[i] = c.moves[i];
+    out.moveUses[i] = c.moveUses[i];
+  }
   out.shiny = c.shiny ? 1 : 0;
   out.sparkle = out.shiny;
   out.gender = (uint8_t)c.gender;
@@ -66,7 +69,10 @@ void linkMonTo(Combatant &out, const LinkMon &m) {
   out.type1 = dexEntry(out.dex).type1;
   out.type2 = dexEntry(out.dex).type2;
   for (int i = 0; i < SI_COUNT; i++) out.base[i] = m.base[i] ? m.base[i] : 1;
-  for (int i = 0; i < MOVE_SLOTS; i++) out.moves[i] = linkSafeMove(m.moves[i]);
+  for (int i = 0; i < MOVE_SLOTS; i++) {
+    out.moves[i] = linkSafeMove(m.moves[i]);
+    out.moveUses[i] = moveTracksProgress(out.moves[i]) ? m.moveUses[i] : 0;
+  }
   out.shiny = m.shiny != 0 || m.sparkle != 0;
   out.gender = genderValid((PetGender)m.gender) ? (PetGender)m.gender
                                                  : GENDER_NONE;

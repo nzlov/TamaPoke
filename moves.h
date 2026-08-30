@@ -75,6 +75,13 @@ struct LearnEntry { MoveId move; uint8_t level; uint8_t method; };
 uint16_t moveCount();
 bool moveValid(MoveId id);
 const MoveEntry &moveEntry(MoveId id);
+// Only moves with ordinary base power gain proficiency. Level is derived from
+// total progress at thresholds 3^n; it is never persisted separately.
+bool moveTracksProgress(MoveId id);
+uint8_t moveLevelFromProgress(uint64_t progress);
+uint8_t moveLevel(MoveId id, uint64_t progress);
+uint8_t movePowerBonus(MoveId id, uint64_t progress);
+uint64_t moveProgressAfterUse(MoveId id, uint64_t progress, bool knockout);
 uint16_t learnCount(SpeciesId species);
 MoveId learnMove(SpeciesId species, uint16_t index);
 uint8_t learnLevel(SpeciesId species, uint16_t index);

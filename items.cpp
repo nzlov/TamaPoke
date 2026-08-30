@@ -133,7 +133,8 @@ bool itemApplyToPartyMon(const ItemEntry &item, PartyMon &target, MoveId move) {
     return true;
   }
   if (item.effect == ITEM_EFFECT_TEACH_MOVE)
-    return Pet::placeInLearnedMoves(target.moves, target.reserveMoves, move);
+    return Pet::placeInLearnedMoves(target.moves, target.reserveMoves, move,
+                                    target.moveUses, target.reserveMoveUses);
   TrainingStat stat = TRAINING_ATK;
   if (!itemTrainingStat(item, stat)) return false;
   uint8_t *floor = nullptr, *training = nullptr, cap = 0;

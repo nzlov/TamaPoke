@@ -1097,6 +1097,7 @@ struct BtlFoeTurnPlan {
 static BtlFoeTurnPlan btlPlanFoeTurn();
 static void btlResolve(MoveId yourMove, uint8_t yourPercent,
                        BattleMechanic yourMechanic);
+static bool btlRecordPlayerMoveUse(MoveId move, bool knockout);
 static void btlSetPersistentDead(uint8_t index, bool dead);
 static void btlMarkEntered(uint8_t index);
 // The opposing team stays live so trainer and linked creatures can switch out
@@ -3347,18 +3348,26 @@ void onTap(int16_t x, int16_t y) {
       // it, so trade its active or reserve slot with the selected battle slot.
       MoveId *active = pickTargetMoves();
       MoveId *reserve = pickTargetReserveMoves();
+      uint64_t *activeUses = pickTargetMoveUses();
+      uint64_t *reserveUses = pickTargetReserveMoveUses();
       MoveId chosen = all[idx];
       for (int s = 0; s < MOVE_SLOTS; s++)
         if (active[s] == chosen && s != movePickSlot) {
+          uint64_t chosenUses = activeUses[s];
           active[s] = active[movePickSlot];
+          activeUses[s] = activeUses[movePickSlot];
           active[movePickSlot] = chosen;
+          activeUses[movePickSlot] = chosenUses;
           chosen = MOVE_NONE;
           break;
         }
       for (int s = 0; chosen && s < RESERVE_MOVE_SLOTS; s++)
         if (reserve[s] == chosen) {
+          uint64_t chosenUses = reserveUses[s];
           reserve[s] = active[movePickSlot];
+          reserveUses[s] = activeUses[movePickSlot];
           active[movePickSlot] = chosen;
+          activeUses[movePickSlot] = chosenUses;
           break;
         }
       if (movePickParty) party.save(); else pet.saveNow();
@@ -4819,7 +4828,8 @@ int drawTypeChip(int x, int y, uint8_t type) {
   return w;
 }
 
-void drawMoveRow(int y, MoveId mv, bool highlight, int16_t dex) {
+void drawMoveRow(int y, MoveId mv, bool highlight, int16_t dex,
+                 uint64_t uses) {
   gfx->fillRoundRect(70, y, 326, MOVE_ROW_H, 12, highlight ? UI_BAR_WARN : UI_BG_DAY);
   gfx->drawRoundRect(70, y, 326, MOVE_ROW_H, 12, UI_INK);
   if (!mv) {
@@ -4832,7 +4842,13 @@ void drawMoveRow(int y, MoveId mv, bool highlight, int16_t dex) {
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
   gfx->setCursor(82, y + MOVE_NAME_TOP);
-  gfx->print(moveName(mv));
+  if (moveTracksProgress(mv)) {
+    char level[16];
+    snprintf(level, sizeof(level), T(S_MOVE_LEVEL), ::moveLevel(mv, uses));
+    gfx->printf("%s %s", level, moveName(mv));
+  } else {
+    gfx->print(moveName(mv));
+  }
   // Type colours come from the move pack. STAB is a 1.5x damage bonus and is
   // marked on the power figure, where it describes the actual effect.
   // The chip carries the TYPE; STAB moved onto the power figure, where it
@@ -4851,11 +4867,20 @@ void drawMoveRow(int y, MoveId mv, bool highlight, int16_t dex) {
   }
   char pw[16];
   if (m.cat == MC_STATUS) snprintf(pw, sizeof(pw), "%s", T(S_MOVE_STATUS));
-  else snprintf(pw, sizeof(pw), T(S_MOVE_PWR), m.power);
+  else snprintf(pw, sizeof(pw), T(S_MOVE_PWR),
+                (uint16_t)m.power + movePowerBonus(mv, uses));
   gfx->setTextColor(stab ? dexEntry(dex).accent : UI_INK);
   gfx->setTextSize(1);
-  gfx->setCursor(uiRightX(pw, 384), metaY);
+  int16_t left, top, right, bottom;
+  if (gfx->textInkBounds(pw, &left, &top, &right, &bottom))
+    gfx->setCursor(384 - right, y + MOVE_ROW_H - 6 - bottom);
+  else
+    gfx->setCursor(uiRightX(pw, 384), y + MOVE_ROW_H - 14);
   gfx->print(pw);
+}
+
+void drawMoveRow(int y, MoveId mv, bool highlight, int16_t dex) {
+  drawMoveRow(y, mv, highlight, dex, 0);
 }
 
 void moveRowVerticals(int *rowBottom, int *nameTop, int *nameBottom,
@@ -4878,7 +4903,9 @@ void renderCardMoves() {
   gfx->setTextSize(3);
   gfx->setCursor(uiCenterX(T(S_MOVES)), 44);
   gfx->print(T(S_MOVES));
-  for (int i = 0; i < MOVE_SLOTS; i++) drawMoveRow(MOVE_ROW_Y(i), pet.moves[i], false, pet.speciesId);
+  for (int i = 0; i < MOVE_SLOTS; i++)
+    drawMoveRow(MOVE_ROW_Y(i), pet.moves[i], false, pet.speciesId,
+                pet.moveUses[i]);
   gfx->setTextColor(UI_MUTED);
   gfx->setTextSize(1);
   gfx->setCursor(uiCenterX(T(S_MOVE_TAP)), 340);
@@ -4904,8 +4931,19 @@ MoveId *pickTargetReserveMoves() {
   return movePickParty ? party.slots[movePickParty - 1].reserveMoves
                        : pet.reserveMoves;
 }
+uint64_t *pickTargetMoveUses() {
+  return movePickParty ? party.slots[movePickParty - 1].moveUses : pet.moveUses;
+}
+uint64_t *pickTargetReserveMoveUses() {
+  return movePickParty ? party.slots[movePickParty - 1].reserveMoveUses
+                       : pet.reserveMoveUses;
+}
 int16_t pickTargetDex() {
   return movePickParty ? party.slots[movePickParty - 1].dex : pet.speciesId;
+}
+uint64_t pickTargetMoveUse(MoveId move) {
+  return movePickParty ? party.slots[movePickParty - 1].moveUseCount(move)
+                       : pet.moveUseCount(move);
 }
 
 void renderMoveInfo() {
@@ -4916,7 +4954,7 @@ void renderMoveInfo() {
   gfx->setTextSize(3);
   gfx->setCursor(uiCenterX(moveName(move)), 42);
   gfx->print(moveName(move));
-  drawMoveRow(88, move, false, pickTargetDex());
+  drawMoveRow(88, move, false, pickTargetDex(), pickTargetMoveUse(move));
   const char *description = moveDescription(move, uiActiveLocaleCode());
   if (description) {
     gfx->setTextColor(UI_INK);
@@ -4954,7 +4992,9 @@ void renderMovePick() {
     if (idx >= n) break;
     // the move already in this slot is highlighted, so replacing like for like
     // is obvious rather than a guess
-    drawMoveRow(MOVE_PICK_Y(i), all[idx], all[idx] == pickTargetMoves()[movePickSlot], pickTargetDex());
+    drawMoveRow(MOVE_PICK_Y(i), all[idx],
+                all[idx] == pickTargetMoves()[movePickSlot], pickTargetDex(),
+                pickTargetMoveUse(all[idx]));
   }
   for (uint8_t i = 0; i < pages && pages > 1; i++) {
     if (i == movePickPage) gfx->fillCircle(CX - (pages - 1) * 13 + i * 26, 380, 5, UI_INK);
@@ -6009,6 +6049,11 @@ static void btlApplyResult() {
     btlLungeUntil[1] = btlHitUntil[1] = btlFaintUntil[1] = 0;
     btlEnterUntil[1] = now + BTL_ENTER_MS;
   }
+  if ((r.moveProgressFlags & LINK_PROGRESS_GUEST_USED) &&
+      moveTracksProgress(r.guestMove)) {
+    bool knockout = (r.moveProgressFlags & LINK_PROGRESS_GUEST_KNOCKOUT) != 0;
+    btlRecordPlayerMoveUse(r.guestMove, knockout);
+  }
   uint16_t oldYouMaxHp = btlYou.maxHp, oldFoeMaxHp = btlFoe.maxHp;
   btlYou.maxHp = r.guestMaxHp ? r.guestMaxHp : 1;
   btlFoe.maxHp = r.hostMaxHp ? r.hostMaxHp : 1;
@@ -6227,6 +6272,7 @@ static void btlLinkPoll() {
     btlTurnShowingRound = false;
     btlOver = true;
     btlWon = false;
+    pet.saveNow();
     audioMusic(MUS_NONE);
     btlMsgCount = 0;
     btlSay("%s", T(S_LAN_GONE));
@@ -6256,6 +6302,7 @@ static void btlLinkPoll() {
   if (lan.state == LINK_DONE && !btlOver) {
     btlOver = true;
     btlWon = lan.youWon;
+    pet.saveNow();
     audioMusic(btlWon ? MUS_VICTORY : MUS_NONE);
     if (btlWon) sfxPlay(SFX_VICTORY);
     btlSay("%s", btlWon ? T(S_BTL_WIN) : T(S_BTL_LOSE));
@@ -6265,7 +6312,7 @@ static void btlLinkPoll() {
 // Packs the outcome for the guest. Only the host ever calls this.
 static void btlShipResult(const BattleMove &yourMove, const BattleMove &theirMove,
                           uint16_t hp0You, uint16_t hp0Foe, bool yourFirst,
-                          bool guestReplenished) {
+                          bool guestReplenished, uint8_t moveProgressFlags) {
   LinkResult r = {};
   r.hostHp = btlYou.hp;   r.guestHp = btlFoe.hp;
   r.hostMaxHp = btlYou.maxHp; r.guestMaxHp = btlFoe.maxHp;
@@ -6277,6 +6324,7 @@ static void btlShipResult(const BattleMove &yourMove, const BattleMove &theirMov
   r.hostDmg = (hp0You > btlYou.hp) ? hp0You - btlYou.hp : 0;
   r.guestDmg = (hp0Foe > btlFoe.hp) ? hp0Foe - btlFoe.hp : 0;
   r.hostIdx = btlSquadAt; r.guestIdx = btlFoeAt;
+  r.moveProgressFlags = moveProgressFlags;
   r.hostType1 = btlYou.type1; r.hostType2 = btlYou.type2;
   r.guestType1 = btlFoe.type1; r.guestType2 = btlFoe.type2;
   r.hostActive = btlYou.activeMechanic; r.guestActive = btlFoe.activeMechanic;
@@ -6367,6 +6415,17 @@ static void btlSetPersistentDead(uint8_t index, bool dead) {
   if (source < 0 || source >= PARTY_SLOTS) return;
   if (source == party.activeIndex()) pet.setDead(dead);
   else party.setDeadAt((uint8_t)source, dead);
+}
+
+static bool btlRecordPlayerMoveUse(MoveId move, bool knockout) {
+  if (btlSquadAt >= btlSquadN) return false;
+  int8_t source = btlSquadSource[btlSquadAt];
+  if (source < 0 || source >= PARTY_SLOTS) return false;
+  bool recorded = source == party.activeIndex()
+      ? pet.recordMoveUse(move, knockout)
+      : party.slots[source].recordMoveUse(move, knockout);
+  if (recorded) btlYou.recordMoveUse(move, knockout);
+  return recorded;
 }
 
 static bool btlPlayerHasReplacement() {
@@ -6492,10 +6551,11 @@ static void btlFinishAfterLearning() {
     }
     if (btlTrainer < regionBattleInfo(btlRegion).gymCount && btlPetIn)
       btlIvReward = pet.rewardGymIv(btlRegion, btlTrainer, btlIvWhich);
-    // The v4 team2 snapshot contains both PlayerProgress and the active
-    // PartyMon, so this one blob is the gym outcome's commit boundary.
-    pet.saveNow();
   }
+  // The current team2 snapshot contains PlayerProgress, the active creature,
+  // and every banked creature, so one write commits battle rewards and move
+  // progress for every participant together.
+  pet.saveNow();
   audioMusic(btlWon ? MUS_VICTORY : MUS_NONE);
   if (btlWon) sfxPlay(SFX_VICTORY);
   if (btlLink && btlLinkHost) lan.sendEnd(btlWon);
@@ -6636,6 +6696,7 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
   uint8_t foePercent = 100;
   bool foeSwitched = false;
   bool guestReplenished = false;
+  uint8_t moveProgressFlags = 0;
   bool foeWantsRun = false;
   uint8_t foeRunRoll = 100;
   if (btlLink) {
@@ -6707,6 +6768,15 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
   } else {
     battleAct(*a, *b, btlField, ma, lg, a == &btlYou ? yourPercent : foePercent,
               aSide);
+    if (lg.moveUsed && a == &btlYou &&
+        btlRecordPlayerMoveUse(lg.move, lg.targetFainted)) {
+      moveProgressFlags |= LINK_PROGRESS_HOST_USED;
+      if (lg.targetFainted) moveProgressFlags |= LINK_PROGRESS_HOST_KNOCKOUT;
+    } else if (lg.moveUsed && btlLink && a == &btlFoe &&
+               btlFoe.recordMoveUse(lg.move, lg.targetFainted)) {
+      moveProgressFlags |= LINK_PROGRESS_GUEST_USED;
+      if (lg.targetFainted) moveProgressFlags |= LINK_PROGRESS_GUEST_KNOCKOUT;
+    }
     guestReplenished |= aSide == 1 && lg.restoreLastItem;
     btlApplyGmaxInventoryEffect(aSide, lg.bonusRewardItems, lg.restoreLastItem);
     btlPrepareTurnAction(aSide, bSide, lg, BTL_TURN_ACTION);
@@ -6735,6 +6805,15 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
     } else {
       battleAct(*b, *a, btlField, mb, lg, b == &btlYou ? yourPercent : foePercent,
                 bSide);
+      if (lg.moveUsed && b == &btlYou &&
+          btlRecordPlayerMoveUse(lg.move, lg.targetFainted)) {
+        moveProgressFlags |= LINK_PROGRESS_HOST_USED;
+        if (lg.targetFainted) moveProgressFlags |= LINK_PROGRESS_HOST_KNOCKOUT;
+      } else if (lg.moveUsed && btlLink && b == &btlFoe &&
+                 btlFoe.recordMoveUse(lg.move, lg.targetFainted)) {
+        moveProgressFlags |= LINK_PROGRESS_GUEST_USED;
+        if (lg.targetFainted) moveProgressFlags |= LINK_PROGRESS_GUEST_KNOCKOUT;
+      }
       guestReplenished |= bSide == 1 && lg.restoreLastItem;
       btlApplyGmaxInventoryEffect(bSide, lg.bonusRewardItems, lg.restoreLastItem);
       btlPrepareTurnAction(bSide, aSide, lg, BTL_TURN_ACTION);
@@ -6769,7 +6848,7 @@ static void btlResolve(MoveId yourMove, uint8_t yourPercent,
   btlScaleShownHp(1, oldFoeMaxHp, btlFoe.maxHp);
   if (btlLink && btlLinkHost)
     btlShipResult(yourBattleMove, foeBattleMove, hp0You, hp0Foe, youFirst,
-                  guestReplenished);
+                  guestReplenished, moveProgressFlags);
   // Persist deaths and either queue replacements or finish the battle. The
   // replacement itself remains deferred until the faint beat has played.
   btlHandleFaints();
@@ -7454,7 +7533,8 @@ static void renderStoredMonDetail(const PartyMon &mon,
     gfx->print(T(S_MOVES));
     for (int i = 0; i < MOVE_SLOTS; i++)
       drawMoveRow(MOVE_ROW_Y(i), battleStats ? battleStats->moves[i] : mon.moves[i],
-                  false, dex);
+                  false, dex,
+                  battleStats ? battleStats->moveUses[i] : mon.moveUses[i]);
   }
 
   for (uint8_t i = 0; i < BTL_FOE_DETAIL_PAGES; i++) {
@@ -7861,21 +7941,30 @@ void renderBattle() {
       if (!mv) continue;
       gfx->setTextColor(UI_INK);
       gfx->setTextSize(1);
-      char moveLabel[64];
+      char baseMoveLabel[64];
+      char moveLabel[80];
       BattleMove displayed = battleMoveFor(btlYou, mv, btlPendingMechanic);
       if (displayed.gmaxMove) {
-        snprintf(moveLabel, sizeof(moveLabel), "%s",
+        snprintf(baseMoveLabel, sizeof(baseMoveLabel), "%s",
                  gmaxMoveName(displayed.gmaxMove));
       } else if (displayed.mechanic == BMECH_Z_MOVE) {
-        snprintf(moveLabel, sizeof(moveLabel), "Z-%s",
+        snprintf(baseMoveLabel, sizeof(baseMoveLabel), "Z-%s",
                  typeName(displayed.entry.type));
       } else if (displayed.mechanic == BMECH_DYNAMAX) {
         const char *maxName = maxMoveName(
             displayed.entry.type, displayed.entry.cat == MC_STATUS);
-        snprintf(moveLabel, sizeof(moveLabel), "%s",
+        snprintf(baseMoveLabel, sizeof(baseMoveLabel), "%s",
                  maxName ? maxName : moveName(mv));
       } else {
-        snprintf(moveLabel, sizeof(moveLabel), "%s", moveName(mv));
+        snprintf(baseMoveLabel, sizeof(baseMoveLabel), "%s", moveName(mv));
+      }
+      if (choice < MOVE_SLOTS && moveTracksProgress(mv)) {
+        char level[16];
+        snprintf(level, sizeof(level), T(S_MOVE_LEVEL),
+                 ::moveLevel(mv, btlYou.moveUseCount(mv)));
+        snprintf(moveLabel, sizeof(moveLabel), "%s %s", level, baseMoveLabel);
+      } else {
+        snprintf(moveLabel, sizeof(moveLabel), "%s", baseMoveLabel);
       }
       int16_t left, top, right, bottom;
       if (gfx->textInkBounds(moveLabel, &left, &top, &right, &bottom))
@@ -7885,7 +7974,7 @@ void renderBattle() {
       gfx->print(moveLabel);
 
       // Match the move list's information order: name at top-left, type below,
-      // and the effective power (including Z/Max conversion) on the right.
+      // and the effective power (including Z/Max conversion) at bottom-right.
       int chipWidth = drawTypeChip(x + 10, y + 24, displayed.entry.type);
       if (displayed.mechanic == BMECH_DYNAMAX) {
         const char *tag = displayed.gmaxMove ? "G-MAX" : "MAX";
@@ -7902,14 +7991,16 @@ void renderBattle() {
       if (displayed.entry.cat == MC_STATUS)
         snprintf(power, sizeof(power), "%s", T(S_MOVE_STATUS));
       else
-        snprintf(power, sizeof(power), T(S_MOVE_PWR), displayed.entry.power);
+        snprintf(power, sizeof(power), T(S_MOVE_PWR),
+                 (uint16_t)displayed.entry.power + displayed.levelPowerBonus);
       gfx->setTextColor(stab ? dexEntry(btlYou.dex).accent : UI_INK);
       gfx->setTextSize(1);
       if (gfx->textInkBounds(power, &left, &top, &right, &bottom))
-        gfx->setCursor(x + BTL_CELL_W - 10 - (right - left) - left,
-                       y + (BTL_CELL_H - (bottom - top)) / 2 - top);
+        gfx->setCursor(x + BTL_CELL_W - 10 - right,
+                       y + BTL_CELL_H - 6 - bottom);
       else
-        gfx->setCursor(uiRightX(power, x + BTL_CELL_W - 10), y + 16);
+        gfx->setCursor(uiRightX(power, x + BTL_CELL_W - 10),
+                       y + BTL_CELL_H - 14);
       gfx->print(power);
     }
     if (btlMovePageCount() > 1) {
@@ -8039,6 +8130,7 @@ bool btlAttemptRun(uint8_t roll) {
     btlFreeSprites();
     audioMusic(MUS_NONE);
     if (btlLink) { lanLeave(); btlLink = false; lanOpen = true; }
+    pet.saveNow();
     battleOpen = false;
     btlWild = false;
     btlMenu = 0;
@@ -8121,6 +8213,7 @@ static void btlSubmitCapturedTask() {
 }
 
 static void btlCompleteCaptureAfterLearning() {
+  pet.saveNow();
   capturedMon = btlWildMon;
   pet.registerCaught(capturedMon.dex, capturedMon.shiny);
   btlResetCapturedTask();

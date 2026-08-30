@@ -144,6 +144,12 @@ moves take full effect after a correct answer. With questions disabled, moves
 run directly at 100%. In LAN battles each player uses their own question settings,
 the percentage travels with that move, and the host remains authoritative.
 
+Each creature tracks proficiency separately for each move with base power. Moves
+start at level 0 and reach level *n* at `3^n` total progress; an actually launched
+move gains 1 progress, or 6 total when it directly knocks out its target. Misses
+and immunities still count, while a turn stopped before launch does not. Move
+power gains `ceil(level / 3)`. Status and other zero-power moves have no level.
+
 ### Four regions
 
 | Pick a ladder | Johto's gyms | LAN battle |

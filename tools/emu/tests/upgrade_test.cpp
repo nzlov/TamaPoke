@@ -82,7 +82,7 @@ int main() {
 
   current.begin("tamapoke", true);
   ck(current.getUShort("savev", 0) == SAVE_STATE_VERSION &&
-         current.getUShort("rostv", 0) == 6 && current.isKey("team2"),
+         current.getUShort("rostv", 0) == 7 && current.isKey("team2"),
      "migration commits the current schema and roster snapshot");
   ck(!current.isKey("init") && !current.isKey("dexn") &&
          !current.isKey("nick") && !current.isKey("badg") &&

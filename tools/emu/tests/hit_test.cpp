@@ -299,6 +299,25 @@ int main(){
   quiz.config.questionTypes = 0;
   ck(beginBattleQuiz(0) && !quiz.active,
      "a disabled battle question resolves the move without a popup");
+
+  MoveId trackedMove = MOVE_NONE;
+  for (MoveId move = 1; move < moveCount(); move++)
+    if (moveTracksProgress(move)) { trackedMove = move; break; }
+  pet.moves[0] = trackedMove;
+  pet.moveUses[0] = 0;
+  startBattle(9, 50);
+  for (MoveId &move : btlFoe.moves) move = MOVE_NONE;
+  openBattleRound();
+  btlFoe.hp = 1;
+  btlFoe.ability = ABILITY_NONE;
+  btlYou.base[SI_SPE] = UINT16_MAX;
+  commitBattleMove(0, 100);
+  ck(trackedMove && pet.moveUseCount(trackedMove) == 6,
+     "the real battle path records one use plus the five-point knockout bonus");
+  Party persistedBattle;
+  persistedBattle.begin();
+  ck(persistedBattle.slots[persistedBattle.activeIndex()].moveUseCount(trackedMove) == 6,
+     "battle settlement persists the awarded move progress");
   quiz.config.questionTypes = QUIZ_TYPE_ARITHMETIC;
 
   // Three separate "hard to hit" reports came in from the board, all the same

@@ -186,6 +186,8 @@ public:
   // the card swaps a reserve into that active set before combat.
   MoveId moves[MOVE_SLOTS] = { 0, 0, 0, 0 };
   MoveId reserveMoves[RESERVE_MOVE_SLOTS] = { 0, 0, 0, 0 };
+  uint64_t moveUses[MOVE_SLOTS] = { 0, 0, 0, 0 };
+  uint64_t reserveMoveUses[RESERVE_MOVE_SLOTS] = { 0, 0, 0, 0 };
   uint8_t moveCount() const;
   uint8_t learnedMoveCount() const;
   static uint8_t learnedMoveCount(const MoveId (&active)[MOVE_SLOTS],
@@ -196,7 +198,12 @@ public:
                                MoveId mv);
   static bool placeInLearnedMoves(MoveId (&active)[MOVE_SLOTS],
                                   MoveId (&reserve)[RESERVE_MOVE_SLOTS],
-                                  MoveId mv);
+                                  MoveId mv,
+                                  uint64_t *activeUses = nullptr,
+                                  uint64_t *reserveUses = nullptr);
+  uint64_t moveUseCount(MoveId move) const;
+  uint8_t moveLevel(MoveId move) const;
+  bool recordMoveUse(MoveId move, bool knockout);
   bool canLearnStone(MoveId mv) const;
   bool teachMove(MoveId mv);
   // Rebuilds natural level-up moves for generated opponents and migrations.

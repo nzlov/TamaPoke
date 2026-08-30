@@ -17,6 +17,8 @@ void Pet::begin() {
   // it never showed there, but anything calling begin() twice would see it, and
   // Party::begin() already guards the same way for the same reason.
   memset(gymIvRewards, 0, sizeof(gymIvRewards));
+  memset(moveUses, 0, sizeof(moveUses));
+  memset(reserveMoveUses, 0, sizeof(reserveMoveUses));
   for (int i = 0; i < regionCount(); i++) eggByRegion[i] = 0;
   if (prefs.getUShort("savev", 0) == SAVE_STATE_VERSION) {
     // Current saves are loaded exclusively by Party::attach from team2.
@@ -64,6 +66,8 @@ void Pet::newEgg() {
   sleeping = false;
   frozen = false;
   memset(gymIvRewards, 0, sizeof(gymIvRewards));
+  memset(moveUses, 0, sizeof(moveUses));
+  memset(reserveMoveUses, 0, sizeof(reserveMoveUses));
   save();
 }
 
@@ -288,6 +292,8 @@ void Pet::importState(const PartyMon &m) {
   memcpy(gymIvRewards, m.gymIvRewards, sizeof(gymIvRewards));
   for (int i = 0; i < MOVE_SLOTS; i++) moves[i] = m.moves[i];
   for (int i = 0; i < RESERVE_MOVE_SLOTS; i++) reserveMoves[i] = m.reserveMoves[i];
+  memcpy(moveUses, m.moveUses, sizeof(moveUses));
+  memcpy(reserveMoveUses, m.reserveMoveUses, sizeof(reserveMoveUses));
   ageMinutes = m.stateVersion ? m.ageMinutes
                               : (uint32_t)(m.level ? m.level - 1 : 0) * MINUTES_PER_LEVEL;
   raisedMinutes = m.stateVersion >= 3 ? m.raisedMinutes : ageMinutes;
@@ -341,10 +347,12 @@ void Pet::exportState(PartyMon &out) const {
   out.gender = gender;
   for (int i = 0; i < MOVE_SLOTS; i++) out.moves[i] = moves[i];
   for (int i = 0; i < RESERVE_MOVE_SLOTS; i++) out.reserveMoves[i] = reserveMoves[i];
+  memcpy(out.moveUses, moveUses, sizeof(moveUses));
+  memcpy(out.reserveMoveUses, reserveMoveUses, sizeof(reserveMoveUses));
   memcpy(out.gymIvRewards, gymIvRewards, sizeof(gymIvRewards));
   strncpy(out.nick, nick, sizeof(out.nick) - 1);
   out.nick[sizeof(out.nick) - 1] = 0;
-  out.stateVersion = 6;
+  out.stateVersion = 7;
   out.fullness = fullness; out.joy = joy; out.energy = energy; out.hygiene = hygiene;
   out.poops = poops; out.weight = weight;
   out.berryKnown = berryKnown ? 1 : 0;
@@ -727,6 +735,33 @@ uint8_t Pet::learnedMoveCount(const MoveId (&active)[MOVE_SLOTS],
   return n;
 }
 
+uint64_t Pet::moveUseCount(MoveId move) const {
+  for (uint8_t i = 0; i < MOVE_SLOTS; i++)
+    if (moves[i] == move) return moveUses[i];
+  for (uint8_t i = 0; i < RESERVE_MOVE_SLOTS; i++)
+    if (reserveMoves[i] == move) return reserveMoveUses[i];
+  return 0;
+}
+
+uint8_t Pet::moveLevel(MoveId move) const {
+  return ::moveLevel(move, moveUseCount(move));
+}
+
+bool Pet::recordMoveUse(MoveId move, bool knockout) {
+  if (!moveTracksProgress(move)) return false;
+  for (uint8_t i = 0; i < MOVE_SLOTS; i++) {
+    if (moves[i] != move) continue;
+    moveUses[i] = moveProgressAfterUse(move, moveUses[i], knockout);
+    return true;
+  }
+  for (uint8_t i = 0; i < RESERVE_MOVE_SLOTS; i++) {
+    if (reserveMoves[i] != move) continue;
+    reserveMoveUses[i] = moveProgressAfterUse(move, reserveMoveUses[i], knockout);
+    return true;
+  }
+  return false;
+}
+
 bool Pet::knowsMove(MoveId mv) const {
   return knowsLearnedMove(moves, reserveMoves, mv);
 }
@@ -747,20 +782,35 @@ bool Pet::canLearnStone(MoveId mv) const {
 }
 
 bool Pet::placeLearnedMove(MoveId mv) {
-  return placeInLearnedMoves(moves, reserveMoves, mv);
+  return placeInLearnedMoves(moves, reserveMoves, mv, moveUses, reserveMoveUses);
 }
 
 bool Pet::placeInLearnedMoves(MoveId (&active)[MOVE_SLOTS],
                               MoveId (&reserve)[RESERVE_MOVE_SLOTS],
-                              MoveId mv) {
+                              MoveId mv, uint64_t *activeUses,
+                              uint64_t *reserveUses) {
   if (!moveValid(mv) || knowsLearnedMove(active, reserve, mv)) return false;
-  for (MoveId &slot : active)
-    if (!slot) { slot = mv; return true; }
-  for (MoveId &slot : reserve)
-    if (!slot) { slot = mv; return true; }
+  for (uint8_t i = 0; i < MOVE_SLOTS; i++)
+    if (!active[i]) {
+      active[i] = mv;
+      if (activeUses) activeUses[i] = 0;
+      return true;
+    }
+  for (uint8_t i = 0; i < RESERVE_MOVE_SLOTS; i++)
+    if (!reserve[i]) {
+      reserve[i] = mv;
+      if (reserveUses) reserveUses[i] = 0;
+      return true;
+    }
   uint8_t replace = (uint8_t)random(LEARNED_MOVE_SLOTS);
-  if (replace < MOVE_SLOTS) active[replace] = mv;
-  else reserve[replace - MOVE_SLOTS] = mv;
+  if (replace < MOVE_SLOTS) {
+    active[replace] = mv;
+    if (activeUses) activeUses[replace] = 0;
+  } else {
+    replace -= MOVE_SLOTS;
+    reserve[replace] = mv;
+    if (reserveUses) reserveUses[replace] = 0;
+  }
   return true;
 }
 
@@ -773,6 +823,8 @@ bool Pet::teachMove(MoveId mv) {
 void Pet::relearnFromLevel() {
   for (MoveId &move : moves) move = MOVE_NONE;
   for (MoveId &move : reserveMoves) move = MOVE_NONE;
+  memset(moveUses, 0, sizeof(moveUses));
+  memset(reserveMoveUses, 0, sizeof(reserveMoveUses));
   lastLearnLevel = 0;
   if (isEgg()) return;
   uint8_t lvl = level();
@@ -1298,6 +1350,8 @@ void Pet::save() {
   prefs.putBytes("giv", gymIvRewards, sizeof(gymIvRewards));
   prefs.putBytes("mvs", moves, sizeof(moves));
   prefs.putBytes("rsvm", reserveMoves, sizeof(reserveMoves));
+  prefs.putBytes("mvuse", moveUses, sizeof(moveUses));
+  prefs.putBytes("rvuse", reserveMoveUses, sizeof(reserveMoveUses));
   prefs.putUChar("mvlv", lastLearnLevel);
   prefs.putBytes("eggR", eggByRegion, sizeof(eggByRegion));
   prefs.putBool("froz", frozen);
@@ -1397,10 +1451,18 @@ void Pet::load() {
   if (prefs.getBytesLength("rsvm") == sizeof(reserveMoves)) {
     prefs.getBytes("rsvm", reserveMoves, sizeof(reserveMoves));
   }
-  for (int i = 0; i < MOVE_SLOTS; i++)
+  if (prefs.getBytesLength("mvuse") == sizeof(moveUses))
+    prefs.getBytes("mvuse", moveUses, sizeof(moveUses));
+  if (prefs.getBytesLength("rvuse") == sizeof(reserveMoveUses))
+    prefs.getBytes("rvuse", reserveMoveUses, sizeof(reserveMoveUses));
+  for (int i = 0; i < MOVE_SLOTS; i++) {
     if (moves[i] >= ::moveCount()) moves[i] = 0;
-  for (int i = 0; i < RESERVE_MOVE_SLOTS; i++)
+    if (!moveTracksProgress(moves[i])) moveUses[i] = 0;
+  }
+  for (int i = 0; i < RESERVE_MOVE_SLOTS; i++) {
     if (reserveMoves[i] >= ::moveCount()) reserveMoves[i] = 0;
+    if (!moveTracksProgress(reserveMoves[i])) reserveMoveUses[i] = 0;
+  }
   lastLearnLevel = prefs.getUChar("mvlv", 0);
   frozen = prefs.getBool("froz", false);
   dead = prefs.getBool("dead", false) && speciesId >= 1;
